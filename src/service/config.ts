@@ -11,6 +11,7 @@ export type ClientId = typeof CLIENTS[number];
 export interface Config {
   version: 1; brokerUrl: string; kswarmUrl: string;
   brokerTokenFile?: string; kswarmTokenFile?: string;
+  xiaokActivityConfig?: string;
 }
 export function dataRoot(): string { return resolve(process.env.KTEAM_DATA_DIR || join(homedir(), '.kteam')); }
 export function ensurePrivateRoot(root: string): void {
@@ -36,16 +37,22 @@ export function initConfig(root: string, config: Config): void {
 }
 export function validateConfig(value: unknown): Config {
   const config = record(value);
-  fields(config, ['version','brokerUrl','kswarmUrl','brokerTokenFile','kswarmTokenFile']);
+  fields(config, ['version','brokerUrl','kswarmUrl','brokerTokenFile','kswarmTokenFile','xiaokActivityConfig']);
   if (config.version !== 1 || typeof config.brokerUrl !== 'string' || typeof config.kswarmUrl !== 'string') throw new KTeamError('config_version_unsupported');
   loopbackUrl(config.brokerUrl); loopbackUrl(config.kswarmUrl);
-  for (const key of ['brokerTokenFile','kswarmTokenFile']) if (config[key] !== undefined && (typeof config[key] !== 'string' || !config[key])) throw new KTeamError('invalid_token_reference');
+  for (const key of ['brokerTokenFile','kswarmTokenFile','xiaokActivityConfig']) if (config[key] !== undefined && (typeof config[key] !== 'string' || !config[key])) throw new KTeamError('invalid_token_reference');
   return config as unknown as Config;
 }
 export function loadConfig(root: string): Config {
   return validateConfig(parseJson(privateRead(join(root, 'config.json'))));
 }
 export function upstreamOptions(config: Config): UpstreamOptions {
+  if(config.xiaokActivityConfig){
+    const activity=record(parseJson(privateRead(resolve(config.xiaokActivityConfig))));
+    const source=record(activity.kswarm);
+    if(typeof source.url!=='string'||typeof source.brokerUrl!=='string'||typeof source.roomToken!=='string'||typeof source.mutationToken!=='string')throw new KTeamError('xiaok_service_credentials_unavailable');
+    return {brokerUrl:loopbackUrl(source.brokerUrl),kswarmUrl:loopbackUrl(source.url),brokerToken:source.roomToken,kswarmToken:source.mutationToken};
+  }
   return { ...config, brokerToken: config.brokerTokenFile ? privateRead(resolve(config.brokerTokenFile)) : undefined,
     kswarmToken: config.kswarmTokenFile ? privateRead(resolve(config.kswarmTokenFile)) : undefined };
 }

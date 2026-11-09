@@ -1,0 +1,338 @@
+// AI Agent 与模型适配层的共享接口
+
+import type { MessageBlock } from './ai/runtime/blocks.js';
+import type { UsageStats } from './ai/runtime/usage.js';
+import type { RuntimeEvent } from './runtime/events.js';
+import type { AgentSessionSnapshot } from './ai/runtime/session.js';
+import type { PromptCacheSegments, StreamOptions } from './ai/runtime/model-capabilities.js';
+import type { PromptSnapshot } from './ai/prompts/types.js';
+import type { ModelConfigEntry, ProviderConfig, ProviderId } from './ai/providers/types.js';
+import type { IntentBoundaryConfig } from './ai/intent-delegation/boundary-types.js';
+import type { TaskExecutionScope } from './runtime/task-host/types.js';
+
+export type { MessageBlock, UsageStats };
+
+export interface ModelAdapter {
+  /** Exact request preview for host projection before provider authorization. */
+  getObservationRequestPreview?(
+    messages: Message[], tools: ToolDefinition[], systemPrompt: string, options?: StreamOptions,
+  ): { serializedBody: string; destination: string } | undefined;
+  stream(
+    messages: Message[],
+    tools: ToolDefinition[],
+    systemPrompt: string,
+    options?: StreamOptions,
+  ): AsyncIterable<StreamChunk>;
+  getModelName(): string;
+  getHarnessProfileId?(): string;
+  /** Explicit output tokens reserved by this adapter's actual request, if known. */
+  getOutputTokenReserve?(): number;
+}
+
+export type StreamChunk =
+  | { type: 'text'; delta: string }
+  | {
+      type: 'thinking';
+      delta: string;
+      signature?: import('./ai/runtime/blocks.js').ReasoningSource;
+      reasoningProvenance?: import('./ai/runtime/blocks.js').ReasoningBlockProvenance;
+    }
+  /** Transient render_ui arguments; only the main preview parser may consume this snapshot. */
+  | { type: 'ui_preview'; id: string; input: string; invalid?: boolean }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown>; googleThoughtSignature?: import('./ai/runtime/blocks.js').GoogleThoughtSignature }
+  /** Transport activity only; buffered tool arguments are not executable yet. */
+  | { type: 'tool_input_progress' }
+  | { type: 'usage'; usage: UsageStats }
+  | { type: 'done' };
+
+export type ToolCall = Extract<MessageBlock, { type: 'tool_use' }>;
+
+export interface Message {
+  role: 'user' | 'assistant';
+  content: MessageBlock[];
+}
+
+export type ToolResultContent = Extract<MessageBlock, { type: 'tool_result' }>;
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface ToolExecutionContext {
+  observationCollector?: import('./runtime/sol-pi/collector-port.js').ObservationCollectorPort;
+  /** Host-only native-body projection, before observers and independently sourced hook text. */
+  projectObservationResult?: (nativeResult: string) => Promise<string>;
+  /** Host-only, acquired after native projection; never a disclosure authorization. */
+  observationProvenance?: () => import('./runtime/sol-pi/observation-provenance.js').NativeObservationProvenancePort | undefined;
+  taskId: string;
+  executionScope?: TaskExecutionScope;
+  session: AgentSessionSnapshot;
+  messages: Message[];
+  systemPrompt: string;
+  toolDefinitions: ToolDefinition[];
+  promptCache?: PromptCacheSegments;
+  promptSnapshot?: PromptSnapshot;
+  settingsStore?: {
+    getSettings(): { modelCapabilities?: Record<string, string> };
+  };
+  signal?: AbortSignal;
+  onExecutionHealth?: (state: import('./runtime/execution-health.js').ExecutionHealthState) => void;
+  executionProgress?: { progress(): void; wait(id: string): void; resume(id: string): void };
+  /** Main-only, one-invocation policy/grant guard installed by ToolRegistry.
+   * Never tool input, an IPC credential, or a reusable permission grant. */
+  assertPermissionApproval?: () => void;
+  /** Host-only, one-time producer input admission after actual approval consumption.
+   * May deny only; never an authorization or a model/IPC input field. */
+  assertToolInputApprovalAdmission?: () => void;
+  /** Desktop scoped dispatch observer, appended only after provider projection.
+   * Not an input field or permission; called at the actual bound invocation. */
+  onToolInvocationStarted?: () => void;
+  /** Host-only correlation fields. They are never part of tool input/model payloads. */
+  compoundPhase?: import('./runtime/sol-pi/compound-native-phase.js').CompoundNativePhasePort;
+  toolInvocationId?: string;
+  /** Host-only media port and actual adapter capability, attached after provider projection. */
+  emitToolImage?: (image: Extract<MessageBlock, { type: 'image' }>) => void;
+  modelSupportsImageInput?: boolean;
+  /** Actual host provider request namespace; never accepted from model tool input. */
+  hostProviderInvocationId?: string;
+  runtimeFactSink?: {
+    emit(fact: ToolExecutionFact): void;
+  };
+}
+
+export interface ToolExecutionFact {
+  invocationId: string;
+  toolName: string;
+  factKind: 'command_result' | 'file_mutation';
+  exitCode?: number | null;
+  normalizedFilePaths?: string[];
+}
+
+export type PermissionClass = 'safe' | 'write' | 'bash';
+
+/** A main approval port consumes its own input-bound grant synchronously.
+ * Boolean CLI decisions remain a distinct backwards-compatible policy. */
+export interface ToolPermissionGrant {
+  approved: true;
+  prepareInput(finalInput: Record<string, unknown>): Record<string, unknown>;
+  /** Synchronous, idempotent, non-consuming current-authority check. May run
+   * more than once, including after an awaited native journal operation. */
+  assertCurrent(): void;
+}
+
+export interface Tool {
+  /** Trusted native host preflight; absent on unqualified/plugin mutation tools. */
+  compoundFilePrecondition?(input: Readonly<Record<string, unknown>>): {filePath:string;beforeHash:string|null};
+  definition: ToolDefinition;
+  permission: PermissionClass;
+  companionTools?: Tool[];
+  executionPolicy?: { idleTimeoutMs?: number; waitsForUser?: boolean };
+  execute(input: Record<string, unknown>, context?: ToolExecutionContext): Promise<string>;
+}
+
+export interface RuntimeHookSink {
+  emit(event: RuntimeEvent): void;
+}
+
+// credentials.json schema
+export interface Credentials {
+  schemaVersion: 1;
+  accessToken: string;
+  refreshToken: string;
+  enterpriseId: string;
+  userId: string;
+  expiresAt: string; // ISO 8601
+}
+
+export type YZJInboundMode = 'webhook' | 'websocket';
+
+export interface YZJNamedChannel {
+  allowedSenders?: string[];
+  name: string;
+  robotId: string;
+}
+
+export interface YZJChannelConfig {
+  allowedSenders?: string[];
+  enabled?: boolean;
+  webhookUrl?: string;
+  inboundMode?: YZJInboundMode;
+  webhookPath?: string;
+  webhookPort?: number;
+  secret?: string;
+  namedChannels?: YZJNamedChannel[];
+  disable_safe_default?: boolean;
+  extra_allowed_tools?: string[];
+}
+
+/**
+ * TypeSafe System One（Jev）配置。
+ *
+ * Jev 不是 xiaok 的推理模型，而是辅助决策模型：它不参与 `models` /
+ * `defaultModelId` 的模型选择，也不出现在 `providers` 里，因此单独占一个
+ * 顶层配置块，避免被 `config set model` 抢成默认聊天模型。
+ */
+export interface SystemOneConfig {
+  /** TypeSafe API Key。 */
+  apiKey?: string;
+  /** 端点 base URL，默认 https://api.typesafe.ai。 */
+  baseUrl?: string;
+  /** 模型名，默认 jev-latest。 */
+  model?: string;
+}
+
+// legacy config.json schema (schemaVersion 1)
+export interface LegacyConfig {
+  schemaVersion: 1;
+  defaultModel: 'claude' | 'openai' | 'custom';
+  models: {
+    claude?: { model: string; apiKey?: string; baseUrl?: string };
+    openai?: { model: string; apiKey?: string };
+    custom?: { baseUrl: string; apiKey?: string; model?: string };
+  };
+  devApp?: { appKey: string; appSecret: string };
+  defaultMode: 'interactive';
+  channels?: {
+    yzj?: YZJChannelConfig;
+  };
+}
+
+// normalized config.json schema (schemaVersion 2)
+export interface Config {
+  schemaVersion: 2;
+  defaultProvider: ProviderId;
+  defaultModelId: string;
+  providers: Record<string, ProviderConfig>;
+  models: Record<string, ModelConfigEntry>;
+  devApp?: { appKey: string; appSecret: string };
+  defaultMode: 'interactive';
+  skillDebug?: boolean;
+  intentBoundary: IntentBoundaryConfig;
+  channels?: {
+    yzj?: YZJChannelConfig;
+  };
+  memory?: {
+    type?: 'file' | 'layered';
+    dbPath?: string;
+    modelId?: string; // references config.models[id] for compaction; defaults to main model
+    embedding?: {
+      provider?: 'local' | 'api';
+      apiUrl?: string;
+      model?: string;
+      dimensions?: number;
+    };
+    compaction?: {
+      l0MinMessages?: number;
+      autoCompact?: boolean;
+      compactIntervalMs?: number;
+      maxPromptTokens?: number;
+    };
+  };
+  kswarm?: {
+    maxConcurrentTasks?: number;
+  };
+  automations?: {
+    globalBackgroundAutoRunEnabled?: boolean;
+  };
+  /** TypeSafe System One（Jev）辅助决策模型配置。 */
+  systemOne?: SystemOneConfig;
+  /** Dedicated local K-IM judgment service; separate from chat providers. */
+  kimDecision?: { enabled?: boolean; baseUrl?: string; attentionThreshold?: number; revision?: string };
+  meeting?: {
+    asr?: {
+      defaultProvider?: 'sherpa-onnx-paraformer' | 'whisper' | 'volcengine-asr' | 'aliyun-asr';
+      volcengine?: {
+        appKey?: string;
+        accessKey?: string;
+        endpoint?: string;
+        resourceId?: string;
+      };
+      aliyun?: {
+        apiKey?: string;
+        baseUrl?: string;
+        model?: string;
+        // Legacy NLS fields kept for backward-compatible reads.
+        appKey?: string;
+        accessToken?: string;
+        endpoint?: string;
+      };
+    };
+  };
+}
+
+export type ConfigV2Input = Omit<Config, 'intentBoundary'> & { intentBoundary?: Config['intentBoundary'] };
+export type ConfigInput = ConfigV2Input | LegacyConfig;
+
+const VALID_LEGACY_PROVIDERS = ['claude', 'openai', 'custom'] as const;
+
+export const DEFAULT_INTENT_BOUNDARY_CONFIG: IntentBoundaryConfig = {
+  llmClassifier: 'off',
+  ambiguousFallback: 'legacy_validator',
+  confidenceThreshold: 0.75,
+  falseNegativeClarifyThreshold: 0.85,
+  timeoutMs: 1500,
+  maxInputTokens: 200,
+  maxOutputTokens: 100,
+};
+
+export const DEFAULT_CONFIG: Config = {
+  schemaVersion: 2,
+  defaultProvider: 'anthropic',
+  defaultModelId: 'anthropic-default',
+  providers: {
+    anthropic: {
+      type: 'first_party',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+    },
+  },
+  models: {
+    'anthropic-default': {
+      provider: 'anthropic',
+      model: 'claude-opus-4-7',
+      label: 'Anthropic Default',
+      capabilities: ['tools'],
+    },
+  },
+  defaultMode: 'interactive',
+  skillDebug: false,
+  intentBoundary: DEFAULT_INTENT_BOUNDARY_CONFIG,
+  channels: {},
+  automations: {
+    globalBackgroundAutoRunEnabled: true,
+  },
+};
+
+/** 校验 legacy defaultModel 是否合法，防止脏数据写入 */
+export function isValidLegacyProvider(v: unknown): v is LegacyConfig['defaultModel'] {
+  return VALID_LEGACY_PROVIDERS.includes(v as LegacyConfig['defaultModel']);
+}
+
+// Permission settings schema
+export interface PermissionSettings {
+  permissions?: {
+    allow?: string[];
+    deny?: string[];
+  };
+}
+
+// Permission choice for interactive prompts
+export type PermissionChoice =
+  | { action: 'allow_once' }
+  | { action: 'allow_session'; rule: string; rules?: string[] }
+  | { action: 'allow_project'; rule: string; rules?: string[] }
+  | { action: 'allow_global'; rule: string; rules?: string[] }
+  | { action: 'deny' };
+
+export interface MemoryCompactionRequest {
+  requestSource: 'user' | 'scheduler' | 'agent';
+  force?: boolean;
+}
+export interface MemoryCompactionResult {
+  status: 'completed' | 'unchanged';
+  l1: number;
+  l2: number;
+  l3: number;
+}

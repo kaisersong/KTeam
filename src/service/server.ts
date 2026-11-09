@@ -3,11 +3,15 @@ import { chmodSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { KTeamError, record } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
-import { AIMP_SPEC, AIMP_WIRE } from '../protocol/aimp.js';
+import { AIMP_SPEC, AIMP_WIRE,validateL0,intentHash } from '../protocol/aimp.js';
 import { Upstreams, type UpstreamOptions } from '../adapters/upstream.js';
 import { CLIENTS, clientToken, ensurePrivateRoot, socketPath, type ClientId } from './config.js';
 import { acquireOwner } from './owner.js';
-import { CollaborationService } from './collaboration.js';
+import { CollaborationService,LOCAL_HUMAN } from './collaboration.js';
+import { TeamStore } from './team-store.js';
+import { TeamAutomation } from './automation.js';
+import { modelCatalog, modelIdentity } from '../runtime/native.js';
+import { createHash } from 'node:crypto';
 
 export const API_VERSION = 1;
 export const SCHEMA_VERSION = 1;
@@ -42,6 +46,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const upstream = new Upstreams(options.upstream);
   const owner = acquireOwner(options.root);
   const collaboration = new CollaborationService(upstream);
+  const teamStore = new TeamStore(options.root);
+  const automation = new TeamAutomation(upstream,teamStore,owner.epoch);
   const instanceId = randomUUID();
   const server = http.createServer(async (req, res) => {
     try {
@@ -58,25 +64,80 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           apiVersion: API_VERSION, schemaVersion: SCHEMA_VERSION, ownerEpoch: owner.epoch, instanceId,
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
-            executionEnabled: false, reason: 'core_l2_sequencer_not_implemented' },
-          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history'],
+            executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
+          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
-      if (url.pathname === '/v1/bots' && req.method === 'GET') return send(res, 200, await collaboration.bots());
+      if (url.pathname === '/v1/models' && req.method === 'GET') return send(res,200,{ok:true,...await modelCatalog()});
+      if (url.pathname === '/v1/bot-create' && req.method === 'POST') {
+        const input=record(await body(req));
+        if(Object.keys(input).some(key=>!['name','modelId','requestId'].includes(key))||typeof input.name!=='string'||!input.name.trim()||input.name.length>80||typeof input.modelId!=='string'||typeof input.requestId!=='string')throw new KTeamError('bot_input_invalid');
+        await upstream.requireReady();
+        const identity=await modelIdentity(input.modelId);
+        const botId='kteam-'+createHash('sha256').update(input.requestId).digest('hex').slice(0,24);
+        const previousBinding=teamStore.binding(botId);
+        if(previousBinding&&(previousBinding.modelId!==input.modelId||previousBinding.fingerprint!==identity.fingerprint))throw new KTeamError('bot_create_request_conflict',409);
+        const result=await upstream.createBot({id:botId,name:input.name.trim(),description:'KTeam 长期团队成员',runtimeType:'xiaok',runtimeSource:'desktop-agent-runtime',capabilities:[],maxConcurrentTasks:1,provisioning:{operationId:input.requestId,roleKey:'kteam-member'}});
+        if(record(result.agent).name!==input.name.trim())throw new KTeamError('bot_create_request_conflict',409);
+        const binding=previousBinding??teamStore.bind({botId,modelId:input.modelId,fingerprint:identity.fingerprint,model:identity.model,revision:1,kind:'xiaok-hosted'});
+        return send(res,201,{ok:true,bot:{id:botId,name:input.name.trim(),binding}});
+      }
+      if (url.pathname === '/v1/bots' && req.method === 'GET') {const result=await collaboration.bots();return send(res,200,{...result,bots:result.bots.map(bot=>({...bot,binding:teamStore.binding(String(bot.id))}))});}
       if (url.pathname === '/v1/runtimes' && req.method === 'GET') return send(res, 200, await collaboration.runtimes());
       if (url.pathname === '/v1/teams') {
-        if (req.method === 'GET') return send(res, 200, await collaboration.teams());
-        if (req.method === 'POST') return send(res, 201, await collaboration.createTeam(await body(req)));
+        if (req.method === 'GET') {const result=await collaboration.teams();return send(res,200,{...result,rooms:(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId))});}
+        if (req.method === 'POST') {
+          const input=record(await body(req)), result=await collaboration.createTeam(input);
+          const roomId=String(record(result.room).roomId);
+          const prior=teamStore.settings(roomId);
+          if(!prior){
+            await upstream.aimp(roomId,'configure',{goal:input.goal,expectedRevision:0,allowedActions:['discussion'],maxRuns:6});
+            teamStore.configure({roomId,goal:String(input.goal),mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
+          }
+          return send(res,201,result);
+        }
       }
-      if (url.pathname === '/v1/messages' && req.method === 'POST') return send(res, 201, await collaboration.send(await body(req)));
+      if (url.pathname === '/v1/messages' && req.method === 'POST') {
+        const input=validateL0(await body(req));
+        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);
+        const managed=!!teamStore.settings(input.room_id);
+        const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);});
+        if(managed) {teamStore.completeSubmission(input.id,String(result.messageId));void automation.tick();}
+        return send(res,201,result);
+      }
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile)$/.exec(url.pathname);
+      if(teamRoute){
+        const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
+        const membership=await upstream.membership(roomId);
+        if(req.method==='GET'&&action==='settings')return send(res,200,{ok:true,settings:teamStore.settings(roomId),seen:teamStore.seen(roomId),members:membership.members});
+        if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
+        if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
+        if(req.method==='POST'&&action==='pause')return send(res,200,await automation.pause(roomId));
+        if(req.method==='POST'&&action==='resume'){
+          return send(res,200,{ok:true,settings:teamStore.resume(roomId)});
+        }
+        if(req.method==='POST'&&action==='seen'){
+          const input=record(await body(req));if(!Array.isArray(input.sequences)||input.sequences.length>200||input.sequences.some(n=>!Number.isSafeInteger(n)||Number(n)<1))throw new KTeamError('seen_input_invalid');
+          const snapshot=await upstream.getTeam(roomId),valid=new Set((snapshot.messages as any[]).map(message=>message.roomSequence));
+          if(input.sequences.some(n=>!valid.has(n)))throw new KTeamError('seen_scope_invalid');
+          teamStore.markSeen(roomId,input.sequences as number[]);return send(res,200,{ok:true,seen:teamStore.seen(roomId)});
+        }
+        if(req.method==='POST'&&action==='review'){
+          const input=record(await body(req));if(typeof input.taskRef!=='string'||input.decision!=='pass')throw new KTeamError('review_decision_not_supported');
+          const tasks=(await upstream.aimp(roomId,'tasks')).tasks as any[],task=tasks.find(task=>task.taskRef===input.taskRef);if(!task)throw new KTeamError('task_not_found');
+          const result=await upstream.aimp(roomId,'event',{id:'msg_'+createHash('sha256').update(String(input.taskRef)+String(task.revision)+String(input.decision)).digest('hex').slice(0,32),roomId,threadId:task.threadId,taskRef:task.taskRef,targetEvent:{id:task.headId,hash:task.headHash},act:'review',body:input.decision==='pass'?'用户验收通过。':'用户要求返工。',payload:{kind:'task.review@1',must_understand:true,decision:input.decision,findings:[],trust_root:'human://kteam.local/user.local'}});
+          return send(res,200,result);
+        }
+      }
       const history = /^\/v1\/teams\/([^/]+)\/messages$/.exec(url.pathname);
       if (history && req.method === 'GET') {
         const after = page(url.searchParams.get('after'), 0, Number.MAX_SAFE_INTEGER);
         const limit = page(url.searchParams.get('limit'), 50, 100);
         if (!limit) throw new KTeamError('invalid_pagination');
-        return send(res, 200, await collaboration.messages(decodeURIComponent(history[1]!), after, limit));
+        const before=url.searchParams.has('before')?page(url.searchParams.get('before'),0,Number.MAX_SAFE_INTEGER):undefined;
+        return send(res, 200, await collaboration.messages(decodeURIComponent(history[1]!), after, limit,before,url.searchParams.get('tail')==='true'));
       }
       throw new KTeamError('route_not_found', 404);
     } catch (error) {
@@ -95,12 +156,15 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     }
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(path, resolve); });
     chmodSync(path, 0o600);
-  } catch (error) { server.close(); owner.release(); throw error; }
+    automation.start();
+  } catch (error) { server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
   return { epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
+        await automation.close();
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+        teamStore.close();
         owner.release();
       })();
       return closePromise;

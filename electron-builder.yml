@@ -1,0 +1,23 @@
+appId: com.kteam.desktop
+productName: KTeam
+electronVersion: 42.11.16
+directories:
+  output: release
+files:
+  - build/**
+  - package.json
+  - LICENSE
+  - NOTICE
+asar: true
+asarUnpack:
+  - build/host.cjs
+  - build/shared/**
+  - node_modules/**
+npmRebuild: false
+mac:
+  icon: desktop/assets/icon.icns
+  category: public.app-category.productivity
+  target:
+    - dir
+  identity: null
+  hardenedRuntime: false

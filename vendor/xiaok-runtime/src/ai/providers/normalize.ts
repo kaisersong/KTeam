@@ -1,0 +1,234 @@
+import { isKimiCodingRuntimeModel } from './kimi-models.js';
+import type { Config, LegacyConfig, ConfigInput, ConfigV2Input } from '../../types.js';
+import type { ModelConfigEntry, ProtocolId, ProviderConfig, ProviderId, ProviderModelVariant } from './types.js';
+import { DEFAULT_CONFIG, DEFAULT_INTENT_BOUNDARY_CONFIG } from '../../types.js';
+import {
+  isOfficialKimiK3OpenAIEndpoint,
+  resolveModelRuntimeOptions,
+} from './model-runtime-options.js';
+import { getProviderModelVariant, getProviderProfile } from './registry.js';
+
+function cloneDefaultConfig(): Config {
+  return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config;
+}
+
+function isClaudeCompatibleCustomEndpoint(baseUrl?: string, model?: string): boolean {
+  const normalizedBaseUrl = (baseUrl ?? '').toLowerCase();
+  const normalizedModel = (model ?? '').toLowerCase();
+
+  if (
+    normalizedBaseUrl.includes('claude')
+    || normalizedBaseUrl.includes('anthropic')
+    || normalizedBaseUrl.includes('/messages')
+  ) {
+    return true;
+  }
+
+  return /claude|sonnet|opus|haiku/.test(normalizedModel);
+}
+
+function detectKnownProvider(baseUrl?: string): ProviderId | null {
+  const normalizedBaseUrl = (baseUrl ?? '').toLowerCase();
+  try {
+    const endpoint = new URL(baseUrl ?? '');
+    if (
+      endpoint.protocol === 'https:'
+      && endpoint.hostname === 'api.kimi.com'
+      && endpoint.port === ''
+      && endpoint.username === ''
+      && endpoint.password === ''
+      && endpoint.pathname.startsWith('/coding')
+    ) {
+      return 'kimi';
+    }
+  } catch {
+    // Continue with the remaining legacy string classifiers.
+  }
+  if (normalizedBaseUrl.startsWith('https://api.deepseek.com')) return 'deepseek';
+  if (normalizedBaseUrl.startsWith('https://open.bigmodel.cn')) return 'glm';
+  // api.minimax.chat 是官方旧域名，存量 legacy 配置里仍有，必须继续识别。
+  if (
+    normalizedBaseUrl.startsWith('https://api.minimax.chat')
+    || normalizedBaseUrl.startsWith('https://api.minimax.io')
+    || normalizedBaseUrl.startsWith('https://api.minimaxi.com')
+  ) return 'minimax';
+  if (normalizedBaseUrl.startsWith('https://generativelanguage.googleapis.com')) return 'gemini';
+  return null;
+}
+
+function buildFirstPartyConfig(
+  providerId: ProviderId,
+  overrides: Partial<ProviderConfig>,
+  modelOverride?: Partial<ModelConfigEntry>,
+): Config {
+  const profile = getProviderProfile(providerId);
+  if (!profile) {
+    throw new Error(`未知 provider profile: ${providerId}`);
+  }
+
+  const wireModel = modelOverride?.model ?? profile.defaultModel.model;
+  // Legacy wires keep their own metadata when the recommended default changes.
+  const catalogVariant: Partial<ProviderModelVariant> | undefined = providerId === 'kimi' && wireModel === 'kimi-for-coding'
+    ? { model: wireModel, label: 'Kimi for Coding', capabilities: ['tools', 'thinking'], runtimeOptions: { contextLimit: 262_144 } }
+    : providerId === 'openai' && wireModel === 'o3'
+      ? { model: wireModel, label: 'GPT-4o', capabilities: ['tools'] }
+      : getProviderModelVariant(providerId, wireModel);
+  const capabilities = modelOverride?.capabilities
+    ?? catalogVariant?.capabilities
+    ?? profile.defaultModel.capabilities;
+  const protocol = overrides.protocol ?? profile.protocol;
+  const baseUrl = overrides.baseUrl ?? profile.baseUrl;
+  const kimiK3RuntimeEligible = providerId === 'kimi'
+    && isKimiCodingRuntimeModel(wireModel)
+    && protocol === 'openai_legacy'
+    && isOfficialKimiK3OpenAIEndpoint(baseUrl);
+  const catalogRuntimeEligible = providerId !== 'kimi'
+    || !isKimiCodingRuntimeModel(catalogVariant?.model)
+    || kimiK3RuntimeEligible;
+  const { runtimeOptions } = resolveModelRuntimeOptions({
+    protocol,
+    baseUrl,
+    wireModel,
+    catalogOptions: catalogRuntimeEligible ? catalogVariant?.runtimeOptions : undefined,
+    catalogConstraints: catalogRuntimeEligible ? catalogVariant?.runtimeConstraints : undefined,
+    configuredOptions: providerId !== 'kimi' || kimiK3RuntimeEligible
+      ? modelOverride?.runtimeOptions
+      : undefined,
+  });
+
+  return {
+    schemaVersion: 2,
+    defaultProvider: providerId,
+    defaultModelId: profile.defaultModel.modelId,
+    providers: {
+      [providerId]: {
+        type: 'first_party',
+        protocol,
+        apiKey: overrides.apiKey,
+        baseUrl,
+        headers: overrides.headers,
+      },
+    },
+    models: {
+      [profile.defaultModel.modelId]: {
+        provider: providerId,
+        model: wireModel,
+        label: modelOverride?.label ?? catalogVariant?.label ?? profile.defaultModel.label,
+        capabilities: capabilities ? [...capabilities] : undefined,
+        ...(runtimeOptions ? { runtimeOptions: { ...runtimeOptions } } : {}),
+      },
+    },
+    defaultMode: 'interactive',
+    intentBoundary: DEFAULT_INTENT_BOUNDARY_CONFIG,
+    channels: {},
+  };
+}
+
+function normalizeLegacyConfig(config: LegacyConfig): Config {
+  if (config.defaultModel === 'claude') {
+    return {
+      ...buildFirstPartyConfig('anthropic', {
+        apiKey: config.models.claude?.apiKey,
+        baseUrl: config.models.claude?.baseUrl,
+      }, {
+        model: config.models.claude?.model,
+      }),
+      defaultMode: config.defaultMode,
+      devApp: config.devApp,
+      channels: config.channels ?? {},
+    };
+  }
+
+  if (config.defaultModel === 'openai') {
+    return {
+      ...buildFirstPartyConfig('openai', {
+        apiKey: config.models.openai?.apiKey,
+      }, {
+        model: config.models.openai?.model ?? 'gpt-4o',
+      }),
+      defaultMode: config.defaultMode,
+      devApp: config.devApp,
+      channels: config.channels ?? {},
+    };
+  }
+
+  const customBaseUrl = config.models.custom?.baseUrl;
+  const detectedProvider = detectKnownProvider(customBaseUrl);
+  if (detectedProvider) {
+    const legacyModel = config.models.custom?.model
+      // Preserve historical aliases/defaults when the recommended catalog changes.
+      ?? (detectedProvider === 'kimi' ? 'kimi-for-coding'
+        : detectedProvider === 'gemini' ? 'gemini-2.5-pro' : undefined);
+    const known = buildFirstPartyConfig(detectedProvider, {
+      apiKey: config.models.custom?.apiKey,
+      baseUrl: customBaseUrl,
+      ...(detectedProvider === 'gemini' ? { protocol: 'openai_responses' as const } : {}),
+    }, {
+      model: legacyModel,
+    });
+    return {
+      ...known,
+      defaultMode: config.defaultMode,
+      devApp: config.devApp,
+      channels: config.channels ?? {},
+    };
+  }
+
+  const protocol: ProtocolId = isClaudeCompatibleCustomEndpoint(customBaseUrl, config.models.custom?.model)
+    ? 'anthropic'
+    : 'openai_legacy';
+
+  return {
+    schemaVersion: 2,
+    defaultProvider: 'custom-default',
+    defaultModelId: 'custom-default-model',
+    providers: {
+      'custom-default': {
+        type: 'custom',
+        protocol,
+        apiKey: config.models.custom?.apiKey,
+        baseUrl: customBaseUrl,
+      },
+    },
+    models: {
+      'custom-default-model': {
+        provider: 'custom-default',
+        model: config.models.custom?.model ?? 'default',
+        label: 'Custom Default',
+      },
+    },
+    devApp: config.devApp,
+    defaultMode: config.defaultMode,
+    intentBoundary: DEFAULT_INTENT_BOUNDARY_CONFIG,
+    channels: config.channels ?? {},
+  };
+}
+
+export function normalizeConfig(config: ConfigInput): Config {
+  if (config.schemaVersion === 2) {
+    const normalized = {
+      ...config,
+      providers: { ...config.providers },
+      models: { ...config.models },
+      channels: { ...(config.channels ?? {}) },
+    };
+    return withNormalizedDefaults(normalized);
+  }
+
+  return withNormalizedDefaults(normalizeLegacyConfig(config));
+}
+
+function withNormalizedDefaults(config: ConfigV2Input): Config {
+  return {
+    ...config,
+    intentBoundary: {
+      ...DEFAULT_INTENT_BOUNDARY_CONFIG,
+      ...(config.intentBoundary ?? {}),
+    },
+    channels: { ...(config.channels ?? {}) },
+    automations: {
+      globalBackgroundAutoRunEnabled: true,
+      ...(config.automations ?? {}),
+    },
+  };
+}

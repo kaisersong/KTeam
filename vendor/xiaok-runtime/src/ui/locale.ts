@@ -1,0 +1,122 @@
+import type {ProfileAccountHomeError} from '../runtime/verification/profile-account-home.js';
+export type UiLocale = 'zh-CN' | 'en';
+
+const AUTO_APPROVAL_REASONS_ZH: Record<string, string> = {
+  'recursive force delete': '递归强制删除',
+  'PowerShell recursive force delete': 'PowerShell 递归强制删除',
+  'Windows recursive directory delete': 'Windows 递归删除目录',
+  'Windows recursive file delete': 'Windows 递归删除文件',
+  'git reset --hard': 'git reset --hard 丢弃改动',
+  'git push --force': 'git push --force 覆盖远端历史',
+  'git push -f': 'git push -f 覆盖远端历史',
+  'git clean -f': 'git clean -f 删除未跟踪文件',
+  'DROP TABLE/DATABASE': 'DROP TABLE/DATABASE 删除数据',
+};
+
+const TOOL_LABELS: Record<UiLocale, Record<string, string>> = {
+  'zh-CN': {
+    bash: '执行命令',
+    edit: '修改文件',
+    glob: '匹配文件',
+    grep: '搜索文本',
+    install_skill: '安装 skill',
+    read: '查看文件',
+    skill: '加载 skill',
+    tool_search: '查找工具',
+    uninstall_skill: '卸载 skill',
+    web_fetch: '获取网页',
+    web_search: '搜索网页',
+    write: '写入文件',
+  },
+  en: {
+    bash: 'Run command',
+    edit: 'Edit file',
+    glob: 'Match files',
+    grep: 'Search text',
+    install_skill: 'Install skill',
+    read: 'Read file',
+    skill: 'Load skill',
+    tool_search: 'Find tools',
+    uninstall_skill: 'Uninstall skill',
+    web_fetch: 'Fetch page',
+    web_search: 'Search web',
+    write: 'Write file',
+  },
+};
+
+const UI_COPY = {
+  'zh-CN': {
+    sessionStorageDisabled: (path:string,reason:ProfileAccountHomeError['reason']) => `会话存储已停用：配置目录路径 ${path} 未通过安全检查（${({symlink:'符号链接或目标目录不安全',symlink_target_missing:'符号链接目标不存在',symlink_loop:'符号链接层数过多',not_directory:'路径不是目录',owner:'目录不归当前用户所有',mode:'目录可被他人写入',unreadable:'路径无法读取或检查',invalid_path:'路径不是绝对路径，或包含 .. 或非法字符'})[reason]}），本次会话不会保存。请把 XIAOK_CONFIG_DIR（或 HOME）指向真实目录，或确保链接及目标目录只归你本人或 root 所有且他人不可写。`,
+    approvalTitle: 'xiaok 想要执行以下操作',
+    permissionReviewPage: (page: number, total: number) => `范围 ${page}/${total} · PgUp/PgDn 查看全部后允许`,
+    permissionScreenTooSmall: '终端过小，无法完整审阅；请调整大小或按 Esc 拒绝',
+    permissionUnsafeScope: '范围显示无法安全核对；只能拒绝或按 Esc 取消',
+    mandatoryReview: '这个操作有风险，每次都会询问',
+    exactCommandScope: '当前执行目录中的这条完整命令',
+    exactCommandApprovalHint: '授权范围：相同执行目录和完整命令；脚本、写入目标或命令改变后会重新询问。',
+    writeTarget: (path: string) => `写入文件：${path}`,
+    autoApprovalReason: (reason: string) => `确认原因: auto 模式仍需确认：${AUTO_APPROVAL_REASONS_ZH[reason] ?? reason}`,
+    currentCommandLabel: '本次执行命令',
+    commandApprovalScope: (rule: string) => `始终允许的范围: ${rule}（* 表示任意参数，参数变化无需重复确认）`,
+    subAgents: {
+      title: 'SubAgent', idle: '无活动', cleaning: '关闭·清理中', stalled: '等待退出·清理中',
+      collaboration: 'SubAgent 协作', arranging: '安排 SubAgent', started: '开始', assignment: '分工', result: '交付摘要', elapsed: '耗时',
+      tools: (count: number) => `${count} 次工具调用`, failures: (count: number) => `${count} 次失败`,
+      round: (turn: number) => `第 ${turn} 轮`,
+      constellations: ['双鱼座', '天秤座', '白羊座', '金牛座', '双子座', '巨蟹座', '狮子座', '处女座', '天蝎座', '射手座', '摩羯座', '水瓶座'],
+      phases: { starting: '初始化', model: '模型请求', thinking: '思考中', tool: '工具执行' },
+      statuses: { pending: '排队', running: '运行中', completed: '完成', failed: '失败', interrupted: '已中断', closed: '已关闭' },
+    },
+    toolLabel: '工具',
+    targetLabels: {
+      command: '命令',
+      file: '文件',
+      path: '路径',
+      pattern: '模式',
+      url: 'URL',
+    },
+    ranCollapseNotice: '… 更多命令已折叠（完成后按 Ctrl+O 查看）',
+    hint: '数字直选  ↑↓ 切换  Enter 确认  Esc 取消',
+  },
+  en: {
+    sessionStorageDisabled: (path:string,reason:ProfileAccountHomeError['reason']) => `Session storage disabled: config path ${path} failed the security check (${({symlink:'unsafe symbolic link or target',symlink_target_missing:'symbolic link target missing',symlink_loop:'too many symbolic links',not_directory:'path is not a directory',owner:'directory belongs to another user',mode:'directory is writable by others',unreadable:'path could not be read or checked',invalid_path:'path is not absolute, or contains .. or invalid characters'})[reason]}). This session will not be saved. Point XIAOK_CONFIG_DIR (or HOME) to a physical directory, or ensure the link and target directories belong only to you or root and cannot be written by others.`,
+    approvalTitle: 'xiaok wants to run',
+    permissionReviewPage: (page: number, total: number) => `Scopes ${page}/${total} · PgUp/PgDn to review all before allowing`,
+    permissionScreenTooSmall: 'Terminal too small to review; resize or press Esc to deny',
+    permissionUnsafeScope: 'Scope display cannot be verified; deny or press Esc to cancel',
+    mandatoryReview: 'This operation carries risk and requires approval every time',
+    exactCommandScope: 'this exact command in the current execution directory',
+    exactCommandApprovalHint: 'Scope: the same execution directory and complete command; script, output target or command changes require approval again.',
+    writeTarget: (path: string) => `Write file: ${path}`,
+    autoApprovalReason: (reason: string) => `Approval reason: auto mode still confirms data-loss commands: ${reason}`,
+    currentCommandLabel: 'Command to run now',
+    commandApprovalScope: (rule: string) => `Always-allow scope: ${rule} (* means any arguments; argument changes need no new approval)`,
+    subAgents: {
+      title: 'SubAgent', idle: 'idle ', cleaning: 'closed·cleaning', stalled: 'awaiting exit·cleaning',
+      collaboration: 'SubAgent collaboration', arranging: 'Arrange SubAgent', started: 'started', assignment: 'Assignment', result: 'Result summary', elapsed: 'elapsed',
+      tools: (count: number) => `${count} tool calls`, failures: (count: number) => `${count} failed`,
+      round: (turn: number) => `turn ${turn}`,
+      constellations: ['Pisces', 'Libra', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius'],
+      phases: { starting: 'starting', model: 'model request', thinking: 'thinking', tool: 'tool' },
+      statuses: { pending: 'queued', running: 'running', completed: 'completed', failed: 'failed', interrupted: 'interrupted', closed: 'closed' },
+    },
+    toolLabel: 'Tool',
+    targetLabels: {
+      command: 'Command',
+      file: 'File',
+      path: 'Path',
+      pattern: 'Pattern',
+      url: 'URL',
+    },
+    ranCollapseNotice: '… More commands collapsed (press Ctrl+O after completion to view)',
+    hint: '1-5 select  Up/Down navigate  Enter confirm  Esc cancel',
+  },
+} as const;
+
+export function getToolActivityLabel(toolName: string, locale: UiLocale = 'zh-CN'): string {
+  return TOOL_LABELS[locale][toolName] ?? toolName;
+}
+
+export function getUiCopy(locale: UiLocale = 'zh-CN') {
+  return UI_COPY[locale];
+}

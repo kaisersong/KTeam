@@ -42,7 +42,7 @@ export class CollaborationService {
     if (ids.some(id => !agents.some(agent => agent.id === id && !agent.archivedAt))) throw new KTeamError('agent_not_found', 404);
     return this.upstream.createTeam({ title, description: goal, memberAgentIds: ids, clientRequestKey: 'kteam:' + requestId });
   }
-  async send(value: unknown) {
+  async send(value: unknown,beforeSend?:(envelope:ReturnType<typeof validateL0>)=>void) {
     const envelope = validateL0(value);
     if (envelope.from !== LOCAL_HUMAN) throw new KTeamError('sender_identity_mismatch', 403);
     await this.upstream.requireReady();
@@ -63,6 +63,7 @@ export class CollaborationService {
       replyToMessageId = target.messageId;
     }
     const digest = intentHash(envelope);
+    beforeSend?.(envelope);
     const result = await this.upstream.sendMessage(envelope.room_id, {
       kind: 'text', text: envelope.body, threadId: envelope.thread_id,
       ...(replyToMessageId ? { replyToMessageId } : {}),
@@ -78,13 +79,14 @@ export class CollaborationService {
     return { ok: true, reused: result.reused === true, messageId: message.messageId,
       roomSequence: message.roomSequence, envelope: ref.envelope, effect: 'conversation_only' };
   }
-  async messages(roomId: string, after: number, limit: number) {
-    const result = await this.upstream.messages(roomId, after, limit);
+  async messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
+    const result = await this.upstream.messages(roomId, after, limit,before,tail);
     return { ...result, messages: rows(result.messages).map(message => ({
       messageId: message.messageId, roomId: message.roomId, threadId: message.threadId,
       sender: message.sender, text: message.text, roomSequence: message.roomSequence, createdAt: message.createdAt,
       ...(message.sourceRef && record(message.sourceRef).kind === 'aimp_l0'
         ? { envelope: record(message.sourceRef).envelope } : { protocol: 'legacy_display_only' }),
+      ...(message.sourceRef&&record(message.sourceRef).kind==='aimp_reply'?{workRef:record(message.sourceRef).taskRef}:{}),
     })) };
   }
 }

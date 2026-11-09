@@ -1,0 +1,322 @@
+import type {AdapterCredentialResolver} from '../providers/model-harness-profile.js';
+import { resolveObservationProviderDisclosure } from '../../runtime/sol-pi/observation-execution-scope.js';
+import { createProviderDisclosureFetch, getProviderDisclosureSignal, assertProviderDisclosureActive, disposeProviderDisclosureContext } from '../../runtime/sol-pi/provider-disclosure.js';
+import { setTimeout as delay } from 'node:timers/promises';
+import type Anthropic from '@anthropic-ai/sdk';
+import type { ModelAdapter, Message, ToolDefinition, StreamChunk } from '../../types.js';
+import { isAbortError } from '../runtime/abort-utils.js';
+import type { CachedToolDefinition, ModelCapabilities, StreamOptions, SystemPromptBlock } from '../runtime/model-capabilities.js';
+import { resolveClonedCapabilityOverrides, type AdapterCatalogIdentity } from './catalog-identity.js';
+
+const MAX_RETRIES = 3;
+const CLAUDE_REQUEST_MAX_OUTPUT_TOKENS = 8192;
+const STREAM_TIMEOUT_MS = 5 * 60_000; // 5 min per stream call
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529]);
+const KIMI_CODING_COMPAT_USER_AGENT = 'claude-cli/1.0.0 (external, cli)';
+
+function isKimiCodingEndpoint(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    const url = new URL(baseUrl);
+    return url.hostname === 'api.kimi.com' && url.pathname.startsWith('/coding');
+  } catch {
+    return false;
+  }
+}
+
+function buildKimiCompatHeaders(): Record<string, string | null> {
+  return {
+    'User-Agent': KIMI_CODING_COMPAT_USER_AGENT,
+    'X-Stainless-Lang': null,
+    'X-Stainless-Package-Version': null,
+    'X-Stainless-OS': null,
+    'X-Stainless-Arch': null,
+    'X-Stainless-Runtime': null,
+    'X-Stainless-Runtime-Version': null,
+    'X-Stainless-Retry-Count': null,
+    'X-Stainless-Timeout': null,
+  };
+}
+
+function isRetryableError(error: unknown): boolean {
+  if (isAbortError(error)) return false;
+  if (error instanceof Error) {
+    const record = error as unknown as Record<string, unknown>;
+    const status = record.status;
+    if (typeof status === 'number' && RETRYABLE_STATUS.has(status)) return true;
+    const code = typeof record.code === 'string' ? record.code : '';
+    if (/ERR_STREAM_PREMATURE_CLOSE|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR/i.test(code)) return true;
+    if (/overload|502|503|timeout|ECONNRESET|ETIMEDOUT|EPIPE|Bad gateway|Premature close|terminated|socket hang up|network|fetch failed/i.test(error.message)) return true;
+  }
+  return false;
+}
+
+async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal) await delay(ms, undefined, { signal });
+  else await new Promise<void>(resolve => setTimeout(resolve, ms));
+}
+
+export class ClaudeAdapter implements ModelAdapter {
+  client?: Anthropic;
+  private readonly apiKey: string;
+  private readonly baseUrl?: string;
+  private readonly capabilityOverrides?: Partial<ModelCapabilities>;
+  private readonly catalogIdentity?: AdapterCatalogIdentity;
+  private model: string;
+  private clientPromise: Promise<Anthropic> | null = null;
+
+  constructor(
+    apiKey: string,
+    model = 'claude-opus-4-6',
+    baseUrl?: string,
+    capabilityOverrides?: Partial<ModelCapabilities>,
+    catalogIdentity?: AdapterCatalogIdentity,
+    private readonly credentialResolver?: AdapterCredentialResolver,
+  ) {
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+    this.capabilityOverrides = capabilityOverrides;
+    this.catalogIdentity = catalogIdentity;
+    this.model = model;
+  }
+
+  getModelName(): string {
+    return this.model;
+  }
+
+  getCapabilities(): Partial<ModelCapabilities> {
+    return this.capabilityOverrides ?? {};
+  }
+  getOutputTokenReserve(): number { return CLAUDE_REQUEST_MAX_OUTPUT_TOKENS; }
+
+  cloneWithModel(model: string): ClaudeAdapter {
+    return new ClaudeAdapter(
+      this.apiKey,
+      model,
+      this.baseUrl,
+      resolveClonedCapabilityOverrides(model, this.capabilityOverrides, this.catalogIdentity),
+      this.catalogIdentity,
+      this.credentialResolver,
+    );
+  }
+
+  private async getClient(): Promise<Anthropic> {
+    const credentials = this.credentialResolver?.();
+    if (this.client) {
+      return this.client;
+    }
+
+    if (!this.clientPromise) {
+      this.clientPromise = import('@anthropic-ai/sdk').then(({ default: AnthropicSdk }) => {
+        const client = new AnthropicSdk({
+          apiKey: credentials?.apiKey ?? this.apiKey,
+          baseURL: this.baseUrl,
+          maxRetries: MAX_RETRIES,
+          defaultHeaders: {
+            ...(credentials?.headers as Record<string,string> ?? {}),
+            ...(isKimiCodingEndpoint(this.baseUrl) ? buildKimiCompatHeaders() as Record<string,string> : {}),
+          },
+        });
+        this.client = client;
+        return client;
+      });
+    }
+
+    return this.clientPromise;
+  }
+
+  async *stream(
+    messages: Message[],
+    tools: ToolDefinition[],
+    systemPrompt: string,
+    options?: StreamOptions,
+  ): AsyncIterable<StreamChunk> {
+    const disclosure = resolveObservationProviderDisclosure(options?.providerDisclosure);
+    if (disclosure !== undefined) {
+      assertProviderDisclosureActive(disclosure);
+      const disclosureSignal = getProviderDisclosureSignal(disclosure);
+      options = { ...options, providerDisclosure: disclosure, signal: options?.signal ? AbortSignal.any([options.signal, disclosureSignal]) : disclosureSignal };
+    }
+    try {
+    let attempt = 0;
+    while (true) {
+      options?.signal?.throwIfAborted();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
+      const signal = options?.signal
+        ? AbortSignal.any([controller.signal, options.signal])
+        : controller.signal;
+      let emittedAny = false;
+      try {
+        for await (const chunk of this.streamOnce(messages, tools, systemPrompt, options, signal)) {
+          emittedAny = true;
+          yield chunk;
+        }
+        return;
+      } catch (error) {
+        if (disclosure !== undefined) assertProviderDisclosureActive(disclosure);
+        clearTimeout(timer);
+        // 一旦本次尝试已产出 chunk（消费端已实时落地/上屏），重试会重复输出，必须放弃重试
+        if (options?.signal?.aborted || emittedAny || !isRetryableError(error) || attempt >= MAX_RETRIES) {
+          throw error;
+        }
+        const delayMs = Math.min(1000 * 2 ** attempt, 16000);
+        await sleep(delayMs, options?.signal);
+        attempt += 1;
+      } finally {
+        clearTimeout(timer);
+        // Every attempt owns its transport, including successful completion.
+        controller.abort();
+      }
+    }
+    } finally { if (disclosure !== undefined) disposeProviderDisclosureContext(disclosure); }
+  }
+
+  private async *streamOnce(
+    messages: Message[],
+    tools: ToolDefinition[],
+    systemPrompt: string,
+    options?: StreamOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<StreamChunk> {
+    const sourceMessages = options?.promptCache?.messages ?? messages;
+    const anthropicMessages: Anthropic.MessageParam[] = sourceMessages.map((message) => {
+      const content: Anthropic.ContentBlockParam[] = [];
+
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          content.push({
+            type: 'text',
+            text: block.text,
+            cache_control: block.cache_control,
+          });
+          continue;
+        }
+
+        if (block.type === 'image') {
+          content.push({
+            type: 'image',
+            source: block.source,
+            cache_control: block.cache_control,
+          });
+          continue;
+        }
+
+        if (block.type === 'tool_use') {
+          content.push({
+            type: 'tool_use',
+            id: block.id,
+            name: block.name,
+            input: block.input,
+            cache_control: block.cache_control,
+          });
+          continue;
+        }
+
+        if (block.type === 'tool_result') {
+          content.push({
+            type: 'tool_result',
+            tool_use_id: block.tool_use_id,
+            content: block.content,
+            is_error: block.is_error,
+            cache_control: block.cache_control,
+          });
+          continue;
+        }
+      }
+
+      return {
+        role: message.role,
+        content,
+      };
+    });
+
+    const sourceTools = options?.promptCache?.tools ?? tools;
+    const anthropicTools = sourceTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
+      cache_control: (t as CachedToolDefinition).cache_control,
+    }));
+
+    const sharedClient = await this.getClient();
+    const client = options?.providerDisclosure
+      ? sharedClient.withOptions({ fetch: createProviderDisclosureFetch(options.providerDisclosure, globalThis.fetch.bind(globalThis)) })
+      : sharedClient;
+    const stream = client.messages.stream({
+      model: this.model,
+      max_tokens: options?.maxOutputTokens ?? CLAUDE_REQUEST_MAX_OUTPUT_TOKENS,
+      system: (options?.promptCache?.systemPrompt ?? systemPrompt) as string | SystemPromptBlock[],
+      messages: anthropicMessages,
+      tools: anthropicTools.length > 0 ? anthropicTools : undefined,
+    }, { signal });
+
+    // Buffer for tool_use arguments
+    const toolBuffers = new Map<number, { id: string; name: string; jsonBuffer: string }>();
+
+    for await (const event of stream) {
+      if (event.type === 'message_start') {
+        // 输出 usage 信息
+        const usage = event.message.usage;
+        if (usage) {
+          yield {
+            type: 'usage',
+            usage: {
+              inputTokens: usage.input_tokens ?? 0,
+              outputTokens: usage.output_tokens ?? 0,
+              cacheCreationInputTokens: usage.cache_creation_input_tokens ?? undefined,
+              cacheReadInputTokens: usage.cache_read_input_tokens ?? undefined,
+            },
+          };
+        }
+      } else if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        toolBuffers.set(event.index, {
+          id: event.content_block.id,
+          name: event.content_block.name,
+          jsonBuffer: '',
+        });
+      } else if (event.type === 'content_block_delta') {
+        const delta = event.delta;
+        if (delta.type === 'text_delta') {
+          yield { type: 'text', delta: delta.text };
+        } else if (delta.type === 'input_json_delta') {
+          const buf = toolBuffers.get(event.index);
+          if (buf) {
+            buf.jsonBuffer += delta.partial_json;
+            if (buf.name === 'render_ui' && tools.some(tool=>tool.name==='render_ui')) {
+              if (buf.jsonBuffer.length > 1_000_000) throw Error('UI payload limit');
+              if (delta.partial_json.includes('}')) yield { type: 'ui_preview', id: buf.id, input: buf.jsonBuffer };
+            }
+          }
+        }
+      } else if (event.type === 'content_block_stop') {
+        const buf = toolBuffers.get(event.index);
+        if (buf) {
+          let input: Record<string, unknown> = {};
+          try {
+            input = JSON.parse(buf.jsonBuffer || '{}') as Record<string, unknown>;
+          } catch {
+            input = { _raw: buf.jsonBuffer };
+          }
+          yield { type: 'tool_use', id: buf.id, name: buf.name, input };
+          toolBuffers.delete(event.index);
+        }
+      } else if (event.type === 'message_delta') {
+        // 更新 usage 信息
+        const usage = event.usage;
+        if (usage) {
+          yield {
+            type: 'usage',
+            usage: {
+              inputTokens: 0, // message_delta 只包含 output tokens
+              outputTokens: usage.output_tokens ?? 0,
+            },
+          };
+        }
+        if (options?.maxOutputTokens !== undefined && ['max_tokens', 'model_context_window_exceeded'].includes(String(event.delta.stop_reason))) throw new Error('memory_output_incomplete');
+      } else if (event.type === 'message_stop') {
+        yield { type: 'done' };
+      }
+    }
+  }
+}

@@ -8,6 +8,11 @@ This project includes unmodified source contracts from xiaok-cli
 Exact revision and SHA-256 digests are recorded in sources.lock.json.
 The full Apache-2.0 license is included in LICENSE.
 
+The selected, unmodified xiaok runtime source closure in vendor/xiaok-runtime
+is also Apache-2.0. Its full originating revision, upstream file paths and
+individual SHA-256 digests are recorded in sources.lock.json under runtime.
+KTeam-specific integration lives outside that snapshot.
+
 KSwarm and intent-broker are reused through semantic service adapters.
 Their local source packages are development-only integration dependencies.
 

@@ -1,0 +1,289 @@
+import type {AdapterCredentialResolver} from '../providers/model-harness-profile.js';
+import { resolveObservationProviderDisclosure } from '../../runtime/sol-pi/observation-execution-scope.js';
+import { createProviderDisclosureFetch, getProviderDisclosureSignal, assertProviderDisclosureActive, disposeProviderDisclosureContext } from '../../runtime/sol-pi/provider-disclosure.js';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { ModelAdapter, Message, StreamChunk, ToolDefinition } from '../../types.js';
+import { isAbortError } from '../runtime/abort-utils.js';
+import type { ModelCapabilities, StreamOptions } from '../runtime/model-capabilities.js';
+import { resolveClonedCapabilityOverrides, type AdapterCatalogIdentity } from './catalog-identity.js';
+
+type ResponsesUsage = {
+  input_tokens?: number;
+  output_tokens?: number;
+};
+
+type ResponsesOutputItem =
+  | { type: 'message'; content?: Array<{ type: string; text?: string }> }
+  | { type: 'function_call'; call_id?: string; name?: string; arguments?: string };
+
+type ResponsesResult = {
+  status?: string;
+  output?: ResponsesOutputItem[];
+  usage?: ResponsesUsage;
+};
+
+const STREAM_TIMEOUT_MS = 5 * 60_000;
+const MAX_RETRIES = 2;
+
+function isRetryableError(error: unknown): boolean {
+  if (isAbortError(error)) return false;
+  if (error instanceof Error) {
+    if (error.name === 'TimeoutError') return true;
+    const record = error as unknown as Record<string, unknown>;
+    const code = typeof record.code === 'string' ? record.code : '';
+    if (/ERR_STREAM_PREMATURE_CLOSE|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR/i.test(code)) return true;
+    if (/ECONNRESET|ETIMEDOUT|EPIPE|fetch failed|network|Premature close|terminated|socket hang up/i.test(error.message)) return true;
+  }
+  return false;
+}
+
+async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal) await delay(ms, undefined, { signal });
+  else await new Promise<void>(resolve => setTimeout(resolve, ms));
+}
+
+export class OpenAIResponsesAdapter implements ModelAdapter {
+  private readonly apiKey: string;
+  private readonly baseUrl?: string;
+  private readonly defaultHeaders?: Record<string, string>;
+  private readonly capabilityOverrides?: Partial<ModelCapabilities>;
+  private readonly catalogIdentity?: AdapterCatalogIdentity;
+  private model: string;
+
+  constructor(
+    apiKey: string,
+    model = 'gpt-4.1',
+    baseUrl?: string,
+    defaultHeaders?: Record<string, string>,
+    capabilityOverrides?: Partial<ModelCapabilities>,
+    catalogIdentity?: AdapterCatalogIdentity,
+    private readonly credentialResolver?: AdapterCredentialResolver,
+  ) {
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+    this.defaultHeaders = defaultHeaders;
+    this.capabilityOverrides = capabilityOverrides;
+    this.catalogIdentity = catalogIdentity;
+    this.model = model;
+  }
+
+  getModelName(): string {
+    return this.model;
+  }
+
+  getCapabilities(): Partial<ModelCapabilities> {
+    return this.capabilityOverrides ?? {};
+  }
+
+  cloneWithModel(model: string): OpenAIResponsesAdapter {
+    return new OpenAIResponsesAdapter(
+      this.apiKey,
+      model,
+      this.baseUrl,
+      this.defaultHeaders,
+      resolveClonedCapabilityOverrides(model, this.capabilityOverrides, this.catalogIdentity),
+      this.catalogIdentity,
+      this.credentialResolver,
+    );
+  }
+
+  async *stream(
+    messages: Message[],
+    tools: ToolDefinition[],
+    systemPrompt: string,
+    options?: StreamOptions,
+  ): AsyncIterable<StreamChunk> {
+    const credentials = this.credentialResolver?.();
+    const disclosure = resolveObservationProviderDisclosure(options?.providerDisclosure);
+    if (disclosure !== undefined) {
+      assertProviderDisclosureActive(disclosure);
+      const disclosureSignal = getProviderDisclosureSignal(disclosure);
+      options = { ...options, providerDisclosure: disclosure, signal: options?.signal ? AbortSignal.any([options.signal, disclosureSignal]) : disclosureSignal };
+    }
+    try {
+    let attempt = 0;
+    while (true) {
+      options?.signal?.throwIfAborted();
+      let emittedAny = false;
+      try {
+        for await (const chunk of this.streamOnce(messages, tools, systemPrompt, options, credentials)) {
+          emittedAny = true;
+          yield chunk;
+        }
+        return;
+      } catch (error) {
+        if (disclosure !== undefined) assertProviderDisclosureActive(disclosure);
+        // 已产出 chunk 后重试会重复输出，必须放弃重试
+        if (options?.signal?.aborted || emittedAny || !isRetryableError(error) || attempt >= MAX_RETRIES) throw error;
+        const delayMs = Math.min(2000 * 2 ** attempt, 10000);
+        await sleep(delayMs, options?.signal);
+        attempt++;
+      }
+    }
+    } finally { if (disclosure !== undefined) disposeProviderDisclosureContext(disclosure); }
+  }
+
+  private async *streamOnce(
+    messages: Message[],
+    tools: ToolDefinition[],
+    systemPrompt: string,
+    options?: StreamOptions,
+    credentials?: ReturnType<AdapterCredentialResolver>,
+  ): AsyncIterable<StreamChunk> {
+    const signal = options?.signal;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
+    const mergedSignal = signal
+      ? AbortSignal.any([controller.signal, signal])
+      : controller.signal;
+    const endpoint = new URL('responses', ensureTrailingSlash(this.baseUrl)).toString();
+    let response: Response;
+    try {
+      const fetchImpl = options?.providerDisclosure
+        ? createProviderDisclosureFetch(options.providerDisclosure, globalThis.fetch.bind(globalThis)) : fetch;
+      response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credentials?.apiKey ?? this.apiKey}`,
+          'Content-Type': 'application/json',
+          ...(credentials?.headers as Record<string,string> ?? this.defaultHeaders ?? {}),
+        },
+        body: JSON.stringify({
+          model: this.model,
+          ...(options?.maxOutputTokens !== undefined ? { max_output_tokens: options.maxOutputTokens } : {}),
+          input: buildResponsesInput(messages, systemPrompt),
+          ...(isGlobalPublicOpenAIResponsesBaseUrl(this.baseUrl) ? { store: false } : {}),
+          tools: tools.length > 0
+            ? tools.map((tool) => ({
+                type: 'function',
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.inputSchema,
+              }))
+            : undefined,
+        }),
+        signal: mergedSignal,
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      throw new Error(`${response.status} ${await response.text()}`);
+    }
+
+    const result = await response.json() as ResponsesResult;
+    if (options?.maxOutputTokens !== undefined && result.status !== 'completed') throw new Error('memory_output_incomplete');
+
+    for (const item of result.output ?? []) {
+      if (item.type === 'message') {
+        for (const content of item.content ?? []) {
+          if (content.type === 'output_text' && content.text) {
+            yield { type: 'text', delta: content.text };
+          }
+        }
+        continue;
+      }
+
+      if (item.type === 'function_call') {
+        if (!item.call_id || !item.name) {
+          throw new Error('Invalid Responses function_call: missing call_id or name');
+        }
+        let input: Record<string, unknown> = {};
+        try {
+          input = JSON.parse(item.arguments ?? '{}');
+        } catch {
+          input = { _raw: item.arguments ?? '' };
+        }
+        yield {
+          type: 'tool_use',
+          id: item.call_id,
+          name: item.name,
+          input,
+        };
+      }
+    }
+
+    yield {
+      type: 'usage',
+      usage: {
+        inputTokens: result.usage?.input_tokens ?? 0,
+        outputTokens: result.usage?.output_tokens ?? 0,
+      },
+    };
+    yield { type: 'done' };
+  }
+}
+
+export function isGlobalPublicOpenAIResponsesBaseUrl(baseUrl?: string): boolean {
+  return baseUrl === 'https://api.openai.com/v1'
+    || baseUrl === 'https://api.openai.com/v1/';
+}
+
+function ensureTrailingSlash(baseUrl?: string): string {
+  if (!baseUrl) {
+    throw new Error('openai_responses 协议需要配置 baseUrl');
+  }
+
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
+
+export function buildResponsesInput(messages: Message[], systemPrompt: string): Array<Record<string, unknown>> {
+  const items: Array<Record<string, unknown>> = [
+    {
+      role: 'system',
+      content: [{ type: 'input_text', text: systemPrompt }],
+    },
+  ];
+
+  for (const message of messages) {
+    let content: Array<Record<string, unknown>> = [];
+    const flushMessage = (): void => {
+      if (content.length === 0) return;
+      items.push({
+        role: message.role,
+        content,
+      });
+      content = [];
+    };
+
+    for (const block of message.content) {
+      if (block.type === 'text') {
+        content.push({ type: 'input_text', text: block.text });
+        continue;
+      }
+      if (block.type === 'image') {
+        content.push({
+          type: 'input_image',
+          image_url: `data:${block.source.media_type};base64,${block.source.data}`,
+        });
+        continue;
+      }
+      if (block.type === 'tool_use') {
+        flushMessage();
+        items.push({
+          type: 'function_call',
+          call_id: block.id,
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        });
+        continue;
+      }
+      if (block.type === 'tool_result') {
+        flushMessage();
+        items.push({
+          type: 'function_call_output',
+          call_id: block.tool_use_id,
+          output: block.content,
+        });
+      }
+    }
+
+    flushMessage();
+  }
+
+  return items;
+}

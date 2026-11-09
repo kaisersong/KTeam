@@ -79,13 +79,19 @@ export class Upstreams {
     if (!status.ready) throw new KTeamError('upstream_protocol_unavailable', 503, status);
   }
   listBots() { return this.request('kswarm', '/agents'); }
+  createBot(input:Record<string,unknown>){return this.request('kswarm','/agents','POST',input);}
+  aimp(roomId:string,command:string,input?:Record<string,unknown>){
+    if(!['session','status','tasks','configure','event','agent-event','begin-execution','execution-check','effect','heartbeat','chat','verify-delivery'].includes(command))throw new KTeamError('aimp_command_invalid');
+    return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/aimp/${command}`,input?'POST':'GET',input);
+  }
   listRuntimes() { return this.request('kswarm', '/runtimes'); }
   listProjects() { return this.request('kswarm', '/projects'); }
   listTeams() { return this.request('broker', '/rooms'); }
   getTeam(roomId: string) { return this.request('broker', '/rooms/' + encodeURIComponent(roomId)); }
+  membership(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/membership`);}
   createTeam(input: Record<string, unknown>) { return this.request('broker', '/rooms', 'POST', input); }
-  messages(roomId: string, after: number, limit: number) {
-    return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}`);
+  messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
+    return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}${before!==undefined?'&beforeSequence='+before:''}${tail?'&direction=backward':''}`);
   }
   sendMessage(roomId: string, input: Record<string, unknown>) {
     return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages`, 'POST', input);

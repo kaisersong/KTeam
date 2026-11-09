@@ -1,7 +1,8 @@
 {
   "name": "@kteam/app",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-preview.1",
   "private": true,
+  "main": "build/main.cjs",
   "type": "module",
   "description": "KTeam — 组建你的 AI 团队，让工作主动向前。",
   "license": "Apache-2.0",
@@ -19,13 +20,37 @@
     "test:integration": "npm run build && node --preserve-symlinks --test dist/tests/upstream.integration.test.js",
     "verify:sources": "node scripts/verify-sources.mjs",
     "test:cli": "npm run build && node scripts/smoke-cli.mjs",
-    "check": "npm run verify:sources && npm test && node scripts/smoke-cli.mjs"
+    "check": "npm run verify:sources && npm test && node scripts/smoke-cli.mjs",
+    "typecheck:desktop": "node node_modules/typescript/bin/tsc -p desktop/tsconfig.json",
+    "build:desktop": "npm run build && npm run typecheck:desktop && node scripts/build-desktop.mjs",
+    "pack:desktop": "npm run build:desktop && CSC_IDENTITY_AUTO_DISCOVERY=false node node_modules/electron-builder/out/cli/cli.js --mac dir --arm64 --publish never"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "42.11.16",
+    "electron-builder": "26.15.7",
+    "esbuild": "0.28.2",
     "intent-broker": "file:../intent-broker",
     "kswarm": "file:../kswarm",
+    "lucide-react": "1.70.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
     "typescript": "7.0.2",
+    "vite": "8.3.6",
     "ws": "8.22.2"
-  }
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.121.0",
+    "@napi-rs/keyring": "2.1.2",
+    "ajv": "8.20.0",
+    "better-sqlite3": "13.0.3",
+    "openai": "7.52.0",
+    "zod": "4.6.7"
+  },
+  "author": "KTeam"
 }

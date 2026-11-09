@@ -27,7 +27,7 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
   const brokerToken = randomBytes(32).toString('hex'), kswarmToken = randomBytes(32).toString('hex');
   const { createBrokerService } = await importSource('intent-broker/src/broker/service.js');
   const { createServer } = await importSource('intent-broker/src/http/server.js');
-  const broker = createBrokerService({ dbPath: join(root, 'broker.sqlite') });
+  const broker = createBrokerService({ dbPath: join(root, 'broker.sqlite'), aimpEnabled:true });
   const server = createServer({ broker, roomService: broker.room, roomDesktopToken: brokerToken });
   await server.listen(0, '127.0.0.1'); broker.attachWebSocket(server.raw());
   const brokerUrl = 'http://127.0.0.1:' + server.address().port;
@@ -90,9 +90,14 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     assert.equal(updated.length, 2);
     assert.equal(updated[1].replyToMessageId, first.messageId, 'AIMP reply ID maps to original broker message ID');
     assert.equal(updated[1].sourceRef.envelope.reply_to, envelope.id);
+    for(let n=0;n<105;n++)assert.equal(broker.room.sendRoomMessage({roomId,threadId:'thread-'+roomId,kind:'text',text:'history-'+n,responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:'history-'+n},ctx).ok,true);
+    const tail=await request(`/v1/teams/${roomId}/messages?tail=true&limit=100`);
+    assert.equal((tail.messages as any[]).length,100);assert.equal((tail.messages as any[]).at(-1).text,'history-104');assert.equal(tail.hasMoreBefore,true);
+    const older=await request(`/v1/teams/${roomId}/messages?tail=true&before=${(tail.messages as any[])[0].roomSequence}&limit=100`);
+    assert.equal((older.messages as any[]).length,7);assert.equal((older.messages as any[])[0].messageId,first.messageId);
     await stop(child);
     await assert.rejects(request('/v1/messages', { ...reply, id: 'msg_' + randomBytes(16).toString('hex') }), /upstream_protocol_unavailable/);
-    assert.equal(broker.room.listRoomMessages({ roomId }, ctx).messages.length, 2, 'missing project owner cannot be bypassed by a live Room owner');
+    assert.equal(broker.room.listRoomMessages({ roomId }, ctx).messages.length, 107, 'missing project owner cannot be bypassed by a live Room owner');
   } finally {
     await host?.close(); await stop(child); broker.close(); await server.close();
     assert.ok(child.exitCode !== null || child.signalCode !== null, 'own upstream process must be reaped');

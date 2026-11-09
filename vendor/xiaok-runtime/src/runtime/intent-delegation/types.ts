@@ -1,0 +1,254 @@
+import type { StoredIntentRecordInput, NormalizedStoredIntentRecord, StoredSessionIntentLedgerInput, NormalizedStoredSessionIntentLedger } from './stored-intent-clone.js';
+import type {
+  IntentLedgerRecord,
+  IntentPlanDraft,
+  IntentStageDraft,
+  IntentStageRecord,
+  PlannedStep,
+  RiskTier,
+  StageArtifactRecord,
+  StepStatus,
+} from '../../ai/intent-delegation/types.js';
+import { cloneIntentSteps as cloneSteps, cloneStoredIntentRecord, cloneStoredSessionIntentLedger, rekeyStoredSessionIntentLedger } from './stored-intent-clone.js';
+
+export type {
+  IntentLedgerRecord,
+  IntentPlanDraft,
+  IntentStageDraft,
+  IntentStageRecord,
+  PlannedStep,
+  RiskTier,
+  StageArtifactRecord,
+  StepStatus,
+};
+
+/** Bounded compatibility ingress; the modern planner contract stays required. */
+export type LegacyIntentPlanDraft = Omit<
+  IntentPlanDraft,
+  'stages' | 'finalDeliverable' | 'intentMode' | 'segmentationConfidence'
+> & Partial<Pick<
+  IntentPlanDraft,
+  'stages' | 'finalDeliverable' | 'intentMode' | 'segmentationConfidence'
+>>;
+
+export type IntentPlanInput = IntentPlanDraft | LegacyIntentPlanDraft;
+
+/** The creator has built stages, but has not yet normalized scalar metadata. */
+export type IntentLedgerRecordInput = Omit<
+  IntentLedgerRecord,
+  'finalDeliverable' | 'intentMode' | 'segmentationConfidence'
+> & {
+  finalDeliverable: IntentLedgerRecord['finalDeliverable'] | undefined;
+  intentMode: IntentLedgerRecord['intentMode'] | undefined;
+  segmentationConfidence: IntentLedgerRecord['segmentationConfidence'] | undefined;
+};
+
+export type SessionOwnershipState = 'owned' | 'released' | 'resume' | 'takeover';
+
+export interface SessionOwnershipRecord {
+  state: SessionOwnershipState;
+  ownerInstanceId?: string;
+  previousOwnerInstanceId?: string;
+  updatedAt: number;
+}
+
+export interface IntentBreadcrumb {
+  intentId: string;
+  stepId: string;
+  status: Extract<StepStatus, 'running' | 'blocked' | 'completed' | 'failed'>;
+  message: string;
+  createdAt: number;
+}
+
+export interface IntentReceipt {
+  intentId: string;
+  stepId: string;
+  note: string;
+  createdAt: number;
+}
+
+export interface IntentSalvage {
+  intentId: string;
+  summary: string[];
+  reason?: string;
+  createdAt: number;
+}
+
+export interface SessionIntentLedger {
+  verificationExecutions?: import('./verification-execution-journal.js').IntentVerificationExecution[];
+  publicationCandidates?: import('./publication-candidate-journal.js').IntentPublicationCandidate[];
+  nativeContracts?: import('./native-contract-journal.js').IntentNativeContractRecord[];
+  instanceId?: string;
+  sessionId: string;
+  activeIntentId?: string;
+  latestPlan: IntentLedgerRecord | null;
+  intents: IntentLedgerRecord[];
+  breadcrumbs: IntentBreadcrumb[];
+  receipt: IntentReceipt | null;
+  salvage: IntentSalvage | null;
+  ownership: SessionOwnershipRecord;
+  updatedAt: number;
+}
+
+export interface UpdateIntentLedgerPatch {
+  overallStatus?: IntentLedgerRecord['overallStatus'];
+  blockedReason?: string | undefined;
+  latestBreadcrumb?: string | undefined;
+  latestReceipt?: string | undefined;
+  salvageSummary?: string[] | undefined;
+  activeStageId?: string;
+  activeStepId?: string;
+  attemptCount?: number;
+  stages?: IntentStageRecord[];
+  artifacts?: StageArtifactRecord[];
+  steps?: PlannedStep[];
+}
+
+export interface RecordBreadcrumbInput {
+  intentId: string;
+  stepId: string;
+  status: IntentBreadcrumb['status'];
+  message: string;
+  createdAt?: number;
+}
+
+export interface RecordReceiptInput {
+  intentId: string;
+  stepId: string;
+  note: string;
+  createdAt?: number;
+}
+
+export interface RecordSalvageInput {
+  intentId: string;
+  summary: string[];
+  reason?: string;
+  createdAt?: number;
+}
+
+export interface TakeoverSessionOptions {
+  now?: number;
+  confirmHighRisk?: boolean;
+}
+
+export function createIntentLedgerRecord(plan: IntentPlanInput, now = Date.now()): IntentLedgerRecord {
+  const stages = cloneStageDrafts(plan.stages, plan);
+  const activeStage = stages[0];
+  const steps = activeStage ? cloneSteps(activeStage.steps) : cloneSteps(plan.steps);
+  const record: IntentLedgerRecordInput = {
+    intentId: plan.intentId,
+    instanceId: plan.instanceId,
+    sessionId: plan.sessionId,
+    rawIntent: plan.rawIntent,
+    normalizedIntent: plan.normalizedIntent,
+    providedSourcePaths: [...(plan.providedSourcePaths ?? [])],
+    intentType: plan.intentType,
+    deliverable: plan.deliverable,
+    finalDeliverable: plan.finalDeliverable,
+    explicitConstraints: [...plan.explicitConstraints],
+    delegationBoundary: [...plan.delegationBoundary],
+    riskTier: plan.riskTier,
+    intentMode: plan.intentMode,
+    segmentationConfidence: plan.segmentationConfidence,
+    templateId: plan.templateId,
+    stages,
+    activeStageId: activeStage?.stageId ?? `${plan.intentId}:stage:unknown`,
+    artifacts: [],
+    steps,
+    activeStepId: activeStage?.activeStepId ?? steps[0]?.stepId ?? `${plan.intentId}:step:unknown`,
+    overallStatus: 'drafting_plan',
+    attemptCount: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const normalized = cloneIntentRecord(record);
+  return {
+    ...record,
+    finalDeliverable: normalized.finalDeliverable,
+    intentMode: normalized.intentMode,
+    segmentationConfidence: normalized.segmentationConfidence,
+  };
+}
+
+export function cloneIntentRecord(record: IntentLedgerRecordInput): IntentLedgerRecord;
+export function cloneIntentRecord(record: StoredIntentRecordInput): NormalizedStoredIntentRecord;
+export function cloneIntentRecord(record: StoredIntentRecordInput): NormalizedStoredIntentRecord {
+  return cloneStoredIntentRecord(record);
+}
+
+export function cloneSessionIntentLedger(ledger: SessionIntentLedger): SessionIntentLedger;
+export function cloneSessionIntentLedger(ledger: StoredSessionIntentLedgerInput): NormalizedStoredSessionIntentLedger;
+export function cloneSessionIntentLedger(ledger: StoredSessionIntentLedgerInput): NormalizedStoredSessionIntentLedger {
+  return cloneStoredSessionIntentLedger(ledger);
+}
+
+export function rekeySessionIntentLedger(ledger: SessionIntentLedger, sessionId: string): SessionIntentLedger;
+export function rekeySessionIntentLedger(ledger: StoredSessionIntentLedgerInput, sessionId: string): NormalizedStoredSessionIntentLedger;
+export function rekeySessionIntentLedger(ledger: StoredSessionIntentLedgerInput, sessionId: string): NormalizedStoredSessionIntentLedger {
+  return rekeyStoredSessionIntentLedger(ledger, sessionId);
+}
+
+export function createEmptySessionIntentLedger(sessionId: string, now = Date.now()): SessionIntentLedger {
+  return {
+    sessionId,
+    activeIntentId: undefined,
+    latestPlan: null,
+    intents: [],
+    breadcrumbs: [],
+    receipt: null,
+    salvage: null,
+    ownership: {
+      state: 'released',
+      updatedAt: now,
+    },
+    updatedAt: now,
+  };
+}
+
+export function resolveActiveRiskTier(ledger: SessionIntentLedger): RiskTier | null;
+export function resolveActiveRiskTier(ledger: NormalizedStoredSessionIntentLedger): unknown;
+export function resolveActiveRiskTier(ledger: NormalizedStoredSessionIntentLedger): unknown {
+  const activeIntent = ledger.activeIntentId
+    ? ledger.intents.find((intent) => intent.intentId === ledger.activeIntentId)
+    : undefined;
+  if (!activeIntent) {
+    return null;
+  }
+
+  const activeStage = activeIntent.stages.find((stage) => stage.stageId === activeIntent.activeStageId);
+  const activeStep = activeIntent.steps.find((step) => step.stepId === activeIntent.activeStepId)
+    ?? activeStage?.steps.find((step) => step.stepId === activeIntent.activeStepId);
+  return activeStep?.riskTier ?? activeStage?.riskTier ?? activeIntent.riskTier;
+}
+
+function cloneStageDrafts(
+  stages: IntentStageDraft[] | undefined,
+  legacyPlan?: Pick<IntentPlanDraft, 'intentId' | 'intentType' | 'deliverable' | 'templateId' | 'riskTier' | 'steps'>,
+): IntentStageRecord[] {
+  const effectiveStages = stages && stages.length > 0
+    ? stages
+    : legacyPlan
+      ? [{
+          stageId: `${legacyPlan.intentId}:stage:1`,
+          order: 0,
+          label: `生成${legacyPlan.deliverable}`,
+          intentType: legacyPlan.intentType,
+          deliverable: legacyPlan.deliverable,
+          templateId: legacyPlan.templateId,
+          riskTier: legacyPlan.riskTier,
+          dependsOnStageIds: [],
+          steps: legacyPlan.steps,
+        } satisfies IntentStageDraft]
+      : [];
+
+  return effectiveStages.map((stage) => ({
+    ...stage,
+    dependsOnStageIds: [...stage.dependsOnStageIds],
+    steps: cloneSteps(stage.steps),
+    status: 'planned',
+    activeStepId: stage.steps[0]?.stepId ?? `${stage.stageId}:step:unknown`,
+    structuralValidation: 'pending',
+    semanticValidation: 'pending',
+    needsFreshContextHandoff: stage.order > 0,
+  }));
+}

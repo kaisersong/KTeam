@@ -5,3 +5,7 @@ dist/
 *.log
 .DS_Store
 ._*
+.sources/
+.xiaok/
+build/
+release/
