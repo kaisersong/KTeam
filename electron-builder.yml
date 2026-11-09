@@ -29,3 +29,5 @@ mac:
     - dir
   identity: "-"
   hardenedRuntime: false
+win:
+  icon: desktop/assets/icon.ico

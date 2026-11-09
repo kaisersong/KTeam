@@ -1,5 +1,5 @@
-export interface Bot {id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
-export interface Room {roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
+export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
+export interface Room {botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
  decisionModels():Promise<any>;assistantState():Promise<any>;setAssistantProactivity(input:{enabled:boolean}):Promise<any>;

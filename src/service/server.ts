@@ -139,10 +139,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if (url.pathname === '/v1/bot-create' && req.method === 'POST') {
         return send(res,201,await coordinator.createMember(await body(req),{requestSource:'user'}));
       }
-      if (url.pathname === '/v1/bots' && req.method === 'GET') {const result=await collaboration.bots();return send(res,200,{...result,bots:result.bots.map(bot=>({...bot,binding:teamStore.binding(String(bot.id)),connection:links.forBot(String(bot.id))}))});}
+      if (url.pathname === '/v1/bots' && req.method === 'GET') {const result=await collaboration.bots();return send(res,200,{...result,bots:result.bots.map(bot=>({...bot,isAssistant:automation.assistant.identity()?.botId===bot.id,binding:teamStore.binding(String(bot.id)),connection:links.forBot(String(bot.id))}))});}
       if (url.pathname === '/v1/runtimes' && req.method === 'GET') return send(res, 200, await collaboration.runtimes());
       if (url.pathname === '/v1/teams') {
-        if (req.method === 'GET') {const result=await collaboration.teams();return send(res,200,{...result,rooms:(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId)).map(room=>({...room,kind:teamStore.settings(room.roomId)?.kind??'group'}))});}
+        if (req.method === 'GET') {const result=await collaboration.teams();return send(res,200,{...result,rooms:(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId)).map(room=>({...room,kind:teamStore.settings(room.roomId)?.kind??'group',botId:teamStore.state<any>('conversation:'+room.roomId)?.members?.length===1?teamStore.state<any>('conversation:'+room.roomId)?.members[0]?.botId:undefined}))});}
         if (req.method === 'POST') {
           return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
         }

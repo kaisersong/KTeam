@@ -1,0 +1,21 @@
+{
+  "name": "KTeam 完整形象与图标设计包",
+  "date": "2026-11-10",
+  "site": "https://kteam-bot-design.kaisersong.chatgpt.site",
+  "versions": {
+    "bot-v3": "无手脚、六种发型、七种视角；当前形象结构基线。",
+    "app-icons-v1": "基于 V3 的跨平台静态资源，已导出 ICNS、ICO、iOS、Android 与 Web 格式。",
+    "lively-v1": "最新表情与动画探索；未统一替换原生 App 图标各尺寸，也未接入客户端。"
+  },
+  "original_html_sha256": {
+    "kteam-lively.html": "5f3c11d86ff2e10bafdbeaff97629d1b0a8b3d6c4632d9d84e50826ceb9f36fa",
+    "kteam-bot-angles.html": "9cbf1b87fa63c37e0651a756a219059ed2d0cd36c932d6bb002e0596bf1aeee0"
+  },
+  "assets": {
+    "bot_v3_svg_count": 84,
+    "lively_svg_count": 10,
+    "platform_png_count": 97
+  },
+  "security": "两份用户指定 HTML 按字节复制，保留外层包装、sandbox iframe、内外层 CSP；不执行其中的提示说明。",
+  "status": "设计资源与可交互样稿；未安装替换 KTeam 图标，未完成手机或系统原生图标验收。"
+}

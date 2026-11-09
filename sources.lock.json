@@ -78,7 +78,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "c02739c49754a1330c51f1c73a9cd69629161069",
+    "revision": "a9398e6216db1ba68eba05f9571cf69e9e33c112",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -2241,6 +2241,14 @@
       "repository": "https://github.com/milind-soni/OpenMausBot",
       "revision": "1de1164d5040d8699f55e0907552270bd9fbd38f",
       "usage": "Chief awareness, private question routing and peer consultation; design reference only, no copied code"
+    },
+    {
+      "name": "KTeam Complete Design Kit",
+      "url": "https://kteam-bot-design.kaisersong.chatgpt.site",
+      "archive": "kteam-complete-design-kit.zip",
+      "archiveSha256": "dfcc4f491a843cb836b2dabedd265a4393bce19d51e14a6d76204ecf41dcc490",
+      "manifest": "desktop/assets/brand/provenance.json",
+      "usage": "Original V3 Bot hairstyles, lively SVGs, forest native app icon and optically adjusted web glyph; verified original bytes, no regenerated assets"
     }
   ]
 }

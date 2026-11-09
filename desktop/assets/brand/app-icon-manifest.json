@@ -1,0 +1,115 @@
+{
+  "name": "KTeam App Icon Family V1",
+  "date": "2026-11-10",
+  "stage": "design assets exported; not integrated or accepted in native shells",
+  "design": {
+    "basis": "Bot V3, three-tuft main mascot, no limbs, 25-degree view",
+    "primary": "forest",
+    "alternates": [
+      "porcelain",
+      "ink"
+    ],
+    "optical_small": "Front-facing single-color silhouette with transparent eye holes; avoids compressing the multi-layer face into 16px."
+  },
+  "platforms": {
+    "macos_dock": "macos/KTeam.icns (recommended); three separate appearance folders with iconsets. These are alternate files, not automatic appearance switching.",
+    "macos_menubar": "macos/menubar/KTeamTemplate.png (16px, 72dpi), KTeamTemplate@2x.png (32px, 144dpi). Blink pair supplied as optional frames, not an implemented animation.",
+    "windows": "windows/KTeam.ico contains 16,20,24,32,40,48,64,128,256px. windows/tray has green, black, and white ICO variants. Select a suitable variant for the shell theme.",
+    "ios": "ios/AppIcon.appiconset contains 1024px opaque default/dark/tinted images. Porcelain is a visual alternative under masters, not registered as an alternate icon in app code.",
+    "android": "android/res contains adaptive vector foreground/background, an API33 monochrome layer, plus legacy fallback density images. android/png-preview is preview-only.",
+    "web": "favicon.ico, 180px touch icon, 192/512px PWA images and sample web manifest.",
+    "apple_layers": "layers/ contains background, shell, mask and eye SVG layers for all appearances. These are source layers for Icon Composer; no compiled .icon or native Liquid Glass effect is claimed."
+  },
+  "references": [
+    {
+      "title": "Apple App Icons",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/app-icons"
+    },
+    {
+      "title": "Apple Icon Composer",
+      "url": "https://developer.apple.com/icon-composer/"
+    },
+    {
+      "title": "Electron Tray",
+      "url": "https://www.electronjs.org/docs/latest/api/tray"
+    },
+    {
+      "title": "Android Adaptive Icons",
+      "url": "https://developer.android.com/develop/ui/compose/system/icon_design_adaptive"
+    },
+    {
+      "title": "Windows Notification Area",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/shell/notification-area"
+    }
+  ],
+  "validation": {
+    "png_count": 97,
+    "png_dimensions": "all matched",
+    "ios_opaque_alpha": "passed",
+    "ios_rgb_no_alpha_channel": true,
+    "template_black_and_transparent": "passed",
+    "icns": {
+      "forest": {
+        "bytes": 107743,
+        "valid_header": true
+      },
+      "porcelain": {
+        "bytes": 105811,
+        "valid_header": true
+      },
+      "ink": {
+        "bytes": 107896,
+        "valid_header": true
+      }
+    },
+    "ico_embedded_sizes": {
+      "windows/KTeam.ico": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48,
+        64,
+        128,
+        256
+      ],
+      "windows/tray/template.ico": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48
+      ],
+      "windows/tray/white.ico": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48
+      ],
+      "windows/tray/green.ico": [
+        16,
+        20,
+        24,
+        32,
+        40,
+        48
+      ],
+      "web/favicon.ico": [
+        16,
+        32,
+        48
+      ]
+    },
+    "svg_xml_json": "parsed",
+    "browser": "three style choices switch; zero duplicate IDs; 320px without horizontal overflow; exported 16px and 32px template PNG eye holes have zero alpha"
+  },
+  "limitations": [
+    "No installed app assets replaced.",
+    "No actual Dock, menu bar, Windows shell, Android launcher or iPhone acceptance was performed.",
+    "Layered Apple source has not been compiled with Icon Composer; Android resources have not been compiled by a native build."
+  ]
+}

@@ -1,0 +1,420 @@
+{
+  "sourceUrl": "https://kteam-bot-design.kaisersong.chatgpt.site",
+  "archive": "kteam-complete-design-kit.zip",
+  "archiveSha256": "dfcc4f491a843cb836b2dabedd265a4393bce19d51e14a6d76204ecf41dcc490",
+  "upstreamFilesVerified": 250,
+  "files": {
+    "desktop/renderer/public/brand/bot-v3/data-down-mono.svg": {
+      "source": "assets/bot-v3/data-down-mono.svg",
+      "sha256": "35947d0fd2dc6bcf2e7fe05e03fbe2ed7e9a2f79404ea138dfdde921b88d76a4"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-down.svg": {
+      "source": "assets/bot-v3/data-down.svg",
+      "sha256": "7c14729dd79dd210cb375924241e87a8e5ce38e8d5725619f312e95a58bc3ff5"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-front-mono.svg": {
+      "source": "assets/bot-v3/data-front-mono.svg",
+      "sha256": "af92f632897bb85627ecef37d4ea68b0bcb128147c0a651406275c23987b1691"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-front.svg": {
+      "source": "assets/bot-v3/data-front.svg",
+      "sha256": "32d9c668481d0f3ab8bcfe6893247c08ff579dab6ced3336a64434e2229936a1"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-left-mono.svg": {
+      "source": "assets/bot-v3/data-left-mono.svg",
+      "sha256": "fce926339cc6f608dd479d1b7b2f3379aa79d7d3d5863618af8039ae6ce3792c"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-left.svg": {
+      "source": "assets/bot-v3/data-left.svg",
+      "sha256": "a99cdd065a2487aa623f2171c8f8dab102f151cd9b024cbcfc72d23eb687c82c"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-left34-mono.svg": {
+      "source": "assets/bot-v3/data-left34-mono.svg",
+      "sha256": "3eb5540714ebceda4dfe5439e309fd355458f7ec019b6639d961ab2f257f6185"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-left34.svg": {
+      "source": "assets/bot-v3/data-left34.svg",
+      "sha256": "0d1cb7b02417e0c563151bca0b7f8d40b3da19add14c2fb0bc12cce2c8c0787a"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-right-mono.svg": {
+      "source": "assets/bot-v3/data-right-mono.svg",
+      "sha256": "1342d28e0ff05ee8ae503843af972e7ec630068502b2fd5ea5d1cfd14e572d38"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-right.svg": {
+      "source": "assets/bot-v3/data-right.svg",
+      "sha256": "b8395b17cfbbf4136ac8e375673aaab60bb22be762e40d7229ae060ba9d4e078"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-right34-mono.svg": {
+      "source": "assets/bot-v3/data-right34-mono.svg",
+      "sha256": "a0f4b87f872edd65b2b3326eabf78efe4f3c9fdd40395ddc423f8f7ba0342ef1"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-right34.svg": {
+      "source": "assets/bot-v3/data-right34.svg",
+      "sha256": "3b430a77c4e63c87e06114493916e7f279816ea02d52638779fcf936881efba6"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-up-mono.svg": {
+      "source": "assets/bot-v3/data-up-mono.svg",
+      "sha256": "bfb462672423c8ada45d86f20b9a40acc7bcbb552ef4f494e9cb884444aac6e7"
+    },
+    "desktop/renderer/public/brand/bot-v3/data-up.svg": {
+      "source": "assets/bot-v3/data-up.svg",
+      "sha256": "e1279957a44512e749cf92189eba8bc29cf62f449a2ab37ccd57d9560dbaa619"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-down-mono.svg": {
+      "source": "assets/bot-v3/design-down-mono.svg",
+      "sha256": "c4183830a33be2e52a18b0218add9f1b0d053337eac980c523101f81651a0904"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-down.svg": {
+      "source": "assets/bot-v3/design-down.svg",
+      "sha256": "0052bdecac3a535f9f3c769391367a368d57996336cd0c0ced95eed228d80447"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-front-mono.svg": {
+      "source": "assets/bot-v3/design-front-mono.svg",
+      "sha256": "b83913d8f835ac448c5a741b39f85d300be79c0fb07e81caa1a0cb1b07bad877"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-front.svg": {
+      "source": "assets/bot-v3/design-front.svg",
+      "sha256": "ee28b3f4bc24bbc1b04199ad1ccf893a7d35e4f2e591cc0de9dbf9c52c349b43"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-left-mono.svg": {
+      "source": "assets/bot-v3/design-left-mono.svg",
+      "sha256": "ae18e5e36923281835f200c789272a5d612f986ae7d5fa74f26f55c630a84192"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-left.svg": {
+      "source": "assets/bot-v3/design-left.svg",
+      "sha256": "0284a8099e3deebd4363b0cfaf19fc7023ac93a0fa06cd177b2aa9b9022885eb"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-left34-mono.svg": {
+      "source": "assets/bot-v3/design-left34-mono.svg",
+      "sha256": "bd362109ebed61c8d2ce1ff7aebfd602d0d5952101bba57ebdd6147355947cef"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-left34.svg": {
+      "source": "assets/bot-v3/design-left34.svg",
+      "sha256": "d1e011f3d244c749347db51038a3660a115595a4e9523c5ff661ede7957a06d2"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-right-mono.svg": {
+      "source": "assets/bot-v3/design-right-mono.svg",
+      "sha256": "77cc87a1f3b914a07f3b109318e4953b0153f0b32737367e3cf1ca21b017def3"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-right.svg": {
+      "source": "assets/bot-v3/design-right.svg",
+      "sha256": "0bd06bfb492e787b23e1c88ea5d2c70fa3dc70e903288b90e82f51e34a3c1df8"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-right34-mono.svg": {
+      "source": "assets/bot-v3/design-right34-mono.svg",
+      "sha256": "298a2051e71ab0567366a3ce290276253e888efb5ad16cc3642400983ff61a0e"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-right34.svg": {
+      "source": "assets/bot-v3/design-right34.svg",
+      "sha256": "7390fdd6c93f8caab93434bf9a0bfac68f0f99f72e4727368aa89e10913d4c8a"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-up-mono.svg": {
+      "source": "assets/bot-v3/design-up-mono.svg",
+      "sha256": "77ba92d9e3016f326fea1904ebcc58fe84239ddfb12d490ff004e7ca4aed85e6"
+    },
+    "desktop/renderer/public/brand/bot-v3/design-up.svg": {
+      "source": "assets/bot-v3/design-up.svg",
+      "sha256": "5af5e42b5d5b8a40f4461fac0dd371cff36c41791dc082d2ea188482fb56f68b"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-down-mono.svg": {
+      "source": "assets/bot-v3/dev-down-mono.svg",
+      "sha256": "b76b85f451715e3c750e61e7aac40a82374b501ff76a0cb9f3ac8dd898ca1557"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-down.svg": {
+      "source": "assets/bot-v3/dev-down.svg",
+      "sha256": "b9d247e601c8fa63b7224b73205850c3ac62af8416d8b6a913548d793b34dad5"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-front-mono.svg": {
+      "source": "assets/bot-v3/dev-front-mono.svg",
+      "sha256": "1349afa8eaa6dcef5eac1ac4c6a96c6bb43929fc4ca432308e500a4ccf8d8478"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-front.svg": {
+      "source": "assets/bot-v3/dev-front.svg",
+      "sha256": "f249ec43d39978185426716f5c64c08a7ba13b791f7a056faef1862cea37734a"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-left-mono.svg": {
+      "source": "assets/bot-v3/dev-left-mono.svg",
+      "sha256": "cae776cd5a9efc590087cd63fb7ff33f3f3a689bc3f47dceecc6b94bab317880"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-left.svg": {
+      "source": "assets/bot-v3/dev-left.svg",
+      "sha256": "75dcbecc25794b35ed31c671334272db40814bf38959f1e3615edc0c2fde895c"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-left34-mono.svg": {
+      "source": "assets/bot-v3/dev-left34-mono.svg",
+      "sha256": "795d107e9d90a5202fc5498b773eaadc3f3416ad103e61fee0f4b15c4fbac0b5"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-left34.svg": {
+      "source": "assets/bot-v3/dev-left34.svg",
+      "sha256": "11536dae627ec30ad138eef58760b7f3e9b1e1cff4003fa416f784d0ac72a657"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-right-mono.svg": {
+      "source": "assets/bot-v3/dev-right-mono.svg",
+      "sha256": "49a1042279018d9fad5b70ce9d23e642cb1d763cd9d422b09dc2bd3e23b062b9"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-right.svg": {
+      "source": "assets/bot-v3/dev-right.svg",
+      "sha256": "95ba569e7082e546d78c6ca6f288237cb834063dffb911c5f964b8db4630fede"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-right34-mono.svg": {
+      "source": "assets/bot-v3/dev-right34-mono.svg",
+      "sha256": "d23dc62712771007d5df4daeff9e53bf9649c90672c721a040cedc8df41d6902"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-right34.svg": {
+      "source": "assets/bot-v3/dev-right34.svg",
+      "sha256": "0e7d9bba973c37f47523cdded0d0484e5bc1d42e9a95fc492b32fb378557ee8b"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-up-mono.svg": {
+      "source": "assets/bot-v3/dev-up-mono.svg",
+      "sha256": "be6c756a845025b7b8f7a746f84453f3f4ea2806a6d4c56d3e62fb5bdff71ad3"
+    },
+    "desktop/renderer/public/brand/bot-v3/dev-up.svg": {
+      "source": "assets/bot-v3/dev-up.svg",
+      "sha256": "e48045f9d6969166fcbd09cddf19489b649c69d94c2905de5d7ff6947365540d"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-down-mono.svg": {
+      "source": "assets/bot-v3/k-down-mono.svg",
+      "sha256": "74f18df7f0ce25a9eb6e359e9b739fb4294e46b50dbe773b843368f6e44b70e1"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-down.svg": {
+      "source": "assets/bot-v3/k-down.svg",
+      "sha256": "2a35ca2d44db3e65105966668f4ec66d4ae96b793bb946077965d931c1142e3e"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-front-mono.svg": {
+      "source": "assets/bot-v3/k-front-mono.svg",
+      "sha256": "cc86bcb410b0185f5b1ec3d185729b8c708d80ab8d7a5ec3c1b7b30da4a726c6"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-front.svg": {
+      "source": "assets/bot-v3/k-front.svg",
+      "sha256": "ab7b89f3b1ce1b83203de1351f27c616a81685084c93cf000ba4e8900a4bf133"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-left-mono.svg": {
+      "source": "assets/bot-v3/k-left-mono.svg",
+      "sha256": "8ef447895bd8bd42591c0736bb90a7d38daeac2b3240aceb4c3575cfe140fa97"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-left.svg": {
+      "source": "assets/bot-v3/k-left.svg",
+      "sha256": "40cd10fd0bdeff8092b6a2068bf1fb10e53e0d38bfbc2ccfc4336390f0d7cb34"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-left34-mono.svg": {
+      "source": "assets/bot-v3/k-left34-mono.svg",
+      "sha256": "a56a2d4f4d20c6419400fc6c3cf76bcd58c1a249b5b1f7100cecfb3f6f068563"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-left34.svg": {
+      "source": "assets/bot-v3/k-left34.svg",
+      "sha256": "52c8b3a6e994155a2dd6b3f40a104227f767c845dab985c8663eb3c28ceb8b84"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-right-mono.svg": {
+      "source": "assets/bot-v3/k-right-mono.svg",
+      "sha256": "e870b2f6d9b208e0feae5d8372a1e010f64914b3cb0d1ba7e5fd172b4add3f6e"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-right.svg": {
+      "source": "assets/bot-v3/k-right.svg",
+      "sha256": "dc49c693e0af88e065977aa1e1e7a371b8a8398c372186a798635f3121d5d312"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-right34-mono.svg": {
+      "source": "assets/bot-v3/k-right34-mono.svg",
+      "sha256": "1e81b216096226c69f03fd8c454a91206906d701e9670f1d4e450a3d558885a1"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-right34.svg": {
+      "source": "assets/bot-v3/k-right34.svg",
+      "sha256": "505b1cc52c744a3b3fb40ee4f0542acdc8edeeb46ac920d0979c3dacdd930be8"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-up-mono.svg": {
+      "source": "assets/bot-v3/k-up-mono.svg",
+      "sha256": "bbd8f8c002d7a94da68f0ce7fadb608498ce098e0623a4971f2ef520ba8aac06"
+    },
+    "desktop/renderer/public/brand/bot-v3/k-up.svg": {
+      "source": "assets/bot-v3/k-up.svg",
+      "sha256": "ace20006c9f5fa66ea5ab58514c2aa6ce44c6541600ab56354d57cfc73c4501a"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-down-mono.svg": {
+      "source": "assets/bot-v3/pm-down-mono.svg",
+      "sha256": "d1ee5c5579b1df421be2e451edc111a3aa951d964c8ff6d1527256c4681952f6"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-down.svg": {
+      "source": "assets/bot-v3/pm-down.svg",
+      "sha256": "2f1eae70a99cccbceb93881e7e172351e15a47f85c03e01d328e4cd67a4babaf"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-front-mono.svg": {
+      "source": "assets/bot-v3/pm-front-mono.svg",
+      "sha256": "55e13d8538cd3c913a0de4cc488ec25b06b89c64ee684372d09c1b23fe27dfc5"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-front.svg": {
+      "source": "assets/bot-v3/pm-front.svg",
+      "sha256": "e071eb92c60da77118bd4eb3f93fbdbed8267c8a98f1678eb757f48e8fb1df0e"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-left-mono.svg": {
+      "source": "assets/bot-v3/pm-left-mono.svg",
+      "sha256": "7fdb319f5ec036396882e270f98a556c137cf1ffbef03da2563792adfb7144ea"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-left.svg": {
+      "source": "assets/bot-v3/pm-left.svg",
+      "sha256": "53c257705fe52ec9279121b80cc212c48ec19255acca7b62d45ed00819ec4047"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-left34-mono.svg": {
+      "source": "assets/bot-v3/pm-left34-mono.svg",
+      "sha256": "757af0ec90f91d4469c73125df126da82e9a22f1944a37608417904ea6a3b633"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-left34.svg": {
+      "source": "assets/bot-v3/pm-left34.svg",
+      "sha256": "6daa0230ae2ddff0bd0cf4db3df2be99dbf952f010880acf8203dbed2f9424ac"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-right-mono.svg": {
+      "source": "assets/bot-v3/pm-right-mono.svg",
+      "sha256": "94ed08d066f4780dbe32b18814d90bd7abad000119ea11071813e5ace3f2ccf6"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-right.svg": {
+      "source": "assets/bot-v3/pm-right.svg",
+      "sha256": "140db2b06c863110aca59590aa765f9858941c0180c215025453a96debf0f541"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-right34-mono.svg": {
+      "source": "assets/bot-v3/pm-right34-mono.svg",
+      "sha256": "593870764b52a50212f77abc66dabd4868b021be2b72fbe1bb91de31930fb651"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-right34.svg": {
+      "source": "assets/bot-v3/pm-right34.svg",
+      "sha256": "4bd62bf76e23b0e450f3133bc22a7a7cec5770df7528d18d1a5b7ce6dd012e76"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-up-mono.svg": {
+      "source": "assets/bot-v3/pm-up-mono.svg",
+      "sha256": "b94352c5e04be6ff92e71db831dd43d8c42857e477d229939e8043ed397b2415"
+    },
+    "desktop/renderer/public/brand/bot-v3/pm-up.svg": {
+      "source": "assets/bot-v3/pm-up.svg",
+      "sha256": "d1e6d95cc02d17d763a20673f3702936bcefe37faead221007bca10d5b9163a1"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-down-mono.svg": {
+      "source": "assets/bot-v3/qa-down-mono.svg",
+      "sha256": "90b772cf66075013a420ceb5ae2bdb8f27b691b74ecf56f9342bc565f37078a2"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-down.svg": {
+      "source": "assets/bot-v3/qa-down.svg",
+      "sha256": "e92feb4f74171c9d89b11bfc4ebc23f82e853266f38afd9a2da873489b830c3f"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-front-mono.svg": {
+      "source": "assets/bot-v3/qa-front-mono.svg",
+      "sha256": "1d28f0c74d0c95d056fad7ccee71749c22831c65aea69c5c0f41d30f831a5216"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-front.svg": {
+      "source": "assets/bot-v3/qa-front.svg",
+      "sha256": "c3149439733479269fabe4895b7109180b85ebd5be52ac4a8c648d3f64c40ed4"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-left-mono.svg": {
+      "source": "assets/bot-v3/qa-left-mono.svg",
+      "sha256": "5ef4002f120580585e17f38c6a188aa4d1b2dd914da5a3b72ae6177626bf50a5"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-left.svg": {
+      "source": "assets/bot-v3/qa-left.svg",
+      "sha256": "a2548deebbc877fd5ee5736dab96cb785620abc32adc74fc4f59ba4f9f1e58a6"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-left34-mono.svg": {
+      "source": "assets/bot-v3/qa-left34-mono.svg",
+      "sha256": "26af1afd72bcb0b54164f942818320bc2aa57b29e38edcb7676843ecdae40f8f"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-left34.svg": {
+      "source": "assets/bot-v3/qa-left34.svg",
+      "sha256": "944f030455d2969f629ac8ccf0d6f25c2c3c4d3d5352fc377ea255948ee875ed"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-right-mono.svg": {
+      "source": "assets/bot-v3/qa-right-mono.svg",
+      "sha256": "0eb29f11e637332a24f6fe3f5c1bb91b14960cdf8986a251580c43ddd044c1a2"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-right.svg": {
+      "source": "assets/bot-v3/qa-right.svg",
+      "sha256": "cd73517ea14d3c6629ab72ef7d7a8bed55493305de0288e078f76595e0d2639b"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-right34-mono.svg": {
+      "source": "assets/bot-v3/qa-right34-mono.svg",
+      "sha256": "f4b1a55e917d01024e2f590dafa5f5b1176563965afbc12498c2b2741062cfb8"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-right34.svg": {
+      "source": "assets/bot-v3/qa-right34.svg",
+      "sha256": "72a2a7324446ad9d1e0a658def45cc28438922ee492f2c3447d41bc833b79563"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-up-mono.svg": {
+      "source": "assets/bot-v3/qa-up-mono.svg",
+      "sha256": "e0ece303b8228654457a76602cfdaf1004039a2cbb9893c539565f2cbe8bdc7e"
+    },
+    "desktop/renderer/public/brand/bot-v3/qa-up.svg": {
+      "source": "assets/bot-v3/qa-up.svg",
+      "sha256": "b4139b15bd271ec56848c4583c4377769f499629be18f89d93da523270b66faf"
+    },
+    "desktop/renderer/public/brand/lively/curious-app.svg": {
+      "source": "assets/lively/curious-app.svg",
+      "sha256": "690310d2a9a25fa0a3873b8dd15076b3eca630f88242f72ca0219860aa6fabdd"
+    },
+    "desktop/renderer/public/brand/lively/curious-avatar-animated.svg": {
+      "source": "assets/lively/curious-avatar-animated.svg",
+      "sha256": "433711708e03c211f71bbfdda0aa3ea5fc2e54d9d63c87304b55b34fc6645442"
+    },
+    "desktop/renderer/public/brand/lively/curious-avatar.svg": {
+      "source": "assets/lively/curious-avatar.svg",
+      "sha256": "2ea7a7fd27e12419180d95e8dca19e8c11179cfc212fa820aef1f98f4fb40207"
+    },
+    "desktop/renderer/public/brand/lively/happy-app.svg": {
+      "source": "assets/lively/happy-app.svg",
+      "sha256": "bdfb74a89f66ae6fd6be3108dc98344a24f4275ee6740391d76fbf341088da25"
+    },
+    "desktop/renderer/public/brand/lively/happy-avatar-animated.svg": {
+      "source": "assets/lively/happy-avatar-animated.svg",
+      "sha256": "5b2cd978348ec0e1f0f625e012bfb8b209e510652271319ee761a61c2df7f002"
+    },
+    "desktop/renderer/public/brand/lively/happy-avatar.svg": {
+      "source": "assets/lively/happy-avatar.svg",
+      "sha256": "d45a3fcbfe99d8d9b0ec77a5880dcc2cf14e62008ed20bf65c918bd32eba755a"
+    },
+    "desktop/renderer/public/brand/lively/menubar-feedback.svg": {
+      "source": "assets/lively/menubar-feedback.svg",
+      "sha256": "119944e6347f9518d4c01f168c07715c755051170ef9716fd987cd1e59819d2b"
+    },
+    "desktop/renderer/public/brand/lively/wink-app.svg": {
+      "source": "assets/lively/wink-app.svg",
+      "sha256": "9d13cb30d5bcaa0cc5d6c9812f9f7f98b2e4ed54d8d1a230bf66d25baa8190f4"
+    },
+    "desktop/renderer/public/brand/lively/wink-avatar-animated.svg": {
+      "source": "assets/lively/wink-avatar-animated.svg",
+      "sha256": "1da1ee77a6b4fd61c2b63d8fd48b9e1e22d43d0e2fed520396d901b1b9826ef9"
+    },
+    "desktop/renderer/public/brand/lively/wink-avatar.svg": {
+      "source": "assets/lively/wink-avatar.svg",
+      "sha256": "a0ababf05b10069ff54ee092f2d7133bba8f37df52518742fe5e73c74439f60f"
+    },
+    "desktop/assets/icon.icns": {
+      "source": "assets/app-icons/macos/KTeam.icns",
+      "sha256": "57071b55b7e46747b0359fc6495a09d9c4fb0771cccbf5e9f45131564d434b1a"
+    },
+    "desktop/assets/icon.ico": {
+      "source": "assets/app-icons/windows/KTeam.ico",
+      "sha256": "b42affc1004e028e2873e224df42a0cc92b18dcf96cc8e1467781f13db6d9a5e"
+    },
+    "desktop/assets/icon.svg": {
+      "source": "assets/app-icons/macos/dock/forest/KTeam.svg",
+      "sha256": "a563c979c19b0be1fc32f14186d1e02d36d61c16bd1d819e5e3b7103cd33cabe"
+    },
+    "desktop/renderer/public/icon.svg": {
+      "source": "assets/app-icons/macos/dock/forest/KTeam.svg",
+      "sha256": "a563c979c19b0be1fc32f14186d1e02d36d61c16bd1d819e5e3b7103cd33cabe"
+    },
+    "desktop/renderer/public/brand/glyph.svg": {
+      "source": "assets/app-icons/masters/glyph-green.svg",
+      "sha256": "0c5bbb3fa2787f708ea52784ba8fdfcf7e6d1807608d7e1b158b8c48483639c7"
+    },
+    "desktop/renderer/public/favicon.ico": {
+      "source": "assets/app-icons/web/favicon.ico",
+      "sha256": "c958e6ce9de038e5f357b9db97b5a30aff39bdf6826b07e425775b19d75b5ade"
+    },
+    "desktop/renderer/public/apple-touch-icon.png": {
+      "source": "assets/app-icons/web/icon-180.png",
+      "sha256": "1c2c71b85109466e8f65c93d611798c46d272c317d8d30a7d5f701489c591d4f"
+    },
+    "desktop/assets/brand/app-icon-manifest.json": {
+      "source": "assets/app-icons/manifest.json",
+      "sha256": "129f79e16e47a1684f0748f8e873505e62255ac43b013322d0c74cabeb232d30"
+    },
+    "desktop/assets/brand/design-manifest.json": {
+      "source": "design-manifest.json",
+      "sha256": "54b64ec0903f15b3a480f0349c08654b505be91137bb1f46532dad8247152d1e"
+    }
+  }
+}

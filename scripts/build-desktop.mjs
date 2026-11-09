@@ -1,6 +1,7 @@
 import {build} from 'esbuild';
 import {execFileSync} from 'node:child_process';
 import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+execFileSync(process.execPath,['scripts/build-icon.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/ensure-electron.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-runtime.mjs'],{stdio:'inherit'});
 writeFileSync('build/build-info.json',JSON.stringify({version:JSON.parse(readFileSync('package.json','utf8')).version,revision:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty:!!execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim(),builtAt:new Date().toISOString()},null,2));
