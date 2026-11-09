@@ -12,6 +12,7 @@ import { TeamStore } from './team-store.js';
 import { TeamAutomation } from './automation.js';
 import {saveBotProfile} from './bot-profile.js';
 import {LocalAgents} from './local-agents.js';
+import {BuiltinAgent} from './builtin-agent.js';
 import {isNativeModel} from '../runtime/local-agents.js';
 import { AgentLinks,type AgentCredential } from './agent-links.js';
 import { OnboardingService } from './onboarding.js';
@@ -54,6 +55,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const collaboration = new CollaborationService(upstream);
   const teamStore = new TeamStore(options.root);
   const localAgents=new LocalAgents(options.root,teamStore,upstream);
+  const builtinAgent=new BuiltinAgent(teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents);
   const links=new AgentLinks(upstream,teamStore,coordinator);
@@ -93,11 +95,13 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents'],
+          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
+      if(url.pathname==='/v1/builtin-agent'&&req.method==='GET')return send(res,200,{ok:true,agent:await builtinAgent.status(url.searchParams.get('modelId')??undefined)});
+      if(url.pathname==='/v1/builtin-agent/probe'&&req.method==='POST')return send(res,202,{ok:true,agent:await builtinAgent.start(await body(req))});
       if(url.pathname==='/v1/local-agents'&&req.method==='GET')return send(res,200,await localAgents.catalog());
       if(url.pathname==='/v1/local-agents/probe'&&req.method==='POST')return send(res,202,{ok:true,probe:await localAgents.startProbe(await body(req))});
       const nativeProbe=/^\/v1\/local-agents\/(xiaok-cli|codex|kimi|zcode)\/probe$/.exec(url.pathname);if(nativeProbe&&req.method==='GET')return send(res,200,{ok:true,probe:localAgents.probeView(nativeProbe[1] as any)});
@@ -197,7 +201,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     close() {
       if (!closePromise) closePromise = (async () => {
         links.close();
-        await Promise.all([localAgents.close(),automation.close()]);
+        await Promise.all([builtinAgent.close(),localAgents.close(),automation.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         teamStore.close();
         owner.release();

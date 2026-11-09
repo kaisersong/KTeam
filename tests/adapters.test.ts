@@ -33,3 +33,5 @@ test('lost or malformed POST receipts remain unknown, with no automatic retries 
     await Promise.all([new Promise<void>(resolve => server.close(() => resolve())), new Promise<void>(resolve => target.close(() => resolve()))]);
   }
 });
+
+test('a stale socket gets one bounded read-only retry; mutating requests still have no replay',async()=>{let reads=0,posts=0;const server=http.createServer((req,res)=>{if(req.method==='GET'){reads++;if(reads===1){req.socket.destroy();return;}res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,rooms:[]}));}else{posts++;req.socket.destroy();}});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+(server.address()as{port:number}).port,upstream=new Upstreams({brokerUrl:url,kswarmUrl:url,brokerToken:'synthetic-credential'});try{assert.deepEqual((await upstream.listTeams()).rooms,[]);assert.equal(reads,2);await assert.rejects(upstream.sendMessage('room',{text:'one action'}),/upstream_operation_unknown/);assert.equal(posts,1);}finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}});

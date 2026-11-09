@@ -28,12 +28,20 @@ export class Upstreams {
     if ((component === 'broker' || method !== 'GET') && !token) throw new KTeamError(component + '_credential_required', 503);
     let response: Response;
     try {
-      response = await fetch((component === 'broker' ? this.brokerUrl : this.kswarmUrl) + route, {
-        method, redirect: 'error', signal: AbortSignal.timeout(10_000),
+      const signal=AbortSignal.timeout(10_000);
+      const fetchOnce=()=>fetch((component === 'broker' ? this.brokerUrl : this.kswarmUrl) + route, {
+        method, redirect: 'error', signal,
         headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
           ...(token ? { [component === 'broker' ? 'x-intent-broker-room-token' : 'x-kswarm-mutation-token']: token } : {}) },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
+      try{response=await fetchOnce();}catch(error){
+        const code=(error as {cause?:{code?:string}})?.cause?.code;
+        // Read-only requests may meet a stale keep-alive socket after sleep/restart.
+        // A mutation receipt stays unknown: never retry POST/PUT or redirects.
+        if(method!=='GET'||!['ECONNRESET','ECONNREFUSED','UND_ERR_SOCKET'].includes(code??'')||signal.aborted)throw error;
+        response=await fetchOnce();
+      }
     } catch {
       // A timeout after POST is an unknown result: caller must reuse the same request ID.
       throw new KTeamError(method === 'GET' ? component + '_unavailable' : 'upstream_operation_unknown', 503);

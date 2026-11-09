@@ -1,1 +1,1 @@
-docs/design/desktop/design-qa-native-agents.md
+docs/design/desktop/design-qa-builtin-xiaok.md

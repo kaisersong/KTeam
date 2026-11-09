@@ -4,7 +4,7 @@ import{accessSync,constants,existsSync,lstatSync,readFileSync,realpathSync,statS
 import{buildHarnessChildEnv,generationProbeArgv}from'../vendor/kswarm/runtime-capabilities.js';
 // @ts-ignore Verbatim KSwarm Kimi argv builder.
 import{buildKimiCliArgs}from'../vendor/kswarm/kimi-cli-harness.js';
-export const LOCAL_AGENTS=[{id:'xiaok-cli',label:'xiaok',bins:['xiaok','xiaok-cli']},{id:'codex',label:'Codex',bins:['codex']},{id:'kimi',label:'Kimi',bins:['kimi']},{id:'zcode',label:'ZCode',bins:['zcode']}] as const;
+export const LOCAL_AGENTS=[{id:'xiaok-cli',label:'xiaok CLI',bins:['xiaok','xiaok-cli']},{id:'codex',label:'Codex',bins:['codex']},{id:'kimi',label:'Kimi',bins:['kimi']},{id:'zcode',label:'ZCode',bins:['zcode']}] as const;
 export type LocalAgentId=typeof LOCAL_AGENTS[number]['id'];
 export const isLocalAgent=(value:unknown):value is LocalAgentId=>LOCAL_AGENTS.some(a=>a.id===value);
 export const isNativeModel=(id:string)=>id.startsWith('local-agent:');
