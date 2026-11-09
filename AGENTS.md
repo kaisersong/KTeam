@@ -1,6 +1,7 @@
 # KTeam 工程约定
 
 - 中文沟通。产品基线在 `docs/design/baseline-v5/产品设计.md`；消息协议以 `docs/reference/aimp-design-spec-v3.1.md` 为准。
+- `docs` 必须是指向 `../mydocs/kteam` 的相对软链接；文档实体只保存在同级 mydocs 仓库的 `kteam/`。新增/修改文档经此链接写入，在 mydocs 中单独检查并提交本任务范围。禁止重新创建实体 docs 目录或复制第二份；CI 先 checkout 锁定的 mydocs revision 再检查。
 - KTeam 是独立客户端和服务组合边界。逻辑 Agent/项目/任务由 KSwarm 持有；Room/成员/群转录由 intent-broker 持有。禁止另建可写名册、群转录或项目任务状态机。
 - 优先复用 xiaok 现有合同、运行器和服务。源码来源及原样复制文件的哈希进入 `sources.lock.json`；有修改的抽取代码需写明差异和验证。
 - Electron main/共享 host 持有凭据、文件、进程、后台队列；renderer 只使用白名单语义 API。不要暴露通用 HTTP/文件/子进程接口。

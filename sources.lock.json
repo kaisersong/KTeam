@@ -54,5 +54,11 @@
     "version": "v5",
     "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
     "file": "docs/design/baseline-v5/产品设计.md"
+  },
+  "documentation": {
+    "repository": "https://github.com/kaisersong/mydocs",
+    "revision": "96c905aa8187ef3dfc388809c849d8a213738673",
+    "directory": "kteam",
+    "link": "../mydocs/kteam"
   }
 }

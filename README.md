@@ -31,9 +31,11 @@ projects/
   kteam/
   kswarm/         # sources.lock.json 固定 revision
   intent-broker/  # sources.lock.json 固定 revision
+  mydocs/
+    kteam/        # 文档实体，仅在此保存
 ```
 
-先将两个 sibling 仓库 checkout 到锁定 revision，再运行：
+项目中的 `docs -> ../mydocs/kteam` 是相对软链接，文档在 mydocs 仓库独立管理。先将两个源码 sibling 仓库和 mydocs checkout 到 `sources.lock.json` 对应 revision，再运行：
 
 ```sh
 npm ci
