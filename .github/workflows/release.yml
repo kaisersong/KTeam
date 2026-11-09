@@ -1,0 +1,112 @@
+name: KTeam desktop release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and release
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  desktop:
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: kteam
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          path: kteam
+          persist-credentials: false
+      - name: Validate release identity and source pins
+        id: pins
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+          if(!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(process.env.RELEASE_TAG)||process.env.RELEASE_TAG!=='v'+pkg.version)throw Error('release_tag_version_mismatch');
+          const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
+          for(const source of lock.sources.filter(s=>['kswarm','intent-broker'].includes(s.name)))fs.appendFileSync(process.env.GITHUB_OUTPUT,source.name.replaceAll('-','_')+'='+source.revision+'\n');
+          JS
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kswarm
+          ref: ${{ steps.pins.outputs.kswarm }}
+          path: kswarm
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/intent-broker
+          ref: ${{ steps.pins.outputs.intent_broker }}
+          path: intent-broker
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: kteam/package-lock.json
+      - run: npm ci
+      - name: Build desktop and verify original assets and bundle signature
+        run: npm run pack:desktop
+      - name: Package clean versioned download and checksums
+        run: node scripts/package-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kteam-mac-arm64
+          path: |
+            kteam/release/KTeam-*-mac-arm64.zip
+            kteam/release/KTeam-*-mac-arm64-build.json
+            kteam/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: desktop
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kteam-mac-arm64
+          path: release
+      - name: Verify downloadable artifacts
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+      - name: Publish versioned preview
+        run: |
+          cat > release-notes.md <<'NOTES'
+          KTeam 多 Bot 协作桌面预览版（macOS Apple Silicon）。
+
+          - 接入六套角色头像与青松绿应用图标，统一侧栏、聊天、成员详情与首次创建。
+          - 已支持的本机 Agent 直接发现和调用；小 K 可了解团队状态，群成员可私聊澄清与协作。
+          - 保留 xiaok 平台工具、会话、记忆、精确工具确认及消息内生成式 UI。
+
+          下载 ZIP 并解压，将 KTeam.app 拖入“应用程序”。本版为 ad-hoc 签名，尚未 Apple 公证；系统阻止首次打开时，在“系统设置 → 隐私与安全性”核对来源后允许打开。使用前需在 xiaok 中配置模型及配套共享服务。当前未提供 Intel Mac、Windows 或 Linux 安装包。
+
+          SHA256SUMS 可校验安装包与构建信息；完整 harness 等量迁移的剩余差异见仓库说明。
+          NOTES
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > existing-draft.txt 2>/dev/null; then
+            test "$(cat existing-draft.txt)" = true || { echo 'Refusing to replace a published release'; exit 1; }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "KTeam $RELEASE_TAG" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" release/KTeam-*-mac-arm64.zip release/KTeam-*-mac-arm64-build.json release/SHA256SUMS --clobber
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "KTeam $RELEASE_TAG" --notes-file release-notes.md
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest --title "KTeam $RELEASE_TAG" --notes-file release-notes.md
+          fi

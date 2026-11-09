@@ -1,0 +1,24 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {extractFile} from '@electron/asar';
+
+const pkg=JSON.parse(readFileSync('package.json','utf8'));
+const tag=process.env.RELEASE_TAG??`v${pkg.version}`;
+if(!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)||tag!==`v${pkg.version}`)throw Error('release_tag_version_mismatch');
+if(process.platform!=='darwin'||process.arch!=='arm64')throw Error('release_platform_not_verified');
+const app='release/mac-arm64/KTeam.app';
+const info=JSON.parse(extractFile(`${app}/Contents/Resources/app.asar`,'build/build-info.json').toString());
+const revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+if(info.dirty||info.version!==pkg.version||info.revision!==revision)throw Error('release_build_identity_mismatch');
+if(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim())throw Error('release_worktree_dirty');
+const bundleVersion=execFileSync('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString',`${app}/Contents/Info.plist`],{encoding:'utf8'}).trim();
+if(bundleVersion!==pkg.version)throw Error('release_bundle_version_mismatch');
+execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',app],{stdio:'inherit'});
+const stem=`KTeam-${pkg.version}-mac-arm64`;
+const archive=`${stem}.zip`,metadata=`${stem}-build.json`;
+execFileSync('/usr/bin/ditto',['-c','-k','--sequesterRsrc','--keepParent',app,`release/${archive}`]);
+writeFileSync(`release/${metadata}`,JSON.stringify({...info,tag,platform:'darwin',arch:'arm64',signing:'ad-hoc',notarized:false},null,2)+'\n');
+const sums=[archive,metadata].map(name=>`${createHash('sha256').update(readFileSync(`release/${name}`)).digest('hex')}  ${name}`).join('\n')+'\n';
+writeFileSync('release/SHA256SUMS',sums);
+console.log(sums);
