@@ -1,6 +1,7 @@
 appId: com.kteam.desktop
 productName: KTeam
 electronVersion: 42.11.16
+electronDist: node_modules/electron/dist
 directories:
   output: release
 files:

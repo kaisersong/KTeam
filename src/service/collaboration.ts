@@ -42,11 +42,12 @@ export class CollaborationService {
     if (ids.some(id => !agents.some(agent => agent.id === id && !agent.archivedAt))) throw new KTeamError('agent_not_found', 404);
     return this.upstream.createTeam({ title, description: goal, memberAgentIds: ids, clientRequestKey: 'kteam:' + requestId });
   }
-  async send(value: unknown,beforeSend?:(envelope:ReturnType<typeof validateL0>)=>void) {
+  async send(value: unknown,beforeSend?:(envelope:ReturnType<typeof validateL0>)=>void,assertSnapshot?:(snapshot:any)=>Promise<unknown>|unknown) {
     const envelope = validateL0(value);
     if (envelope.from !== LOCAL_HUMAN) throw new KTeamError('sender_identity_mismatch', 403);
     await this.upstream.requireReady();
     const team = await this.upstream.getTeam(envelope.room_id);
+    await assertSnapshot?.(team);
     const allowed = new Set([LOCAL_HUMAN, ...rows(team.members).filter(m => m.status === 'active').flatMap(member => {
       const subject = record(member.subject);
       return subject.kind === 'agent' && typeof subject.logicalAgentId === 'string' ? [agentAddress(subject.logicalAgentId)] : [];
@@ -65,7 +66,7 @@ export class CollaborationService {
     const digest = intentHash(envelope);
     beforeSend?.(envelope);
     const result = await this.upstream.sendMessage(envelope.room_id, {
-      kind: 'text', text: envelope.body, threadId: envelope.thread_id,
+      expectedRoomRevision:record(team.room).revision,kind: 'text', text: envelope.body, threadId: envelope.thread_id,
       ...(replyToMessageId ? { replyToMessageId } : {}),
       contextScope: { kind: 'room_only' },
       // L0 is conversation only. No wake, assignment, execution, approval or inferred commitment.

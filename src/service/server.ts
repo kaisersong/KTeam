@@ -10,6 +10,7 @@ import { acquireOwner } from './owner.js';
 import { CollaborationService,LOCAL_HUMAN } from './collaboration.js';
 import { TeamStore } from './team-store.js';
 import { TeamAutomation } from './automation.js';
+import { TeamCoordinator } from './coordination.js';
 import { modelCatalog, modelIdentity } from '../runtime/native.js';
 import { createHash } from 'node:crypto';
 
@@ -47,7 +48,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const owner = acquireOwner(options.root);
   const collaboration = new CollaborationService(upstream);
   const teamStore = new TeamStore(options.root);
-  const automation = new TeamAutomation(upstream,teamStore,owner.epoch);
+  const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch);
+  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator);
   const instanceId = randomUUID();
   const server = http.createServer(async (req, res) => {
     try {
@@ -65,52 +67,42 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review'],
+          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
+      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
+      if(url.pathname==='/v1/creations/resume'&&req.method==='POST'){const result=await coordinator.resumeCreation(await body(req),{requestSource:'user'});return send(res,200,{...result,roomId:result.roomId??result.room?.roomId});}
+      if(url.pathname==='/v1/bootstrap'&&req.method==='POST')return send(res,200,{ok:true,...await coordinator.bootstrap({requestSource:'user'})});
+      if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
+      if(url.pathname==='/v1/proposals/accept'&&req.method==='POST'){const input=record(await body(req));if(typeof input.roomId!=='string'||typeof input.proposalId!=='string'||typeof input.expectedHash!=='string')throw new KTeamError('invalid_input');const result=await coordinator.accept(input as any,{requestSource:'user'});void automation.tick();return send(res,200,{ok:true,...result});}
       if (url.pathname === '/v1/models' && req.method === 'GET') return send(res,200,{ok:true,...await modelCatalog()});
       if (url.pathname === '/v1/bot-create' && req.method === 'POST') {
-        const input=record(await body(req));
-        if(Object.keys(input).some(key=>!['name','modelId','requestId'].includes(key))||typeof input.name!=='string'||!input.name.trim()||input.name.length>80||typeof input.modelId!=='string'||typeof input.requestId!=='string')throw new KTeamError('bot_input_invalid');
-        await upstream.requireReady();
-        const identity=await modelIdentity(input.modelId);
-        const botId='kteam-'+createHash('sha256').update(input.requestId).digest('hex').slice(0,24);
-        const previousBinding=teamStore.binding(botId);
-        if(previousBinding&&(previousBinding.modelId!==input.modelId||previousBinding.fingerprint!==identity.fingerprint))throw new KTeamError('bot_create_request_conflict',409);
-        const result=await upstream.createBot({id:botId,name:input.name.trim(),description:'KTeam 长期团队成员',runtimeType:'xiaok',runtimeSource:'desktop-agent-runtime',capabilities:[],maxConcurrentTasks:1,provisioning:{operationId:input.requestId,roleKey:'kteam-member'}});
-        if(record(result.agent).name!==input.name.trim())throw new KTeamError('bot_create_request_conflict',409);
-        const binding=previousBinding??teamStore.bind({botId,modelId:input.modelId,fingerprint:identity.fingerprint,model:identity.model,revision:1,kind:'xiaok-hosted'});
-        return send(res,201,{ok:true,bot:{id:botId,name:input.name.trim(),binding}});
+        return send(res,201,await coordinator.createMember(await body(req),{requestSource:'user'}));
       }
       if (url.pathname === '/v1/bots' && req.method === 'GET') {const result=await collaboration.bots();return send(res,200,{...result,bots:result.bots.map(bot=>({...bot,binding:teamStore.binding(String(bot.id))}))});}
       if (url.pathname === '/v1/runtimes' && req.method === 'GET') return send(res, 200, await collaboration.runtimes());
       if (url.pathname === '/v1/teams') {
-        if (req.method === 'GET') {const result=await collaboration.teams();return send(res,200,{...result,rooms:(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId))});}
+        if (req.method === 'GET') {const result=await collaboration.teams();return send(res,200,{...result,rooms:(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId)).map(room=>({...room,kind:teamStore.settings(room.roomId)?.kind??'group'}))});}
         if (req.method === 'POST') {
-          const input=record(await body(req)), result=await collaboration.createTeam(input);
-          const roomId=String(record(result.room).roomId);
-          const prior=teamStore.settings(roomId);
-          if(!prior){
-            await upstream.aimp(roomId,'configure',{goal:input.goal,expectedRevision:0,allowedActions:['discussion'],maxRuns:6});
-            teamStore.configure({roomId,goal:String(input.goal),mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
-          }
-          return send(res,201,result);
+          return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
         }
       }
       if (url.pathname === '/v1/messages' && req.method === 'POST') {
         const input=validateL0(await body(req));
         if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);
+        await coordinator.guardConversation(input.room_id);
         const managed=!!teamStore.settings(input.room_id);
-        const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);});
+        const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
         if(managed) {teamStore.completeSubmission(input.id,String(result.messageId));void automation.tick();}
         return send(res,201,result);
       }
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile|proposals)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         const membership=await upstream.membership(roomId);
+        if(req.method==='GET'&&action==='proposals')return send(res,200,{ok:true,proposals:coordinator.proposals(roomId)});
         if(req.method==='GET'&&action==='settings')return send(res,200,{ok:true,settings:teamStore.settings(roomId),seen:teamStore.seen(roomId),members:membership.members});
         if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
         if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}

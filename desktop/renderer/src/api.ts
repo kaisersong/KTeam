@@ -1,7 +1,8 @@
 export interface Bot {id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null}
-export interface Room {roomId:string;title:string;description?:string}
+export interface Room {roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string}
 export interface KTeamAPI {
+ resumeCreation(input:{id:string}):Promise<any>;inbox():Promise<any>;bootstrap():Promise<{roomId:string;botId:string}>;direct(input:{botId:string}):Promise<{roomId:string}>;proposals(roomId:string):Promise<any>;acceptProposal(input:{roomId:string;proposalId:string;expectedHash:string}):Promise<{roomId:string}>;
  status():Promise<any>;bots():Promise<{bots:Bot[]}>;teams():Promise<{rooms:Room[]}>;models():Promise<any>;runtimes():Promise<any>;
  createBot(input:{name:string;modelId:string;requestId:string}):Promise<any>;
  createTeam(input:{title:string;goal:string;memberAgentIds:string[];requestId:string}):Promise<any>;
@@ -17,7 +18,8 @@ async function dev(method:string,args:unknown[]){
  const result=await response.json();if(!response.ok||result.ok===false)throw new Error(result.code??'服务请求失败');return result;
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
-const reasons:Record<string,string>={
+const reasons:Record<string,string>={conversation_identity_changed:'会话成员或目标已变化，已暂停发送。请核对会话详情',conversation_contract_changed:'会话目标或规则已变化，请核对后重新创建方案',operation_receipt_missing:'原创建结果暂不可用，已停止后续操作，请稍后核对',proposal_expired:'组队方案已过期，请让小K重新准备',proposal_changed:'方案已变化，请刷新后确认',proposal_scope_mismatch:'方案与当前会话不一致，请重新打开原会话',operation_result_unknown:'创建结果待核对，原结果确认前不会重复创建。请稍后重试核对',operation_owner_changed:'后台已更新，请刷新后核对结果',member_identity_changed:'成员信息已变化，请让小K重新准备方案',
+
  broker_unavailable:'协作消息服务尚未连接',kswarm_unavailable:'项目与成员服务尚未连接',upstream_protocol_unavailable:'请先连接小K协作服务',
  aimp_unavailable:'当前协作服务需要升级以支持 KTeam',model_quota_exhausted:'模型额度不足，已停止本次工作',model_authentication_failed:'模型登录已失效，请在小K中更新凭据',
  credential_store_unavailable:'模型凭据暂不可用，请检查小K的凭据存储设置',team_budget_exhausted:'本次或当天调用预算已用完',model_binding_changed:'模型配置发生变化，请重新绑定后继续',

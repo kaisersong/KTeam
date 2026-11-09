@@ -1,9 +1,10 @@
 import {randomBytes} from 'node:crypto';
-export const DESKTOP_METHODS=['status','bots','teams','models','runtimes','createBot','createTeam','send','messages','settings','work','pause','resume','seen','review','reconcile'] as const;
+export const DESKTOP_METHODS=['status','bots','teams','models','runtimes','createBot','createTeam','send','messages','settings','work','pause','resume','seen','review','reconcile','bootstrap','direct','proposals','acceptProposal','inbox','resumeCreation'] as const;
 type Call=(route:string,value?:unknown)=>Promise<any>;
 const text=(value:unknown)=>{if(typeof value!=='string'||!value||value.length>32768)throw Error('invalid_input');return value;};
 const room=(value:unknown)=>encodeURIComponent(text(value));
 export function createDesktopAPI(call:Call){return {
+ resumeCreation:(input:any)=>call('/v1/creations/resume',{id:text(input.id)}),inbox:()=>call('/v1/inbox'),bootstrap:()=>call('/v1/bootstrap',{}),direct:(input:any)=>call('/v1/direct',{botId:text(input.botId)}),proposals:(id:unknown)=>call(`/v1/teams/${room(id)}/proposals`),acceptProposal:(input:unknown)=>call('/v1/proposals/accept',input),
  status:()=>call('/v1/status'),bots:()=>call('/v1/bots'),teams:()=>call('/v1/teams'),models:()=>call('/v1/models'),runtimes:()=>call('/v1/runtimes'),
  createBot:(input:unknown)=>call('/v1/bot-create',input),createTeam:(input:unknown)=>call('/v1/teams',input),
  send:(input:any)=>call('/v1/messages',{aimp:'1.0',id:input.id??'msg_'+randomBytes(16).toString('hex'),room_id:text(input.roomId),thread_id:'thread-'+text(input.roomId),from:'human://kteam.local/user.local',to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',classification:'internal',body:text(input.text)}),

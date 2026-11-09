@@ -1,9 +1,10 @@
 import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
 import {KTeamError} from '../errors.js';
+import {randomUUID} from 'node:crypto';
 
 export interface Binding {botId:string;modelId:string;fingerprint:string;model:string;revision:number;kind:'xiaok-hosted'}
-export interface TeamSettings {roomId:string;goal:string;mode:'auto'|'mentions';paused:boolean;quiet:boolean;revision:number;maxRuns:number;dailyCalls:number}
+export interface TeamSettings {roomId:string;goal:string;mode:'auto'|'mentions';paused:boolean;quiet:boolean;revision:number;maxRuns:number;dailyCalls:number;kind?:'assistant'|'direct'|'group'}
 export class TeamStore {
  private db:DatabaseSync;
  constructor(root:string){
@@ -13,8 +14,28 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS team_jobs(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,origin_id TEXT NOT NULL,state TEXT NOT NULL,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_call_budgets(day TEXT PRIMARY KEY,calls INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS team_seen(room_id TEXT NOT NULL,sequence INTEGER NOT NULL,PRIMARY KEY(room_id,sequence));
-   CREATE TABLE IF NOT EXISTS team_outbox(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,intent_hash TEXT NOT NULL,envelope_json TEXT,state TEXT NOT NULL,origin_id TEXT);`);
+   CREATE TABLE IF NOT EXISTS team_outbox(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,intent_hash TEXT NOT NULL,envelope_json TEXT,state TEXT NOT NULL,origin_id TEXT);
+   CREATE TABLE IF NOT EXISTS product_state(key TEXT PRIMARY KEY,value_json TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS product_operations(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,value_json TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS team_proposals(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,run_id TEXT NOT NULL,reply_id TEXT,value_json TEXT NOT NULL);`);
  }
+ state<T=any>(key:string):T|null{const row=this.db.prepare('SELECT value_json FROM product_state WHERE key=?').get(key);return row?JSON.parse(String(row.value_json)):null;}
+ stateOnce(key:string,value:unknown){this.db.prepare('INSERT OR IGNORE INTO product_state VALUES(?,?)').run(key,JSON.stringify(value));return this.state(key);}
+ installationId():string{return this.stateOnce('installation-id',randomUUID()) as string;}
+ operations():any[]{return this.db.prepare('SELECT value_json FROM product_operations ORDER BY rowid DESC LIMIT 100').all().map(row=>JSON.parse(String(row.value_json)));}
+ operation(id:string):any{const row=this.db.prepare('SELECT value_json FROM product_operations WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
+ saveOperation(value:any,expectedRevision:number){
+  const next={...value,revision:expectedRevision+1};
+  if(expectedRevision===0){const result=this.db.prepare('INSERT OR IGNORE INTO product_operations VALUES(?,?,?)').run(value.id,next.revision,JSON.stringify(next));if(result.changes!==1)throw new KTeamError('operation_conflict',409);}
+  else if(this.db.prepare('UPDATE product_operations SET revision=?,value_json=? WHERE id=? AND revision=?').run(next.revision,JSON.stringify(next),value.id,expectedRevision).changes!==1)throw new KTeamError('operation_conflict',409);
+  return next;
+ }
+ proposal(id:string):any{const row=this.db.prepare('SELECT value_json FROM team_proposals WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
+ proposalForRun(runId:string):any{const row=this.db.prepare('SELECT value_json FROM team_proposals WHERE run_id=? ORDER BY rowid LIMIT 1').get(runId);return row?JSON.parse(String(row.value_json)):null;}
+ saveProposal(value:any){const previous=this.proposal(value.id);if(previous&&previous.hash!==value.hash)throw new KTeamError('proposal_changed',409);this.db.prepare('INSERT OR IGNORE INTO team_proposals VALUES(?,?,?,NULL,?)').run(value.id,value.roomId,value.runId,JSON.stringify(value));return previous??value;}
+ proposals(roomId?:string):any[]{return this.db.prepare('SELECT value_json,reply_id FROM team_proposals '+(roomId?'WHERE room_id=? ':'')+'ORDER BY rowid DESC LIMIT 100').all(...(roomId?[roomId]:[])).map(row=>({...JSON.parse(String(row.value_json)),replyId:row.reply_id??null}));}
+ attachProposals(runId:string,messageId:string){this.db.prepare('UPDATE team_proposals SET reply_id=? WHERE run_id=? AND reply_id IS NULL').run(messageId,runId);}
+ proposalsForMessage(messageId:string):any[]{return this.db.prepare('SELECT value_json FROM team_proposals WHERE reply_id=?').all(messageId).map(row=>JSON.parse(String(row.value_json)));}
  binding(botId:string):Binding|null{const row=this.db.prepare('SELECT value_json FROM bot_bindings WHERE bot_id=?').get(botId);return row?JSON.parse(String(row.value_json)):null;}
  bind(value:Binding){this.db.prepare('INSERT INTO bot_bindings VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET value_json=excluded.value_json').run(value.botId,JSON.stringify(value));return value;}
  settings(roomId:string):TeamSettings|null{const row=this.db.prepare('SELECT value_json FROM team_settings WHERE room_id=?').get(roomId);return row?JSON.parse(String(row.value_json)):null;}

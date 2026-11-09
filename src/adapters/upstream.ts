@@ -69,10 +69,10 @@ export class Upstreams {
       this.request('broker', '/rooms/workspace-protocol'), this.request('kswarm', '/health'),
     ]);
     const summarize = (result: PromiseSettledResult<Record<string, unknown>>) => result.status === 'fulfilled'
-      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value) }
+      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
       : { available: false, workspaceProtocol: false, reason: result.reason instanceof KTeamError ? result.reason.code : 'upstream_unavailable' };
     const b = summarize(broker), k = summarize(kswarm);
-    return { broker: b, kswarm: k, ready: b.workspaceProtocol && k.workspaceProtocol };
+    return { broker: b, kswarm: k, ready: b.workspaceProtocol && b.messageRevisionCAS && k.workspaceProtocol };
   }
   async requireReady(): Promise<void> {
     const status = await this.probe();

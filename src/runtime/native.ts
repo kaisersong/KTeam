@@ -2,13 +2,14 @@ import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {KTeamError} from '../errors.js';
+import {calendarWindow} from './calendar.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
 
-const requestBudget=new AsyncLocalStorage<{origin:string;before:()=>void}>();
+const requestBudget=new AsyncLocalStorage<{origin:string;before:()=>void|Promise<void>}>();
 const nativeFetch=globalThis.fetch;
-globalThis.fetch=(input,init)=>{
+globalThis.fetch=async(input,init)=>{
  const url=typeof input==='string'||input instanceof URL?new URL(input):new URL(input.url);
- const budget=requestBudget.getStore();if(budget&&url.origin===budget.origin)budget.before();
+ const budget=requestBudget.getStore();if(budget&&url.origin===budget.origin)await budget.before();
  return nativeFetch(input,init);
 };
 
@@ -29,7 +30,7 @@ export async function modelIdentity(modelId:string){
  const binding=core.resolveRuntimeModelBinding(frozen);
  return {core,adapter,origin:new URL(binding.baseUrl).origin,model:adapter.getModelName(),fingerprint:hash({modelId,providerId:binding.providerId,protocol:binding.protocol,baseUrl:binding.baseUrl,wireModel:binding.wireModel,runtimeOptions:binding.runtimeOptions})};
 }
-export async function nativeTurn(input:{modelId:string;fingerprint?:string;system:string;prompt:string;signal:AbortSignal;onText?:(text:string)=>void;onRequest?:()=>void;tools?:any[];maxIterations?:number}){
+export async function nativeTurn(input:{modelId:string;fingerprint?:string;system:string;prompt:string;signal:AbortSignal;onText?:(text:string)=>void;onRequest?:()=>void|Promise<void>;tools?:any[];maxIterations?:number}){
  const {core,adapter,model,fingerprint,origin}=await modelIdentity(input.modelId);
  if(input.fingerprint&&input.fingerprint!==fingerprint)throw new KTeamError('model_binding_changed',409);
  const tools=input.tools??[];
@@ -37,10 +38,11 @@ export async function nativeTurn(input:{modelId:string;fingerprint?:string;syste
  let text='',usage={inputTokens:0,outputTokens:0},failure:Error|undefined,completed=false;
  const budgetAbort=new AbortController();let budgetFailure:unknown;
  const signal=AbortSignal.any([input.signal,budgetAbort.signal]);
- const time=`当前主机时间：${new Date().toISOString()}；用户时区：${Intl.DateTimeFormat().resolvedOptions().timeZone}。自然周为周一至周日，周日仍属于本周。`;
+ const calendar=calendarWindow();
+ const time=`当前主机时间：${new Date().toISOString()}。用户时区：${calendar.timeZone}。今天是${calendar.today}（${calendar.weekday}）。本周明确为${calendar.weekStart}至${calendar.weekEnd}，上周为${calendar.lastWeekStart}至${calendar.lastWeekEnd}。自然周为周一至周日，周日仍属于本周。用户说本周即使用上述本周日期，不自行改成上周，也不要求用户二选一。`;
  const runtime=new core.AgentRuntime({adapter,registry,session:new core.AgentSessionState(),controller:new core.AgentRunController(),systemPrompt:time+'\n'+input.system,maxIterations:input.maxIterations??3});
  try{
-  await requestBudget.run({origin,before:()=>{try{input.onRequest?.();}catch(error){budgetFailure=error;budgetAbort.abort(error);throw error;}}},()=>runtime.run(input.prompt,(event:any)=>{
+  await requestBudget.run({origin,before:async()=>{try{await input.onRequest?.();}catch(error){budgetFailure=error;budgetAbort.abort(error);throw error;}}},()=>runtime.run(input.prompt,(event:any)=>{
    if(event.type==='assistant_text'){text+=event.delta;input.onText?.(text);}
    if(event.type==='usage_updated')usage={inputTokens:Math.max(0,event.usage.inputTokens??0),outputTokens:Math.max(0,event.usage.outputTokens??0)};
    if(event.type==='run_failed')failure=event.error;
