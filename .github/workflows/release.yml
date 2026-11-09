@@ -56,8 +56,17 @@ jobs:
           cache: npm
           cache-dependency-path: kteam/package-lock.json
       - run: npm ci
-      - name: Build desktop and verify original assets and bundle signature
-        run: npm run pack:desktop
+      - name: Build desktop and verify original assets
+        run: npm run build:desktop
+      - name: Package and sign from an isolated working directory
+        run: |
+          # osx-sign discovers provisioning profiles by stat-ing cwd entries.
+          # Private docs remain a symlink; signing must not traverse that workspace.
+          mkdir -p .artifacts/signing-cwd
+          cd .artifacts/signing-cwd
+          CSC_IDENTITY_AUTO_DISCOVERY=false node ../../node_modules/electron-builder/out/cli/cli.js --projectDir ../.. --config electron-builder.yml --mac dir --arm64 --publish never
+          cd ../..
+          node scripts/verify-desktop-signature.mjs
       - name: Package clean versioned download and checksums
         run: node scripts/package-release.mjs
       - uses: actions/upload-artifact@v4
