@@ -33,3 +33,5 @@
 .onboarding-bot-preview .avatar{width:80px;height:80px;margin:0 auto 12px}
 .onboarding-hero:has(.onboarding-bot-preview)>img{display:none}
 .bot-identity .avatar{width:64px;height:64px}
+
+.private-wait-note{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;margin:14px 0;border:1px solid #d7dfcb;background:#f2f5ec;border-radius:12px;color:#4c6247;font-size:13px}.private-wait-note button{flex-shrink:0}@media(max-width:600px){.private-wait-note{align-items:flex-start;flex-direction:column}}

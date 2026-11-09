@@ -7,6 +7,6 @@ const plugins=[remarkGfm];
 export const Markdown=memo(function Markdown({text}:{text:string}){
  return <ReactMarkdown remarkPlugins={plugins} skipHtml components={{
   img:({alt})=><span className="muted">[图片：{alt??'未加载'}]</span>,
-  a:({children,href})=><span className="source-link">{children}{href&&<small>（{href}）</small>}</span>,
+  a:({children,href})=><span className="source-link">{children}{href&&!(typeof children==='string'&&/^(?:https?:\/\/|www\.)/.test(children))&&<small>（{href}）</small>}</span>,
  }}>{text}</ReactMarkdown>;
 });

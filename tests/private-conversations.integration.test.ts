@@ -57,3 +57,20 @@ test('pausing the source group cancels an executing peer consultation and stops 
 });
 
 test('original xiaok triage runs with the real background budget and creates one assistant message job per source change',async()=>{const f=await setup();let calls=0;const assistant=new TeamAssistant(f.upstream,f.store,async input=>{calls++;await input.onRequest?.();return {text:JSON.stringify(JSON.parse(input.prompt).map((r:any)=>({sourceKey:r.key,priority:'now',reason:'团队遇到需要决策的事项',nextStep:'请确认验收范围'}))),model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});try{const scope=await admission(f,f.a.bot.id);await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'验收范围需要用户确认'});await assistant.scan();assert.equal(calls,1,JSON.stringify(f.store.state('assistant-scan-health')));assert.equal(f.store.jobs(f.master.roomId).filter(j=>j.trigger==='assistant-notice').length,1);await assistant.scan();assert.equal(calls,1);assert.equal(f.store.jobs(f.master.roomId).length,1);}finally{await assistant.close();await f.close();}});
+
+test('peer consultation receives the original group request but never another private conversation',async()=>{
+ const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{
+  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'请核实 Claude Duet，不要替换为 Claude Code',wait:false}));
+  await f.upstream.sendMessage(f.b.roomId,{text:'PRIVATE_NOT_SOURCE_CONTEXT_55',kind:'text',threadId:'private',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});
+  const job=f.store.jobs(receipt.roomId)[0],context=await chats.sourceContext(job);
+  assert.equal(context?.roomId,f.roomId);assert.equal(context?.title,'产品团队');assert.equal(context?.userMessage.text,'查看KTeam源码并与团队协作');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_NOT_SOURCE_CONTEXT_55/);
+  f.store.pause(f.roomId);await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
+ }finally{chats.close();await f.close();}
+});
+test('peer source context is rejected if membership is revoked while its messages are being read',async()=>{
+ const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{
+  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'核对来源',wait:false})),job=f.store.jobs(receipt.roomId)[0],get=f.upstream.getTeam.bind(f.upstream);
+  f.upstream.getTeam=async(roomId:string)=>{const result=await get(roomId);if(roomId===f.roomId){const changed=f.broker.room.updateRoomMembers({roomId,removeAgentIds:[f.b.bot.id]},{sessionId:'revoke-read',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(changed.ok,true);}return result;};
+  await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
+ }finally{chats.close();await f.close();}
+});
