@@ -12,7 +12,7 @@ const locked=app.requestSingleInstanceLock();
 if(!locked)app.quit();
 let window:BrowserWindow|undefined;
 const root=dataRoot();
-const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
+const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
 function resources(){return app.getAppPath().endsWith('.asar')?app.getAppPath()+'.unpacked':app.getAppPath();}
 async function ensureHost(){
  if(!existsSync(join(root,'config.json'))){
@@ -25,7 +25,7 @@ async function ensureHost(){
  }
  const output=openSync(join(root,'host.log'),'a',0o600);
  let child;
- try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','xiaok-runtime.mjs')}});}finally{closeSync(output);}
+ try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','xiaok-runtime.mjs')}});}finally{closeSync(output);}
  child.unref();
  const deadline=Date.now()+15000;
  let failed:Error|undefined;child.once('error',error=>{failed=error;});

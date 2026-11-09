@@ -18,3 +18,5 @@ Their local source packages are development-only integration dependencies.
 
 AIMP 3.1 and the product design baseline were supplied by the project owner.
 Their original text, test-vector provenance and review limitations are retained.
+
+KTeam direct local Agent integration reuses source-pinned KSwarm runtime-capabilities.js, kimi-cli-harness.js and pi-cli-harness.js (Apache-2.0), and the existing Intent Broker participant registration protocol. Native CLI programs remain separately installed and retain their own licenses and configuration.

@@ -16,7 +16,7 @@
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
-      "revision": "4483c65330e92eca052649fc4bbb969d6f05f049",
+      "revision": "1c3a477c6ecc729e8848b117961482ba9a9fba96",
       "usage": "existing authoritative service; linked source for isolated integration tests"
     }
   ],
@@ -33,6 +33,27 @@
       "source": "xiaok-cli",
       "upstreamPath": "desktop/shared/room-external-discussion.ts",
       "sha256": "4f6e36af95856ab95668b360e779a375e09ca914f982141f01fcaf0b5162f83d",
+      "modified": false
+    },
+    {
+      "file": "src/vendor/kswarm/runtime-capabilities.js",
+      "source": "kswarm",
+      "upstreamPath": "src/core/runtime-capabilities.js",
+      "sha256": "2a3abbd5f0f70f57d265b5de4936e2ff9f4f74395ad6aab1646d0ea5e19903f1",
+      "modified": false
+    },
+    {
+      "file": "src/vendor/kswarm/pi-cli-harness.js",
+      "source": "kswarm",
+      "upstreamPath": "src/core/pi-cli-harness.js",
+      "sha256": "e3805192101daef32a72494a1c2d8317b283c854971b4661735728d31d584e76",
+      "modified": false
+    },
+    {
+      "file": "src/vendor/kswarm/kimi-cli-harness.js",
+      "source": "kswarm",
+      "upstreamPath": "src/core/kimi-cli-harness.js",
+      "sha256": "85bab1c4660bb99f5215dd8f03ff65ed714931097e7c5509cfb8839d9366d337",
       "modified": false
     }
   ],
@@ -57,7 +78,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "860f72ac055c1d009d34858d4d343288da72f5e5",
+    "revision": "7b51bf2135c9634ed5123c099a62984ca60b2dce",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

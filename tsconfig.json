@@ -4,7 +4,7 @@
     "rootDir": ".", "outDir": "dist", "strict": true,
     "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": false,
     "esModuleInterop": true, "skipLibCheck": true, "sourceMap": true,
-    "declaration": true, "types": ["node"]
+    "allowJs":true,"checkJs":false,"declaration": true, "types": ["node"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/vendor/kswarm/*.js", "tests/**/*.ts"]
 }

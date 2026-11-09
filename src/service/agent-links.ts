@@ -6,7 +6,7 @@ import {TeamStore} from './team-store.js';
 import {TeamCoordinator} from './coordination.js';
 import {modelIdentity} from '../runtime/native.js';
 import {CollaborationService} from './collaboration.js';
-export const AGENT_DRIVERS=['xiaok','codex','kimi','zcode'] as const;
+export const AGENT_DRIVERS=['xiaok','codex','kimi','zcode','other'] as const;
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const same=(a:string,b:string)=>a.length===b.length&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 export interface AgentCredential{id:string;token:string}

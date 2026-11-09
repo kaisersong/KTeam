@@ -1,1 +1,1 @@
-docs/design/desktop/design-qa-onboarding.md
+docs/design/desktop/design-qa-native-agents.md

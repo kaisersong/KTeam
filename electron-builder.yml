@@ -17,6 +17,7 @@ extraResources:
 asar: true
 asarUnpack:
   - build/host.cjs
+  - build/native-child.cjs
   - build/agent-cli.cjs
   - build/shared/**
   - node_modules/**

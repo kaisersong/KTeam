@@ -3,7 +3,7 @@ import {join} from 'node:path';
 import {KTeamError} from '../errors.js';
 import {randomUUID} from 'node:crypto';
 
-export interface Binding {botId:string;modelId:string;fingerprint:string;model:string;revision:number;kind:'xiaok-hosted'}
+export interface Binding {botId:string;modelId:string;fingerprint:string;model:string;revision:number;kind:'xiaok-hosted'|'local-native'}
 export interface TeamSettings {roomId:string;goal:string;mode:'auto'|'mentions';paused:boolean;quiet:boolean;revision:number;maxRuns:number;dailyCalls:number;kind?:'assistant'|'direct'|'group';delivery?:'external-agent';goalConfirmed?:boolean;lastGoalOperation?:string}
 export class TeamStore {
  private db:DatabaseSync;private transactionDepth=0;
@@ -22,6 +22,7 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS agent_reply_outbox(id TEXT PRIMARY KEY,link_id TEXT NOT NULL,room_id TEXT NOT NULL,hash TEXT NOT NULL,state TEXT NOT NULL,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_proposals(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,run_id TEXT NOT NULL,reply_id TEXT,value_json TEXT NOT NULL);`);
  }
+ stateEntries(prefix:string){return this.db.prepare('SELECT key,value_json FROM product_state WHERE substr(key,1,?)=?').all(prefix.length,prefix).map(r=>({key:String(r.key),value:JSON.parse(String(r.value_json))}));}
  resetSourceGates(){this.db.prepare("UPDATE product_state SET value_json='null' WHERE substr(key,1,16)='source-changing:'").run();}
  setState(key:string,value:unknown){this.db.prepare('INSERT INTO product_state VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json').run(key,JSON.stringify(value));}
  agentDelivery(botId:string,roomId:string,originId:string){this.db.prepare('INSERT INTO agent_deliveries VALUES(?,?,?,1) ON CONFLICT(bot_id,room_id,origin_id) DO UPDATE SET reads=reads+1').run(botId,roomId,originId);return Number(this.db.prepare('SELECT reads FROM agent_deliveries WHERE bot_id=? AND room_id=? AND origin_id=?').get(botId,roomId,originId)?.reads??0);}

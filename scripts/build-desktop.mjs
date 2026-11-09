@@ -6,6 +6,7 @@ execFileSync(process.execPath,['scripts/build-runtime.mjs'],{stdio:'inherit'});
 writeFileSync('build/build-info.json',JSON.stringify({version:JSON.parse(readFileSync('package.json','utf8')).version,revision:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty:!!execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim(),builtAt:new Date().toISOString()},null,2));
 const common={bundle:true,platform:'node',target:'node22',format:'cjs',packages:'bundle',external:['electron','@napi-rs/keyring','better-sqlite3','onnxruntime-node','node-pty','nodejieba']};
 await build({...common,entryPoints:{main:'desktop/main.ts',preload:'desktop/preload.ts'},outdir:'build',outExtension:{'.js':'.cjs'}});
+await build({...common,entryPoints:['src/runtime/native-child.ts'],outfile:'build/native-child.cjs'});
 await build({...common,entryPoints:['src/agent-cli.ts'],outfile:'build/agent-cli.cjs'});
 await build({...common,entryPoints:['desktop/host-entry.ts'],outfile:'build/host.cjs'});
 execFileSync(process.execPath,['node_modules/vite/bin/vite.js','build','--config','desktop/vite.config.ts'],{stdio:'inherit'});

@@ -11,6 +11,8 @@ import { CollaborationService,LOCAL_HUMAN } from './collaboration.js';
 import { TeamStore } from './team-store.js';
 import { TeamAutomation } from './automation.js';
 import {saveBotProfile} from './bot-profile.js';
+import {LocalAgents} from './local-agents.js';
+import {isNativeModel} from '../runtime/local-agents.js';
 import { AgentLinks,type AgentCredential } from './agent-links.js';
 import { OnboardingService } from './onboarding.js';
 import { TeamCoordinator } from './coordination.js';
@@ -51,8 +53,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const owner = acquireOwner(options.root);
   const collaboration = new CollaborationService(upstream);
   const teamStore = new TeamStore(options.root);
-  const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch);
-  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator);
+  const localAgents=new LocalAgents(options.root,teamStore,upstream);
+  const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
+  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents);
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
@@ -90,20 +93,25 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link'],
+          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
+      if(url.pathname==='/v1/local-agents'&&req.method==='GET')return send(res,200,await localAgents.catalog());
+      if(url.pathname==='/v1/local-agents/probe'&&req.method==='POST')return send(res,202,{ok:true,probe:await localAgents.startProbe(await body(req))});
+      const nativeProbe=/^\/v1\/local-agents\/(xiaok-cli|codex|kimi|zcode)\/probe$/.exec(url.pathname);if(nativeProbe&&req.method==='GET')return send(res,200,{ok:true,probe:localAgents.probeView(nativeProbe[1] as any)});
+      if(url.pathname==='/v1/local-agents/bind'&&req.method==='POST'){const input=record(await body(req));if(typeof input.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(input.botId,()=>localAgents.bind(input,links)));}
+      if(url.pathname==='/v1/local-agents/create'&&req.method==='POST')return send(res,201,await localAgents.create(await body(req),coordinator));
       if(url.pathname==='/v1/onboarding'&&req.method==='GET')return send(res,200,{ok:true,onboarding:onboarding.snapshot()});
       if(url.pathname==='/v1/onboarding'&&req.method==='POST')return send(res,200,{ok:true,onboarding:onboarding.update(await body(req))});
       if(url.pathname==='/v1/onboarding/create'&&req.method==='POST')return send(res,201,{ok:true,...await onboarding.create(await body(req))});
       if(url.pathname==='/v1/onboarding/finish'&&req.method==='POST')return send(res,200,{ok:true,onboarding:await onboarding.finish(await body(req))});
       if(url.pathname==='/v1/agent-links'&&req.method==='GET')return send(res,200,{ok:true,connections:links.list()});
-      if(url.pathname==='/v1/agent-links'&&req.method==='POST')return send(res,201,{ok:true,connection:await links.invite(await body(req)),dataRoot:options.root});
+      if(url.pathname==='/v1/agent-links'&&req.method==='POST'){const input=record(await body(req));if(input.driver!=='other')throw new KTeamError('native_known_requires_direct',409);return send(res,201,{ok:true,connection:await links.invite(input),dataRoot:options.root});}
       const linkRoute=/^\/v1\/agent-links\/(invite-[a-f0-9]{32})\/(status|approve|revoke)$/.exec(url.pathname);
       if(linkRoute){const id=linkRoute[1]!,action=linkRoute[2];if(action==='status'&&req.method==='GET')return send(res,200,{ok:true,connection:links.view(id),dataRoot:options.root});if(action==='approve'&&req.method==='POST'){const value=record(await body(req));if(Object.keys(value).some(k=>k!=='expectedHash'))throw new KTeamError('unknown_field');const current=links.view(id) as any;const op=teamStore.operation('agent-link:'+id);const activate=()=>links.approve({id,expectedHash:value.expectedHash});return send(res,200,{ok:true,connection:op.existingBotId?await changeSource(op.existingBotId,activate):await activate()});}if(action==='revoke'&&req.method==='POST')return send(res,200,{ok:true,connection:await links.revoke(id)});}
-      if(url.pathname==='/v1/bot-profile'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');await automation.quiesceBot(value.botId);return send(res,200,await saveBotProfile(upstream,teamStore,value));}
+      if(url.pathname==='/v1/bot-profile'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(value.botId,()=>saveBotProfile(upstream,teamStore,value)));}
       if(url.pathname==='/v1/bot-source'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(value.botId,()=>links.useSystem(value)));}
       if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
       if(url.pathname==='/v1/creations/resume'&&req.method==='POST'){const result=await coordinator.resumeCreation(await body(req),{requestSource:'user'});return send(res,200,{...result,roomId:result.roomId??result.room?.roomId});}
@@ -189,7 +197,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     close() {
       if (!closePromise) closePromise = (async () => {
         links.close();
-        await automation.close();
+        await Promise.all([localAgents.close(),automation.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         teamStore.close();
         owner.release();
