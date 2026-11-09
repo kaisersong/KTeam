@@ -28,22 +28,22 @@ export function localArgs(id:LocalAgentId,prompt:string,options:{sessionId?:stri
  if(id==='zcode')return ['--prompt',prompt,'--json','--mode',readonly||probe?'plan':'build',...(sessionId?['--resume',sessionId]:[])];
  return ['chat','--json',...(probe||readonly?['--dry-run']:[]),...(sessionId?['--resume',sessionId]:[]),prompt];
 }
-export interface NativeOutput{text:string;sessionId?:string;model?:string;usage:{inputTokens:number;outputTokens:number};toolCalls?:unknown[]}
+export interface NativeOutput{text:string;sessionId?:string;model?:string;usage:{inputTokens:number;outputTokens:number};toolCalls?:unknown[];usageReported?:boolean}
 export function parseNativeOutput(id:LocalAgentId,result:ProcessResult):NativeOutput{
  if(result.code!==0)throw new KTeamError(nativeFailure(result),503);
  const values:any[]=[];try{values.push(JSON.parse(result.stdout.trim()));}catch{for(const line of result.stdout.split('\n')){try{values.push(JSON.parse(line));}catch{/* Native diagnostics are not assistant messages. */}}}
- let text='',sessionId:string|undefined,model:string|undefined,usage={inputTokens:0,outputTokens:0},toolCalls:unknown[]=[];
+ let text='',sessionId:string|undefined,model:string|undefined,usage={inputTokens:0,outputTokens:0},toolCalls:unknown[]=[],usageReported=false;
  for(const v of values){sessionId??=v.thread_id??v.session_id??v.sessionId;model??=v.model??v.message?.model;
   if(v.type==='item.completed'&&v.item?.type==='agent_message')text=String(v.item.text??'');
   if(v.role==='assistant'&&typeof v.content==='string')text=v.content;
   if(v.type==='assistant'&&v.message?.content)text=v.message.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join('\n');
   if(v.type==='result'&&typeof v.result==='string')text=v.result;
   if(typeof v.text==='string'&&(!v.type||v.type==='result'))text=v.text;
-  const u=v.usage??v.message?.usage;if(u)usage={inputTokens:Number(u.inputTokens??u.input_tokens??u.input_tokens_total??0),outputTokens:Number(u.outputTokens??u.output_tokens??0)};
+  const u=v.usage??v.message?.usage;if(u){usageReported=true;usage={inputTokens:Number(u.inputTokens??u.input_tokens??u.input_tokens_total??0),outputTokens:Number(u.outputTokens??u.output_tokens??0)};}
   if(Array.isArray(v.tool_calls))toolCalls.push(...v.tool_calls);if(v.type==='item.completed'&&['command_execution','file_change','mcp_tool_call','web_search'].includes(v.item?.type))toolCalls.push(v.item);if(v.type==='assistant'&&Array.isArray(v.message?.content))toolCalls.push(...v.message.content.filter((b:any)=>b.type==='tool_use'));if(v.role==='tool'||v.type==='tool_use')toolCalls.push(v);
   if(v.type==='turn.failed'||v.type==='error'||v.is_error===true)throw new KTeamError(nativeFailure(result),503);
  }
  if(!text.trim())throw new KTeamError('native_response_invalid',502);
  if(sessionId&&(typeof sessionId!=='string'||!/^[A-Za-z0-9_-]{8,160}$/.test(sessionId)))throw new KTeamError('native_session_invalid',502);
- return {text:text.trim(),sessionId,model,usage,toolCalls};
+ return {text:text.trim(),sessionId,model,usage,toolCalls,usageReported};
 }

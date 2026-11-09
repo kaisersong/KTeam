@@ -20,7 +20,7 @@ test('concurrent bootstrap is durable and creates one coordinator and one conver
  const f=await realUpstreams(),store=new TeamStore(f.root);const c=new TeamCoordinator(f.upstream,store,1,models);
  try{const refs=await Promise.all(Array.from({length:8},()=>c.bootstrap(user)));assert.equal(new Set(refs.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listTeams()).rooms.length,1);assert.equal((await f.upstream.listBots()).agents.filter((b:any)=>b.id===refs[0]!.botId).length,1);const restarted=new TeamCoordinator(f.upstream,store,2,models);assert.equal((await restarted.bootstrap(user)).roomId,refs[0]!.roomId);await assert.rejects(c.bootstrap({requestSource:'agent'} as any),/user_action_required/);}finally{store.close();await f.close();}
 });
-test('proposal does not create entities; explicit scoped hash acceptance creates one draft group and waits for a confirmed goal',async()=>{
+test('proposal does not create entities; explicit scoped hash acceptance creates one quiet group with evolving shared notes',async()=>{
  const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
  try{
   const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref);const before=(await f.upstream.listBots()).agents.length;
@@ -30,7 +30,7 @@ test('proposal does not create entities; explicit scoped hash acceptance creates
   await assert.rejects(c.accept({roomId:'another-room',proposalId:proposal.id,expectedHash:proposal.hash},user),/proposal_scope_mismatch/);
   const results=await Promise.all(Array.from({length:5},()=>c.accept({roomId:ref.roomId,proposalId:proposal.id,expectedHash:proposal.hash},user)));
   assert.equal(new Set(results.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listBots()).agents.length,before+2);assert.equal((await f.upstream.listTeams()).rooms.length,2);
-  const draft=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(draft.messages.length,0);assert.equal(store.jobs(results[0]!.roomId).length,0);await c.editGroup({roomId:results[0]!.roomId,goal:'确认本周资料缺口',start:true,requestId:'confirm-proposed-goal'});const history=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(history.messages.length,1);assert.equal(history.messages[0].text,'确认本周资料缺口');assert.equal(store.jobs(results[0]!.roomId).length,1);
+  const draft=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(draft.messages.length,0);assert.equal(store.jobs(results[0]!.roomId).length,0);const data=await f.upstream.conversationData(results[0]!.roomId);assert.match(data.shared.text,/确认本周资料缺口/);assert.equal(data.shared.revision,1);assert.equal(store.jobs(results[0]!.roomId).length,0);
  }finally{store.close();await f.close();}
 });
 test('unknown unconfirmed creation is not replayed; frozen model changes reject new side effects',async()=>{

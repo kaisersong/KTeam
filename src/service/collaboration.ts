@@ -55,11 +55,13 @@ export class CollaborationService {
     if ([...envelope.to, ...envelope.mentions].some(id => !allowed.has(id))) throw new KTeamError('recipient_not_member', 403);
     let replyToMessageId: unknown;
     if (envelope.reply_to) {
-      const target = rows(team.messages).find(message => {
+      let target = rows(team.messages).find(message => {
+        if(message.messageId===envelope.reply_to)return true;
         if (!message.sourceRef) return false;
         const ref = record(message.sourceRef);
         return ref.kind === 'aimp_l0' && ref.envelope && record(ref.envelope).id === envelope.reply_to;
       });
+      if(!target){try{target=record((await this.upstream.conversationMessage(envelope.room_id,String(envelope.reply_to))).message);}catch{throw new KTeamError('reply_message_not_found',404);}}
       if (!target) throw new KTeamError('reply_message_not_found', 404);
       replyToMessageId = target.messageId;
     }
@@ -84,7 +86,7 @@ export class CollaborationService {
     const result = await this.upstream.messages(roomId, after, limit,before,tail);
     return { ...result, messages: rows(result.messages).map(message => ({
       messageId: message.messageId, roomId: message.roomId, threadId: message.threadId,
-      sender: message.sender, text: message.text, roomSequence: message.roomSequence, createdAt: message.createdAt,
+      sender: message.sender, text: message.text, replyToMessageId:message.replyToMessageId, roomSequence: message.roomSequence, createdAt: message.createdAt,
       ...(message.sourceRef && record(message.sourceRef).kind === 'aimp_l0'
         ? { envelope: record(message.sourceRef).envelope } : { protocol: 'legacy_display_only' }),
       ...(message.sourceRef&&record(message.sourceRef).kind==='external_agent_reply'?{externalSource:{driver:record(message.sourceRef).driver,verifiedExecution:false}}:{}),

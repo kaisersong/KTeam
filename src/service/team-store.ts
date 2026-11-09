@@ -21,6 +21,7 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS agent_deliveries(bot_id TEXT NOT NULL,room_id TEXT NOT NULL,origin_id TEXT NOT NULL,reads INTEGER NOT NULL,PRIMARY KEY(bot_id,room_id,origin_id));
    CREATE TABLE IF NOT EXISTS agent_reply_outbox(id TEXT PRIMARY KEY,link_id TEXT NOT NULL,room_id TEXT NOT NULL,hash TEXT NOT NULL,state TEXT NOT NULL,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_proposals(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,run_id TEXT NOT NULL,reply_id TEXT,value_json TEXT NOT NULL);`);
+  this.db.prepare("UPDATE team_jobs SET state='noop',value_json=json_set(value_json,'$.state','noop','$.reason','legacy_goal_gate_retired') WHERE state='awaiting_goal'").run();
  }
  stateEntries(prefix:string){return this.db.prepare('SELECT key,value_json FROM product_state WHERE substr(key,1,?)=?').all(prefix.length,prefix).map(r=>({key:String(r.key),value:JSON.parse(String(r.value_json))}));}
  resetSourceGates(){this.db.prepare("UPDATE product_state SET value_json='null' WHERE substr(key,1,16)='source-changing:'").run();}
@@ -63,7 +64,7 @@ export class TeamStore {
  bind(value:Binding){this.db.prepare('INSERT INTO bot_bindings VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET value_json=excluded.value_json').run(value.botId,JSON.stringify(value));return value;}
  settings(roomId:string):TeamSettings|null{const row=this.db.prepare('SELECT value_json FROM team_settings WHERE room_id=?').get(roomId);return row?JSON.parse(String(row.value_json)):null;}
  configure(value:TeamSettings,expectedRevision:number){const previous=this.settings(value.roomId);if((previous?.revision??0)!==expectedRevision)throw new KTeamError('team_revision_conflict',409);const next={...value,revision:expectedRevision+1};this.db.prepare('INSERT INTO team_settings VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET value_json=excluded.value_json').run(value.roomId,JSON.stringify(next));return next;}
- enqueueFollowup(value:any){const job={...value,state:'queued',calls:0,createdAt:new Date().toISOString()};this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(job.id,job.roomId,job.originId,job.state,JSON.stringify(job));}
+ enqueueFollowup(value:any){const job={...value,state:this.settings(value.roomId)?.paused?'held':'queued',calls:0,createdAt:new Date().toISOString()};this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(job.id,job.roomId,job.originId,job.state,JSON.stringify(job));}
  enqueue(id:string,roomId:string,originId:string){const state=this.settings(roomId)?.paused?'held':'queued';this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(id,roomId,originId,state,JSON.stringify({id,roomId,originId,state,...(state==='held'?{reason:'team_paused'}:{}),calls:0,createdAt:new Date().toISOString()}));}
  pause(roomId:string){
   this.db.exec('BEGIN IMMEDIATE');try{
@@ -81,6 +82,8 @@ export class TeamStore {
    this.db.exec('COMMIT');return settings;
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
+ recordedJobs(roomId:string){return this.db.prepare('SELECT value_json FROM team_jobs WHERE room_id=? ORDER BY rowid DESC LIMIT 10000').all(roomId).map(r=>JSON.parse(String(r.value_json)));}
+ jobForMessage(roomId:string,messageId:string){const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE room_id=? AND EXISTS(SELECT 1 FROM json_each(team_jobs.value_json,'$.results') WHERE json_extract(value,'$.messageId')=?) ORDER BY rowid DESC LIMIT 1").get(roomId,messageId);return row?JSON.parse(String(row.value_json)):null;}
  jobs(roomId?:string){return this.db.prepare('SELECT value_json FROM team_jobs '+(roomId?'WHERE room_id=? ':'')+'ORDER BY rowid DESC LIMIT 100').all(...(roomId?[roomId]:[])).map(row=>JSON.parse(String(row.value_json)));}
  prepareSubmission(id:string,roomId:string,intentHash:string,envelope:unknown){
   const prior=this.db.prepare('SELECT intent_hash FROM team_outbox WHERE id=?').get(id);

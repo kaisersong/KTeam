@@ -77,15 +77,19 @@ export class Upstreams {
       this.request('broker', '/rooms/workspace-protocol'), this.request('kswarm', '/health'),
     ]);
     const summarize = (result: PromiseSettledResult<Record<string, unknown>>) => result.status === 'fulfilled'
-      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),externalAgentMessages:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('external-agent-messages'),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
+      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),externalAgentMessages:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('external-agent-messages'),conversationContext:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('conversation-context'),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
       : { available: false, workspaceProtocol: false, externalAgentMessages:false,messageRevisionCAS:false,reason: result.reason instanceof KTeamError ? result.reason.code : 'upstream_unavailable' };
     const b = summarize(broker), k = summarize(kswarm);
-    return { broker: b, kswarm: k, ready: b.workspaceProtocol && b.messageRevisionCAS && k.workspaceProtocol };
+    return { broker: b, kswarm: k, ready: b.workspaceProtocol && b.messageRevisionCAS && b.conversationContext && k.workspaceProtocol };
   }
   async requireReady(): Promise<void> {
     const status = await this.probe();
-    if (!status.ready) throw new KTeamError('upstream_protocol_unavailable', 503, status);
+    if (!status.ready) throw new KTeamError(status.broker.workspaceProtocol&&!status.broker.conversationContext?'conversation_service_upgrade_required':'upstream_protocol_unavailable', 503, status);
   }
+  conversationData(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/conversation`);}
+  conversationMessage(roomId:string,messageId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/message?messageId=${encodeURIComponent(messageId)}`);}
+  searchConversation(roomId:string,query:string,before?:number){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/search?query=${encodeURIComponent(query)}${before?'&before='+before:''}`);}
+  updateConversation(roomId:string,input:Record<string,unknown>,agent=false){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/${agent?'agent-conversation':'conversation'}`,'POST',input);}
   listBots() { return this.request('kswarm', '/agents'); }
   updateBot(botId:string,input:Record<string,unknown>){return this.request('kswarm',`/agents/${encodeURIComponent(botId)}`,'PUT',input);}
   createBot(input:Record<string,unknown>){return this.request('kswarm','/agents','POST',input);}

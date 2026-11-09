@@ -30,12 +30,12 @@ export async function modelIdentity(modelId:string){
  const binding=core.resolveRuntimeModelBinding(frozen);
  return {core,adapter,origin:new URL(binding.baseUrl).origin,model:adapter.getModelName(),fingerprint:hash({modelId,providerId:binding.providerId,protocol:binding.protocol,baseUrl:binding.baseUrl,wireModel:binding.wireModel,runtimeOptions:binding.runtimeOptions})};
 }
-export async function nativeTurn(input:{modelId:string;fingerprint?:string;system:string;prompt:string;signal:AbortSignal;onText?:(text:string)=>void;onRequest?:()=>void|Promise<void>;tools?:any[];maxIterations?:number}){
+export async function nativeTurn(input:{modelId:string;fingerprint?:string;system:string;prompt:string;signal:AbortSignal;onText?:(text:string)=>void;onRequest?:()=>void|Promise<void>;tools?:any[];maxIterations?:number}):Promise<{text:string;usage:{inputTokens:number;outputTokens:number};usageReported?:boolean;model:any;fingerprint:string}>{
  const {core,adapter,model,fingerprint,origin}=await modelIdentity(input.modelId);
  if(input.fingerprint&&input.fingerprint!==fingerprint)throw new KTeamError('model_binding_changed',409);
  const tools=input.tools??[];
  const registry=new core.ToolRegistry({autoMode:true},tools);registry.setAllowedTools(tools.map((tool:any)=>tool.definition.name));
- let text='',usage={inputTokens:0,outputTokens:0},failure:Error|undefined,completed=false;
+ let text='',usage={inputTokens:0,outputTokens:0},failure:Error|undefined,completed=false,usageReported=false;
  const budgetAbort=new AbortController();let budgetFailure:unknown;
  const signal=AbortSignal.any([input.signal,budgetAbort.signal]);
  const calendar=calendarWindow();
@@ -44,7 +44,7 @@ export async function nativeTurn(input:{modelId:string;fingerprint?:string;syste
  try{
   await requestBudget.run({origin,before:async()=>{try{await input.onRequest?.();}catch(error){budgetFailure=error;budgetAbort.abort(error);throw error;}}},()=>runtime.run(input.prompt,(event:any)=>{
    if(event.type==='assistant_text'){text+=event.delta;input.onText?.(text);}
-   if(event.type==='usage_updated')usage={inputTokens:Math.max(0,event.usage.inputTokens??0),outputTokens:Math.max(0,event.usage.outputTokens??0)};
+   if(event.type==='usage_updated'){usageReported=true;usage={inputTokens:Math.max(0,event.usage.inputTokens??0),outputTokens:Math.max(0,event.usage.outputTokens??0)};}
    if(event.type==='run_failed')failure=event.error;
    if(event.type==='run_completed')completed=true;
    if(event.type==='max_iterations_reached')failure=new KTeamError('iteration_budget_exhausted');
@@ -53,7 +53,7 @@ export async function nativeTurn(input:{modelId:string;fingerprint?:string;syste
   signal.throwIfAborted();
   if(failure)throw failure;
   if(!text.trim()||!completed)throw new KTeamError('model_response_incomplete');
-  return {text,usage,model,fingerprint};
+  return {text,usage,usageReported,model,fingerprint};
  }catch(error){if(budgetFailure)throw budgetFailure;throw error;}
  finally{registry.dispose();}
 }
