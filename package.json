@@ -1,0 +1,31 @@
+{
+  "name": "@kteam/app",
+  "version": "0.1.0-dev.1",
+  "private": true,
+  "type": "module",
+  "description": "KTeam — 组建你的 AI 团队，让工作主动向前。",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "bin": {
+    "kteam": "dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
+    "start": "node dist/src/cli.js start",
+    "doctor": "node dist/src/cli.js doctor",
+    "test": "npm run build && node --preserve-symlinks --test dist/tests/*.test.js",
+    "test:integration": "npm run build && node --preserve-symlinks --test dist/tests/upstream.integration.test.js",
+    "verify:sources": "node scripts/verify-sources.mjs",
+    "test:cli": "npm run build && node scripts/smoke-cli.mjs",
+    "check": "npm run verify:sources && npm test && node scripts/smoke-cli.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "intent-broker": "file:../intent-broker",
+    "kswarm": "file:../kswarm",
+    "typescript": "7.0.2",
+    "ws": "8.22.2"
+  }
+}

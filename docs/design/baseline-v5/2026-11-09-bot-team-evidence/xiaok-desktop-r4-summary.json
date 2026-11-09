@@ -1,0 +1,12 @@
+{
+  "reviewer": "xiaok Desktop",
+  "round": "r4",
+  "taskId": "task_mw82h6fk_faup",
+  "terminal": true,
+  "status": "failed",
+  "resultChars": 1847,
+  "toolCalls": [],
+  "errors": [
+    "needs_explicit_followup"
+  ]
+}

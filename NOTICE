@@ -1,0 +1,15 @@
+KTeam
+Copyright 2026 KTeam contributors
+
+This project includes unmodified source contracts from xiaok-cli
+(https://github.com/kaisersong/xiaok-cli), licensed under Apache-2.0:
+  desktop/electron/room-workspace-protocol.ts
+  desktop/shared/room-external-discussion.ts
+Exact revision and SHA-256 digests are recorded in sources.lock.json.
+The full Apache-2.0 license is included in LICENSE.
+
+KSwarm and intent-broker are reused through semantic service adapters.
+Their local source packages are development-only integration dependencies.
+
+AIMP 3.1 and the product design baseline were supplied by the project owner.
+Their original text, test-vector provenance and review limitations are retained.

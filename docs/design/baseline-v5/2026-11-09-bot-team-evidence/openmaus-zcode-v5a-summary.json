@@ -1,0 +1,12 @@
+{
+  "reviewer": "zcode",
+  "round": "v5a",
+  "pid": 80416,
+  "documentSha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
+  "reviewScope": "complete normative delta against approved v4 and baseline compatibility",
+  "startedAt": "2026-11-08T17:11:31.337836+00:00",
+  "status": "finished",
+  "exitCode": 0,
+  "bytes": 2284,
+  "finishedAt": "2026-11-08T17:13:30.321582+00:00"
+}

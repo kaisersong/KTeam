@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "sources": [
+    {
+      "name": "xiaok-cli",
+      "repository": "https://github.com/kaisersong/xiaok-cli",
+      "revision": "e385c26508fb942670b8816a92d0044c7bf4ebfc",
+      "usage": "vendored contracts, semantic service adapter"
+    },
+    {
+      "name": "kswarm",
+      "repository": "https://github.com/kaisersong/kswarm",
+      "revision": "16c3ed14c5493a82d000d69d34e4b1c933187433",
+      "usage": "existing authoritative service; linked source for isolated integration tests"
+    },
+    {
+      "name": "intent-broker",
+      "repository": "https://github.com/kaisersong/intent-broker",
+      "revision": "2dd1f40dc5e0fc5438a2086d13963cc67489db45",
+      "usage": "existing authoritative service; linked source for isolated integration tests"
+    }
+  ],
+  "vendoredFiles": [
+    {
+      "file": "src/vendor/xiaok/room-workspace-protocol.ts",
+      "source": "xiaok-cli",
+      "upstreamPath": "desktop/electron/room-workspace-protocol.ts",
+      "sha256": "cac616758a2fb168178459e1961e350d1475c40f2e4b819a34cb302a07011a1e",
+      "modified": false
+    },
+    {
+      "file": "src/vendor/xiaok/room-external-discussion.ts",
+      "source": "xiaok-cli",
+      "upstreamPath": "desktop/shared/room-external-discussion.ts",
+      "sha256": "4f6e36af95856ab95668b360e779a375e09ca914f982141f01fcaf0b5162f83d",
+      "modified": false
+    }
+  ],
+  "references": [
+    {
+      "file": "docs/reference/aimp-design-spec-v3.1.md",
+      "sha256": "95ef720884deef2ff0d26dba3ebb08713b2d12357ece0647c24c1ce8e22778d0"
+    },
+    {
+      "file": "docs/reference/aimp-v3.1-schemas.json",
+      "sha256": "c7f0096793ef92df5d8f399654dcbc240ae4184a7ab697cc7fec26635db15123"
+    },
+    {
+      "file": "docs/reference/aimp-v3.1-test-vectors.json",
+      "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
+    }
+  ],
+  "productBaseline": {
+    "version": "v5",
+    "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
+    "file": "docs/design/baseline-v5/产品设计.md"
+  }
+}

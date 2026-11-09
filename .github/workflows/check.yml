@@ -1,0 +1,38 @@
+name: KTeam checks
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  core:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        node: ['22.22.0', '24.16.0']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: kteam
+      - id: pins
+        working-directory: kteam
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
+          for(const source of lock.sources) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${source.name.replaceAll('-','_')}=${source.revision}\n`);
+          JS
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kswarm
+          ref: ${{ steps.pins.outputs.kswarm }}
+          path: kswarm
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/intent-broker
+          ref: ${{ steps.pins.outputs.intent_broker }}
+          path: intent-broker
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+        working-directory: kteam
+      - run: npm run check
+        working-directory: kteam

@@ -1,0 +1,3 @@
+# Preserve the byte-for-byte imported review archive, including Markdown hard
+# breaks and unified-diff context lines. All authored source retains checks.
+docs/design/baseline-v5/** -whitespace
