@@ -91,6 +91,7 @@ jobs:
           cat > release-notes.md <<'NOTES'
           KTeam 多 Bot 协作桌面预览版（macOS Apple Silicon）。
 
+          - 修复 System One 将用户追问误判为无需回应；静默建议由主路由复核。
           - 接入六套角色头像与青松绿应用图标，统一侧栏、聊天、成员详情与首次创建。
           - 已支持的本机 Agent 直接发现和调用；小 K 可了解团队状态，群成员可私聊澄清与协作。
           - 保留 xiaok 平台工具、会话、记忆、精确工具确认及消息内生成式 UI。

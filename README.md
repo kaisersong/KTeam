@@ -8,7 +8,7 @@
 
 KTeam 是独立的多 Bot 协作桌面应用，按[产品设计](docs/design/product-design-v5.md)分阶段实现。
 
-当前 **0.1.0-preview.12** 可验证：按名字创建长期成员、复用小K模型、建立群聊并持续更新共享共识、自然语言自动选择相关成员（包括不回应）、后台完成多成员讨论、会话内答复、组队方案卡片和单成员私聊、用户验收、暂停/继续、历史分页与崩溃核对。窗口关闭后后台工作继续，未安装开机启动项。
+当前 **0.1.0-preview.13** 可验证：按名字创建长期成员、复用小K模型、建立群聊并持续更新共享共识、自然语言自动选择相关成员（包括不回应）、后台完成多成员讨论、会话内答复、组队方案卡片和单成员私聊、用户验收、暂停/继续、历史分页与崩溃核对。窗口关闭后后台工作继续，未安装开机启动项。
 
 内置 xiaok 使用原平台注册工厂、连续 Session、分层记忆、MCP/插件/Hooks、子 Agent 与 Worktree，并保留文件、终端（含 SSH）、网络和 Skill 工具。工具记录随回复展示；精确审批转到对应 Bot 私聊。小 K 可读取所有可访问团队的真实消息、共享纪要和工作状态，按重要变化主动提醒；群成员可私聊本人澄清，也可调用另一名群成员实际协作。消息内支持原 A2UI 表格和图表卡片。
 
@@ -16,11 +16,11 @@ KTeam 是独立的多 Bot 协作桌面应用，按[产品设计](docs/design/pro
 
 ## 下载
 
-**[下载 macOS Apple Silicon 安装包（v0.1.0-preview.12）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.12/KTeam-0.1.0-preview.12-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.12)
+**[下载 macOS Apple Silicon 安装包（v0.1.0-preview.13）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.13/KTeam-0.1.0-preview.13-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.13)
 
 下载 ZIP、解压后将 `KTeam.app` 拖入“应用程序”。当前为 macOS arm64 预览版，使用本机 ad-hoc 签名，尚未做 Apple 公证；首次打开若被系统阻止，请在“系统设置 → 隐私与安全性”核对来源后允许打开。Intel Mac、Windows 和 Linux 安装包尚未提供。
 
-本版接入六套角色头像与青松绿应用图标，统一用于聊天、侧栏、Bot 设置和首次创建。小 K 的轻量表情仅用于当前会话标题，历史头像保持静态。使用前需在 xiaok 中配置模型与配套共享服务。
+本版修复 System One 将继续执行和追问误判为无需回应的问题：静默建议会交由主路由复核。接入六套角色头像与青松绿应用图标，统一用于聊天、侧栏、Bot 设置和首次创建。小 K 的轻量表情仅用于当前会话标题，历史头像保持静态。使用前需在 xiaok 中配置模型与配套共享服务。
 
 ## 桌面验证
 

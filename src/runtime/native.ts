@@ -36,7 +36,9 @@ export async function nativeTurn(input:{modelId:string;fingerprint?:string;syste
  if(input.fingerprint&&input.fingerprint!==fingerprint)throw new KTeamError('model_binding_changed',409);
  const tools=input.tools??[];
  const owner=await input.prepareRuntime?.(adapter,model,input.system,tools);
- const registry=owner?.registry??new core.ToolRegistry({autoMode:true,...input.registryOptions},tools);if(!owner)registry.setAllowedTools(tools.flatMap((tool:any)=>[tool.definition.name,...(tool.companionTools??[]).map((child:any)=>child.definition.name)]).concat(tools.length?['tool_search']:[]));
+ // Empty registries must also omit the platform's automatically added tool_search.
+ // Advertising it made tool-free routing consume its sole iteration on a rejected call.
+ const registry=owner?.registry??new core.ToolRegistry({autoMode:true,...input.registryOptions,...(!tools.length?{nativeReadonlyOnly:true}:{})},tools);if(!owner)registry.setAllowedTools(tools.flatMap((tool:any)=>[tool.definition.name,...(tool.companionTools??[]).map((child:any)=>child.definition.name)]).concat(tools.length?['tool_search']:[]));
  let text='',usage={inputTokens:0,outputTokens:0},failure:Error|undefined,completed=false,usageReported=false;
  const budgetAbort=new AbortController();let budgetFailure:unknown;
  const signal=AbortSignal.any([input.signal,budgetAbort.signal]);
