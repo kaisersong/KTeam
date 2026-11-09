@@ -1,0 +1,12 @@
+export { getIntroSection } from './intro.js';
+export { getSystemSection } from './system.js';
+export { getDoingTasksSection } from './doing-tasks.js';
+export { getIntentDelegationSection } from './intent-delegation.js';
+export { getActionsSection } from './actions.js';
+export { getUsingToolsSection } from './using-tools.js';
+export { getToneAndStyleSection } from './tone-and-style.js';
+export { getOutputEfficiencySection } from './output-efficiency.js';
+export { getDecompositionSection } from './decomposition.js';
+export { getVerificationSection } from './verification.js';
+export { getParallelExecutionSection } from './parallel-execution.js';
+export { getSessionGuidanceSection, type SessionGuidanceOptions } from './session-guidance.js';

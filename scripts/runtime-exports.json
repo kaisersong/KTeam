@@ -1,0 +1,121 @@
+{
+  "src/ai/tools/read.ts": [
+    "createReadTool"
+  ],
+  "src/ai/tools/glob.ts": [
+    "globTool"
+  ],
+  "src/ai/tools/grep.ts": [
+    "grepTool"
+  ],
+  "src/platform/sandbox/search-scope.ts": [
+    "withSandboxSearchScope"
+  ],
+  "src/platform/sandbox/policy.ts": [
+    "createSandboxPolicy"
+  ],
+  "src/platform/sandbox/enforcer.ts": [
+    "createSandboxEnforcer"
+  ],
+  "src/ai/tools/native-readonly-context.ts": [
+    "createNativeReadonlyExecutionContext"
+  ],
+  "src/ai/runtime/agent-runtime.ts": [
+    "AgentRuntime"
+  ],
+  "src/ai/runtime/session.ts": [
+    "AgentSessionState"
+  ],
+  "src/ai/runtime/controller.ts": [
+    "AgentRunController"
+  ],
+  "src/ai/permissions/manager.ts": [
+    "PermissionManager"
+  ],
+  "src/ai/permissions/settings.ts": [
+    "loadSettings",
+    "mergeRules"
+  ],
+  "src/ai/skills/loader.ts": [
+    "createSkillCatalog",
+    "formatSkillsContext"
+  ],
+  "src/ai/skills/tool.ts": [
+    "createSkillTool"
+  ],
+  "src/ai/tools/install-skill.ts": [
+    "createInstallSkillTool"
+  ],
+  "src/ai/tools/uninstall-skill.ts": [
+    "createUninstallSkillTool"
+  ],
+  "src/utils/config.ts": [
+    "getConfigDir",
+    "loadConfig"
+  ],
+  "src/shared/stream-safety/redact.ts": [
+    "redactSecrets"
+  ],
+  "src/ai/tools/index.ts": [
+    "ToolRegistry",
+    "buildToolList"
+  ],
+  "src/ai/models.ts": [
+    "createAdapter",
+    "createSystemOneAdapter"
+  ],
+  "src/ai/providers/control-plane.ts": [
+    "resolveRuntimeModelBinding"
+  ],
+  "src/runtime/conversation-activity/owner-client.ts": [
+    "ConversationActivityOwnerClient"
+  ],
+  "src/platform/runtime/context.ts": [
+    "createPlatformRuntimeContext"
+  ],
+  "src/platform/runtime/registry-factory.ts": [
+    "createPlatformRegistryFactory"
+  ],
+  "src/ai/runtime/session-store/file-store.ts": [
+    "FileSessionStore"
+  ],
+  "src/ai/memory/layered-store.ts": [
+    "LayeredMemoryStore",
+    "resolveLayeredConfig",
+    "createLLMFromAdapter"
+  ],
+  "src/ai/memory/store.ts": [
+    "FileMemoryStore"
+  ],
+  "src/ai/prompts/builder.ts": [
+    "PromptBuilder"
+  ],
+  "src/ai/runtime/context-loader.ts": [
+    "loadAutoContext"
+  ],
+  "src/ai/tools/render-ui.ts": [
+    "createRenderUiTool"
+  ],
+  "desktop/electron/assistant-inbox-service.ts": [
+    "AssistantInboxService"
+  ],
+  "desktop/electron/assistant-inbox-store.ts": [
+    "AssistantInboxStore",
+    "attentionId"
+  ],
+  "desktop/electron/assistant-triage.ts": [
+    "triageAssistantRecords"
+  ],
+  "src/ai/providers/system-one-config.ts": [
+    "resolveSystemOneConfig"
+  ],
+  "src/ai/kim/runtime.ts": [
+    "defaultKimDecisionRuntime"
+  ],
+  "src/ai/runtime/provider-conversation-authorization.ts": [
+    "streamStatelessSideCallProviderConversation"
+  ],
+  "desktop/electron/pdf-text.ts": [
+    "extractPdfText"
+  ]
+}

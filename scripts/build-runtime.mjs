@@ -1,4 +1,6 @@
 import {build} from 'esbuild';
+import {ownedHarnessProcesses} from './xiaok-process-adaptation.mjs';
+import {xiaokPlatformAdaptation} from './xiaok-platform-adaptation.mjs';
 import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -7,36 +9,15 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const lock=JSON.parse(readFileSync(join(root,'sources.lock.json'),'utf8'));
 const source=resolve(root,lock.runtime.directory);
 for(const file of lock.runtime.files)if(createHash('sha256').update(readFileSync(join(root,file.file))).digest('hex')!==file.sha256)throw Error('runtime_source_hash_mismatch:'+file.file);
-const entry=`export {createReadTool} from ${JSON.stringify(join(source,'src/ai/tools/read.ts'))};
-export {globTool} from ${JSON.stringify(join(source,'src/ai/tools/glob.ts'))};
-export {grepTool} from ${JSON.stringify(join(source,'src/ai/tools/grep.ts'))};
-export {withSandboxSearchScope} from ${JSON.stringify(join(source,'src/platform/sandbox/search-scope.ts'))};
-export {createSandboxPolicy} from ${JSON.stringify(join(source,'src/platform/sandbox/policy.ts'))};
-export {createSandboxEnforcer} from ${JSON.stringify(join(source,'src/platform/sandbox/enforcer.ts'))};
-export {createNativeReadonlyExecutionContext} from ${JSON.stringify(join(source,'src/ai/tools/native-readonly-context.ts'))};
-export {AgentRuntime} from ${JSON.stringify(join(source,'src/ai/runtime/agent-runtime.ts'))};
-export {AgentSessionState} from ${JSON.stringify(join(source,'src/ai/runtime/session.ts'))};
-export {AgentRunController} from ${JSON.stringify(join(source,'src/ai/runtime/controller.ts'))};
-export {PermissionManager} from ${JSON.stringify(join(source,'src/ai/permissions/manager.ts'))};
-export {loadSettings,mergeRules} from ${JSON.stringify(join(source,'src/ai/permissions/settings.ts'))};
-export {createSkillCatalog,formatSkillsContext} from ${JSON.stringify(join(source,'src/ai/skills/loader.ts'))};
-export {createSkillTool} from ${JSON.stringify(join(source,'src/ai/skills/tool.ts'))};
-export {createInstallSkillTool} from ${JSON.stringify(join(source,'src/ai/tools/install-skill.ts'))};
-export {createUninstallSkillTool} from ${JSON.stringify(join(source,'src/ai/tools/uninstall-skill.ts'))};
-export {getConfigDir} from ${JSON.stringify(join(source,'src/utils/config.ts'))};
-export {redactSecrets} from ${JSON.stringify(join(source,'src/shared/stream-safety/redact.ts'))};
-export {ToolRegistry,buildToolList} from ${JSON.stringify(join(source,'src/ai/tools/index.ts'))};
-export {createAdapter} from ${JSON.stringify(join(source,'src/ai/models.ts'))};
-export {resolveRuntimeModelBinding} from ${JSON.stringify(join(source,'src/ai/providers/control-plane.ts'))};
-export {ConversationActivityOwnerClient} from ${JSON.stringify(join(source,'src/runtime/conversation-activity/owner-client.ts'))};
-export {loadConfig} from ${JSON.stringify(join(source,'src/utils/config.ts'))};`;
+const modules=JSON.parse(readFileSync(join(root,'scripts/runtime-exports.json'),'utf8'));
+const entry=`export {withHarnessProcessOwner} from ${JSON.stringify(join(root,'src/runtime/harness-child-process.ts'))};\n`+Object.entries(modules).map(([file,names])=>`export {${names.join(',')}} from ${JSON.stringify(join(source,file))};`).join('\n');
 mkdirSync(join(root,'build/shared'),{recursive:true});
 const result=await build({stdin:{contents:entry,resolveDir:root,sourcefile:'xiaok-shared-entry.ts',loader:'ts'},bundle:true,platform:'node',format:'esm',target:'node22',outfile:join(root,'build/shared/xiaok-runtime.mjs'),metafile:true,
  nodePaths:[join(root,'node_modules')],
- packages:'bundle',external:['@napi-rs/keyring','better-sqlite3','onnxruntime-node','nodejieba','node-pty','electron'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
+ plugins:[xiaokPlatformAdaptation,ownedHarnessProcesses(root)],packages:'bundle',external:['pdfjs-dist','pdfjs-dist/*','@napi-rs/keyring','better-sqlite3','onnxruntime-node','nodejieba','node-pty','electron'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
 writeFileSync(join(root,'build/shared/source-manifest.json'),JSON.stringify(Object.entries(result.metafile.inputs).filter(([file])=>file!=='xiaok-shared-entry.ts').map(([file])=>({file,sha256:createHash('sha256').update(readFileSync(resolve(root,file))).digest('hex')})),null,2));
 
 await build({entryPoints:[join(source,"src/ai/tools/glob-worker.mjs")],bundle:true,platform:"node",format:"esm",target:"node22",outfile:join(root,"build/shared/glob-worker.mjs"),banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
 
 // The same harness entry is shared by installed diagnostics/other trusted main owners.
-await build({stdin:{contents:`export {createHarness} from ${JSON.stringify(join(root,'src/runtime/harness.ts'))}; export {nativeTurn,modelCatalog} from ${JSON.stringify(join(root,'src/runtime/native.ts'))};`,resolveDir:root,sourcefile:'kteam-harness-entry.ts',loader:'ts'},bundle:true,platform:'node',format:'esm',target:'node22',outfile:join(root,'build/shared/kteam-harness.mjs'),external:['@napi-rs/keyring','better-sqlite3','onnxruntime-node','nodejieba','node-pty','electron'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
+await build({stdin:{contents:`export {createHarness} from ${JSON.stringify(join(root,'src/runtime/harness.ts'))}; export {nativeTurn,modelCatalog} from ${JSON.stringify(join(root,'src/runtime/native.ts'))};`,resolveDir:root,sourcefile:'kteam-harness-entry.ts',loader:'ts'},bundle:true,platform:'node',format:'esm',target:'node22',outfile:join(root,'build/shared/kteam-harness.mjs'),external:['pdfjs-dist','pdfjs-dist/*','@napi-rs/keyring','better-sqlite3','onnxruntime-node','nodejieba','node-pty','electron'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});

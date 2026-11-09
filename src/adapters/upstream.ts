@@ -77,14 +77,14 @@ export class Upstreams {
       this.request('broker', '/rooms/workspace-protocol'), this.request('kswarm', '/health'),
     ]);
     const summarize = (result: PromiseSettledResult<Record<string, unknown>>) => result.status === 'fulfilled'
-      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),externalAgentMessages:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('external-agent-messages'),conversationContext:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('conversation-context'),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
-      : { available: false, workspaceProtocol: false, externalAgentMessages:false,messageRevisionCAS:false,reason: result.reason instanceof KTeamError ? result.reason.code : 'upstream_unavailable' };
+      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),botPrivateMessages:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('bot-private-messages'),externalAgentMessages:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('external-agent-messages'),conversationContext:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('conversation-context'),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
+      : { available: false, workspaceProtocol: false, externalAgentMessages:false,botPrivateMessages:false,messageRevisionCAS:false,reason: result.reason instanceof KTeamError ? result.reason.code : 'upstream_unavailable' };
     const b = summarize(broker), k = summarize(kswarm);
-    return { broker: b, kswarm: k, ready: b.workspaceProtocol && b.messageRevisionCAS && b.conversationContext && k.workspaceProtocol };
+    return { broker: b, kswarm: k, ready: b.workspaceProtocol && b.botPrivateMessages && b.messageRevisionCAS && b.conversationContext && k.workspaceProtocol };
   }
   async requireReady(): Promise<void> {
     const status = await this.probe();
-    if (!status.ready) throw new KTeamError(status.broker.workspaceProtocol&&!status.broker.conversationContext?'conversation_service_upgrade_required':'upstream_protocol_unavailable', 503, status);
+    if (!status.ready) throw new KTeamError(status.broker.workspaceProtocol&&(!status.broker.conversationContext||!status.broker.botPrivateMessages)?'conversation_service_upgrade_required':'upstream_protocol_unavailable', 503, status);
   }
   conversationData(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/conversation`);}
   conversationMessage(roomId:string,messageId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/message?messageId=${encodeURIComponent(messageId)}`);}
@@ -110,6 +110,7 @@ export class Upstreams {
   messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
     return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}${before!==undefined?'&beforeSequence='+before:''}${tail?'&direction=backward':''}`);
   }
+  sendBotPrivate(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/bot-messages`,'POST',input);}
   sendMessage(roomId: string, input: Record<string, unknown>) {
     return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages`, 'POST', input);
   }

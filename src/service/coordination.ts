@@ -47,22 +47,22 @@ export class TeamCoordinator{
   return {roomId};
  }
  async guardConversation(roomId:string,snapshot?:any){
-  const settings=this.store.settings(roomId);if(!settings||!['assistant','direct'].includes(settings.kind??''))return undefined;
+  const settings=this.store.settings(roomId);if(!settings||!['assistant','direct','peer'].includes(settings.kind??''))return undefined;
   const frozen=this.store.state<any>('conversation:'+roomId);if(!frozen)throw new KTeamError('conversation_identity_changed',409);
   const actual=snapshot??await this.upstream.membership(roomId);
   this.verifyRoom(actual,roomId,frozen.title,frozen.goal,frozen.members);
   for(const member of frozen.members)await this.frozen(member);
   return Number(actual.room.revision);
  }
- private async room(op:any,title:string,goal:string,members:Member[],kind:'assistant'|'direct'|'group',validate:()=>Promise<void>){
+ private async room(op:any,title:string,goal:string,members:Member[],kind:'assistant'|'direct'|'group'|'peer',validate:()=>Promise<void>){
   const startingNotes=kind==='group'?goal.trim():'';if(kind==='group'){if(!op.conversationVersion){op.conversationVersion=op.stages.room?1:2;this.save(op);}goal=op.conversationVersion===1?(goal.trim()||'尚未设定目标'):'在本群内交流协作；当前方向以群消息和共享纪要为准，只在已有权限内讨论与执行。';}
   const key=kind==='direct'&&!op.id.startsWith('new-chat:')?'kteam:direct:'+members[0]!.botId:'kteam:'+op.id,roomId='room-'+hash(['user','user.local',key]).slice(0,32);
   const verify=(result:any)=>this.verifyRoom(result,roomId,title,goal,members);
   await this.stage(op,'room',async()=>{try{return verify(await this.upstream.membership(roomId));}catch(error){if(error instanceof KTeamError&&error.code==='room_not_found')return null;throw error;}},async()=>verify(await this.upstream.createTeam({title,description:goal,memberAgentIds:members.map(m=>m.botId),clientRequestKey:key})),validate);
   await this.stage(op,'contract',async()=>{const session=(await this.upstream.aimp(roomId,'session')).session as any;if(!session)return null;if(session.goal!==goal||session.maxRuns!==6||JSON.stringify(session.allowedActions)!==JSON.stringify(['discussion']))throw new KTeamError('conversation_contract_changed',409);return {roomId,revision:session.revision};},async()=>{const s=(await this.upstream.aimp(roomId,'configure',{goal,expectedRevision:0,allowedActions:['discussion'],maxRuns:6})).session as any;return {roomId,revision:s.revision};},validate);
-  await validate();this.check(op);if(!this.store.settings(roomId))this.store.configure({roomId,goal,kind,...(kind!=='group'&&members.every(m=>m.external)?{delivery:'external-agent' as const}:{}),mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
+  await validate();this.check(op);if(!this.store.settings(roomId))this.store.configure({roomId,goal,kind,...(kind!=='group'&&members.every(m=>m.external)?{delivery:'external-agent' as const}:{}),mode:'auto',paused:false,quiet:false,revision:0,maxRuns:128,dailyCalls:1000},0);
   if(kind==='group'&&startingNotes&&startingNotes!=='尚未设定目标'){await this.stage(op,'shared-start',async()=>{const data=await this.upstream.conversationData(roomId);return (data.shared as any).revision>0?{roomId}:null;},()=>this.upstream.updateConversation(roomId,{operation:'shared.replace',requestId:op.id+':shared',expectedRevision:0,text:'讨论起点（可继续调整）\n'+startingNotes,sourceMessageIds:[]}),validate);}
-  if(kind==='assistant'||kind==='direct')this.store.stateOnce('conversation:'+roomId,{title,goal,members,kind});
+  if(kind==='assistant'||kind==='direct'||kind==='peer')this.store.stateOnce('conversation:'+roomId,{title,goal,members,kind});
   if(kind==='direct')this.store.stateOnce('direct-room:'+members[0]!.botId,{roomId});
   return roomId;
  }
@@ -135,6 +135,18 @@ export class TeamCoordinator{
  }
  async editGroup(value:unknown){
   const input=record(value);fields(input,['roomId','title','requestId']);const roomId=text(input.roomId,'room_id'),title=text(input.title,'title',80).trim(),requestId=text(input.requestId,'request_id');if(this.store.settings(roomId)?.kind!=='group')throw new KTeamError('group_required');const current=await this.upstream.membership(roomId),room=current.room as any;if(!(current.members as any[]).some(m=>m.status==='active'&&m.role==='owner'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('team_scope_changed',403);const opId='group-rename:'+requestId;return this.single(opId,async()=>{let op=this.store.operation(opId);if(op&&(op.data.title!==title||op.data.roomId!==roomId))throw new KTeamError('group_edit_conflict');if(op?.status==='complete')return op.receipt;op=this.claim(opId,{roomId,title,roomRevision:room.revision,description:room.description??''});const validate=async()=>{const actual=await this.upstream.membership(roomId);if(!(actual.members as any[]).some(m=>m.status==='active'&&m.role==='owner'&&m.subject.userId==='user.local'))throw new KTeamError('team_scope_changed');};await this.stage(op,'rename',async()=>{const actual=(await this.upstream.membership(roomId)).room as any;return actual.title===title?{roomId}:null;},()=>this.upstream.updateTeam(roomId,{title,description:op.data.description,expectedRoomRevision:op.data.roomRevision}),validate);op.status='complete';op.receipt={ok:true,roomId,title};this.save(op);return op.receipt;});
+ }
+ async privatePair(fromId:string,toId:string,sourceRoomId:string,guard:()=>Promise<void>){
+  if(fromId===toId)throw new KTeamError('peer_self_contact_denied');
+  const opId='peer:'+hash([sourceRoomId,[fromId,toId].sort()]);
+  return this.single(opId,async()=>{await guard();const bots=(await this.upstream.listBots()).agents as any[];
+   const members=[fromId,toId].sort().map(botId=>{const binding=this.store.binding(botId),bot=bots.find(b=>b.id===botId&&!b.archivedAt);if(!binding||!bot)throw new KTeamError('peer_agent_not_bound');return {...binding,name:bot.name,bindingRevision:binding.revision,existing:true};});
+   let op=this.store.operation(opId);if(!op)op=this.claim(opId,{members,sourceRoomId});else if(op.status==='complete'){await guard();await this.guardConversation(op.receipt.roomId);return op.receipt;}else op=this.claim(opId,op.data);
+   const validate=async()=>{await guard();for(const member of members)await this.frozen(member);};
+   const title=members.map(m=>m.name.replace(/ · KTeam .+$/,'')).join(' · ');
+   const roomId=await this.room(op,title,'成员私聊；原群消息只是来源，私聊不会授予新的工具权限。',members,'peer',validate);
+   op.status='complete';op.receipt={roomId};this.save(op);return op.receipt;
+  });
  }
  async newConversation(value:unknown,ctx:{requestSource:string}){this.user(ctx);const input=record(value);fields(input,['botId','requestId']);const botId=text(input.botId,'bot_id'),requestId=text(input.requestId,'request_id'),opId='new-chat:'+requestId;return this.single(opId,async()=>{let op=this.store.operation(opId);if(op&&op.data.botId!==botId)throw new KTeamError('operation_conflict');if(op?.status==='complete')return op.receipt;if(!op){const binding=this.store.binding(botId),agent=((await this.upstream.listBots()).agents as any[]).find(b=>b.id===botId&&!b.archivedAt);if(!binding||!agent)throw new KTeamError('agent_not_found');const assistant=this.store.operation('assistant:'+this.store.installationId())?.receipt?.botId===botId;op=this.claim(opId,{botId,title:agent.name.replace(/ · KTeam .+$/,'')+' · '+new Date(this.now()).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}),kind:assistant?'assistant':'direct',member:{...binding,name:agent.name,bindingRevision:binding.revision,existing:true}});}else op=this.claim(opId,op.data);const member=op.data.member,validate=()=>this.frozen(member),roomId=await this.room(op,op.data.title,'与 '+op.data.title+' 的新对话。',[member],op.data.kind,validate);op.status='complete';op.receipt={ok:true,roomId,botId};this.save(op);return op.receipt;});}
 

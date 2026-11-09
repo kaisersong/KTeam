@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { KTeamError, record } from '../errors.js';
-import { parseJson } from '../protocol/json.js';
+import { parseDataJson } from '../protocol/json.js';
 import { clientToken, socketPath, type ClientId } from './config.js';
 import { versionHeaders } from './server.js';
 
@@ -20,7 +20,7 @@ export async function hostRequest(root: string, client: ClientId, route: string,
       res.on('error', reject);
       res.on('end', () => {
         try {
-          const result = record(parseJson(Buffer.concat(chunks).toString('utf8'), 2 * 1024 * 1024));
+          const result = record(parseDataJson(Buffer.concat(chunks).toString('utf8'), 2 * 1024 * 1024));
           if (!res.statusCode || res.statusCode >= 400 || result.ok === false) throw new KTeamError(String(result.code ?? 'host_request_failed'), res.statusCode, result.details);
           resolve(result);
         } catch (error) { reject(error); }

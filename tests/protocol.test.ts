@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createPrivateKey } from 'node:crypto';
-import { canonical, parseJson } from '../src/protocol/json.js';
+import { canonical, parseJson,parseDataJson } from '../src/protocol/json.js';
 import { intentProjection, projection, sha256, signatureBytes, signProjection, verifyProjection, validateL0, type SignatureDomain } from '../src/protocol/aimp.js';
 
 const vectors = JSON.parse(readFileSync(new URL('../../docs/reference/aimp-v3.1-test-vectors.json', import.meta.url), 'utf8'));
@@ -51,6 +51,13 @@ test('canonical subset rejects duplicate keys, invalid Unicode, unsafe numbers a
   assert.equal(Object.getPrototypeOf(proto), Object.prototype);
   assert.equal(Object.hasOwn(proto as object, '__proto__'), true);
   assert.equal(({} as { polluted?: boolean }).polluted, undefined);
+});
+
+test('semantic response measurements accept finite fractional numbers without weakening AIMP or duplicate-key checks',()=>{
+ assert.deepEqual(parseDataJson('{"attentionThreshold":0.65,"score":0.999}'),{attentionThreshold:0.65,score:0.999});
+ assert.throws(()=>parseJson('{"score":0.65}'),/unsupported_json_number/);
+ assert.throws(()=>parseDataJson('{"score":0.65,"score":0.8}'),/duplicate_json_key/);
+ for(const value of ['1e999','9007199254740992'])assert.throws(()=>parseDataJson(value),/unsupported_json_number/);
 });
 
 test('L0 preview never interprets accept/approval/tool text as authority and denies effect fields', () => {

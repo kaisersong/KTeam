@@ -1,6 +1,6 @@
 {
   "name": "@kteam/app",
-  "version": "0.1.0-preview.9",
+  "version": "0.1.0-preview.10",
   "private": true,
   "main": "build/main.cjs",
   "type": "module",
@@ -46,12 +46,21 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.121.0",
+    "@huggingface/tokenizers": "0.1.3",
+    "@json-render/core": "0.22.0",
+    "@json-render/react": "0.22.0",
+    "@modelcontextprotocol/client": "2.3.0",
+    "@modelcontextprotocol/ext-tasks": "0.2.2",
     "@napi-rs/keyring": "2.1.2",
     "ajv": "8.20.0",
     "better-sqlite3": "13.0.3",
+    "cross-spawn": "7.0.6",
     "fast-glob": "3.3.2",
+    "lodash-es": "4.17.23",
     "openai": "7.52.0",
-    "zod": "4.6.7"
+    "pdfjs-dist": "6.0.227",
+    "zod": "4.6.7",
+    "zod4": "npm:zod@4.6.7"
   },
   "author": "KTeam"
 }

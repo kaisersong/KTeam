@@ -13,6 +13,10 @@ is also Apache-2.0. Its full originating revision, upstream file paths and
 individual SHA-256 digests are recorded in sources.lock.json under runtime.
 KTeam-specific integration lives outside that snapshot.
 
+The xiaok A2UI renderer sources under desktop/xiaok are also unmodified
+Apache-2.0 sources. Their original paths and hashes are in sources.lock.json.
+Checked build-time runtime adaptations are recorded separately from original bytes.
+
 KSwarm and intent-broker are reused through semantic service adapters.
 Their local source packages are development-only integration dependencies.
 

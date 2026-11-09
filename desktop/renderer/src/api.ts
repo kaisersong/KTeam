@@ -1,7 +1,9 @@
 export interface Bot {id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
-export interface Room {roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'}
-export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;replyToMessageId?:string}
+export interface Room {roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
+export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ decisionModels():Promise<any>;assistantState():Promise<any>;setAssistantProactivity(input:{enabled:boolean}):Promise<any>;
+ botQuestions():Promise<any>;answerBotQuestion(input:any):Promise<any>;
  toolApprovals():Promise<any>;decideToolApproval(input:any):Promise<any>;
  conversationData(input?:any):Promise<any>;
  saveShared(input?:any):Promise<any>;

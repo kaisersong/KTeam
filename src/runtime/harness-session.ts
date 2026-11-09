@@ -1,0 +1,58 @@
+import {createHash} from 'node:crypto';
+import {mkdirSync,realpathSync,lstatSync,openSync,closeSync,readSync,fstatSync,constants} from 'node:fs';
+import {join} from 'node:path';
+import {KTeamError} from '../errors.js';
+
+export interface HarnessSessionScope {root:string;botId:string;roomId:string;bindingRevision:number;fingerprint:string;profileRevision:number}
+export interface HarnessRuntimeOwner {registry:any;session:any;memoryStore:any;promptSnapshot:any;system:string;persist:()=>Promise<void>;close:()=>Promise<void>;onEvent:(event:any)=>void;runOwned:<T>(work:()=>T)=>T;settleChildren:()=>Promise<any[]>;distill:(text:string)=>Promise<void>;spillDir:string}
+const key=(input:unknown)=>createHash('sha256').update(JSON.stringify(input)).digest('hex');
+// One host owner opens each scope once. Runtime history is private model state,
+// never a writable Room transcript or an authoritative project/task store.
+const opened=new Set<string>();
+export async function openHarnessSession(input:{core:any;scope:HarnessSessionScope;cwd:string;adapter:any;model:string;system:string;query?:string;tools:any[];catalog:any;permissions:any;permissionManagerForCwd:any;onPrompt:any;onPromptForCwd:any;bindTool:(tool:any,cwd?:string)=>any;assertCurrent:()=>Promise<void>;onCloseFailure?:()=>void;processOwner?:any;onEvent?:(event:any)=>void}):Promise<HarnessRuntimeOwner>{
+ const {core,scope,cwd}=input;
+ const identity=key([scope.botId,scope.roomId,scope.bindingRevision,scope.fingerprint,cwd]);
+ const directory=join(scope.root,'harness',identity);mkdirSync(directory,{recursive:true,mode:0o700});
+ if(realpathSync(directory)!==directory||lstatSync(directory).isSymbolicLink())throw new KTeamError('harness_storage_invalid');
+ if(opened.has(directory))throw new KTeamError('harness_session_busy',409);opened.add(directory);
+ let platform:any,factory:any,memory:any,session:any,store:any;
+ try{
+  await input.assertCurrent();
+  const privateMemory=join(directory,'memory');
+  const config=await core.loadConfig();
+  try{memory=new core.LayeredMemoryStore(core.resolveLayeredConfig({...config.memory,dbPath:join(directory,'memory.sqlite'),compaction:{autoCompact:false}}));}
+  catch{memory=new core.FileMemoryStore(privateMemory);}
+  // The complete original platform owns MCP/plugin/LSP connections and Worktrees.
+  // Team operations stay with the existing authenticated KTeam semantic tools.
+  const unavailable=()=>{throw new KTeamError('use_kteam_team_tools');};
+  const teamService=new Proxy({},{get:()=>unavailable});
+  platform=await core.withHarnessProcessOwner(input.processOwner,()=>core.createPlatformRuntimeContext({cwd,builtinCommands:[],assertCurrent:input.assertCurrent,privateStateRoots:[scope.root],stateRootDir:join(directory,'platform'),teamService,reminderMode:'local'}));
+  await platform.mcpReady;
+  await input.assertCurrent();
+  await input.catalog.reload();
+  store=new core.FileSessionStore(join(directory,'sessions'));
+  const sessionId='kteam_'+identity;
+  const previous=await store.load(sessionId);
+  session=new core.AgentSessionState();
+  session.restoreSnapshot(previous??{...session.exportSnapshot(),sessionId,cwd,lineage:[sessionId]});
+  session.repairIncompleteToolCalls();
+  const promptMemory={search:async()=>{const relevant=input.query?await memory.listRelevant({cwd,query:input.query}):[];const recent=memory.search?await memory.search('',6):await memory.listRelevant({cwd,query:''});return [...new Map([...relevant,...recent].map((r:any)=>[r.id,r])).values()].slice(0,10);},listRelevant:memory.listRelevant.bind(memory)};
+  const builder=new core.PromptBuilder({memoryStore:promptMemory,harnessMemoryStore:{listActive:()=>[]}});
+  const buildPrompt=async(promptCwd:string)=>builder.build({channel:'chat',enterpriseId:null,devApp:null,cwd:promptCwd,budget:24000,skills:input.catalog.list(),agents:platform.customAgents,pluginCommands:platform.pluginRuntime.commandDeclarations,autoContext:await core.loadAutoContext({cwd:promptCwd}),permissionMode:'default'});
+  const snapshot=await buildPrompt(cwd);
+  const sideCall=async(prompt:string)=>{await input.assertCurrent();let output='',done=false;for await(const event of core.streamStatelessSideCallProviderConversation({adapter:input.adapter,messages:[{role:'user',content:[{type:'text',text:prompt}]}],tools:[],systemPrompt:'只按本次要求输出数据，不执行工具。',invocationId:'inv_'+key([Date.now(),Math.random()]),options:{signal:input.processOwner?.signal,maxOutputTokens:8192,reasoningMode:'disabled'}})){if(event.type==='text')output+=event.delta;if(event.type==='done')done=true;}await input.assertCurrent();if(!done)throw new KTeamError('model_response_incomplete');return output;};
+  memory.setLLMFn?.(sideCall);
+  const backgroundBefore=new Set(platform.listBackgroundJobs(sessionId).map((j:any)=>j.jobId));
+  const system=snapshot.rendered+"\n大工具输出保存在本会话私有存储。若结果提示 file://.xiaok/spill/...，用 read_runtime_output 按工具调用ID读取，不能读取其他会话。\n"+'\n'+input.system+'\n子 Agent 是本成员在当前会话中的内部工作线程，不能创建群成员、改变项目权限或代表其他 Bot 发言。记忆只属于当前 Bot 与当前群，不跨群读取。';
+  factory=core.createPlatformRegistryFactory({platform,source:'chat',sessionId,adapter:()=>input.adapter,promptExecutor:sideCall,skillTool:core.createSkillTool(input.catalog,platform.capabilityRegistry),workflowTools:[...input.tools,{permission:'safe',definition:{name:'read_runtime_output',description:'分段读取当前Bot当前会话的大工具输出。toolCallId来自截断提示中的.txt文件名，不含扩展名。不能读取其他会话或任意文件。',inputSchema:{type:'object',additionalProperties:false,required:['toolCallId'],properties:{toolCallId:{type:'string',pattern:'^[a-zA-Z0-9_-]{1,256}$'},offset:{type:'integer',minimum:0},bytes:{type:'integer',minimum:1,maximum:32000}}}},execute:async(args:any)=>{await input.assertCurrent();if(!/^[a-zA-Z0-9_-]{1,256}$/.test(args.toolCallId))throw new KTeamError('runtime_output_invalid');const directoryPath=join(directory,'spill',sessionId);if(realpathSync(directoryPath)!==directoryPath)throw new KTeamError('runtime_output_invalid');const fd=openSync(join(directoryPath,args.toolCallId+'.txt'),constants.O_RDONLY|constants.O_NOFOLLOW);try{const size=fstatSync(fd).size,count=Math.max(1,Math.min(32000,Number(args.bytes)||16000)),offset=Number(args.offset)||0,buffer=Buffer.alloc(count);const read=readSync(fd,buffer,0,count,offset);await input.assertCurrent();return JSON.stringify({text:buffer.subarray(0,read).toString('utf8'),offset,nextOffset:offset+read,hasMore:offset+read<size});}finally{closeSync(fd);}}}],memoryStore:memory,permissionManager:input.permissions,permissionManagerForCwd:input.permissionManagerForCwd,onPrompt:input.onPrompt,onPromptForCwd:input.onPromptForCwd,assertCurrent:input.assertCurrent,teamTools:[],disableReminders:true,bindTool:input.bindTool,buildSystemPrompt:async(childCwd:string)=>(await buildPrompt(childCwd)).rendered+'\n'+input.system,onSubAgentEvent:input.onEvent,onMultiAgentEvent:input.onEvent});
+  const registry=factory.createRegistry(cwd);
+  const persist=async()=>{await store.save({...session.exportSnapshot(),model:input.model});const actual=await store.load(sessionId);if(!actual)throw new KTeamError('harness_session_persist_failed');session.updatePersistenceFacts(actual);};
+  await persist();
+  let closed=false;
+  const joined=new Set<string>();
+  const collect=()=>[...factory.listChildren().filter((a:any)=>a.id!=='main').map((a:any)=>({id:a.id,turn:a.turn,state:a.status,active:a.executionActive||a.status==='pending',result:a.lastResult,error:a.error})),...platform.listBackgroundJobs(sessionId).filter((j:any)=>!backgroundBefore.has(j.jobId)).map((j:any)=>({id:j.jobId,state:j.status,active:['queued','running'].includes(j.status),result:j.summary,error:j.errorMessage}))];
+  const settleChildren=async()=>{if(!collect().some((r:any)=>!joined.has(key(r))))return [];for(;;){await input.assertCurrent();const rows=collect();if(!rows.some((r:any)=>r.active)){const pending=rows.filter((r:any)=>!joined.has(key(r)));for(const row of pending)joined.add(key(row));return pending;}await new Promise(r=>setTimeout(r,1000));}};
+  const distill=async(text:string)=>{await input.assertCurrent();input.processOwner?.signal.throwIfAborted();await memory.writeRawMessage?.(sessionId,'assistant',text);if(config.memory?.compaction?.autoCompact!==false&&memory.compact&&(memory.getStats?.().l0??0)>=5){try{await memory.compact({requestSource:'scheduler'});}catch{input.processOwner?.signal.throwIfAborted();await input.assertCurrent();input.onEvent?.({type:'memory_distillation_deferred'});}}input.processOwner?.signal.throwIfAborted();await input.assertCurrent();};
+  return {registry,session,settleChildren,distill,spillDir:join(directory,'spill'),runOwned:<T>(work:()=>T):T=>core.withHarnessProcessOwner(input.processOwner,work),memoryStore:memory,promptSnapshot:{...snapshot,rendered:system},system:system+'\n当前实际工具目录：'+registry.getToolDefinitions().map((t:any)=>t.name).join('、'),persist,onEvent:event=>input.onEvent?.(event),async close(){if(closed)return;closed=true;const errors:unknown[]=[];for(const run of [()=>factory.dispose(),()=>factory.waitForDisposedResources()]){try{await run();}catch(e){errors.push(e);}}try{await platform.dispose();}catch(e){errors.push(e);}try{session.repairIncompleteToolCalls();await persist();}catch(e){errors.push(e);}try{await memory.close?.();}catch(e){errors.push(e);}if(errors.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}opened.delete(directory);}};
+ }catch(error){const failures:unknown[]=[];for(const cleanup of [()=>factory?.dispose(),()=>factory?.waitForDisposedResources(),()=>platform?.dispose(),()=>memory?.close?.()]){try{await cleanup();}catch(e){failures.push(e);}}if(failures.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}opened.delete(directory);throw error;}
+}

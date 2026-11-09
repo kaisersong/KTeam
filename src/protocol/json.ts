@@ -30,6 +30,15 @@ export function canonical(value: unknown, depth = 0): string {
 
 /** Bounded JSON parser: rejects duplicate keys before they can disappear in JSON.parse. */
 export function parseJson(input: string, maxBytes = 256 * 1024): Json {
+  return parseBoundedJson(input,maxBytes,false);
+}
+
+/** Semantic host responses contain measurements and model scores, outside AIMP canonicalization. */
+export function parseDataJson(input: string,maxBytes=256*1024):Json {
+  return parseBoundedJson(input,maxBytes,true);
+}
+
+function parseBoundedJson(input:string,maxBytes:number,allowFractional:boolean):Json {
   if (Buffer.byteLength(input) > maxBytes) throw new KTeamError('message_too_large', 413);
   let at = 0;
   function ws() { while (/[\x20\t\r\n]/.test(input[at] ?? '\0')) at++; }
@@ -83,7 +92,7 @@ export function parseJson(input: string, maxBytes = 256 * 1024): Json {
     if (!match) throw new KTeamError('invalid_json');
     at += match[0].length;
     const result: unknown = JSON.parse(match[0]);
-    if (typeof result === 'number' && !Number.isSafeInteger(result)) throw new KTeamError('unsupported_json_number');
+    if (typeof result === 'number' && (!Number.isFinite(result)||(Number.isInteger(result)&&!Number.isSafeInteger(result))||(!allowFractional&&!Number.isSafeInteger(result)))) throw new KTeamError('unsupported_json_number');
     return result as Json;
   }
   try {

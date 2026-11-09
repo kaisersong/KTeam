@@ -13,7 +13,7 @@ if (!lstatSync(docs).isSymbolicLink() || readlinkSync(docs) !== '../mydocs/kteam
 }
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 let verified = 0;
-for (const entry of [...lock.vendoredFiles,...(lock.runtime?.files??[]), ...lock.references, lock.productBaseline]) {
+for (const entry of [...lock.vendoredFiles,...(lock.runtime?.files??[]),...(lock.runtime?.adaptations?.files??[]),...(lock.ui?.files??[]), ...lock.references, lock.productBaseline]) {
   if (hash(readFileSync(join(root, entry.file))) !== entry.sha256) throw new Error('source_digest_mismatch:' + entry.file);
   verified++;
 }

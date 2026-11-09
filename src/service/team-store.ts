@@ -1,14 +1,15 @@
+import {calendarWindow} from '../runtime/calendar.js';
 import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
 import {KTeamError} from '../errors.js';
 import {randomUUID} from 'node:crypto';
 
 export interface Binding {botId:string;modelId:string;fingerprint:string;model:string;revision:number;kind:'xiaok-hosted'|'local-native'}
-export interface TeamSettings {roomId:string;goal:string;mode:'auto'|'mentions';paused:boolean;quiet:boolean;revision:number;maxRuns:number;dailyCalls:number;kind?:'assistant'|'direct'|'group';delivery?:'external-agent';goalConfirmed?:boolean;lastGoalOperation?:string}
+export interface TeamSettings {roomId:string;goal:string;mode:'auto'|'mentions';paused:boolean;quiet:boolean;revision:number;maxRuns:number;dailyCalls:number;kind?:'assistant'|'direct'|'group'|'peer';delivery?:'external-agent';goalConfirmed?:boolean;lastGoalOperation?:string}
 export class TeamStore {
  private db:DatabaseSync;private transactionDepth=0;
  transaction<T>(fn:()=>T):T{if(this.transactionDepth)return fn();this.db.exec('BEGIN IMMEDIATE');this.transactionDepth++;try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}finally{this.transactionDepth--;}}
- constructor(root:string){
+ constructor(readonly root:string){
   this.db=new DatabaseSync(join(root,'team-extensions.sqlite'));
   this.db.exec(`CREATE TABLE IF NOT EXISTS bot_bindings(bot_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_settings(room_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
@@ -21,6 +22,7 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS agent_deliveries(bot_id TEXT NOT NULL,room_id TEXT NOT NULL,origin_id TEXT NOT NULL,reads INTEGER NOT NULL,PRIMARY KEY(bot_id,room_id,origin_id));
    CREATE TABLE IF NOT EXISTS agent_reply_outbox(id TEXT PRIMARY KEY,link_id TEXT NOT NULL,room_id TEXT NOT NULL,hash TEXT NOT NULL,state TEXT NOT NULL,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_proposals(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,run_id TEXT NOT NULL,reply_id TEXT,value_json TEXT NOT NULL);`);
+  if(!this.state('harness-budget-v1')){this.db.prepare("UPDATE team_settings SET value_json=json_set(value_json,'$.maxRuns',128,'$.dailyCalls',1000,'$.revision',coalesce(json_extract(value_json,'$.revision'),0)+1) WHERE json_extract(value_json,'$.maxRuns')=6 AND json_extract(value_json,'$.dailyCalls')=20").run();this.setState('harness-budget-v1',true);}
   this.db.prepare("UPDATE team_jobs SET state='noop',value_json=json_set(value_json,'$.state','noop','$.reason','legacy_goal_gate_retired') WHERE state='awaiting_goal'").run();
  }
  stateEntries(prefix:string){return this.db.prepare('SELECT key,value_json FROM product_state WHERE substr(key,1,?)=?').all(prefix.length,prefix).map(r=>({key:String(r.key),value:JSON.parse(String(r.value_json))}));}
@@ -100,17 +102,17 @@ export class TeamStore {
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
  save(job:any){this.db.prepare('UPDATE team_jobs SET state=?,value_json=? WHERE id=?').run(job.state,JSON.stringify(job),job.id);}
- claim(){
-  const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' ORDER BY rowid LIMIT 1").get();if(!row)return null;
+ claim(excludedRooms:string[]=[],peerOnly=false){
+  const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND room_id NOT IN (SELECT value FROM json_each(?)) AND (?=0 OR json_extract(value_json,'$.trigger')='peer') ORDER BY CASE WHEN json_extract(value_json,'$.trigger')='peer' THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0);if(!row)return null;
   const job=JSON.parse(String(row.value_json));job.state='routing';this.save(job);return job;
  }
- reserveCall(job:any,team:TeamSettings){
+ reserveCall(job:any,team:TeamSettings,persistJob=true){
   const previousCalls=job.calls;
   this.db.exec('BEGIN IMMEDIATE');try{
-   const day=new Date().toISOString().slice(0,10);const calls=Number(this.db.prepare('SELECT calls FROM team_call_budgets WHERE day=?').get(day)?.calls??0);
+   const day=calendarWindow().today+':'+team.roomId;const calls=Number(this.db.prepare('SELECT calls FROM team_call_budgets WHERE day=?').get(day)?.calls??0);
    if(job.calls>=team.maxRuns||calls>=team.dailyCalls)throw new KTeamError('team_budget_exhausted',409);
    this.db.prepare('INSERT INTO team_call_budgets VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1').run(day);
-   job.calls++;this.save(job);this.db.exec('COMMIT');
+   job.calls++;if(persistJob)this.save(job);this.db.exec('COMMIT');
   }catch(e){this.db.exec('ROLLBACK');job.calls=previousCalls;throw e;}
  }
  markSeen(roomId:string,sequences:number[]){const statement=this.db.prepare('INSERT OR IGNORE INTO team_seen VALUES(?,?)');for(const seq of sequences)statement.run(roomId,seq);}

@@ -1,0 +1,88 @@
+import type { Tool } from '../../../types.js';
+import type { PermissionClass } from '../../../types.js';
+import { normalizeMcpToolSchema, type McpToolSchema } from '../client.js';
+import type { McpInvocationOptions } from './client.js';
+
+export interface McpRuntimeServerDeclaration {
+  name: string;
+  command: string;
+}
+
+export interface McpRuntimeConnectedClient {
+  listTools(): Promise<McpToolSchema[]>;
+  callTool(name: string, input: Record<string, unknown>, options?: McpInvocationOptions): Promise<string>;
+  dispose(): void;
+}
+
+export interface McpRuntimeToolFactoryOptions {
+  connect(
+    declaration: McpRuntimeServerDeclaration,
+  ): Promise<McpRuntimeConnectedClient>;
+  resolvePermission?(serverName: string, toolName: string): PermissionClass;
+}
+
+export interface McpRuntimeToolBuildOptions {
+  resolvePermission?(serverName: string, toolName: string): PermissionClass;
+}
+
+const CUA_READ_ONLY_TOOLS = new Set([
+  'get_window_state',
+  'list_apps',
+  'list_windows',
+]);
+
+export function resolveDefaultMcpToolPermission(serverName: string, toolName: string): PermissionClass {
+  if (serverName === 'cua-driver') {
+    return CUA_READ_ONLY_TOOLS.has(toolName) ? 'safe' : 'write';
+  }
+  return 'safe';
+}
+
+export function buildMcpRuntimeTools(
+  declaration: McpRuntimeServerDeclaration,
+  client: McpRuntimeConnectedClient,
+  schemas: McpToolSchema[],
+  options: McpRuntimeToolBuildOptions = {},
+): Tool[] {
+  return schemas.map((schema) => ({
+    permission: (options.resolvePermission ?? resolveDefaultMcpToolPermission)(declaration.name, schema.name),
+    definition: normalizeMcpToolSchema(declaration.name, schema),
+    async execute(input, context) {
+      const signal = context?.signal;
+      signal?.throwIfAborted();
+      let active = true;
+      const onProgress = context?.executionProgress ? () => {
+        if (active && !signal?.aborted) context.executionProgress?.progress();
+      } : undefined;
+      try {
+        const result = await (signal || onProgress || context
+          ? client.callTool(schema.name, input, { ...(signal ? { signal } : {}), ...(onProgress ? { onProgress } : {}), ...(context ? { executionContext: context } : {}) })
+          : client.callTool(schema.name, input));
+        signal?.throwIfAborted();
+        return result;
+      } catch (error) {
+        signal?.throwIfAborted();
+        throw error;
+      } finally {
+        active = false;
+      }
+    },
+  }));
+}
+
+export async function createMcpRuntimeTools(
+  declarations: McpRuntimeServerDeclaration[],
+  options: McpRuntimeToolFactoryOptions,
+): Promise<Tool[]> {
+  const tools: Tool[] = [];
+
+  for (const declaration of declarations) {
+    const client = await options.connect(declaration);
+    const schemas = await client.listTools();
+    tools.push(...buildMcpRuntimeTools(declaration, client, schemas, {
+      resolvePermission: options.resolvePermission,
+    }));
+  }
+
+  return tools;
+}
