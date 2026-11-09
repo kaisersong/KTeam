@@ -8,3 +8,4 @@
 .draft-result{border:1px solid #e3d2a9;border-radius:9px;padding:14px 16px;margin:15px 0;background:#fffaf0}.draft-result summary{cursor:pointer;font-size:13px}.draft-result pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.8;font-size:14px}
 
 @media(min-width:1121px){.message-text{font-size:18px;line-height:1.75}.message-byline strong{font-size:18px}.message-byline time{font-size:13px}.inspector h3{font-size:19px}.goal-text{font-size:17px;line-height:1.7}.member-item strong{font-size:16px}.conversation-header h1{font-size:28px}.nav-item{font-size:17px}}@media(max-width:600px){.settings-button{display:flex;justify-content:center;font-size:0;padding:14px}.settings-button svg{width:20px;height:20px}}
+.brand{justify-content:flex-start;padding-left:96px}@media(max-width:1120px){.brand{padding-left:85px}}@media(max-width:600px){.brand{padding-left:0;justify-content:center}}
