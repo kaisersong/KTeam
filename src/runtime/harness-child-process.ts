@@ -21,7 +21,7 @@ export function spawn(command:string,argsOrOptions:any[]=[],maybeOptions:any={})
  const stdio=options.stdio??'pipe';if(stdio!=='pipe'&&(!Array.isArray(stdio)||stdio.length!==3||stdio.some((s:any)=>s!=='pipe'&&s!=='ignore'&&s!=='inherit')))throw new KTeamError('harness_stdio_unavailable');
  const tuple=stdio==='pipe'?['pipe','pipe','pipe']:stdio;
  const launcher=process.env.KTEAM_NATIVE_CHILD??resolve('dist/src/runtime/native-child.js');
- const child=childProcess.spawn(process.execPath,[launcher],{...options,cwd:options.cwd??owner.cwd,env:{...nativeEnvironment(),...(process.versions.electron?{ELECTRON_RUN_AS_NODE:'1'}:{})},detached:true,stdio:[...tuple,'ipc']});
+ const child=childProcess.spawn(process.execPath,[launcher],{...options,shell:false,cwd:options.cwd??owner.cwd,env:{...nativeEnvironment(),...(process.versions.electron?{ELECTRON_RUN_AS_NODE:'1'}:{})},detached:true,stdio:[...tuple,'ipc']});
  const invocationId='platform-'+randomUUID();let identity:any,started=false;
  const stop=()=>{child.kill('SIGTERM');};owner.signal.addEventListener('abort',stop,{once:true});
  child.once('spawn',()=>{void(async()=>{try{

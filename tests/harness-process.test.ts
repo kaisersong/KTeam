@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,chmodSync,existsSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,chmodSync,existsSync,rmSync,copyFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {promisify} from 'node:util';
 import {spawn,execFile,withHarnessProcessOwner} from '../src/runtime/harness-child-process.js';
@@ -12,6 +12,13 @@ test('owned raw spawn preserves ordinary nonzero exit status and physically drai
  const result=await new Promise(r=>child.once('close',(code:any,signal:any)=>r({code,signal})));
  assert.deepEqual(result,{code:2,signal:null});assert.ok(records.some(r=>r.state==='running'));
  assert.throws(()=>process.kill(child.pid!,0));
+});
+
+test('caller shell options cannot apply to the ownership launcher or execute a path before admission',async()=>{
+ const root=realpathSync(mkdtempSync('/tmp/kteam-launcher-shell-')),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,'child; touch bypass; #.mjs');copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);process.env.KTEAM_NATIVE_CHILD=launcher;
+ try{const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();let error:any;child.once('error',(e:any)=>{error=e;});child.once('close',()=>resolve(error));}));assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
+  const result=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();child.once('error',()=>{});child.once('close',(code:any,signal:any)=>resolve({code,signal}));}));assert.deepEqual(result,{code:2,signal:null});assert.equal(existsSync(marker),false);
+ }finally{if(before===undefined)delete process.env.KTEAM_NATIVE_CHILD;else process.env.KTEAM_NATIVE_CHILD=before;rmSync(root,{force:true,recursive:true});}
 });
 
 test('owned execFile limits retained bytes while an excessive writer is physically stopped',async()=>{

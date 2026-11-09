@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {join,resolve} from 'node:path';
 import {createHarness} from '../src/runtime/harness.js';
@@ -72,6 +73,8 @@ test('host-managed card and Skill tools cannot read or overwrite another private
   owner=await f.open();const output=join(foreign,'card.a2ui.json');
   assert.match(await owner.registry.executeTool('render_ui',{title:'must fail',output_path:output,sections:[{kind:'text',content:'must not write'}]}),/harness_private_path_denied/);assert.equal(existsSync(output),false);
   assert.match(await owner.registry.executeTool('install_skill',{source:skill,scope:'global'}),/harness_private_path_denied/);
+  assert.match(await owner.registry.executeTool('install_skill',{source:'  '+skill+'  ',scope:'global'}),/harness_private_path_denied/);const scopeKey=createHash('sha256').update(f.scope.botId+'\n'+f.scope.roomId).digest('hex');assert.equal(existsSync(join(f.scope.root,'harness-assets',scopeKey,'skills/private-skill.md')),false);
+  assert.match(await owner.registry.executeTool('render_ui',{title:'must fail',output_path:'  '+output+'  ',sections:[{kind:'text',content:'must not write'}]}),/harness_private_path_denied/);assert.equal(existsSync(output),false);
   assert.doesNotMatch(await owner.registry.executeTool('read',{file_path:skill}),/FOREIGN_PRIVATE_BODY/);
  }finally{await owner?.close();f.close();}
 });
