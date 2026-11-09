@@ -1,6 +1,6 @@
 {
   "name": "@kteam/app",
-  "version": "0.1.0-preview.2",
+  "version": "0.1.0-preview.3",
   "private": true,
   "main": "build/main.cjs",
   "type": "module",
@@ -16,7 +16,7 @@
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
     "start": "node dist/src/cli.js start",
     "doctor": "node dist/src/cli.js doctor",
-    "test": "npm run build && node --preserve-symlinks --test dist/tests/*.test.js",
+    "test": "npm run build && node scripts/build-runtime.mjs && node --preserve-symlinks --test dist/tests/*.test.js",
     "test:integration": "npm run build && node --preserve-symlinks --test dist/tests/upstream.integration.test.js",
     "verify:sources": "node scripts/verify-sources.mjs",
     "test:cli": "npm run build && node scripts/smoke-cli.mjs",
@@ -49,6 +49,7 @@
     "@napi-rs/keyring": "2.1.2",
     "ajv": "8.20.0",
     "better-sqlite3": "13.0.3",
+    "fast-glob": "3.3.2",
     "openai": "7.52.0",
     "zod": "4.6.7"
   },

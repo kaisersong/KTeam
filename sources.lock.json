@@ -10,13 +10,13 @@
     {
       "name": "kswarm",
       "repository": "https://github.com/kaisersong/kswarm",
-      "revision": "16c3ed14c5493a82d000d69d34e4b1c933187433",
+      "revision": "5c64da71305e69cbec72ec68debfad14cd59b099",
       "usage": "existing authoritative service; linked source for isolated integration tests"
     },
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
-      "revision": "e3a0d00f7a25878c70dd69696f0a9390687df8f8",
+      "revision": "4483c65330e92eca052649fc4bbb969d6f05f049",
       "usage": "existing authoritative service; linked source for isolated integration tests"
     }
   ],
@@ -57,7 +57,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "634283755aada7e883ec21619ce62e56033eb7c6",
+    "revision": "860f72ac055c1d009d34858d4d343288da72f5e5",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -66,7 +66,7 @@
     "revision": "8f36042e209e0a6fc0c5ffe4b95f4bd9e8eb8056",
     "directory": "vendor/xiaok-runtime",
     "modified": false,
-    "usage": "AgentRuntime, model adapters, ToolRegistry, compatible credential/config loader and shared activity-owner client; source snapshot is self-contained",
+    "usage": "AgentRuntime, model adapters, ToolRegistry, compatible credential/config loader and shared activity-owner client; source snapshot is self-contained; scoped read/glob/grep tools and original bounded search worker",
     "files": [
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/command-result.ts",
@@ -1577,6 +1577,11 @@
         "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-client.ts",
         "upstreamPath": "src/runtime/conversation-activity/owner-client.ts",
         "sha256": "0525c8fc87ab714cef5fbccfa0380bf4f70e712d924ecaf60b0863cf5cc42c07"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/tools/glob-worker.mjs",
+        "upstreamPath": "src/ai/tools/glob-worker.mjs",
+        "sha256": "021533f2329732d355ecd14d187c95df2fd666bfe62db38f8e3ddce9b3ac9776"
       }
     ]
   }

@@ -48,7 +48,7 @@ if(locked){
  app.whenReady().then(async()=>{
   try{await ensureHost();}catch(error){console.error('KTeam host unavailable:',(error as {code?:string}).code??'startup_failed');}
   let buildInfo={version:app.getVersion()};try{buildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
-  const api=createDesktopAPI(async(route,value)=>{const result=await hostRequest(root,'kteam-main',route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;});
+  const api=createDesktopAPI(async(route,value)=>{const result=await hostRequest(root,'kteam-main',route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}

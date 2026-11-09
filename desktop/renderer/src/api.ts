@@ -1,7 +1,8 @@
-export interface Bot {id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null}
+export interface Bot {id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
 export interface Room {roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string}
 export interface KTeamAPI {
+ saveBot(input:any):Promise<any>;onboarding():Promise<any>;saveOnboarding(input:any):Promise<any>;createFirstBot(input:any):Promise<any>;finishOnboarding(input:any):Promise<any>;agentConnections():Promise<any>;inviteAgent(input:any):Promise<any>;agentInvitation(id:string):Promise<any>;approveAgent(input:any):Promise<any>;revokeAgent(id:string):Promise<any>;useSystemAgent(input:any):Promise<any>;editGroup(input:any):Promise<any>;
  resumeCreation(input:{id:string}):Promise<any>;inbox():Promise<any>;bootstrap():Promise<{roomId:string;botId:string}>;direct(input:{botId:string}):Promise<{roomId:string}>;proposals(roomId:string):Promise<any>;acceptProposal(input:{roomId:string;proposalId:string;expectedHash:string}):Promise<{roomId:string}>;
  status():Promise<any>;bots():Promise<{bots:Bot[]}>;teams():Promise<{rooms:Room[]}>;models():Promise<any>;runtimes():Promise<any>;
  createBot(input:{name:string;modelId:string;requestId:string}):Promise<any>;
@@ -18,7 +19,7 @@ async function dev(method:string,args:unknown[]){
  const result=await response.json();if(!response.ok||result.ok===false)throw new Error(result.code??'服务请求失败');return result;
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
-const reasons:Record<string,string>={conversation_identity_changed:'会话成员或目标已变化，已暂停发送。请核对会话详情',conversation_contract_changed:'会话目标或规则已变化，请核对后重新创建方案',operation_receipt_missing:'原创建结果暂不可用，已停止后续操作，请稍后核对',proposal_expired:'组队方案已过期，请让小K重新准备',proposal_changed:'方案已变化，请刷新后确认',proposal_scope_mismatch:'方案与当前会话不一致，请重新打开原会话',operation_result_unknown:'创建结果待核对，原结果确认前不会重复创建。请稍后重试核对',operation_owner_changed:'后台已更新，请刷新后核对结果',member_identity_changed:'成员信息已变化，请让小K重新准备方案',
+const reasons:Record<string,string>={bot_profile_changed:'Bot 属性已被修改，请重新打开设置后保存',bot_workspace_invalid:'请选择这台机器上存在的资料目录',agent_invite_expired:'接入邀请已过期，请重新生成指令',agent_invite_claimed:'已有另一个客户端申请，请在KTeam核对或重新生成',agent_candidate_changed:'来源会话信息已变化，请刷新后重新核对',agent_approval_required:'等待你在KTeam确认接入',agent_service_upgrade_required:'消息服务需要配套升级才能接入本地Agent',agent_reply_result_unknown:'回复结果待核对，不会自动重新执行',agent_link_revoked:'连接已断开',agent_revocation_pending:'正在核对发出中的回复，核对后可切换',team_goal_unconfirmed:'请先确认团队目标，再开始讨论',onboarding_creation_pending:'正在恢复上次创建，请先核对其结果',conversation_identity_changed:'会话成员或目标已变化，已暂停发送。请核对会话详情',conversation_contract_changed:'会话目标或规则已变化，请核对后重新创建方案',operation_receipt_missing:'原创建结果暂不可用，已停止后续操作，请稍后核对',proposal_expired:'组队方案已过期，请让小K重新准备',proposal_changed:'方案已变化，请刷新后确认',proposal_scope_mismatch:'方案与当前会话不一致，请重新打开原会话',operation_result_unknown:'创建结果待核对，原结果确认前不会重复创建。请稍后重试核对',operation_owner_changed:'后台已更新，请刷新后核对结果',member_identity_changed:'成员信息已变化，请让小K重新准备方案',
 
  broker_unavailable:'协作消息服务尚未连接',kswarm_unavailable:'项目与成员服务尚未连接',upstream_protocol_unavailable:'请先连接小K协作服务',
  aimp_unavailable:'当前协作服务需要升级以支持 KTeam',model_quota_exhausted:'模型额度不足，已停止本次工作',model_authentication_failed:'模型登录已失效，请在小K中更新凭据',

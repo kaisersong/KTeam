@@ -9,9 +9,15 @@ files:
   - package.json
   - LICENSE
   - NOTICE
+extraResources:
+  - from: desktop/bin
+    to: bin
+  - from: desktop/skills
+    to: skills
 asar: true
 asarUnpack:
   - build/host.cjs
+  - build/agent-cli.cjs
   - build/shared/**
   - node_modules/**
 npmRebuild: false

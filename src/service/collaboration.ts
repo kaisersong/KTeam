@@ -13,7 +13,7 @@ export class CollaborationService {
   async bots() {
     const result = await this.upstream.listBots();
     return { ok: true, bots: rows(result.agents).map(agent => ({
-      id: agent.id, name: agent.name, description: agent.description, status: agent.status,
+      id: agent.id, name: agent.name, description: agent.description, instructions:agent.instructions,profile:agent.kteamProfile??{revision:0,participation:'auto',workspace:'',followup:false}, status: agent.status,
       runtimeType: agent.runtimeType, runtimeSource: agent.runtimeSource,
       // Existing project harness support is NOT KTeam execution admission.
       kteamExecution: 'not_verified',
@@ -87,6 +87,7 @@ export class CollaborationService {
       sender: message.sender, text: message.text, roomSequence: message.roomSequence, createdAt: message.createdAt,
       ...(message.sourceRef && record(message.sourceRef).kind === 'aimp_l0'
         ? { envelope: record(message.sourceRef).envelope } : { protocol: 'legacy_display_only' }),
+      ...(message.sourceRef&&record(message.sourceRef).kind==='external_agent_reply'?{externalSource:{driver:record(message.sourceRef).driver,verifiedExecution:false}}:{}),
       ...(message.sourceRef&&record(message.sourceRef).kind==='aimp_reply'?{workRef:record(message.sourceRef).taskRef}:{}),
     })) };
   }

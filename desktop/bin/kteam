@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+kteam_bin_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+kteam_contents_dir=$(CDPATH= cd -- "$kteam_bin_dir/../.." && pwd)
+exec env ELECTRON_RUN_AS_NODE=1 "$kteam_contents_dir/MacOS/KTeam" "$kteam_contents_dir/Resources/app.asar.unpacked/build/agent-cli.cjs" "$@"

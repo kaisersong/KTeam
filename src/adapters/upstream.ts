@@ -55,7 +55,7 @@ export class Upstreams {
       if (!response.ok || result.ok === false) {
         // Broker duplicate is an original receipt, not permission to run anything again.
         if (result.code === 'room_message_duplicate' && result.message) return { ...result, ok: true, reused: true };
-        const code = String(result.code ?? result.error ?? 'upstream_rejected');
+        const code = String((typeof result.code==='string'?result.code:result.error) ?? 'upstream_rejected');
         throw new KTeamError(/^[a-z0-9_-]+$/.test(code) ? code : 'upstream_rejected', response.status >= 400 ? response.status : 409);
       }
       return result;
@@ -69,8 +69,8 @@ export class Upstreams {
       this.request('broker', '/rooms/workspace-protocol'), this.request('kswarm', '/health'),
     ]);
     const summarize = (result: PromiseSettledResult<Record<string, unknown>>) => result.status === 'fulfilled'
-      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
-      : { available: false, workspaceProtocol: false, reason: result.reason instanceof KTeamError ? result.reason.code : 'upstream_unavailable' };
+      ? { available: true, workspaceProtocol: supportsRoomWorkspaceProtocol(result.value),externalAgentMessages:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('external-agent-messages'),messageRevisionCAS:Array.isArray(result.value.capabilities)&&result.value.capabilities.includes('message-revision-cas') }
+      : { available: false, workspaceProtocol: false, externalAgentMessages:false,messageRevisionCAS:false,reason: result.reason instanceof KTeamError ? result.reason.code : 'upstream_unavailable' };
     const b = summarize(broker), k = summarize(kswarm);
     return { broker: b, kswarm: k, ready: b.workspaceProtocol && b.messageRevisionCAS && k.workspaceProtocol };
   }
@@ -79,11 +79,15 @@ export class Upstreams {
     if (!status.ready) throw new KTeamError('upstream_protocol_unavailable', 503, status);
   }
   listBots() { return this.request('kswarm', '/agents'); }
+  updateBot(botId:string,input:Record<string,unknown>){return this.request('kswarm',`/agents/${encodeURIComponent(botId)}`,'PUT',input);}
   createBot(input:Record<string,unknown>){return this.request('kswarm','/agents','POST',input);}
   aimp(roomId:string,command:string,input?:Record<string,unknown>){
     if(!['session','status','tasks','configure','event','agent-event','begin-execution','execution-check','effect','heartbeat','chat','verify-delivery'].includes(command))throw new KTeamError('aimp_command_invalid');
     return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/aimp/${command}`,input?'POST':'GET',input);
   }
+  async requireExternalMessages(){const result=await this.probe();if(!result.ready||!result.broker.externalAgentMessages)throw new KTeamError('agent_service_upgrade_required',503);}
+  updateTeam(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/metadata`,'PUT',input);}
+  externalReply(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/agent-messages`,'POST',input);}
   listRuntimes() { return this.request('kswarm', '/runtimes'); }
   listProjects() { return this.request('kswarm', '/projects'); }
   listTeams() { return this.request('broker', '/rooms'); }

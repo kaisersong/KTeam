@@ -20,7 +20,7 @@ test('concurrent bootstrap is durable and creates one coordinator and one conver
  const f=await realUpstreams(),store=new TeamStore(f.root);const c=new TeamCoordinator(f.upstream,store,1,models);
  try{const refs=await Promise.all(Array.from({length:8},()=>c.bootstrap(user)));assert.equal(new Set(refs.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listTeams()).rooms.length,1);assert.equal((await f.upstream.listBots()).agents.filter((b:any)=>b.id===refs[0]!.botId).length,1);const restarted=new TeamCoordinator(f.upstream,store,2,models);assert.equal((await restarted.bootstrap(user)).roomId,refs[0]!.roomId);await assert.rejects(c.bootstrap({requestSource:'agent'} as any),/user_action_required/);}finally{store.close();await f.close();}
 });
-test('proposal does not create entities; explicit scoped hash acceptance starts exactly one group',async()=>{
+test('proposal does not create entities; explicit scoped hash acceptance creates one draft group and waits for a confirmed goal',async()=>{
  const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
  try{
   const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref);const before=(await f.upstream.listBots()).agents.length;
@@ -30,7 +30,7 @@ test('proposal does not create entities; explicit scoped hash acceptance starts 
   await assert.rejects(c.accept({roomId:'another-room',proposalId:proposal.id,expectedHash:proposal.hash},user),/proposal_scope_mismatch/);
   const results=await Promise.all(Array.from({length:5},()=>c.accept({roomId:ref.roomId,proposalId:proposal.id,expectedHash:proposal.hash},user)));
   assert.equal(new Set(results.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listBots()).agents.length,before+2);assert.equal((await f.upstream.listTeams()).rooms.length,2);
-  const history=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(history.messages.length,1);assert.equal(history.messages[0].text,'确认本周资料缺口');assert.equal(store.jobs(results[0]!.roomId).length,1);
+  const draft=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(draft.messages.length,0);assert.equal(store.jobs(results[0]!.roomId).length,0);await c.editGroup({roomId:results[0]!.roomId,goal:'确认本周资料缺口',start:true,requestId:'confirm-proposed-goal'});const history=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(history.messages.length,1);assert.equal(history.messages[0].text,'确认本周资料缺口');assert.equal(store.jobs(results[0]!.roomId).length,1);
  }finally{store.close();await f.close();}
 });
 test('unknown unconfirmed creation is not replayed; frozen model changes reject new side effects',async()=>{
@@ -45,7 +45,7 @@ test('unknown unconfirmed creation is not replayed; frozen model changes reject 
 });
 test('lost creation receipt is recovered through owner reads after a new host fence, without replay',async()=>{
  const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
- try{const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref),p=await c.propose({title:'市场讨论',goal:'核对市场资料',members:[{name:'市场'}]},ctx);const create=f.upstream.createBot.bind(f.upstream);let writes=0;f.upstream.createBot=async(input:any)=>{writes++;await create(input);throw new KTeamError('upstream_operation_unknown',503);};await assert.rejects(c.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user),/operation_result_unknown/);f.upstream.createBot=async()=>{throw Error('must not repeat POST');};const restarted=new TeamCoordinator(f.upstream,store,2,models);const result=await restarted.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user);assert.equal(writes,1);assert.equal((await f.upstream.messages(result.roomId,0,100)).messages.length,1);assert.equal((await restarted.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user)).roomId,result.roomId);
+ try{const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref),p=await c.propose({title:'市场讨论',goal:'核对市场资料',members:[{name:'市场'}]},ctx);const create=f.upstream.createBot.bind(f.upstream);let writes=0;f.upstream.createBot=async(input:any)=>{writes++;await create(input);throw new KTeamError('upstream_operation_unknown',503);};await assert.rejects(c.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user),/operation_result_unknown/);f.upstream.createBot=async()=>{throw Error('must not repeat POST');};const restarted=new TeamCoordinator(f.upstream,store,2,models);const result=await restarted.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user);assert.equal(writes,1);assert.equal((await f.upstream.messages(result.roomId,0,100)).messages.length,0);assert.equal((await restarted.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user)).roomId,result.roomId);
  }finally{store.close();await f.close();}
 });
 test('direct conversation reuses bound member and survives reopening; model-origin acceptance is forbidden',async()=>{

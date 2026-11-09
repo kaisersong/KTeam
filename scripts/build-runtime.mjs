@@ -7,7 +7,14 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const lock=JSON.parse(readFileSync(join(root,'sources.lock.json'),'utf8'));
 const source=resolve(root,lock.runtime.directory);
 for(const file of lock.runtime.files)if(createHash('sha256').update(readFileSync(join(root,file.file))).digest('hex')!==file.sha256)throw Error('runtime_source_hash_mismatch:'+file.file);
-const entry=`export {AgentRuntime} from ${JSON.stringify(join(source,'src/ai/runtime/agent-runtime.ts'))};
+const entry=`export {createReadTool} from ${JSON.stringify(join(source,'src/ai/tools/read.ts'))};
+export {globTool} from ${JSON.stringify(join(source,'src/ai/tools/glob.ts'))};
+export {grepTool} from ${JSON.stringify(join(source,'src/ai/tools/grep.ts'))};
+export {withSandboxSearchScope} from ${JSON.stringify(join(source,'src/platform/sandbox/search-scope.ts'))};
+export {createSandboxPolicy} from ${JSON.stringify(join(source,'src/platform/sandbox/policy.ts'))};
+export {createSandboxEnforcer} from ${JSON.stringify(join(source,'src/platform/sandbox/enforcer.ts'))};
+export {createNativeReadonlyExecutionContext} from ${JSON.stringify(join(source,'src/ai/tools/native-readonly-context.ts'))};
+export {AgentRuntime} from ${JSON.stringify(join(source,'src/ai/runtime/agent-runtime.ts'))};
 export {AgentSessionState} from ${JSON.stringify(join(source,'src/ai/runtime/session.ts'))};
 export {AgentRunController} from ${JSON.stringify(join(source,'src/ai/runtime/controller.ts'))};
 export {ToolRegistry} from ${JSON.stringify(join(source,'src/ai/tools/index.ts'))};
@@ -20,3 +27,5 @@ const result=await build({stdin:{contents:entry,resolveDir:root,sourcefile:'xiao
  nodePaths:[join(root,'node_modules')],
  packages:'bundle',external:['@napi-rs/keyring','better-sqlite3','onnxruntime-node','nodejieba','node-pty','electron'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
 writeFileSync(join(root,'build/shared/source-manifest.json'),JSON.stringify(Object.entries(result.metafile.inputs).filter(([file])=>file!=='xiaok-shared-entry.ts').map(([file])=>({file,sha256:createHash('sha256').update(readFileSync(resolve(root,file))).digest('hex')})),null,2));
+
+await build({entryPoints:[join(source,"src/ai/tools/glob-worker.mjs")],bundle:true,platform:"node",format:"esm",target:"node22",outfile:join(root,"build/shared/glob-worker.mjs"),banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
