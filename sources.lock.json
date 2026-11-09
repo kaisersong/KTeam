@@ -78,7 +78,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "5f4e9b1210ed93a7194ff833964d165c91572476",
+    "revision": "ecc744ccc3694d6422554f5ee52399ede5ed3bcc",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -87,7 +87,7 @@
     "revision": "8f36042e209e0a6fc0c5ffe4b95f4bd9e8eb8056",
     "directory": "vendor/xiaok-runtime",
     "modified": false,
-    "usage": "AgentRuntime, model adapters, ToolRegistry, compatible credential/config loader and shared activity-owner client; source snapshot is self-contained; scoped read/glob/grep tools and original bounded search worker",
+    "usage": "Original AgentRuntime, model/config/credential loader, native tool factories, permission engine/settings and Skill catalog; unchanged pinned tools/skills; KTeam binds cwd, authenticated task scope, approval UI, tool trace and owned command lifecycle",
     "files": [
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/command-result.ts",
@@ -1603,6 +1603,91 @@
         "file": "vendor/xiaok-runtime/src/ai/tools/glob-worker.mjs",
         "upstreamPath": "src/ai/tools/glob-worker.mjs",
         "sha256": "021533f2329732d355ecd14d187c95df2fd666bfe62db38f8e3ddce9b3ac9776"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/skills/tool.ts",
+        "upstreamPath": "src/ai/skills/tool.ts",
+        "sha256": "25b78acb2ed0f5ab9e307fa5f7504baf220abd04885993545d0f5eb75d194752"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/skills/planner.ts",
+        "upstreamPath": "src/ai/skills/planner.ts",
+        "sha256": "3e3d6fcc7b8ef6abc2ec6d774cd7bf6636c1fb18c64228346bf69be35425977a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/permissions/settings.ts",
+        "upstreamPath": "src/ai/permissions/settings.ts",
+        "sha256": "97a62ea5c581a135184364754e9a42a98f9ea530a06e41a2bda32abf906e3507"
+      },
+      {
+        "file": "desktop/skills/debug.md",
+        "upstreamPath": "data/skills/debug.md",
+        "sha256": "14f6dfcec289f519d85952ca6ff49d64ea1fa2bf24bb472f0424e819e96991cc"
+      },
+      {
+        "file": "desktop/skills/dingtalk-cli/SKILL.md",
+        "upstreamPath": "data/skills/dingtalk-cli/SKILL.md",
+        "sha256": "7a0bc0c89a97ea85f66fc8ec5ea44f57547a50ba2fbf06cfd7e58a3dba23b1a5"
+      },
+      {
+        "file": "desktop/skills/feishu-cli/SKILL.md",
+        "upstreamPath": "data/skills/feishu-cli/SKILL.md",
+        "sha256": "2c8f0513ee4e3a00e9cc28594b61672ad3ff94815e806825ccc83107cbd1bacf"
+      },
+      {
+        "file": "desktop/skills/keybindings-help.md",
+        "upstreamPath": "data/skills/keybindings-help.md",
+        "sha256": "1b943fa19e2ca1a6583c1d4ffb315c60faf7de1e521f8834b15d668b3293c089"
+      },
+      {
+        "file": "desktop/skills/plan.md",
+        "upstreamPath": "data/skills/plan.md",
+        "sha256": "07d3e0d3b80c87218666b674423110e300c859ad7cd939587c31665888fc58a8"
+      },
+      {
+        "file": "desktop/skills/project.md",
+        "upstreamPath": "data/skills/project.md",
+        "sha256": "879100e8143acca23130f6d6d34e08358158093c5955db1c671a18d892a88b65"
+      },
+      {
+        "file": "desktop/skills/review.md",
+        "upstreamPath": "data/skills/review.md",
+        "sha256": "f26375cebac6182ae8609cca08e3416ca60a23b6af28853498b5a1229c0014c1"
+      },
+      {
+        "file": "desktop/skills/simplify.md",
+        "upstreamPath": "data/skills/simplify.md",
+        "sha256": "7f4066f3fab98cdfdb3521f505d2398a1dd4328d3745dde17cd07fad5dceb20f"
+      },
+      {
+        "file": "desktop/skills/skill-creator/SKILL.md",
+        "upstreamPath": "data/skills/skill-creator/SKILL.md",
+        "sha256": "a76e8e21d351580764f11d69f94e187fc593d47f36972b3e124589022afab5d7"
+      },
+      {
+        "file": "desktop/skills/skill-creator/references/principles.md",
+        "upstreamPath": "data/skills/skill-creator/references/principles.md",
+        "sha256": "eaff4d34811207ad15cdef3a30579892e542b12a8f163ee24e003204a54427f5"
+      },
+      {
+        "file": "desktop/skills/skill-creator/references/template.md",
+        "upstreamPath": "data/skills/skill-creator/references/template.md",
+        "sha256": "79267919cc653eaee6d651893fe5bf4278e600469bd68070a8f15e1e607ef417"
+      },
+      {
+        "file": "desktop/skills/update-config.md",
+        "upstreamPath": "data/skills/update-config.md",
+        "sha256": "e8d0e02a2bfa9a46241b75006fbb589a1cdebe99fe4b083418b553bf1d7e5803"
+      },
+      {
+        "file": "desktop/skills/wecom-cli/SKILL.md",
+        "upstreamPath": "data/skills/wecom-cli/SKILL.md",
+        "sha256": "b89646e5a85edbdeb426bb6e072a70cb7a24f6bd991e65493b4fd6d4985b207c"
+      },
+      {
+        "file": "desktop/skills/yzj-cli/SKILL.md",
+        "upstreamPath": "data/skills/yzj-cli/SKILL.md",
+        "sha256": "86cfe706a8f6020007a8f66e9e4199a063a811c515c6687717ced3f2e62696bc"
       }
     ]
   }

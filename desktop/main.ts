@@ -26,7 +26,7 @@ async function ensureHost(){
  }
  const output=openSync(join(root,'host.log'),'a',0o600);
  let child;
- try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','xiaok-runtime.mjs')}});}finally{closeSync(output);}
+ try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','xiaok-runtime.mjs')}});}finally{closeSync(output);}
  child.unref();
  const deadline=Date.now()+15000;
  let failed:Error|undefined;child.once('error',error=>{failed=error;});

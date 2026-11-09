@@ -1,1 +1,1 @@
-docs/design/desktop/design-qa-conversation-workspace.md
+docs/design/desktop/design-qa-xiaok-harness.md

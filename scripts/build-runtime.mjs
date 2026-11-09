@@ -17,7 +17,15 @@ export {createNativeReadonlyExecutionContext} from ${JSON.stringify(join(source,
 export {AgentRuntime} from ${JSON.stringify(join(source,'src/ai/runtime/agent-runtime.ts'))};
 export {AgentSessionState} from ${JSON.stringify(join(source,'src/ai/runtime/session.ts'))};
 export {AgentRunController} from ${JSON.stringify(join(source,'src/ai/runtime/controller.ts'))};
-export {ToolRegistry} from ${JSON.stringify(join(source,'src/ai/tools/index.ts'))};
+export {PermissionManager} from ${JSON.stringify(join(source,'src/ai/permissions/manager.ts'))};
+export {loadSettings,mergeRules} from ${JSON.stringify(join(source,'src/ai/permissions/settings.ts'))};
+export {createSkillCatalog,formatSkillsContext} from ${JSON.stringify(join(source,'src/ai/skills/loader.ts'))};
+export {createSkillTool} from ${JSON.stringify(join(source,'src/ai/skills/tool.ts'))};
+export {createInstallSkillTool} from ${JSON.stringify(join(source,'src/ai/tools/install-skill.ts'))};
+export {createUninstallSkillTool} from ${JSON.stringify(join(source,'src/ai/tools/uninstall-skill.ts'))};
+export {getConfigDir} from ${JSON.stringify(join(source,'src/utils/config.ts'))};
+export {redactSecrets} from ${JSON.stringify(join(source,'src/shared/stream-safety/redact.ts'))};
+export {ToolRegistry,buildToolList} from ${JSON.stringify(join(source,'src/ai/tools/index.ts'))};
 export {createAdapter} from ${JSON.stringify(join(source,'src/ai/models.ts'))};
 export {resolveRuntimeModelBinding} from ${JSON.stringify(join(source,'src/ai/providers/control-plane.ts'))};
 export {ConversationActivityOwnerClient} from ${JSON.stringify(join(source,'src/runtime/conversation-activity/owner-client.ts'))};
@@ -29,3 +37,6 @@ const result=await build({stdin:{contents:entry,resolveDir:root,sourcefile:'xiao
 writeFileSync(join(root,'build/shared/source-manifest.json'),JSON.stringify(Object.entries(result.metafile.inputs).filter(([file])=>file!=='xiaok-shared-entry.ts').map(([file])=>({file,sha256:createHash('sha256').update(readFileSync(resolve(root,file))).digest('hex')})),null,2));
 
 await build({entryPoints:[join(source,"src/ai/tools/glob-worker.mjs")],bundle:true,platform:"node",format:"esm",target:"node22",outfile:join(root,"build/shared/glob-worker.mjs"),banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});
+
+// The same harness entry is shared by installed diagnostics/other trusted main owners.
+await build({stdin:{contents:`export {createHarness} from ${JSON.stringify(join(root,'src/runtime/harness.ts'))}; export {nativeTurn,modelCatalog} from ${JSON.stringify(join(root,'src/runtime/native.ts'))};`,resolveDir:root,sourcefile:'kteam-harness-entry.ts',loader:'ts'},bundle:true,platform:'node',format:'esm',target:'node22',outfile:join(root,'build/shared/kteam-harness.mjs'),external:['@napi-rs/keyring','better-sqlite3','onnxruntime-node','nodejieba','node-pty','electron'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require=__createRequire(import.meta.url);"}});

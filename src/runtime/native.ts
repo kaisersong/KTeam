@@ -30,11 +30,11 @@ export async function modelIdentity(modelId:string){
  const binding=core.resolveRuntimeModelBinding(frozen);
  return {core,adapter,origin:new URL(binding.baseUrl).origin,model:adapter.getModelName(),fingerprint:hash({modelId,providerId:binding.providerId,protocol:binding.protocol,baseUrl:binding.baseUrl,wireModel:binding.wireModel,runtimeOptions:binding.runtimeOptions})};
 }
-export async function nativeTurn(input:{modelId:string;fingerprint?:string;system:string;prompt:string;signal:AbortSignal;onText?:(text:string)=>void;onRequest?:()=>void|Promise<void>;tools?:any[];maxIterations?:number}):Promise<{text:string;usage:{inputTokens:number;outputTokens:number};usageReported?:boolean;model:any;fingerprint:string}>{
+export async function nativeTurn(input:{modelId:string;fingerprint?:string;system:string;prompt:string;signal:AbortSignal;onText?:(text:string)=>void;onRequest?:()=>void|Promise<void>;tools?:any[];maxIterations?:number;registryOptions?:{permissionManager:any;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>}}):Promise<{text:string;usage:{inputTokens:number;outputTokens:number};usageReported?:boolean;model:any;fingerprint:string}>{
  const {core,adapter,model,fingerprint,origin}=await modelIdentity(input.modelId);
  if(input.fingerprint&&input.fingerprint!==fingerprint)throw new KTeamError('model_binding_changed',409);
  const tools=input.tools??[];
- const registry=new core.ToolRegistry({autoMode:true},tools);registry.setAllowedTools(tools.map((tool:any)=>tool.definition.name));
+ const registry=new core.ToolRegistry({autoMode:true,...input.registryOptions},tools);registry.setAllowedTools(tools.flatMap((tool:any)=>[tool.definition.name,...(tool.companionTools??[]).map((child:any)=>child.definition.name)]).concat(tools.length?['tool_search']:[]));
  let text='',usage={inputTokens:0,outputTokens:0},failure:Error|undefined,completed=false,usageReported=false;
  const budgetAbort=new AbortController();let budgetFailure:unknown;
  const signal=AbortSignal.any([input.signal,budgetAbort.signal]);

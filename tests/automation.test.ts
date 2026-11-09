@@ -48,9 +48,9 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
   if(!lost&&(command+(input.act?':'+input.act:'')===loss||command===loss)){lost=true;throw new KTeamError('upstream_operation_unknown',503);}
   return result;
  }} as unknown as Upstreams;
- const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
+ const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();await input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
  try{
-  await automation.tick();const job=store.jobs()[0];assert.equal(inferences,1);assert.equal(job.calls,1);
+  await automation.tick();const job=store.jobs()[0];assert.equal(inferences,1,JSON.stringify(job));assert.equal(job.calls,1);
   if(loss==='chat-unconfirmed'){assert.equal(job.state,'unknown');assert.ok(job.answerDraft);assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');}
   else{assert.equal(job.state,'delivered');assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].artifactVerification.verified,true);assert.equal(broker.room.getCollaborationRoom({roomId},user).messages.length,2);}
  }finally{await automation.close();store.close();broker.close();rmSync(root,{recursive:true,force:true});}

@@ -1,3 +1,4 @@
+import {ToolApprovals} from './tool-approvals.js';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { chmodSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
@@ -58,8 +59,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const localAgents=new LocalAgents(options.root,teamStore,upstream);
   const builtinAgent=new BuiltinAgent(teamStore);
   const conversations=new ConversationService(options.root,upstream,teamStore);
+  const approvals=new ToolApprovals(teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
-  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations);
+  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals);
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
@@ -97,7 +99,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
+          capabilities: ['xiaok-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
@@ -120,7 +122,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(linkRoute){const id=linkRoute[1]!,action=linkRoute[2];if(action==='status'&&req.method==='GET')return send(res,200,{ok:true,connection:links.view(id),dataRoot:options.root});if(action==='approve'&&req.method==='POST'){const value=record(await body(req));if(Object.keys(value).some(k=>k!=='expectedHash'))throw new KTeamError('unknown_field');const current=links.view(id) as any;const op=teamStore.operation('agent-link:'+id);const activate=()=>links.approve({id,expectedHash:value.expectedHash});return send(res,200,{ok:true,connection:op.existingBotId?await changeSource(op.existingBotId,activate):await activate()});}if(action==='revoke'&&req.method==='POST')return send(res,200,{ok:true,connection:await links.revoke(id)});}
       if(url.pathname==='/v1/bot-profile'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(value.botId,()=>saveBotProfile(upstream,teamStore,value)));}
       if(url.pathname==='/v1/bot-source'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(value.botId,()=>links.useSystem(value)));}
-      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
+      if(url.pathname==='/v1/tool-approvals'&&req.method==='GET')return send(res,200,{ok:true,approvals:approvals.list()});
+      if(url.pathname==='/v1/tool-approvals/decide'&&req.method==='POST')return send(res,200,await approvals.decide(await body(req)));
+      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,approvals:approvals.list(),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
       if(url.pathname==='/v1/creations/resume'&&req.method==='POST'){const result=await coordinator.resumeCreation(await body(req),{requestSource:'user'});return send(res,200,{...result,roomId:result.roomId??result.room?.roomId});}
       if(url.pathname==='/v1/bootstrap'&&req.method==='POST')return send(res,200,{ok:true,...await coordinator.bootstrap({requestSource:'user'})});
       if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
@@ -165,7 +169,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='regenerate'){const result=await conversations.regenerate(roomId,await body(req));void automation.tick();return send(res,202,result);}
         if(req.method==='GET'&&action==='proposals')return send(res,200,{ok:true,proposals:coordinator.proposals(roomId)});
         if(req.method==='GET'&&action==='settings')return send(res,200,{ok:true,settings:teamStore.settings(roomId),seen:teamStore.seen(roomId),members:membership.members});
-        if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
+        if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
         if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
         if(req.method==='POST'&&action==='pause')return send(res,200,await automation.pause(roomId));
         if(req.method==='POST'&&action==='resume'){
@@ -215,7 +219,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   return { epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
-        links.close();
+        links.close();approvals.close();
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         teamStore.close();
