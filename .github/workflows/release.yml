@@ -15,6 +15,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   desktop:
+    permissions:
+      contents: write
     runs-on: macos-15
     timeout-minutes: 40
     defaults:
@@ -78,26 +80,14 @@ jobs:
             kteam/release/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
-  publish:
-    needs: desktop
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-      GH_REPO: ${{ github.repository }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: kteam-mac-arm64
-          path: release
       - name: Verify downloadable artifacts
-        working-directory: release
-        run: sha256sum --check SHA256SUMS
+        run: cd release && shasum -a 256 --check SHA256SUMS
       - name: Publish versioned preview
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cat > release-notes.md <<'NOTES'
+          cat > .artifacts/release-notes.md <<'NOTES'
           KTeam 多 Bot 协作桌面预览版（macOS Apple Silicon）。
 
           - 修复 System One 将用户追问误判为无需回应；静默建议由主路由复核。
@@ -109,14 +99,14 @@ jobs:
 
           SHA256SUMS 可校验安装包与构建信息；完整 harness 等量迁移的剩余差异见仓库说明。
           NOTES
-          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > existing-draft.txt 2>/dev/null; then
-            test "$(cat existing-draft.txt)" = true || { echo 'Refusing to replace a published release'; exit 1; }
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > .artifacts/existing-draft.txt 2>/dev/null; then
+            test "$(cat .artifacts/existing-draft.txt)" = true || { echo 'Refusing to replace a published release'; exit 1; }
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "KTeam $RELEASE_TAG" --notes-file release-notes.md
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
           fi
           gh release upload "$RELEASE_TAG" release/KTeam-*-mac-arm64.zip release/KTeam-*-mac-arm64-build.json release/SHA256SUMS --clobber
           if [[ "$RELEASE_TAG" == *-* ]]; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "KTeam $RELEASE_TAG" --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
           else
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest --title "KTeam $RELEASE_TAG" --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
           fi
