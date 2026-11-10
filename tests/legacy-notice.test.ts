@@ -1,11 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync,readFileSync,statSync,existsSync} from 'node:fs';
+import fs,{mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,statSync,existsSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
+import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createElement,isValidElement,type ReactElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {initConfig,loadConfig} from '../src/service/config.js';
+import {initConfig,loadConfig,upstreamOptions} from '../src/service/config.js';
+import {ensureSharedServices} from '../src/runtime/services.js';
 import {initStandalone} from '../src/runtime/managed-services.js';
 import {legacySharedNoticeView,dismissLegacySharedNotice,legacySharedNoticeState} from '../src/service/legacy-notice.js';
 import {startHost} from '../src/service/server.js';
@@ -82,4 +85,46 @@ test('banner text is exact, 去设置 opens the services settings page, and both
  assert.match(settingsSource,/\['services','服务',Server\]/);assert.match(settingsSource,/page==='services'&&<Services\/>/);
  assert.match(main,/openServices:\(\)=>\{setSettingsTab\('services'\);void open\('settings'\);\}/);
  assert.match(main,/api\.legacySharedNotice\(\)\.then\(view=>setLegacyNotice\(view\?\.show===true\)\)/);
+});
+
+/** Records every path-like argument passed to any node:fs function (ESM named imports included). */
+function watchFs(){
+ const seen:string[]=[],originals=new Map<string,Function>();
+ const record=(args:unknown[])=>{for(const arg of args){const value=arg instanceof URL?fileURLToPath(arg):Buffer.isBuffer(arg)?arg.toString():arg;if(typeof value==='string'&&(value.includes('/')||value.includes('\\')))seen.push(value);}};
+ for(const [name,value] of Object.entries(fs))if(typeof value==='function'&&!/^[A-Z]/.test(name)){originals.set(name,value);(fs as any)[name]=function(this:unknown,...args:unknown[]){record(args);return (value as Function).apply(this,args);};}
+ const promises=fs.promises as any,promiseOriginals=new Map<string,Function>();
+ for(const [name,value] of Object.entries(promises))if(typeof value==='function'){promiseOriginals.set(name,value);promises[name]=function(this:unknown,...args:unknown[]){record(args);return (value as Function).apply(this,args);};}
+ syncBuiltinESMExports();
+ return {seen,restore(){for(const [name,value] of originals)(fs as any)[name]=value;for(const [name,value] of promiseOriginals)promises[name]=value;syncBuiltinESMExports();}};
+}
+test('the dropped legacy key\'s value is never accessed, and the notice path touches only config.json and notices.json under KTeam\'s data dir',async()=>{
+ const root=temp(),home=temp(),previousHome=process.env.HOME;
+ // A tempting target: a xiaok-style home with shared-service settings, and a value pointing straight at it.
+ const xiaok=join(home,'.xiaok'),target=join(xiaok,'shared-activity.json');mkdirSync(xiaok,{mode:0o700});writeFileSync(target,JSON.stringify({kswarm:{roomToken:'XIAOK_TOKEN'}}),{mode:0o600});
+ writeConfig(root,{...base,xiaokActivityConfig:target});
+ process.env.HOME=home;
+ const probe=watchFs();
+ try{
+  const config=loadConfig(root);upstreamOptions(config);await ensureSharedServices(config,root);
+  assert.equal(legacySharedNoticeView(root).show,true);loadConfig(root);dismissLegacySharedNotice(root);
+ }finally{probe.restore();if(previousHome===undefined)delete process.env.HOME;else process.env.HOME=previousHome;}
+ try{
+  // Positive control: the probe did observe the reads it should.
+  assert.ok(probe.seen.includes(join(root,'config.json')),'config.json read observed');
+  assert.ok(probe.seen.some(path=>path.startsWith(join(root,'notices.json'))),'notices.json write observed');
+  assert.deepEqual(probe.seen.filter(path=>path.includes(target)||path.includes(xiaok)||/[/\\]\.xiaok\b/.test(path)),[],'legacy value or any .xiaok path accessed');
+  assert.deepEqual(probe.seen.filter(path=>path!==root&&!path.startsWith(root+'/')),[],'notice logic only touches KTeam\'s data dir');
+  assert.deepEqual([...new Set(probe.seen.map(path=>path.slice(root.length+1).replace(/\.\d+\.tmp$/,'.tmp')))].sort(),['config.json','notices.json','notices.json.tmp']);
+ }finally{rmSync(root,{recursive:true,force:true});rmSync(home,{recursive:true,force:true});}
+});
+
+test('notice code path names no xiaok location and resolves state only under the given KTeam data dir',()=>{
+ const sources=['src/service/legacy-notice.ts','src/service/config.ts','desktop/renderer/src/legacy-notice.ts'].map(file=>[file,readFileSync(new URL('../../'+file,import.meta.url),'utf8')] as const);
+ for(const [file,text] of sources){assert.doesNotMatch(text,/~\/\.xiaok|['"\x60/\\]\.xiaok\b|\.xiaok['"\x60]/,file);assert.doesNotMatch(text,/XIAOK_[A-Z]/,file);}
+ const notice=sources[0]![1];
+ assert.doesNotMatch(notice,/homedir|process\.env/,'notice state is never located from HOME or env');
+ assert.match(notice,/const file=\(root:string\)=>join\(root,FILE\);/);
+ const config=sources[1]![1];
+ assert.match(config,/return validateConfig\(dropLegacyKeys\(parseJson\(privateRead\(join\(root, 'config\.json'\)\)\), root\)\);/,'only config.json under the KTeam data dir is read');
+ assert.match(config,/export function dataRoot\(\): string \{ return resolve\(process\.env\.KTEAM_DATA_DIR \|\| join\(homedir\(\), '\.kteam'\)\); \}/);
 });

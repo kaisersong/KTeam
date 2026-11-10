@@ -77,7 +77,13 @@ test('KTeam source never reads xiaok config, the xiaok keychain or xiaok shared-
  // One narrowly scoped exception for the legacy *key name* only: src/service/config.ts names it once, in a
  // constant used solely to detect the dropped 0.2 key and show the one-time 0.3 notice (its value is never read).
  const LEGACY_KEY_FILE='src/service/config.ts',LEGACY_KEY_DECLARATION=/^const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';$/m;
- assert.match(read(LEGACY_KEY_FILE),LEGACY_KEY_DECLARATION);
+ const ONLY_EXCEPTION="the only allowed exception is the single full line `const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';` in src/service/config.ts";
+ const declarations=read(LEGACY_KEY_FILE).split('\n').filter(line=>LEGACY_KEY_DECLARATION.test(line));
+ assert.equal(declarations.length,1,ONLY_EXCEPTION+' (it must appear exactly once)');
+ // The constant may only be used to test key presence: its declaration plus one Object.hasOwn check.
+ const uses=[...read(LEGACY_KEY_FILE).matchAll(/LEGACY_SHARED_SERVICE_KEY/g)].length;
+ assert.equal(uses,2,'LEGACY_SHARED_SERVICE_KEY is declared once and used once');
+ assert.match(read(LEGACY_KEY_FILE),/if \(Object\.hasOwn\(config, LEGACY_SHARED_SERVICE_KEY\)\) recordLegacySharedServicesDropped\(root\);/,'the legacy key is only checked for presence');
  const XIAOK_CONFIG=/\.xiaok['"\x60]?\s*(?:,\s*['"\x60]|[/\\])config\.json|xiaok[/\\]config\.json/g,XIAOK_KEYCHAIN=/com\.xiaok\.credentials/g,XIAOK_SHARED=/xiaokActivityConfig/g;
  const hits:string[]=[];
  for(const file of tracked('src','desktop','runtime-core','scripts','electron-builder.yml','package.json').filter(f=>!f.startsWith('tests/'))){
@@ -85,7 +91,7 @@ test('KTeam source never reads xiaok config, the xiaok keychain or xiaok shared-
   if(file===LEGACY_KEY_FILE)text=text.replace(LEGACY_KEY_DECLARATION,'');
   for(const pattern of [XIAOK_CONFIG,XIAOK_KEYCHAIN,XIAOK_SHARED])for(const m of text.matchAll(pattern))hits.push(file+': '+m[0]);
  }
- assert.deepEqual(hits,[]);
+ assert.deepEqual(hits,[],ONLY_EXCEPTION+'; other references found: '+hits.join(', '));
  for(const file of ['src/service/model-settings.ts','src/service/server.ts','desktop/semantic-api.ts','desktop/semantic-methods.ts','desktop/renderer/src/api.ts','desktop/renderer/src/model-settings.tsx'])assert.doesNotMatch(read(file),/importXiaok|import-xiaok|importAvailable|小K导入/,file);
 });
 
