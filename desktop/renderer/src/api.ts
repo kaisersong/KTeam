@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ assistantWorkbench():Promise<any>;locateAttention(input:{id:string;expectedRevision:number;expectedHash?:string}):Promise<any>;
  pauseRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;routines(roomId:string):Promise<any>;saveRoutine(input:any):Promise<any>;removeRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;
  teamRoles(roomId:string):Promise<any>;ensureTeamRoles(input:{roomId:string;force?:boolean}):Promise<any>;assignTeamCoordinator(input:{roomId:string;coordinatorBotId:string;expectedRevision:number;requestId:string}):Promise<any>;
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
@@ -52,6 +53,8 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ internal_error:'服务暂时无法完成读取',
+ assistant_team_forbidden:'原会话已关闭或不再可访问，请刷新关注记录',attention_changed:'这条关注记录已更新，请刷新后查看来源',assistant_workbench_forbidden:'请在 KTeam 桌面版查看小K关注',
  condition_input_invalid:'请指定支持的条件和 1–60 分钟等待期限',condition_path_denied:'只能观察当前工作目录内原读取权限允许的普通文件，不能使用私有目录或符号链接',condition_scope_changed:'文件、权限或来源范围已变化，已停止旧等待',condition_file_invalid:'等待目标必须是不含硬链接的普通文件',condition_file_too_large:'内容变化观察最多支持 1 MiB 文件，请改用文件到位条件',condition_result_invalid:'无法核实已有工作的实际交付，已停止自动接续',condition_job_denied:'只能等待当前会话已有的其他工作',condition_already_recorded:'这项等待已有记录，不重复创建',condition_wait_expired:'等待条件已超时，原工作已保存，不会自动重做',
  handoff_human_needed:'成员仍需本人确认，未自动继续执行',work_waiting_for_members:'工作已保存，等待成员的真实结果',handoff_input_invalid:'请为 1–3 位不同成员指定工作和完成条件',handoff_budget_exhausted:'本项工作已达到交接上限，请核对已有结果后再安排',handoff_scope_changed:'原会话、成员职责或执行来源已变化，已暂停自动接续',handoff_result_unknown:'交接结果待核对，不会自动重派或重做旧操作',handoff_result_invalid:'成员结果的来源暂无法确认，已暂停自动接续',handoff_wait_expired:'等待成员结果已超时，原结果保留供核对',handoff_resume_blocked:'原工作还有未解除的阻塞，暂不自动接续',handoff_source_unavailable:'暂时无法读取交接来源，正在稍后重查',
 

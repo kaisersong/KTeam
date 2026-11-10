@@ -81,6 +81,10 @@
     {
       "file": "docs/design/desktop/condition-work-waits-20261111.md",
       "sha256": "42f4f7b926371b818d1893d246dbc690196147ace58052ba7c87158f98a08276"
+    },
+    {
+      "file": "docs/design/desktop/assistant-attention-workbench-20261111.md",
+      "sha256": "5470420607472933b4a4136632af1fde74e8e86c934a48bf125a71fe1fc958fe"
     }
   ],
   "productBaseline": {
@@ -90,7 +94,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "1056704cfaf9cff008faabac3c8833cba3ebb065",
+    "revision": "be4121aac1405eeaaf20f6c67f99c160996002f8",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

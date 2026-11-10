@@ -166,6 +166,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/tool-approvals'&&req.method==='GET')return send(res,200,{ok:true,approvals:approvals.list()});
       if(url.pathname==='/v1/tool-approvals/decide'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await approvals.decide(await body(req)));}
       if(url.pathname==='/v1/decision-models'&&req.method==='GET')return send(res,200,{ok:true,...await decisionModels()});
+      if(url.pathname==='/v1/assistant/workbench'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('assistant_workbench_forbidden',403);return send(res,200,await automation.assistant.workbench());}
+      if(url.pathname==='/v1/assistant/workbench/locate'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('assistant_workbench_forbidden',403);return send(res,200,await automation.assistant.locateAttention(await body(req)));}
       if(url.pathname==='/v1/assistant/state'&&req.method==='GET')return send(res,200,{ok:true,...automation.assistant.state()});
       if(url.pathname==='/v1/assistant/proactivity'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='enabled')||typeof input.enabled!=='boolean')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...automation.assistant.setEnabled(input.enabled)});}
       if(url.pathname==='/v1/bot-questions/answer'&&req.method==='POST')return send(res,200,await automation.privateChats!.answer(await body(req)));

@@ -96,6 +96,7 @@ export class TeamStore {
   if(prior&&prior.intent_hash!==intentHash)throw new KTeamError('aimp_id_conflict',409);
   this.db.prepare("INSERT OR IGNORE INTO team_outbox VALUES(?,?,?,?,'pending',NULL)").run(id,roomId,intentHash,JSON.stringify(envelope));
  }
+ pendingSubmissionFacts(){return this.db.prepare("SELECT id,room_id AS roomId,intent_hash AS intentHash,json_extract(envelope_json,'$.ts') AS timestamp FROM team_outbox WHERE state='pending' ORDER BY rowid LIMIT 100").all() as {id:string;roomId:string;intentHash:string;timestamp?:string}[];}
  pendingSubmissions(roomId?:string){return this.db.prepare("SELECT id,room_id AS roomId,intent_hash AS intentHash FROM team_outbox WHERE state='pending' "+(roomId?'AND room_id=? ':'')+'ORDER BY rowid LIMIT 100').all(...(roomId?[roomId]:[])) as {id:string;roomId:string;intentHash:string}[];}
  completeSubmission(id:string,originId:string,enqueue=true){
   this.db.exec('BEGIN IMMEDIATE');try{

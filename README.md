@@ -14,6 +14,8 @@ KTeam 是独立的多 Bot 协作桌面应用，按[产品设计](docs/design/pro
 
 **完整 v5 与全部 harness 等量迁移尚未交付**。 OpenMausBot 借鉴的完整范围、逐特性 PR 和证据边界见[实施清单](docs/design/desktop/openmausbot-delivery-plan-20261110.md)。完整 PTY/安全终端、通用循环提醒、严格 Skill fork/验收工作流、完整观察资格协议等差异列在 [迁移清单](docs/design/desktop/harness-parity.md)。密码不通过聊天收集，原生 CLI 使用其自己的本机权限与登录。未宣称完整 AIMP Core-L2 认证，也不把讨论答复或投递回执说成业务已执行。
 
+收件箱中的“小K关注”可以查看原关注记录、原因、下一步、来源和更新时间，并筛选分页。未知发送会回到原会话核对；读取失败或来源失效会明确提示，查看不会启动模型或重发消息。详见[关注工作台](docs/design/desktop/assistant-attention-workbench-20261111.md)。
+
 ## 下载
 
 **[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)
