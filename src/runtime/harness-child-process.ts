@@ -1,4 +1,5 @@
 import * as childProcess from 'node:child_process';
+export {ChildProcess} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
