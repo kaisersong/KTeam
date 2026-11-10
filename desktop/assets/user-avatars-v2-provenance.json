@@ -1,0 +1,13 @@
+{
+  "archive": "kteam-user-avatars-v2.zip",
+  "archiveSha256": "64dbcb362eace1f1424d829fdca55eeb3e49f11127f88613deec5980b7e9c14c",
+  "default": "short",
+  "files": {
+    "png/user-short-128.png": "2d3a43cd6c86fe3b5ab31a5abd69b526d3e6183e27db87da13769edc4ac385e4",
+    "png/user-parted-128.png": "a606df5608d12dcf1f168fa80926e5f4b20ea8089d65f01468b03a27b737d596",
+    "png/user-curls-128.png": "0c26bdc7c2c7e6a1df604ffcf3990324f0da27035a48c91c55cf97ed2cd69e13",
+    "png/user-long-straight-128.png": "6a51f7369c3f1ce63711aa8cf6d53149878374f7ca7312ea70b9d301ca27e323",
+    "png/user-bun-128.png": "4d06b9606a60d8a424c4d04ff7b8219d65e7133b9fb6f05a8a1dcdc29e653ce0",
+    "png/user-glasses-128.png": "c9011078d362ff078bba3b94d38cadbcf69c6af14b9908e4b8b17af0c6191921"
+  }
+}
