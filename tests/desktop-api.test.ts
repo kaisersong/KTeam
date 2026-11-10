@@ -11,3 +11,14 @@ test('desktop exposes semantic operations only, binds user sender and refuses ge
  assert.throws(()=>api.messages({roomId:'room',after:0,limit:10000}),/invalid_pagination/);
  const frame={};assert.equal(trustedFrame(frame,frame),true);assert.equal(trustedFrame({},frame),false);assert.equal(trustedFrame(null,null),false);
 });
+test('computer permission links only open fixed macOS privacy panes through the native semantic action',async()=>{
+ const {computerPermissionSettingsUrl}=await import('../desktop/computer-permissions.js');
+ assert.match(computerPermissionSettingsUrl({permission:'accessibility'},'darwin'),/Privacy_Accessibility$/);
+ assert.match(computerPermissionSettingsUrl({permission:'screen-recording'},'darwin'),/Privacy_ScreenCapture$/);
+ assert.throws(()=>computerPermissionSettingsUrl({permission:'https://example.invalid'},'darwin'),/computer_permission_invalid/);
+ assert.throws(()=>computerPermissionSettingsUrl({permission:'__proto__'},'darwin'),/computer_permission_invalid/);
+ assert.throws(()=>computerPermissionSettingsUrl({permission:'automation',url:'file:///etc/passwd'},'darwin'),/unknown_field/);
+ assert.throws(()=>computerPermissionSettingsUrl({permission:'accessibility'},'linux'),/desktop_action_unavailable/);
+ const calls:unknown[]=[],api=createDesktopAPI(async()=>{throw Error('must_not_use_host_http');},{nativeActions:{openComputerPermissionSettings:async input=>{calls.push(computerPermissionSettingsUrl(input,'darwin'));return {ok:true};}}});
+ await dispatchDesktop(api,'openComputerPermissionSettings',[{permission:'automation'}]);assert.deepEqual(calls,['x-apple.systempreferences:com.apple.preference.security?Privacy_Automation']);
+});
