@@ -69,6 +69,10 @@
     {
       "file": "docs/reference/aimp-v3.1-test-vectors.json",
       "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
+    },
+    {
+      "file": "docs/design/desktop/openmausbot-delivery-plan-20261110.md",
+      "sha256": "610b1ed8c7bfdce42a1aec85bc4d58eb05b9690ac487770db968f6b60fb78b4a"
     }
   ],
   "productBaseline": {
@@ -78,7 +82,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "f3ea797fa0c9f40d6f541860591cda9d02b41dd2",
+    "revision": "7f6ea40c090e1dfcbf51393b9071f5a33f95e501",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
