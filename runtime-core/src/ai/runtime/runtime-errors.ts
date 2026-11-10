@@ -1,0 +1,72 @@
+import { getModelFailure, formatModelFailure, formatModelRecoveryExhaustion } from './model-failure.js';
+import { isAbortError } from './abort-utils.js';
+import { MODEL_TEXT_REPETITION_CODE } from './model-text-repetition.js';
+import { isKimiReasoningAdmissionError, KIMI_REASONING_ADMISSION_CODE } from './kimi-reasoning-admission.js';
+import { getOpenAIStreamFailure } from './openai-stream-error.js';
+import { formatKimiProviderRequestError, getKimiProviderRequestDiagnostic } from './provider-request-error.js';
+
+export interface RuntimeErrorShape {
+  code:
+    | 'model_failed'
+    | 'tool_failed'
+    | 'permission_denied'
+    | 'runtime_aborted'
+    | 'kimi_k3_durable_resume_unsupported';
+  message: string;
+  retryable: boolean;
+  /** Sub-type kept after normalization so consumers can tell repetition apart from other model failures. */
+  detail?: 'model_text_repetition';
+}
+
+export function normalizeRuntimeError(error: unknown): RuntimeErrorShape {
+  if (isAbortError(error)) {
+    const message = error instanceof Error ? error.message : 'aborted';
+    return { code: 'runtime_aborted', message, retryable: false };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const status = error && typeof error === 'object'
+    ? (error as { status?: unknown }).status
+    : undefined;
+  const errorCode = error && typeof error === 'object'
+    ? (error as { code?: unknown }).code
+    : undefined;
+  if (message.includes('KIMI_K3_DURABLE_RESUME_UNSUPPORTED')) {
+    return {
+      code: 'kimi_k3_durable_resume_unsupported',
+      message: 'KIMI_K3_DURABLE_RESUME_UNSUPPORTED',
+      retryable: false,
+    };
+  }
+  if (isKimiReasoningAdmissionError(error)) {
+    return { code: 'model_failed', message: KIMI_REASONING_ADMISSION_CODE, retryable: false };
+  }
+  const modelFailure = getModelFailure(error);
+  if (errorCode === 'MODEL_RECOVERY_EXHAUSTED') return { code: 'model_failed', message: formatModelRecoveryExhaustion(modelFailure), retryable: false };
+  if (modelFailure && errorCode !== 'OPENAI_PROVIDER_STREAM_ERROR' && errorCode !== MODEL_TEXT_REPETITION_CODE) {
+    return { code: 'model_failed', message: formatModelFailure(modelFailure) + (!modelFailure.retryable ? '；已停止自动重试。' : ''), retryable: modelFailure.retryable };
+  }
+  const providerDiagnostic = getKimiProviderRequestDiagnostic(error);
+  if (providerDiagnostic) {
+    return { code: 'model_failed', message: formatKimiProviderRequestError(providerDiagnostic), retryable: providerDiagnostic.retryable };
+  }
+  const transportCode = typeof errorCode === 'string' ? errorCode : '';
+  if (transportCode === MODEL_TEXT_REPETITION_CODE || message === MODEL_TEXT_REPETITION_CODE) {
+    return { code: 'model_failed', message: MODEL_TEXT_REPETITION_CODE, retryable: false, detail: 'model_text_repetition' };
+  }
+  const streamFailure = getOpenAIStreamFailure(error);
+  if (streamFailure) return { code: 'model_failed', ...streamFailure };
+  if (
+    /ERR_STREAM_PREMATURE_CLOSE|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR/i.test(transportCode)
+    || /502|503|timeout|ECONNRESET|ETIMEDOUT|EPIPE|Bad gateway|Premature close|terminated|socket hang up|network|fetch failed/i.test(message)
+  ) {
+    return { code: 'model_failed', message, retryable: true };
+  }
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    return { code: 'model_failed', message, retryable: false };
+  }
+  if (/权限|denied|取消/i.test(message)) {
+    return { code: 'permission_denied', message, retryable: false };
+  }
+  return { code: 'tool_failed', message, retryable: false };
+}

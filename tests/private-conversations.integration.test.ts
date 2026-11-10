@@ -17,7 +17,7 @@ import {KTeamError} from '../src/errors.js';
 const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture-model',fingerprint:'frozen'})};
 const id=()=>'msg_'+randomBytes(16).toString('hex');
 const sleep=()=>new Promise(r=>setTimeout(r,5));
-async function setup(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);const master=await coordinator.bootstrap(user),a=await coordinator.createMember({name:'开发',modelId:'fixture',requestId:id()},user),b=await coordinator.createMember({name:'CTO',modelId:'fixture',requestId:id()},user),group=await coordinator.createGroup({title:'产品团队',memberAgentIds:[a.bot.id,b.bot.id],requestId:id()},user);return {...f,store,coordinator,master,a,b,roomId:group.room.roomId,async close(){store.close();await f.close();}};}
+async function setup(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);const master=await coordinator.bootstrap(user),a=await coordinator.createMember({name:'开发',modelId:'fixture',requestId:id()},user),b=await coordinator.createMember({name:'CTO',modelId:'fixture',requestId:id()},user),group=await coordinator.createGroup({title:'产品团队',memberAgentIds:[a.bot.id,b.bot.id],requestId:id()},user);return {...f,store,coordinator,master,a,b,roomId:group.room.roomId,async close(){store.close();await f.close();}};}
 async function admission(f:any,botId:string,jobId='source-job'){
  const roomId=f.roomId,origin=(await f.upstream.sendMessage(roomId,{text:'查看KTeam源码并与团队协作',kind:'text',threadId:'source',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()})).message;
  let task=(await f.upstream.aimp(roomId,'event',{id:id(),threadId:'source',act:'request',body:'查看源码',payload:{kind:'task.request@1',must_understand:true,description:'查看KTeam源码',deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',acceptance:{predicates:['artifact_hash']},assignee:agentAddress(botId),reviewer:LOCAL_HUMAN}})).task;
@@ -61,7 +61,7 @@ test('pausing the source group cancels an executing peer consultation and stops 
  }finally{chats.close();await automation?.close();await f.close();}
 });
 
-test('original xiaok triage runs with the real background budget and creates one assistant message job per source change',async()=>{const f=await setup();let calls=0;const assistant=new TeamAssistant(f.upstream,f.store,async input=>{calls++;await input.onRequest?.();return {text:JSON.stringify(JSON.parse(input.prompt).map((r:any)=>({sourceKey:r.key,priority:'now',reason:'团队遇到需要决策的事项',nextStep:'请确认验收范围'}))),model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});try{const scope=await admission(f,f.a.bot.id);await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'验收范围需要用户确认'});await assistant.scan();assert.equal(calls,1,JSON.stringify(f.store.state('assistant-scan-health')));assert.equal(f.store.jobs(f.master.roomId).filter(j=>j.trigger==='assistant-notice').length,1);await assistant.scan();assert.equal(calls,1);assert.equal(f.store.jobs(f.master.roomId).length,1);}finally{await assistant.close();await f.close();}});
+test('original runtime-core triage runs with the real background budget and creates one assistant message job per source change',async()=>{const f=await setup();let calls=0;const assistant=new TeamAssistant(f.upstream,f.store,async input=>{calls++;await input.onRequest?.();return {text:JSON.stringify(JSON.parse(input.prompt).map((r:any)=>({sourceKey:r.key,priority:'now',reason:'团队遇到需要决策的事项',nextStep:'请确认验收范围'}))),model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});try{const scope=await admission(f,f.a.bot.id);await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'验收范围需要用户确认'});await assistant.scan();assert.equal(calls,1,JSON.stringify(f.store.state('assistant-scan-health')));assert.equal(f.store.jobs(f.master.roomId).filter(j=>j.trigger==='assistant-notice').length,1);await assistant.scan();assert.equal(calls,1);assert.equal(f.store.jobs(f.master.roomId).length,1);}finally{await assistant.close();await f.close();}});
 
 test('peer consultation receives the original group request but never another private conversation',async()=>{
  const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{
@@ -104,11 +104,11 @@ test('peer reader rejects another exchange owner receipt and rechecks target acc
 
 test('production contact registry reconnects preflight, receives the target reply once and fails closed after actual scope revocation',async()=>{
  const f=await setup();let automation:TeamAutomation|undefined,owner:any;
- const previous={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.XIAOK_DISABLE_GLOBAL_PLUGINS};
+ const previous={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.KTEAM_DISABLE_GLOBAL_PLUGINS};
  const chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{void automation!.tick();});
  try{
-  const cwd=join(f.root,'project'),config=join(f.root,'config'),plugin=join(cwd,'.xiaok/plugins/review'),marker=join(f.root,'hook-ran');mkdirSync(plugin,{recursive:true});mkdirSync(config);
-  process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.XIAOK_DISABLE_GLOBAL_PLUGINS='1';
+  const cwd=join(f.root,'project'),config=join(f.root,'config'),plugin=join(cwd,'.kteam/plugins/review'),marker=join(f.root,'hook-ran');mkdirSync(plugin,{recursive:true});mkdirSync(config);
+  process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_DISABLE_GLOBAL_PLUGINS='1';
   writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',events:['PreToolUse'],matcher:'contact_bot',command:'printf checked > '+marker}]}));
   let targetTurns=0;automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();targetTurns++;return {text:'CTO independently checked the rollback scope.',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};},f.coordinator);
   const scope=await admission(f,f.a.bot.id);let failures=0;
@@ -122,5 +122,5 @@ test('production contact registry reconnects preflight, receives the target repl
   f.broker.room.updateRoomMembers({roomId:f.roomId,removeAgentIds:[f.a.bot.id]},{sessionId:'revoke-test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});
   const denied=await owner.registry.executeTool('contact_bot',{botId:f.b.bot.id,message:'No longer authorized.',wait:true});
   assert.doesNotMatch(denied,/"sent":true/);assert.equal(targetTurns,1);assert.equal(f.store.operationsWithPrefix('bot-contact:').length,1);
- }finally{await owner?.close();chats.close();await automation?.close();for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:previous.config,XIAOK_DISABLE_GLOBAL_PLUGINS:previous.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;await f.close();}
+ }finally{await owner?.close();chats.close();await automation?.close();for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:previous.config,KTEAM_DISABLE_GLOBAL_PLUGINS:previous.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;await f.close();}
 });

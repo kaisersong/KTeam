@@ -19,7 +19,7 @@ const models={catalog:async()=>({defaultModelId:'fixture'}),identity:async(model
 const user={requestSource:'user' as const};
 test('real host shutdown and restart expose recovery and complete one linked run through the original streaming model adapter',{timeout:30000},async()=>{
  const f=await realUpstreams(),root=join(f.root,'host'),config=join(f.root,'model-config'),previous=process.env.KTEAM_MODEL_CONFIG_DIR;
- mkdirSync(config);process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
+ mkdirSync(config);process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  let first=true,requested!:()=>void;const waiting=new Promise<void>(done=>{requested=done;});
  const model=createServer((req,res)=>{req.resume();req.on('end',()=>{
   if(first){first=false;requested();return;}
@@ -37,7 +37,7 @@ test('real host shutdown and restart expose recovery and complete one linked run
   let work:any;for(let n=0;n<300;n++){work=await api.work(bot.roomId);if(work.jobs[0]?.state==='delivered')break;await new Promise(done=>setTimeout(done,20));}
   assert.equal(work.jobs[0].state,'delivered',JSON.stringify(work.jobs[0]));assert.equal(work.jobs[0].recoveryOf,source.id);assert.equal(work.jobs[1].state,'stopped');
   const messages=(await api.messages({roomId:bot.roomId})).messages;assert.equal(messages.filter((m:any)=>m.sender.kind==='agent').length,1);
-  await assert.rejects(hostRequest(root,'xiaok-main','/v1/teams/'+bot.roomId+'/recover',{jobId:source.id,requestId:'forbidden-client'}),/recovery_forbidden/);
+  await assert.rejects(hostRequest(root,'kteam-companion','/v1/teams/'+bot.roomId+'/recover',{jobId:source.id,requestId:'forbidden-client'}),/recovery_forbidden/);
  } finally {await host?.close();model.closeAllConnections();await new Promise<void>(done=>model.close(()=>done()));if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}
 });
 test('real team reconnect preserves a stopped write; explicit continuation is linked, idempotent, scoped and survives restart',async()=>{

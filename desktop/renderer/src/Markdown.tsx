@@ -1,7 +1,7 @@
 import {memo} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-// Same markdown stack as xiaok. No HTML, file opener, network images or
+// Same markdown stack as the original runtime UI. No HTML, file opener, network images or
 // tool authority is inferred from untrusted message text.
 const plugins=[remarkGfm];
 export const Markdown=memo(function Markdown({text}:{text:string}){

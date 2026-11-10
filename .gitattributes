@@ -1,2 +1,0 @@
-# Keep the upstream runtime snapshot byte-identical to its recorded hashes.
-vendor/xiaok-runtime/** -whitespace

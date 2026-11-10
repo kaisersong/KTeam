@@ -53,7 +53,7 @@ test('routines skip overlapping work, freeze uncertain results, require explicit
  }finally{await f.end();}
 });
 test('a due routine uses the original AIMP queue and real file tool, delivers one answer, and rejects stale profiles',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await setup();let now=Date.now(),turns=0;let automation:TeamAutomation|undefined;
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await setup();let now=Date.now(),turns=0;let automation:TeamAutomation|undefined;
  try{const workspace=join(f.root,'materials');mkdirSync(workspace);writeFileSync(join(workspace,'weekly.md'),'合成周报材料：本周完成两项核对，剩余一项待确认。');await saveBotProfile(f.upstream,f.store,{botId:f.member.bot.id,expectedRevision:0,description:'核对周报',instructions:'使用真实材料',participation:'mentions',workspace,followup:false});
   automation=new TeamAutomation(f.upstream,f.store,1,async turn=>{turns++;await turn.onRequest?.();assert.equal(JSON.parse(turn.prompt).routine.source,'用户在KTeam设置的例行任务');const tool=turn.tools!.find(tool=>tool.definition.name==='read');assert.ok(tool);const result=await tool.execute({file_path:join(workspace,'weekly.md')},{});assert.match(result,/合成周报材料/);return {text:'已核对周报材料：完成两项，剩余一项待确认。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};},f.coordinator,undefined,undefined,undefined,undefined,undefined,()=>now);
   await automation.routines.save({...input(f,now),schedule:{kind:'once',at:now+60000},maxRuns:1});now+=61000;await automation.tick();assert.equal(turns,1,JSON.stringify(f.store.jobs()));const job=f.store.jobs()[0];assert.equal(job.trigger,'routine');assert.equal(job.state,'delivered',JSON.stringify(job));assert.equal(job.toolTrace[0].name,'read');assert.ok(job.results[0].messageId);assert.match((await f.upstream.conversationMessage(f.member.roomId,job.results[0].messageId)).message.text,/完成两项/);await automation.tick();assert.equal(turns,1);
@@ -61,7 +61,7 @@ test('a due routine uses the original AIMP queue and real file tool, delivers on
  }finally{await automation?.close();await f.end();}
 });
 test('a group routine can consult a real member, requires an explicit write approval, and leaves an actual report',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await setup(),approvals=new ToolApprovals(f.store);let now=Date.now(),automation:TeamAutomation|undefined,turns=0;
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await setup(),approvals=new ToolApprovals(f.store);let now=Date.now(),automation:TeamAutomation|undefined,turns=0;
  try{const reviewer=await f.coordinator.createMember({name:'报告审阅员',modelId:'fixture',requestId:'routine-reviewer'},{requestSource:'user'}),group=await f.coordinator.createGroup({title:'合成周报团队',memberAgentIds:[f.member.bot.id,reviewer.bot.id],requestId:'routine-team'},{requestSource:'user'}),workspace=join(f.root,'reports');mkdirSync(workspace);
   await saveBotProfile(f.upstream,f.store,{botId:f.member.bot.id,expectedRevision:0,description:'周报',instructions:'按来源写报告',participation:'mentions',workspace,followup:false});
   const report=join(workspace,'weekly-report.html');
@@ -78,11 +78,11 @@ test('a group routine can consult a real member, requires an explicit write appr
 });
 test('routine semantic routes require the KTeam user client and real Room membership',async()=>{
  const f=await realUpstreams(),root=join(f.root,'host');initConfig(root,{version:1,brokerUrl:f.upstream.options.brokerUrl,kswarmUrl:f.upstream.options.kswarmUrl});const host=await startHost({root,upstream:f.upstream.options});
- try{await assert.rejects(hostRequest(root,'xiaok-main','/v1/routines?roomId=missing'),/user_action_required/);for(const route of ['/v1/routines','/v1/routines/remove','/v1/routines/pause'])await assert.rejects(hostRequest(root,'xiaok-main',route,{requestSource:'user'}),/user_action_required/);await assert.rejects(hostRequest(root,'kteam-main','/v1/routines?roomId=missing'),/routine_scope_denied/);await assert.rejects(hostRequest(root,'kteam-main','/v1/routines',{requestSource:'user'}),/unknown_field/);}
+ try{await assert.rejects(hostRequest(root,'kteam-companion','/v1/routines?roomId=missing'),/user_action_required/);for(const route of ['/v1/routines','/v1/routines/remove','/v1/routines/pause'])await assert.rejects(hostRequest(root,'kteam-companion',route,{requestSource:'user'}),/user_action_required/);await assert.rejects(hostRequest(root,'kteam-main','/v1/routines?roomId=missing'),/routine_scope_denied/);await assert.rejects(hostRequest(root,'kteam-main','/v1/routines',{requestSource:'user'}),/unknown_field/);}
  finally{await host.close();await f.close();}
 });
 test('pausing a routine during its real approval stops the old write and rejects the late approval',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await setup(),approvals=new ToolApprovals(f.store);let now=Date.now(),automation:TeamAutomation|undefined;
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await setup(),approvals=new ToolApprovals(f.store);let now=Date.now(),automation:TeamAutomation|undefined;
  try{const workspace=join(f.root,'pause-work');mkdirSync(workspace);await saveBotProfile(f.upstream,f.store,{botId:f.member.bot.id,expectedRevision:0,description:'暂停检查',instructions:'真实执行',participation:'auto',workspace,followup:false});
   automation=new TeamAutomation(f.upstream,f.store,1,async turn=>{await turn.onRequest?.();const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'done'};}},owner=await turn.prepareRuntime!(adapter,'fixture',turn.system,turn.tools!);try{await owner.runOwned(()=>owner.registry.executeTool('write',{file_path:join(workspace,'must-not-exist.html'),content:'must not write'}));}finally{await owner.close();}return {text:'must not publish',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};},f.coordinator,undefined,undefined,approvals,undefined,undefined,()=>now);
   const request=input(f,now),saved=await automation.routines.save(request);now+=61000;const work=automation.tick();const deadline=Date.now()+10000;while(!approvals.list().length&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,20));const pending=approvals.list()[0];assert.ok(pending);const row=f.store.operation(saved.routine.id);
@@ -91,7 +91,7 @@ test('pausing a routine during its real approval stops the old write and rejects
  }finally{approvals.close();await automation?.close();await f.end();}
 });
 test('an occurrence that expires in the original queue stays quiet and does not freeze the next valid cycle',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await setup();let now=Date.now(),turns=0,automation:TeamAutomation|undefined;
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await setup();let now=Date.now(),turns=0,automation:TeamAutomation|undefined;
  try{const routines=new Routines(f.upstream,f.store,()=>now);await routines.save(input(f,now));now+=61000;await routines.wake();const first=f.store.jobs()[0];now+=600000;
   automation=new TeamAutomation(f.upstream,f.store,1,async turn=>{await turn.onRequest?.();turns++;return {text:'当前周期已核对。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};},f.coordinator,undefined,undefined,undefined,undefined,undefined,()=>now);
   await automation.tick();assert.equal(turns,0);assert.equal(f.store.job(first.id).state,'noop');assert.equal(f.store.job(first.id).reason,'routine_missed');

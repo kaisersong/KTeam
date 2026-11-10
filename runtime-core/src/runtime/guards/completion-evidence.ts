@@ -1,0 +1,393 @@
+import {observeInstalledCompletionSync,type InstalledCompletionObservation} from '../verification/installed-completion-observation.js';
+import {completionConsumerOwner} from '../verification/completion-consumer-owner.js';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { isAbsolute, relative, resolve } from 'node:path';
+import { resolveStructuralKind, validateArtifactStructure } from '../../quality/artifact-structure.js';
+
+export type CompletionKind =
+  | 'answer'
+  | 'file_artifact'
+  | 'command_action'
+  | 'project_update'
+  | 'log_diagnostic'
+  | 'blocked';
+
+export interface CompletionExpectation {
+  ownerKind: 'task' | 'loop_stage' | 'loop_run' | 'project' | 'goal';
+  ownerId: string;
+  expectedKinds: CompletionKind[];
+  source: 'task_spec' | 'tool_schema' | 'scheduler_executor_contract' | 'loop_stage_contract' | 'kswarm_deliverable_type' | 'goal_criterion' | 'legacy_classifier';
+  confidence: 'explicit' | 'inferred' | 'legacy';
+}
+
+export interface CompletionEvidenceRecord {
+  ownerKind: CompletionExpectation['ownerKind'];
+  ownerId: string;
+  kind: CompletionKind;
+  summary: string;
+  uri?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type EvidenceValidationFailure =
+  | 'verification_unavailable'
+  | 'verification_required'
+  | 'evidence_missing'
+  | 'evidence_kind_mismatch'
+  | 'validation_failed';
+
+export interface EvidenceValidationResult {
+  ok: boolean;
+  failureKind?: EvidenceValidationFailure;
+  message?: string;
+  warning?: string;
+}
+
+export function mergeCompletionExpectations(expectations: CompletionExpectation[]): CompletionExpectation | undefined {
+  if (expectations.length === 0) {
+    return undefined;
+  }
+
+  const highestPriority = Math.max(...expectations.map(expectation => confidencePriority(expectation.confidence)));
+  const selected = expectations.filter(expectation => confidencePriority(expectation.confidence) === highestPriority);
+  const [first, ...rest] = selected;
+  if (!first) {
+    return undefined;
+  }
+
+  const expectedKinds = uniqueKinds(first.expectedKinds)
+    .filter(kind => rest.every(expectation => expectation.expectedKinds.includes(kind)));
+
+  return {
+    ...first,
+    expectedKinds,
+  };
+}
+
+export function* completionEvidenceFlow(input: {
+  ownerKind: CompletionExpectation['ownerKind'];
+  ownerId: string;
+  targetStatus: string;
+  expectation?: CompletionExpectation;
+  evidence?: CompletionEvidenceRecord[];
+}): EvidenceFlow {
+  if (isBlockedStatus(input.targetStatus)) {
+    return validateBlockedEvidence(input);
+  }
+  if (!isCompletedStatus(input.targetStatus)) {
+    return { ok: true };
+  }
+
+  const verification=yield {kind:'current-completion',owner:completionConsumerOwner({ownerKind:input.ownerKind,ownerId:input.ownerId})};
+  const observed=verification as InstalledCompletionObservation;
+  if(observed.kind==='unavailable')return fail('verification_unavailable','Current protected verification is unavailable.');
+  if(observed.kind==='protected')return observed.state.currentVerification==='valid'?{ok:true}:fail('verification_required','Protected obligations require current verification.');
+  if(observed.kind!=='ordinary')return fail('verification_unavailable','Current protected verification is unavailable.');
+  const expectation = input.expectation;
+  if (!expectation) {
+    return fail('evidence_missing', 'Completed status requires an explicit or inferred completion expectation.');
+  }
+  if (expectation.ownerKind !== input.ownerKind || expectation.ownerId !== input.ownerId) {
+    return fail('validation_failed', 'Completion expectation owner does not match the target owner.');
+  }
+  if (expectation.confidence === 'legacy') {
+    return fail('validation_failed', 'Legacy completion expectations cannot authorize completed status.');
+  }
+
+  const expectedKinds = uniqueKinds(expectation.expectedKinds);
+  if (expectedKinds.length === 0) {
+    return fail('validation_failed', 'Completion expectation has no expected evidence kind.');
+  }
+  if (expectedKinds.includes('blocked')) {
+    return fail('validation_failed', 'Blocked evidence cannot authorize completed status.');
+  }
+
+  const ownerEvidence = matchingOwnerEvidence(input);
+  if (ownerEvidence.length === 0) {
+    return fail('evidence_missing', 'Completion evidence is missing for the target owner.');
+  }
+  if (ownerEvidence.some(record => record.kind !== 'blocked' && !hasText(record.summary))) {
+    return fail('validation_failed', 'Completion evidence requires a non-empty summary.');
+  }
+
+  const expectedEvidence = ownerEvidence.filter(record => expectedKinds.includes(record.kind));
+  if (expectedEvidence.length === 0) {
+    return fail('evidence_kind_mismatch', 'Completion evidence kind does not match the expected completion kind.');
+  }
+  if (expectedEvidence.some(record => record.kind === 'blocked')) {
+    return fail('evidence_kind_mismatch', 'Blocked evidence cannot authorize completed status.');
+  }
+
+  let lastFailure: EvidenceValidationResult | undefined;
+  for (const record of expectedEvidence) {
+    const result = yield* validateEvidenceRecord(record);
+    if (result.ok) {
+      return result;
+    }
+    lastFailure = result;
+  }
+
+  return lastFailure ?? fail('validation_failed', 'Completion evidence failed validation.');
+}
+
+function validateBlockedEvidence(input: {
+  ownerKind: CompletionExpectation['ownerKind'];
+  ownerId: string;
+  evidence?: CompletionEvidenceRecord[];
+}): EvidenceValidationResult {
+  const ownerEvidence = matchingOwnerEvidence(input);
+  if (ownerEvidence.length === 0) {
+    return fail('evidence_missing', 'Blocked status requires blocked evidence for the target owner.');
+  }
+  if (!ownerEvidence.some(record => record.kind === 'blocked')) {
+    return fail('evidence_kind_mismatch', 'Blocked status requires blocked evidence.');
+  }
+  return { ok: true };
+}
+
+function* validateEvidenceRecord(record: CompletionEvidenceRecord): EvidenceFlow {
+  if (!hasText(record.summary)) {
+    return fail('validation_failed', 'Completion evidence requires a non-empty summary.');
+  }
+
+  switch (record.kind) {
+    case 'answer':
+      if (!hasText(record.metadata?.responseId) && !hasText(record.metadata?.responseSnapshotHash)) {
+        return fail('validation_failed', 'Answer evidence requires a response id or response snapshot hash.');
+      }
+      return { ok: true };
+    case 'file_artifact':
+      if (hasText(record.uri) || isNonEmptyStringArray(record.metadata?.paths)) {
+        return yield* runStructuralCheck(resolveLocalArtifactPath(record));
+      }
+      {
+        const localResult = yield* validateLocalFileArtifactEvidence(record);
+        if (!localResult.ok) {
+          return localResult;
+        }
+      }
+      if (isNonEmptyStringArray(record.metadata?.localPaths)) {
+        const localPaths = record.metadata!.localPaths as string[];
+        const workspaceRoot = record.metadata?.workspaceRoot as string | undefined;
+        const firstPath = workspaceRoot && !isAbsolute(localPaths[0]!)
+          ? resolve(workspaceRoot, localPaths[0]!)
+          : localPaths[0]!;
+        return yield* runStructuralCheck(firstPath);
+      }
+      return fail('validation_failed', 'File artifact evidence requires a URI or paths metadata.');
+    case 'command_action':
+      if (isNonEmptyCommandArray(record.metadata?.commands)) {
+        return { ok: true };
+      }
+      return fail('validation_failed', 'Command action evidence requires commands metadata.');
+    case 'project_update':
+      if (!hasText(record.metadata?.projectId)) {
+        return fail('validation_failed', 'Project update evidence requires a project id.');
+      }
+      if (
+        isNonEmptyStringArray(record.metadata?.changedTasks)
+        || isNonEmptyStringArray(record.metadata?.changedDeliverables)
+        || isNoOpSummary(record.summary)
+      ) {
+        return { ok: true };
+      }
+      return fail('validation_failed', 'Project update evidence requires changed tasks or deliverables.');
+    case 'log_diagnostic':
+      if (isNonEmptyStringArray(record.metadata?.logPaths) || isNonEmptyStringArray(record.metadata?.findings)) {
+        return { ok: true };
+      }
+      return fail('validation_failed', 'Log diagnostic evidence requires logs or findings metadata.');
+    case 'blocked':
+      return { ok: true };
+  }
+}
+
+function matchingOwnerEvidence(input: {
+  ownerKind: CompletionExpectation['ownerKind'];
+  ownerId: string;
+  evidence?: CompletionEvidenceRecord[];
+}): CompletionEvidenceRecord[] {
+  return (input.evidence ?? []).filter(record => record.ownerKind === input.ownerKind && record.ownerId === input.ownerId);
+}
+
+function uniqueKinds(kinds: CompletionKind[]): CompletionKind[] {
+  return kinds.filter((kind, index) => kinds.indexOf(kind) === index);
+}
+
+function confidencePriority(confidence: CompletionExpectation['confidence']): number {
+  switch (confidence) {
+    case 'explicit':
+      return 3;
+    case 'inferred':
+      return 2;
+    case 'legacy':
+      return 1;
+  }
+}
+
+function isCompletedStatus(status: string): boolean {
+  return status === 'success' || status === 'completed' || status === 'done' || status === 'submitted';
+}
+
+function isBlockedStatus(status: string): boolean {
+  return status === 'blocked';
+}
+
+function hasText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(item => hasText(item));
+}
+
+function isNonEmptyCommandArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every(isValidCommandRecord);
+}
+
+function isValidCommandRecord(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (!hasText(value.command) || !hasText(value.summary)) {
+    return false;
+  }
+  if (!Object.prototype.hasOwnProperty.call(value, 'exitCode')) {
+    return false;
+  }
+  return typeof value.exitCode === 'number' || value.exitCode === null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNoOpSummary(summary: string): boolean {
+  return /\bno-?op\b|无变化/iu.test(summary);
+}
+
+function* validateLocalFileArtifactEvidence(record: CompletionEvidenceRecord): EvidenceFlow {
+  const localPaths = record.metadata?.localPaths;
+  if (localPaths === undefined) {
+    return { ok: true };
+  }
+  if (!isNonEmptyStringArray(localPaths)) {
+    return fail('validation_failed', 'File artifact evidence local paths must be non-empty strings.');
+  }
+  const workspaceRoot = record.metadata?.workspaceRoot;
+  if (!hasText(workspaceRoot)) {
+    return fail('validation_failed', 'File artifact evidence local paths require a workspace root.');
+  }
+  const resolvedRoot = resolve(workspaceRoot);
+  let realRoot: string;
+  try {
+    realRoot = (yield { kind: 'realpath', path: resolvedRoot }) as string;
+  } catch {
+    return fail('validation_failed', 'File artifact evidence workspace root is missing.');
+  }
+  for (const localPath of localPaths) {
+    if (localPath.includes('\0')) {
+      return fail('validation_failed', `File artifact evidence local path is invalid: ${localPath}`);
+    }
+    const resolvedPath = isAbsolute(localPath) ? resolve(localPath) : resolve(realRoot, localPath);
+    if (!isAbsolute(localPath)) {
+      const rel = relative(realRoot, resolvedPath);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        return fail('validation_failed', `File artifact evidence local path escapes workspace: ${localPath}`);
+      }
+    }
+    try {
+      if (((yield { kind: 'lstat', path: resolvedPath }) as { isSymbolicLink(): boolean }).isSymbolicLink()) {
+        return fail('validation_failed', `File artifact evidence local path is a symlink: ${localPath}`);
+      }
+      const realPath = (yield { kind: 'realpath', path: resolvedPath }) as string;
+      const realRel = relative(realRoot, realPath);
+      if (realRel.startsWith('..') || isAbsolute(realRel)) {
+        return fail('validation_failed', `File artifact evidence local path escapes workspace: ${localPath}`);
+      }
+    } catch {
+      return fail('validation_failed', `File artifact evidence local path is missing: ${localPath}`);
+    }
+    if (!(yield { kind: 'exists', path: resolvedPath })) {
+      return fail('validation_failed', `File artifact evidence local path is missing: ${localPath}`);
+    }
+  }
+  return { ok: true };
+}
+
+function resolveLocalArtifactPath(record: CompletionEvidenceRecord): string | undefined {
+  if (isNonEmptyStringArray(record.metadata?.localPaths)) {
+    const localPaths = record.metadata!.localPaths as string[];
+    const workspaceRoot = record.metadata?.workspaceRoot as string | undefined;
+    if (workspaceRoot && !isAbsolute(localPaths[0]!)) {
+      return resolve(workspaceRoot, localPaths[0]!);
+    }
+    return localPaths[0];
+  }
+  if (hasText(record.uri)) {
+    const uri = record.uri!;
+    if (uri.startsWith('file://')) {
+      try {
+        return new URL(uri).pathname;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+  if (isNonEmptyStringArray(record.metadata?.paths)) {
+    const paths = record.metadata!.paths as string[];
+    const candidate = paths[0]!;
+    if (isAbsolute(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function* runStructuralCheck(localPath: string | undefined): EvidenceFlow {
+  if (!localPath) {
+    return { ok: true };
+  }
+  const structKind = resolveStructuralKind(localPath);
+  if (!structKind) {
+    return { ok: true };
+  }
+  if (!(yield { kind: 'exists', path: localPath })) {
+    return { ok: true };
+  }
+  const result = (yield { kind: 'structure', path: localPath, structuralKind: structKind }) as ReturnType<typeof validateArtifactStructure>;
+  if (!result.ok) {
+    return { ok: true, warning: `Artifact structural issue (${structKind}): ${result.error}` };
+  }
+  return { ok: true };
+}
+
+function fail(failureKind: EvidenceValidationFailure, message: string): EvidenceValidationResult {
+  return { ok: false, failureKind, message };
+}
+
+export type CompletionEvidenceInput = Parameters<typeof completionEvidenceFlow>[0];
+export type EvidenceEffect = {kind:'current-completion';owner:ReturnType<typeof completionConsumerOwner>} | { kind: 'exists' | 'realpath' | 'lstat'; path: string }
+  | { kind: 'structure'; path: string; structuralKind: 'pdf' | 'pptx' };
+export type EvidenceEffectResult = InstalledCompletionObservation | boolean | string | { isSymbolicLink(): boolean } | ReturnType<typeof validateArtifactStructure>;
+type EvidenceFlow = Generator<EvidenceEffect, EvidenceValidationResult, EvidenceEffectResult>;
+
+/** One rule flow, with distinct synchronous and asynchronous effect interpreters. */
+export function validateCompletionEvidence(input: CompletionEvidenceInput): EvidenceValidationResult {
+  const flow = completionEvidenceFlow(input);
+  let step = flow.next();
+  while (!step.done) {
+    let value: EvidenceEffectResult;
+    try {
+      const effect = step.value;
+      switch (effect.kind) {
+        case 'current-completion': value = observeInstalledCompletionSync(effect.owner); break;
+        case 'exists': value = existsSync(effect.path); break;
+        case 'realpath': value = realpathSync.native(effect.path); break;
+        case 'lstat': value = lstatSync(effect.path); break;
+        case 'structure': value = validateArtifactStructure(effect.path, effect.structuralKind); break;
+      }
+    } catch (error) { step = flow.throw(error); continue; }
+    step = flow.next(value);
+  }
+  return step.value;
+}

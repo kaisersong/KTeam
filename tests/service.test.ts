@@ -21,8 +21,8 @@ test('single durable host, two independently authenticated clients, incompatible
   let host = await startHost({ root, upstream: { brokerUrl: 'http://127.0.0.1:1', kswarmUrl: 'http://127.0.0.1:1' } });
   try {
     const a = await hostRequest(root, 'kteam-main', '/v1/handshake');
-    const b = await hostRequest(root, 'xiaok-main', '/v1/handshake');
-    assert.equal(a.clientId, 'kteam-main'); assert.equal(b.clientId, 'xiaok-main');
+    const b = await hostRequest(root, 'kteam-companion', '/v1/handshake');
+    assert.equal(a.clientId, 'kteam-main'); assert.equal(b.clientId, 'kteam-companion');
     assert.equal(a.instanceId, b.instanceId); assert.equal(a.ownerEpoch, b.ownerEpoch);
     await assert.rejects(startHost({ root, upstream: { brokerUrl: 'http://127.0.0.1:1', kswarmUrl: 'http://127.0.0.1:1' } }), /host_already_running/);
     assert.equal((await hostRequest(root, 'kteam-main', '/v1/handshake')).instanceId, a.instanceId);

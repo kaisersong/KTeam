@@ -1,0 +1,596 @@
+import Database from 'better-sqlite3';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+import * as crypto from 'node:crypto';
+import type { MemoryStore, MemoryRecord, MemoryType, MemoryCompactionRequest, MemoryCompactionResult } from './store.js';
+import type { ModelAdapter, Message } from '../../types.js';
+import { getConfigDir } from '../../utils/config.js';
+import { runMigrations } from './migrations.js';
+import { EmbeddingClient, type EmbeddingConfig } from './embedding.js';
+import { hybridSearch } from './retrieval.js';
+import { compactL0toL1, compactL1toL2, compactL2toL3 } from './compaction.js';
+import { createLogger } from '../../utils/logger.js';
+
+// Timer/embedding callbacks run while the terminal cursor may be in the editor.
+// A normal warn logger also writes stderr, so these diagnostics must be file-only.
+const logger = createLogger('memory:layered-store', { stderr: false });
+const compactionErrorCodes = new Set([
+  'memory_output_incomplete', 'memory_compaction_timeout',
+  'memory_compaction_invalid_response', 'memory_inputs_changed',
+  'memory_store_closed', 'memory_model_unavailable',
+  'memory_compaction_busy', 'memory_compaction_forbidden',
+]);
+import { segmentChinese, segmentChineseAsync } from './segment.js';
+import { MODEL_REGISTRY } from './model-registry.js';
+import { streamStatelessSideCallProviderConversation } from '../runtime/provider-conversation-authorization.js';
+
+export interface LayeredMemoryConfig {
+  dbPath: string;
+  embedding?: Partial<EmbeddingConfig>;
+  compaction?: {
+    l0MinMessages?: number;
+    autoCompact?: boolean;
+    compactIntervalMs?: number;
+    maxPromptTokens?: number;
+  };
+}
+
+export function resolveLayeredConfig(config?: Record<string, unknown>): LayeredMemoryConfig {
+  const c = (config ?? {}) as Record<string, any>;
+  const provider = c.embedding?.provider ?? 'local';
+  const modelId = c.embedding?.model ?? 'all-MiniLM-L6-v2';
+  const registryEntry = MODEL_REGISTRY.find(m => m.id === modelId);
+  const defaultDims = provider === 'api' ? 768 : (registryEntry?.dims ?? 384);
+  return {
+    dbPath: c.dbPath ?? path.join(getConfigDir(), 'memory.db'),
+    embedding: {
+      provider,
+      apiUrl: c.embedding?.apiUrl ?? 'http://localhost:11434/v1',
+      model: modelId,
+      dimensions: c.embedding?.dimensions ?? defaultDims,
+    },
+    compaction: {
+      l0MinMessages: c.compaction?.l0MinMessages ?? 5,
+      autoCompact: c.compaction?.autoCompact ?? true,
+      compactIntervalMs: c.compaction?.compactIntervalMs ?? 60000,
+      maxPromptTokens: c.compaction?.maxPromptTokens ?? 8000,
+    },
+  };
+}
+
+/**
+ * Create an LLM function from a ModelAdapter, following the CompactRunner pattern.
+ */
+export function createLLMFromAdapter(adapter: ModelAdapter): (prompt: string, signal?: AbortSignal) => Promise<string> {
+  return async (prompt: string, signal?: AbortSignal) => {
+    const messages: Message[] = [
+      { role: 'user', content: [{ type: 'text', text: prompt }] },
+    ];
+    const chunks: string[] = [];
+    let done = false;
+    const controller = new AbortController();
+    signal?.throwIfAborted();
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => controller.abort(new DOMException('memory_compaction_timeout', 'AbortError')), 120_000);
+    timer.unref?.();
+    try {
+      for await (const chunk of streamStatelessSideCallProviderConversation({
+        adapter,
+        messages,
+        tools: [],
+        systemPrompt: '只输出JSON结果，不要其他内容。不要调用任何工具。',
+        invocationId: `inv_${crypto.randomUUID()}`,
+        options: { maxOutputTokens: 8192, reasoningMode: 'disabled', signal: controller.signal },
+      })) {
+        controller.signal.throwIfAborted();
+        if (chunk.type === 'text') chunks.push(chunk.delta);
+        if (chunk.type === 'done') done = true;
+      }
+      controller.signal.throwIfAborted();
+      if (!done) throw new Error('memory_output_incomplete');
+      return chunks.join('');
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+  };
+}
+
+/**
+ * Upper bound for close() waiting on pending writes (#150, CTO ruling: exit waits are bounded).
+ * Above the segmentation worker's ready deadline (10s) plus a normal synchronous fallback load,
+ * so a write accepted just before close still lands in a normal environment; past it the
+ * database closes anyway and the remaining writes fail with a logged warning.
+ */
+export const MEMORY_CLOSE_PENDING_WRITES_DEADLINE_MS = 15_000;
+
+export class LayeredMemoryStore implements MemoryStore {
+  private db: Database.Database;
+  private dbPath: string;
+  private embeddingClient: EmbeddingClient;
+  private llmFn?: (prompt: string, signal?: AbortSignal) => Promise<string>;
+  private compactionConfig: {
+    l0MinMessages: number;
+    autoCompact: boolean;
+    compactIntervalMs: number;
+    maxPromptTokens: number;
+  };
+  private compactTimer?: ReturnType<typeof setInterval>;
+  private compacting = false;
+  private compactionController?: AbortController;
+  private closed = false;
+  /** Set when close() had to wait for pending writes; repeated close() calls return the same wait. */
+  private closing: Promise<void> | undefined;
+  // Writes waiting on off-thread segmentation; close() lets them finish before closing the database.
+  private readonly pendingWrites = new Set<Promise<unknown>>();
+
+  constructor(config: LayeredMemoryConfig) {
+    this.dbPath = config.dbPath;
+    const dir = path.dirname(config.dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    this.db = new Database(config.dbPath);
+    runMigrations(this.db);
+
+    const embeddingConfig: EmbeddingConfig = {
+      provider: config.embedding?.provider ?? 'local',
+      apiUrl: config.embedding?.apiUrl ?? 'http://localhost:11434/v1',
+      model: config.embedding?.model ?? 'all-MiniLM-L6-v2',
+      dimensions: config.embedding?.dimensions ?? 384,
+    };
+    this.db.exec('CREATE TABLE IF NOT EXISTS kteam_embedding_profile(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)');
+    const embeddingProfile=JSON.stringify(embeddingConfig);
+    if(this.db.prepare('SELECT value FROM kteam_embedding_profile WHERE id=1').get()?.value!==embeddingProfile)this.db.transaction(()=>{this.db.exec('DELETE FROM memory_embeddings');this.db.prepare('INSERT OR REPLACE INTO kteam_embedding_profile VALUES(1,?)').run(embeddingProfile);})();
+    this.embeddingClient = new EmbeddingClient(this.db, embeddingConfig);
+    this.compactionConfig = {
+      l0MinMessages: config.compaction?.l0MinMessages ?? 5,
+      autoCompact: config.compaction?.autoCompact ?? true,
+      compactIntervalMs: config.compaction?.compactIntervalMs ?? 60000,
+      maxPromptTokens: config.compaction?.maxPromptTokens ?? 8000,
+    };
+
+
+  }
+
+  setLLMFn(fn: (prompt: string, signal?: AbortSignal) => Promise<string>): void {
+    this.llmFn = fn;
+    if (this.compactionConfig.autoCompact && !this.compactTimer && !this.closed) this.startAutoCompact();
+  }
+
+  cancelCompaction(request: { requestSource: 'user' | 'agent' | 'scheduler' }): boolean {
+    if (request?.requestSource !== 'user') throw new Error('memory_compaction_forbidden');
+    if (!this.compactionController) return false;
+    this.compactionController.abort(); return true;
+  }
+  async configureEmbedding(config: EmbeddingConfig, request: { requestSource: 'user' | 'agent' | 'scheduler' }): Promise<void> {
+    if (request?.requestSource !== 'user') throw new Error('memory_embedding_forbidden');
+    if (this.closed) throw new Error('memory_store_closed');
+    await this.trackWrite(() => this.embeddingClient.configure(config));
+    if (this.closed) { await this.embeddingClient.close(); throw new Error('memory_store_closed'); }
+  }
+  getEmbeddingModelId(): string { return this.embeddingClient.getModelId(); }
+
+  private trackWrite<T>(start: () => Promise<T>): Promise<T> {
+    if (this.closed) return Promise.reject(new Error('memory_store_closed'));
+    const write = start();
+    this.pendingWrites.add(write);
+    const done = () => { this.pendingWrites.delete(write); };
+    write.then(done, done);
+    return write;
+  }
+
+  save(record: MemoryRecord): Promise<void> {
+    return this.trackWrite(() => this.saveSegmented(record));
+  }
+
+  /**
+   * Synchronous save (master semantics: the rows exist when this returns). For callers
+   * that must read the record back in the same tick, such as the desktop legacy JSON
+   * migration (第 2 轮 DS B1). Segments on the main thread; only used off the first screen.
+   */
+  saveSync(record: MemoryRecord): void {
+    if (this.closed) throw new Error('memory_store_closed');
+    this.insertRecord(record, segmentChinese(record.title + ' ' + record.summary));
+  }
+
+  private async saveSegmented(record: MemoryRecord): Promise<void> {
+    this.insertRecord(record, await segmentChineseAsync(record.title + ' ' + record.summary));
+  }
+
+  private insertRecord(record: MemoryRecord, segmented: string): void {
+    const id = record.id || crypto.randomUUID();
+    const scope = record.scope || 'global';
+    const cwd = record.cwd || null;
+    const memType = record.type || null;
+
+    this.db.prepare(
+      `INSERT OR REPLACE INTO memory_l0_raw (id, session_id, role, content, segmented_content, scope, mem_type, cwd)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, cwd || 'manual', 'user', record.summary, segmented, scope, memType, cwd);
+
+    this.db.prepare(
+      `INSERT OR REPLACE INTO memory_l1_extracted (id, source_ids, summary, tags, scope, mem_type, cwd, provenance_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, JSON.stringify([id]), record.title, JSON.stringify(record.tags || []), scope, memType, cwd, JSON.stringify(record.provenance ?? {}));
+
+    // The vector row is written after the embedding resolves; track it like the other
+    // pending writes so close() waits for it before closing the database (#150 M3).
+    const vectorWrite = this.embeddingClient.embedAndStore(id, 1, `${record.title} ${record.summary}`).catch((err) => {
+      logger.warn('embedAndStore failed', { id, error: err instanceof Error ? err.message : String(err) });
+    });
+    this.pendingWrites.add(vectorWrite);
+    void vectorWrite.finally(() => { this.pendingWrites.delete(vectorWrite); });
+  }
+
+  async listRelevant(input: { cwd: string; query: string; typeFilter?: MemoryType }): Promise<MemoryRecord[]> {
+    const results = await hybridSearch(this.db, this.embeddingClient, input.query, { limit: 20 });
+
+    return results
+      .map(r => this.searchResultToRecord(r))
+      .filter(r => {
+        if (r.scope !== 'global' && r.cwd !== input.cwd) return false;
+        if (input.typeFilter && r.type !== input.typeFilter) return false;
+        return true;
+      });
+  }
+
+  async search(query: string, limit: number = 10): Promise<MemoryRecord[]> {
+    const results = await hybridSearch(this.db, this.embeddingClient, query, { limit });
+    return results.map(r => this.searchResultToRecord(r));
+  }
+
+  getById(id: string): MemoryRecord | undefined {
+    const row = this.db.prepare(
+      `SELECT l1.id, l1.summary AS title, l0.content AS content, l1.tags, l1.scope, l1.mem_type,
+              l1.cwd, l1.provenance_json, l1.updated_at
+       FROM memory_l1_extracted l1
+       LEFT JOIN memory_l0_raw l0 ON l0.id = l1.id
+       WHERE l1.id = ?`
+    ).get(id) as {
+      id: string; title: string; content?: string; tags: string; scope: 'global' | 'project'; mem_type?: MemoryType;
+      cwd?: string; provenance_json?: string; updated_at?: string;
+    } | undefined;
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      scope: row.scope ?? 'global',
+      cwd: row.cwd || undefined,
+      title: row.title,
+      summary: row.content ?? row.title,
+      tags: JSON.parse(row.tags || '[]') as string[],
+      type: row.mem_type,
+      provenance: parseMemoryProvenance(row.provenance_json),
+      updatedAt: row.updated_at ? Date.parse(row.updated_at) || Date.now() : Date.now(),
+    };
+  }
+
+  writeRawMessage(sessionId: string, role: string, content: string): Promise<void> {
+    return this.trackWrite(() => this.writeRawMessageSegmented(sessionId, role, content));
+  }
+
+  private async writeRawMessageSegmented(sessionId: string, role: string, content: string): Promise<void> {
+    const id = crypto.randomUUID();
+    const segmented = await segmentChineseAsync(content);
+    this.db.prepare(
+      `INSERT INTO memory_l0_raw (id, session_id, role, content, segmented_content) VALUES (?, ?, ?, ?, ?)`
+    ).run(id, sessionId, role, content, segmented);
+  }
+
+  async compact(request: MemoryCompactionRequest): Promise<MemoryCompactionResult> {
+    if (!request || (request.requestSource !== 'user' && request.requestSource !== 'scheduler')
+      || (request.requestSource === 'scheduler' && request.force)) throw new Error('memory_compaction_forbidden');
+    if (this.closed) throw new Error('memory_store_closed');
+    if (this.compacting) throw new Error('memory_compaction_busy');
+    if (!request.llm && !this.llmFn) throw new Error('memory_model_unavailable');
+    request.signal?.throwIfAborted();
+    const controller = new AbortController();
+    const abort = () => controller.abort(request.signal?.reason);
+    request.signal?.addEventListener('abort', abort, { once: true });
+    this.compacting = true; this.compactionController = controller;
+    const llm = request.llm ?? this.llmFn!;
+    const assertOpen = () => { request.assertCurrent?.(); controller.signal.throwIfAborted(); if (this.closed) throw new Error('memory_store_closed'); };
+    try {
+      assertOpen();
+      if (request.prepare) { await request.prepare(controller.signal); assertOpen(); }
+      const before = this.getStats();
+      const options = { force: request.force, assertOpen, signal: controller.signal };
+      const r1 = await compactL0toL1(this.db, llm, {
+        ...options, force: false, minMessages: this.compactionConfig.l0MinMessages,
+        maxPromptTokens: this.compactionConfig.maxPromptTokens,
+      });
+      const r2 = await compactL1toL2(this.db, llm, options);
+      const r3 = await compactL2toL3(this.db, llm, options);
+      const counts = { l1: r1.extracted, l2: r2.scenarios, l3: r3.traits };
+      const result: MemoryCompactionResult = {
+        status: Object.values(counts).some(count => count > 0)
+          || before.l2 !== this.getLayerCount(2) || before.l3 !== this.getLayerCount(3) ? 'completed' : 'unchanged', ...counts,
+      };
+      logger.info('memory distillation finished', { requestSource: request.requestSource, force: !!request.force, ...result });
+      return result;
+    } finally {
+      request.signal?.removeEventListener('abort', abort);
+      if (this.compactionController === controller) this.compactionController = undefined;
+      this.compacting = false;
+    }
+  }
+
+  async delete(id: string, layer?: number): Promise<boolean> {
+    if (layer !== undefined) {
+      const tableMap: Record<number, string> = {
+        0: 'memory_l0_raw',
+        1: 'memory_l1_extracted',
+        2: 'memory_l2_scenario',
+        3: 'memory_l3_persona',
+      };
+      const table = tableMap[layer];
+      if (!table) return false;
+      const r = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+      return r.changes > 0;
+    }
+    const r1 = this.db.prepare('DELETE FROM memory_l1_extracted WHERE id = ?').run(id);
+    const r0 = this.db.prepare('DELETE FROM memory_l0_raw WHERE id = ?').run(id);
+    return (r1.changes + r0.changes) > 0;
+  }
+
+  getPersonaTraits(): { trait: string; confidence: number }[] {
+    const rows = this.db.prepare(
+      "SELECT trait, confidence FROM memory_l3_persona WHERE scope='global' ORDER BY confidence DESC"
+    ).all() as any[];
+    return rows.map(r => ({ trait: r.trait, confidence: r.confidence }));
+  }
+
+  getStats(): { l0: number; l1: number; l2: number; l3: number; dbSizeBytes: number } {
+    const l0 = (this.db.prepare('SELECT COUNT(*) as c FROM memory_l0_raw').get() as any).c;
+    const l1 = (this.db.prepare('SELECT COUNT(*) as c FROM memory_l1_extracted').get() as any).c;
+    const l2 = (this.db.prepare('SELECT COUNT(*) as c FROM memory_l2_scenario').get() as any).c;
+    const l3 = (this.db.prepare('SELECT COUNT(*) as c FROM memory_l3_persona').get() as any).c;
+    let dbSizeBytes = 0;
+    try { dbSizeBytes = fs.statSync(this.dbPath).size; } catch {}
+    return { l0, l1, l2, l3, dbSizeBytes };
+  }
+
+  getLayerCount(layer: number): number {
+    const tableMap: Record<number, string> = {
+      0: 'memory_l0_raw',
+      1: 'memory_l1_extracted',
+      2: 'memory_l2_scenario',
+      3: 'memory_l3_persona',
+    };
+    const table = tableMap[layer];
+    if (!table) return 0;
+    const row = this.db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as any;
+    return row.count;
+  }
+
+  listLayer(layer: number, limit = 50, offset = 0): Array<{ id: string; content: string; createdAt?: string; tags?: string[]; meta?: Record<string, unknown> }> {
+    switch (layer) {
+      case 0: {
+        const rows = this.db.prepare(
+          'SELECT id, role, content, session_id, created_at FROM memory_l0_raw ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        ).all(limit, offset) as any[];
+        return rows.map(r => ({
+          id: String(r.id),
+          content: r.content,
+          createdAt: r.created_at,
+          meta: { role: r.role, sessionId: r.session_id },
+        }));
+      }
+      case 1: {
+        const rows = this.db.prepare(
+          'SELECT id, summary, tags, scope, mem_type, created_at FROM memory_l1_extracted ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        ).all(limit, offset) as any[];
+        return rows.map(r => ({
+          id: String(r.id),
+          content: r.summary,
+          tags: JSON.parse(r.tags || '[]'),
+          createdAt: r.created_at,
+          meta: { scope: r.scope, type: r.mem_type },
+        }));
+      }
+      case 2: {
+        const rows = this.db.prepare(
+          'SELECT id, scenario, key_facts, created_at FROM memory_l2_scenario ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        ).all(limit, offset) as any[];
+        return rows.map(r => ({
+          id: String(r.id),
+          content: r.scenario,
+          createdAt: r.created_at,
+          meta: { keyFacts: JSON.parse(r.key_facts || '[]') },
+        }));
+      }
+      case 3: {
+        const rows = this.db.prepare(
+          'SELECT id, trait, evidence, confidence, created_at FROM memory_l3_persona ORDER BY confidence DESC LIMIT ? OFFSET ?'
+        ).all(limit, offset) as any[];
+        return rows.map(r => ({
+          id: String(r.id),
+          content: r.trait,
+          createdAt: r.created_at,
+          meta: { evidence: JSON.parse(r.evidence || '[]'), confidence: r.confidence },
+        }));
+      }
+      default:
+        return [];
+    }
+  }
+
+  clearAll(): void {
+    this.db.exec(`
+      DELETE FROM memory_l0_raw;
+      DELETE FROM memory_l1_extracted;
+      DELETE FROM memory_l2_scenario;
+      DELETE FROM memory_l3_persona;
+      DELETE FROM memory_embeddings;
+      DELETE FROM memory_meta WHERE key LIKE 'compaction_l%';
+    `);
+  }
+
+  listUserMemories(limit = 200): Array<{ id: string; content: string; tags: string[]; createdAt: number; source?: string }> {
+    const rows = this.db.prepare(
+      `SELECT e.id, e.summary, e.tags, e.created_at, r.role
+       FROM memory_l1_extracted e
+       LEFT JOIN memory_l0_raw r ON e.id = r.id
+       WHERE e.mem_type = 'user' OR r.role = 'user' OR e.mem_type IS NULL
+       ORDER BY e.created_at DESC LIMIT ?`
+    ).all(limit) as any[];
+    return rows.map(r => ({
+      id: r.id,
+      content: r.summary,
+      tags: JSON.parse(r.tags || '[]'),
+      createdAt: new Date(r.created_at).getTime(),
+      source: r.role === 'user' ? 'notebook' : undefined,
+    }));
+  }
+
+  createUserMemory(input: { content: string; tags: string[]; source?: string }): { id: string; content: string; tags: string[]; createdAt: number; source?: string } {
+    const id = `mem_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const segmented = segmentChinese(input.content);
+    this.db.prepare(
+      `INSERT INTO memory_l0_raw (id, session_id, role, content, segmented_content, scope, mem_type, cwd, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, 'manual', 'user', input.content, segmented, 'global', 'user', null, now);
+    this.db.prepare(
+      `INSERT INTO memory_l1_extracted (id, source_ids, summary, tags, scope, mem_type, cwd, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, JSON.stringify([id]), input.content, JSON.stringify(input.tags), 'global', 'user', null, now);
+    return { id, content: input.content, tags: input.tags, createdAt: Date.now(), source: input.source };
+  }
+
+  updateUserMemory(id: string, input: { content?: string; tags?: string[] }): { id: string; content: string; tags: string[] } | null {
+    const existing = this.db.prepare('SELECT id FROM memory_l1_extracted WHERE id = ?').get(id) as any;
+    if (!existing) return null;
+    if (input.content !== undefined) {
+      const segmented = segmentChinese(input.content);
+      this.db.prepare('UPDATE memory_l0_raw SET content = ?, segmented_content = ? WHERE id = ?').run(input.content, segmented, id);
+      this.db.prepare('UPDATE memory_l1_extracted SET summary = ? WHERE id = ?').run(input.content, id);
+    }
+    if (input.tags !== undefined) {
+      this.db.prepare('UPDATE memory_l1_extracted SET tags = ? WHERE id = ?').run(JSON.stringify(input.tags), id);
+    }
+    const updated = this.db.prepare('SELECT summary, tags FROM memory_l1_extracted WHERE id = ?').get(id) as any;
+    return { id, content: updated.summary, tags: JSON.parse(updated.tags || '[]') };
+  }
+
+  deleteUserMemory(id: string): boolean {
+    const del0 = this.db.prepare('DELETE FROM memory_l0_raw WHERE id = ?').run(id).changes;
+    const del1 = this.db.prepare('DELETE FROM memory_l1_extracted WHERE id = ?').run(id).changes;
+    return (del0 + del1) > 0;
+  }
+
+  /**
+   * Close the store. Returns a promise only when writes accepted before close are
+   * still waiting for off-thread segmentation; callers on an exit path must await
+   * it (chat finalization does) so those writes land before the process exits.
+   */
+  close(): void | Promise<void> {
+    if (this.closed) return this.closing;
+    this.closed = true;
+    this.compactionController?.abort();
+    if (this.compactTimer) {
+      clearInterval(this.compactTimer);
+    }
+    const closeEmbedding = () => {
+      this.embeddingClient.close().catch((err) => {
+        logger.debug('embeddingClient.close failed', { error: err instanceof Error ? err.message : String(err) });
+      });
+    };
+    if (this.pendingWrites.size === 0) {
+      closeEmbedding();
+      this.db.close();
+      return;
+    }
+    // A write accepted before close is still waiting for segmentation or for its vector:
+    // let it land before the embedding engine and the database close (第 2 轮 DS M3).
+    // Bounded (CTO ruling on #150, Minor 6): exit paths await this, so it must not wait forever.
+    this.closing = this.waitForPendingWrites().then(() => { closeEmbedding(); this.db.close(); });
+    return this.closing;
+  }
+
+  /** Wait until no write is pending (writes may add their vector write while landing), up to the close deadline. */
+  private async waitForPendingWrites(): Promise<void> {
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'deadline'>((resolve) => {
+      timer = setTimeout(() => resolve('deadline'), MEMORY_CLOSE_PENDING_WRITES_DEADLINE_MS);
+    });
+    try {
+      while (this.pendingWrites.size > 0) {
+        const outcome = await Promise.race([Promise.allSettled([...this.pendingWrites]), deadline]);
+        if (outcome === 'deadline') {
+          logger.warn('memory close deadline reached; closing with writes still pending', {
+            pending: this.pendingWrites.size, waitedMs: Date.now() - startedAt, deadlineMs: MEMORY_CLOSE_PENDING_WRITES_DEADLINE_MS,
+          });
+          return;
+        }
+      }
+    } finally { clearTimeout(timer); }
+  }
+
+  private searchResultToRecord(r: { id: string; layer: number; content: string; metadata: Record<string, unknown> }): MemoryRecord {
+    let meta = r.metadata as {
+      cwd?: string;
+      mem_type?: MemoryType;
+      scope?: 'global' | 'project';
+      tags?: string[];
+      provenance_json?: string;
+    };
+
+    // L0 carries its own scope; an exact L1 sibling may add tags and provenance.
+    if (r.layer === 0) {
+      const l1 = this.db.prepare(
+        'SELECT tags, scope, mem_type, cwd, provenance_json FROM memory_l1_extracted WHERE id = ?'
+      ).get(r.id) as { tags?: string; scope?: string; mem_type?: string; cwd?: string; provenance_json?: string } | undefined;
+      if (l1) {
+        meta = {
+          tags: l1.tags ? JSON.parse(l1.tags) : [],
+          scope: (l1.scope as 'global' | 'project') || 'global',
+          mem_type: l1.mem_type as MemoryType | undefined,
+          cwd: l1.cwd || undefined,
+          provenance_json: l1.provenance_json,
+        };
+      }
+    }
+
+    return {
+      id: r.id,
+      scope: meta?.scope || 'global',
+      cwd: meta?.cwd,
+      title: r.content.slice(0, 80),
+      summary: r.content,
+      tags: meta?.tags || [],
+      type: meta?.mem_type,
+      provenance: parseMemoryProvenance(meta?.provenance_json),
+      updatedAt: Date.now(),
+    };
+  }
+
+  private startAutoCompact(): void {
+    this.compactTimer = setInterval(() => {
+      if (this.compacting || this.closed) return;
+      this.compact({ requestSource: 'scheduler' }).catch(err => {
+        const code = err instanceof Error && compactionErrorCodes.has(err.message)
+          ? err.message : 'memory_compaction_failed';
+        logger.error('auto-compaction failed', { code });
+      });
+    }, this.compactionConfig.compactIntervalMs);
+    this.compactTimer.unref?.();
+  }
+}
+
+function parseMemoryProvenance(raw: string | undefined): MemoryRecord['provenance'] | undefined {
+  if (!raw) return undefined;
+  try {
+    const value = JSON.parse(raw) as MemoryRecord['provenance'];
+    return value
+      && value.kind === 'assistant_candidate'
+      && typeof value.candidateId === 'string'
+      && typeof value.loopRunId === 'string'
+      && (value.backend === 'layered' || value.backend === 'fallback')
+      && Array.isArray(value.evidenceRefs)
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

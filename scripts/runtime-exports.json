@@ -162,6 +162,13 @@
   "src/ai/permissions/sensitive-paths.ts": [
     "isSensitiveToolInvocation"
   ],
+  "src/utils/desktop-service-discovery.ts": [
+    "desktopServiceDiscoveryFile",
+    "readDesktopServicePorts",
+    "writeDesktopServicePorts",
+    "desktopServiceUrl",
+    "configuredDesktopServicePorts"
+  ],
   "src/platform/plugins/runtime.ts": [
     "loadPlatformPluginRuntime"
   ]

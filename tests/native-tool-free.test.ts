@@ -6,7 +6,7 @@ import {createServer} from 'node:http';
 import {sharedRuntime,nativeTurn} from '../src/runtime/native.js';
 
 test('real original runtime sends a tool-free routing request without phantom tool_search',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  const root=realpathSync(mkdtempSync('/tmp/kteam-no-tools-')),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;
  let calls=0,reservations=0;const server=createServer(async(req,res)=>{
   calls++;let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);

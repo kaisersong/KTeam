@@ -13,7 +13,7 @@ import {kimJudgment,systemOneChoice} from '../src/runtime/decision.js';
 
 const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture-model',fingerprint:'frozen'})};
 for(const scenario of ['resume','quiet','revoked','budget','invalid'] as const)test('System One silence is reviewed with real services: '+scenario,async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);
  let automation:TeamAutomation|undefined,routerCalls=0,answerCalls=0;
  try{
@@ -40,7 +40,7 @@ for(const scenario of ['resume','quiet','revoked','budget','invalid'] as const)t
 });
 
 for(const enabled of [false,true])test('real group routing completes without a deployed K-IM service; enabled='+enabled,async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),previous=process.env.KTEAM_MODEL_CONFIG_DIR,configDir=join(f.root,'config');mkdirSync(configDir);process.env.KTEAM_MODEL_CONFIG_DIR=configDir;
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),previous=process.env.KTEAM_MODEL_CONFIG_DIR,configDir=join(f.root,'config');mkdirSync(configDir);process.env.KTEAM_MODEL_CONFIG_DIR=configDir;
  let automation:TeamAutomation|undefined;
  try{const core=await sharedRuntime(),config=await core.loadConfig();delete config.systemOne;config.kimDecision={enabled,baseUrl:'http://127.0.0.1:1'};writeFileSync(join(configDir,'config.json'),JSON.stringify(config));
   const member=await coordinator.createMember({name:'CTO',modelId:'fixture',requestId:randomUUID()},user),group=await coordinator.createGroup({title:'无KIM验证',memberAgentIds:[member.bot.id],requestId:randomUUID()},user),roomId=group.room.roomId;

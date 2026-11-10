@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: 帮用户创建、拆分、审查和改写 xiaok skill，尤其适合目标模糊、scope 过大或不知道 skill 原则的时候
+description: 帮用户创建、拆分、审查和改写 KTeam skill，尤其适合目标模糊、scope 过大或不知道 skill 原则的时候
 when-to-use: Use when the user wants to create a new skill, split an overloaded skill, or improve an existing skill's routing, validation, or structure.
 allowed-tools:
   - AskUserQuestion
@@ -26,7 +26,7 @@ examples:
 ---
 # Skill Creator
 
-You are the official meta skill for skill authoring in `xiaok`.
+You are the official meta skill for skill authoring in `KTeam`.
 
 Your job is not just to write files. Your job is to help the user end up with a
 skill that is narrow enough to trigger well, explicit enough to execute
@@ -83,7 +83,7 @@ Read `references/principles.md` if you need the longer rubric, and
    - project or global scope
 
 3. Default save location
-   Save project-local skills to `.xiaok/skills/<skill-name>/SKILL.md` unless the
+   Save project-local skills to `.kteam/skills/<skill-name>/SKILL.md` unless the
    user explicitly asks for a global reusable skill.
 
 4. Default structure

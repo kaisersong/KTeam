@@ -64,6 +64,6 @@ test('cancelled followups cannot be enqueued from a stale scheduler snapshot; ca
 
 test('the real host reserves bot capability and followup controls for KTeam, rejecting forged identities',async()=>{
  const f=await realUpstreams(),root=join(f.root,'host');initConfig(root,{version:1,brokerUrl:f.upstream.options.brokerUrl,kswarmUrl:f.upstream.options.kswarmUrl});const host=await startHost({root,upstream:f.upstream.options});
- try{for(const route of ['/v1/bot-capabilities?botId=missing','/v1/bot-followups?botId=missing']){await assert.rejects(hostRequest(root,'xiaok-main',route),/app_settings_forbidden/);await assert.rejects(hostRequest(root,'kteam-main',route),/bot_not_managed/);}for(const route of ['/v1/bot-skills','/v1/bot-followups/cancel'])await assert.rejects(hostRequest(root,'xiaok-main',route,{requestSource:'user'}),/app_settings_forbidden/);}
+ try{for(const route of ['/v1/bot-capabilities?botId=missing','/v1/bot-followups?botId=missing']){await assert.rejects(hostRequest(root,'kteam-companion',route),/app_settings_forbidden/);await assert.rejects(hostRequest(root,'kteam-main',route),/bot_not_managed/);}for(const route of ['/v1/bot-skills','/v1/bot-followups/cancel'])await assert.rejects(hostRequest(root,'kteam-companion',route,{requestSource:'user'}),/app_settings_forbidden/);}
  finally{await host.close();await f.close();}
 });

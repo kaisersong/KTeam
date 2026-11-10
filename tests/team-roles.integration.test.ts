@@ -62,7 +62,7 @@ test('ambiguous names select only one spokesperson; delayed inference cannot ove
 });
 
 test('real group messages use stable coordinator, preserve @ priority, allow authenticated user handoff and reject bot/quoted handoffs',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await fixture(),roles=new TeamRoles(f.upstream,f.store,async input=>{await input.onRequest?.();return {text:roleAnswer(JSON.parse(input.prompt).members),model:'fixture',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await fixture(),roles=new TeamRoles(f.upstream,f.store,async input=>{await input.onRequest?.();return {text:roleAnswer(JSON.parse(input.prompt).members),model:'fixture',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});
  let automation:TeamAutomation|undefined;
  try{
   await roles.ready(f.roomId);const sent=async(body:string)=>new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomUUID().replaceAll('-',''),room_id:f.roomId,thread_id:'roles',from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body});
@@ -78,7 +78,7 @@ test('real group messages use stable coordinator, preserve @ priority, allow aut
 });
 
 test('unclear roles ask through one member only; failed judgment is cached and does not repeatedly spend budget',async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await fixture(['小明','小红']);let calls=0,answers=0;
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await fixture(['小明','小红']);let calls=0,answers=0;
  const roles=new TeamRoles(f.upstream,f.store,async input=>{calls++;await input.onRequest?.();return {text:roleAnswer(JSON.parse(input.prompt).members,true),model:'fixture',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});let automation:TeamAutomation|undefined;
  try{const plan=await roles.ready(f.roomId);assert.equal(plan!.status,'needs_choice');assert.equal(plan!.coordinatorBotId,null);
   const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomUUID().replaceAll('-',''),room_id:f.roomId,thread_id:'roles',from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'我们开始讨论吧'});

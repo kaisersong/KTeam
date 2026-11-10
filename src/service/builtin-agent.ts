@@ -3,8 +3,8 @@ import {KTeamError, fields, record, text} from '../errors.js';
 import {modelCatalog, modelIdentity, nativeTurn} from '../runtime/native.js';
 import {TeamStore} from './team-store.js';
 
-// Desktop-managed xiaok runs in the host. Its readiness never depends on a CLI executable.
-// See upstream desktop/electron/managed-xiaok-agent.ts:resolveLocalXiaokRuntimePath.
+// The built-in runtime-core agent runs in the host. Its readiness never depends on a CLI executable.
+// See runtime-core/desktop/electron/managed-kteam-agent.ts:resolveLocalKTeamRuntimePath.
 export class BuiltinAgent {
   private closed=false;
   private tasks=new Map<string,Promise<void>>();
@@ -24,13 +24,13 @@ export class BuiltinAgent {
     const stored=this.store.state<any>(this.key(context.modelId));
     const matches=stored?.fingerprint===context.fingerprint;
     const state=matches?(stored.state==='running'&&!this.tasks.has(context.modelId)?'interrupted':stored.state==='ready'&&Date.now()-stored.verifiedAt>300000?'configured':stored.state):'configured';
-    return {id:'builtin',label:'KTeam 内置',source:'xiaok-runtime',...context,state,
+    return {id:'builtin',label:'KTeam 内置',source:'kteam-runtime',...context,state,
       ...(matches&&state==='failed'?{reason:stored.reason}:{}),...(state==='interrupted'?{reason:'native_probe_interrupted'}:{})};
   }
   status(modelId?:string){const promise=this.statusBody(modelId);this.entering.add(promise);return promise.finally(()=>this.entering.delete(promise));}
   private async statusBody(modelId?:string){
     try{return this.view(await this.context(modelId));}
-    catch(e){return {id:'builtin',label:'KTeam 内置',source:'xiaok-runtime',state:'unavailable',reason:e instanceof KTeamError?e.code:'builtin_runtime_unavailable'};}
+    catch(e){return {id:'builtin',label:'KTeam 内置',source:'kteam-runtime',state:'unavailable',reason:e instanceof KTeamError?e.code:'builtin_runtime_unavailable'};}
   }
   start(value:unknown){
     const promise=this.startBody(value);this.entering.add(promise);

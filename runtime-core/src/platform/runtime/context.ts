@@ -1,0 +1,691 @@
+import { execFile } from '../../../../src/runtime/harness-child-process.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import type { Tool, ToolExecutionContext } from '../../types.js';
+import type { McpClientConnection } from '../mcp/transport.js';
+import { callMcpToolWithTasks, type McpTaskObserver } from '../mcp/tasks.js';
+import { loadCustomAgents, type CustomAgentDef } from '../../ai/agents/loader.js';
+import { buildMcpRuntimeTools } from '../../ai/mcp/runtime/tools.js';
+import { createComputerUseTool } from '../../ai/tools/computer-use.js';
+import { normalizeMcpRuntimeToolResult } from '../../ai/mcp/runtime/client.js';
+import { createBackgroundRunner, type BackgroundJobRecord } from '../agents/background-runner.js';
+import { createLspManager } from '../lsp/manager.js';
+import { loadPlatformPluginRuntime, connectDeclaredLspServer, type PlatformPluginRuntimeState } from '../plugins/runtime.js';
+import { createSandboxEnforcer } from '../sandbox/enforcer.js';
+import { createSandboxPolicy } from '../sandbox/policy.js';
+import { FileTeamStore } from '../teams/store.js';
+import { createTeamService, type TeamService } from '../teams/service.js';
+import { createWorktreeManager, type WorktreeManager } from '../worktrees/manager.js';
+import { ReminderClientService } from '../../runtime/reminder/client.js';
+import { resolveKTeamDaemonSocketPath } from '../../runtime/reminder/ipc.js';
+import { createReminderService, type ReminderApi } from '../../runtime/reminder/service.js';
+import { CapabilityRegistry } from './capability-registry.js';
+import { FileCapabilityHealthStore } from './health-store.js';
+import {
+  loadSettingsMcpServers,
+  loadPluginMcpServers,
+  mergeMcpServerConfigs,
+  type McpServerConfigConflict,
+} from '../mcp/config.js';
+import {
+  callMcpToolWithSignal,
+  createMcpClientConnection,
+  resolveMcpCallToolTimeoutMs,
+  resolveMcpCatalogTimeoutMs,
+  resolveStdioCommand,
+  tryConnect,
+} from '../mcp/transport.js';
+import { resolveBuiltinSlideRendererConfig } from '../mcp/python-server.js';
+import { startMcpToolSubscription } from '../mcp/tool-events.js';
+import type { NamedMcpServerConfig } from '../mcp/types.js';
+import {
+  BUILT_IN_MCP_CLASSIFICATIONS,
+  classifyMcpServer,
+  validateRegistry,
+  type McpClassificationEntry,
+} from '../mcp/server-classification.js';
+
+export interface LspClientLike {
+  didOpenDocument(document: { uri: string; languageId: string; version?: number; text: string }): Promise<void>;
+  goToDefinition(uri: string, line: number, character: number): Promise<unknown>;
+  findReferences(uri: string, line: number, character: number): Promise<unknown>;
+  hover(uri: string, line: number, character: number): Promise<unknown>;
+  documentSymbols(uri: string): Promise<unknown>;
+  dispose(): void;
+}
+
+export interface PlatformRuntimeContext {
+  setMcpActivityHooks(hooks: { connected(connection: McpClientConnection): void; observer(context: ToolExecutionContext, connection: McpClientConnection): Promise<McpTaskObserver | undefined> }): void;
+  pluginRuntime: PlatformPluginRuntimeState;
+  customAgents: CustomAgentDef[];
+  lspManager: ReturnType<typeof createLspManager>;
+  lspClient: LspClientLike | undefined;
+  teamService: TeamService;
+  sandboxPolicy: ReturnType<typeof createSandboxPolicy>;
+  sandboxEnforcer: ReturnType<typeof createSandboxEnforcer>;
+  worktreeManager: WorktreeManager;
+  mcpTools: Tool[];
+  mcpReady: Promise<void>;
+  /** Publishes the complete current MCP catalog, including empty catalogs. */
+  onMcpToolsChanged(listener: (tools: Tool[]) => void): () => void;
+  capabilityRegistry: CapabilityRegistry;
+  reminderDefaultTimeZone: string;
+  createReminderApi(sessionId: string, creatorUserId: string): ReminderApi;
+  health: PlatformRuntimeHealth;
+  dispose(): Promise<void>;
+  listBackgroundJobs(sessionId: string): BackgroundJobRecord[];
+  createBackgroundRunner(
+    execute: (input: { agent: string; prompt: string; cwd?: string; parentDepth?: number; signal: AbortSignal }) => Promise<string>,
+    notify?: (job: BackgroundJobRecord) => Promise<void> | void,
+  ): ReturnType<typeof createBackgroundRunner>;
+}
+
+export interface PlatformCapabilityHealth {
+  kind: 'mcp' | 'lsp';
+  name: string;
+  status: 'connected' | 'degraded' | 'deferred';
+  detail: string;
+}
+
+export interface PlatformRuntimeHealth {
+  capabilities: PlatformCapabilityHealth[];
+  summary(): string;
+  hasDegradedCapabilities(): boolean;
+  snapshot(): {
+    updatedAt: number;
+    summary: string;
+    capabilities: PlatformCapabilityHealth[];
+  };
+}
+
+export interface CreatePlatformRuntimeContextOptions {
+  kteamMcpAllowed?: (name: string) => boolean;
+  kteamDisableLsp?: boolean;
+  cwd: string;
+  builtinCommands: string[];
+  reminderMode?: 'daemon' | 'local';
+  reminderSocketPath?: string;
+  mcpClassificationRegistry?: readonly McpClassificationEntry[];
+  platform?: NodeJS.Platform;
+}
+
+export async function createPlatformRuntimeContext(
+  options: CreatePlatformRuntimeContextOptions,
+): Promise<PlatformRuntimeContext> {
+  const pluginRuntime = await loadPlatformPluginRuntime(options.cwd, options.builtinCommands);
+  const activityConnections = new Set<McpClientConnection>();
+  let activityHooks: Parameters<PlatformRuntimeContext['setMcpActivityHooks']>[0] | undefined;
+  const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs); await options.assertCurrent?.();
+  const lspManager = createLspManager();
+  const capabilityRegistry = new CapabilityRegistry();
+  const capabilityHealth: PlatformCapabilityHealth[] = [];
+  const disposables: Array<{ dispose(): void }> = [];
+  const stateRootDir = options.stateRootDir ?? join(options.cwd, '.kteam', 'state');
+  const healthStore = new FileCapabilityHealthStore(join(stateRootDir, 'capability-health.json'));
+  const teamService = options.teamService ?? createTeamService({ store: new FileTeamStore(join(stateRootDir, 'teams.json')) });
+  const reminderDefaultTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+  const reminderApis: ReminderApi[] = [];
+  const createReminderApi = (sessionId: string, creatorUserId: string): ReminderApi => {
+    const api = options.reminderMode === 'local'
+      ? createReminderService({
+        dbPath: join(stateRootDir, 'reminders.sqlite'),
+        defaultTimeZone: reminderDefaultTimeZone,
+      })
+      : new ReminderClientService({
+        workspaceRoot: options.cwd,
+        sessionId,
+        creatorUserId,
+        defaultTimeZone: reminderDefaultTimeZone,
+        socketPath: options.reminderSocketPath ?? resolveKTeamDaemonSocketPath(),
+      });
+    reminderApis.push(api);
+    return api;
+  };
+  const sandboxPolicy = createSandboxPolicy({pathDenylist:options.privateStateRoots,
+    pathAllowlist: [options.cwd, join(options.cwd, '.kteam'), join(options.cwd, '.worktrees')],
+    network: 'allow',
+  });
+  const sandboxEnforcer = createSandboxEnforcer(sandboxPolicy);
+  const worktreeManager = createWorktreeManager({
+    repoRoot: options.cwd,
+    worktreesDir: join(options.cwd, '.worktrees'),
+    execGit: async (args) =>
+      new Promise<string>((resolve, reject) => {
+        execFile('git', args, { cwd: options.cwd }, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+            return;
+          }
+          resolve(stdout.trim());
+        });
+      }),
+  });
+  // 加载 MCP server 配置（settings.json + plugin manifests）
+  const settingsMcpServers = options.kteamMcpServers ?? loadSettingsMcpServers();
+  const pluginMcpServers = [...loadPluginMcpServers(pluginRuntime),...(options.kteamCuaServer ? [{...options.kteamCuaServer,name:'cua-driver',source:{origin:'plugin',pluginName:'cua-computer-use'},requiresUserActivation:true}] : [])];
+  const { servers: mergedMcpServers, conflicts: mcpConflicts } = mergeMcpServerConfigs(
+    settingsMcpServers,
+    pluginMcpServers,
+  );
+  const classificationRegistry = options.mcpClassificationRegistry ?? BUILT_IN_MCP_CLASSIFICATIONS;
+  validateRegistry(classificationRegistry);
+  const runtimePlatform = options.platform ?? process.platform;
+  const mcpTools: Tool[] = [];
+  const mcpCatalogOwner = {};
+  const backgroundRunners = new Set<ReturnType<typeof createBackgroundRunner>>();
+  const mcpToolListeners = new Set<(tools: Tool[]) => void>();
+  let disposed = false;
+
+  for (const conflict of mcpConflicts) {
+    capabilityHealth.push(buildConflictHealthEntry(conflict));
+  }
+
+  for (const agent of customAgents) {
+    capabilityRegistry.register({
+      kind: 'agent',
+      name: agent.name,
+      description: agent.model ? `subagent:${agent.model}` : 'subagent',
+    });
+  }
+  const lspClient = options.kteamDisableLsp ? undefined : await connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables, options.assertCurrent);
+  const health = createPlatformRuntimeHealth(capabilityHealth);
+  healthStore.set(options.cwd, health.snapshot());
+
+  const registerDisposable = (disposable: { dispose(): void }): boolean => {
+    if (disposed) {
+      try {
+        disposable.dispose();
+      } catch {}
+      return false;
+    }
+    disposables.push(disposable);
+    return true;
+  };
+  const publishMcpTools = (tools: Tool[]): void => {
+    if (disposed) {
+      return;
+    }
+    mcpTools.splice(0, mcpTools.length, ...tools);
+    capabilityRegistry.unregisterOwner(mcpCatalogOwner);
+    for (const tool of tools) {
+      capabilityRegistry.register({
+        kind: 'mcp',
+        name: tool.definition.name,
+        description: tool.definition.description,
+        inputSchema: tool.definition.inputSchema,
+      }, mcpCatalogOwner);
+    }
+    for (const listener of mcpToolListeners) {
+      try {
+        listener([...mcpTools]);
+      } catch {}
+    }
+  };
+  const mcpReady = connectWorkspaceMcpServers(
+    options.kteamMcpAllowed ? mergedMcpServers.filter(server => options.kteamMcpAllowed!(server.name)) : mergedMcpServers,
+    capabilityHealth,
+    registerDisposable,
+    () => disposed,
+    classificationRegistry,
+    runtimePlatform,
+    publishMcpTools,
+    { connected: connection => {
+        activityConnections.add(connection);
+        const close = connection.client.onclose;
+        connection.client.onclose = () => { try { close?.(); } finally { activityConnections.delete(connection); } };
+        activityHooks?.connected(connection);
+      },
+      observer: (context, connection) => activityHooks?.observer(context, connection) ?? Promise.resolve(undefined) },
+    options.assertCurrent,
+  ).then((tools) => {
+    publishMcpTools(tools);
+    healthStore.set(options.cwd, health.snapshot());
+  }).catch((error) => {
+    capabilityHealth.push({
+      kind: 'mcp',
+      name: 'startup',
+      status: 'degraded',
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    healthStore.set(options.cwd, health.snapshot());
+  });
+
+  return {
+    setMcpActivityHooks(hooks) { activityHooks = hooks; for (const connection of activityConnections) hooks.connected(connection); },
+    pluginRuntime,
+    customAgents,
+    lspManager,
+    lspClient,
+    teamService,
+    sandboxPolicy,
+    sandboxEnforcer,
+    worktreeManager,
+    mcpTools,
+    mcpReady,
+    onMcpToolsChanged(listener) {
+      mcpToolListeners.add(listener);
+      return () => {
+        mcpToolListeners.delete(listener);
+      };
+    },
+    capabilityRegistry,
+    reminderDefaultTimeZone,
+    createReminderApi,
+    health,
+    async dispose() {
+      activityHooks = undefined; activityConnections.clear();
+      publishMcpTools([]);
+      disposed = true;
+      const backgroundShutdowns = await Promise.allSettled([...backgroundRunners].map((runner) => runner.dispose()));
+      for (const reminderApi of reminderApis.splice(0)) {
+        await reminderApi.dispose();
+      }
+      await mcpReady.catch(() => undefined);
+      const resourceShutdowns = await Promise.allSettled(disposables.splice(0).reverse().map(disposable => Promise.resolve().then(() => typeof disposable.close === 'function' ? disposable.close() : disposable.dispose())));
+      const shutdownErrors = [...backgroundShutdowns,...resourceShutdowns].filter(result => result.status === 'rejected').map(result => result.reason);
+      if (shutdownErrors.length) throw new AggregateError(shutdownErrors, 'background runner shutdown failed');
+    },
+    listBackgroundJobs(sessionId: string) {
+      return createBackgroundRunner({
+        rootDir: join(stateRootDir, 'background-jobs'),
+        recoverInterruptedJobs: false,
+        execute: async () => ({ ok: true, summary: 'unused' }),
+        notify: async () => undefined,
+      }).listBySession(sessionId);
+    },
+    createBackgroundRunner(execute, notify = async () => undefined) {
+      if (disposed) throw new Error('platform runtime context is disposed');
+      const runner = createBackgroundRunner({
+        rootDir: join(stateRootDir, 'background-jobs'),
+        execute: async ({ input, signal }) => {
+          const payload = input as { agent?: string; prompt?: string; cwd?: string; parentDepth?: number };
+          if (!payload.agent || !payload.prompt) {
+            return { ok: false, errorMessage: 'invalid background subagent payload' };
+          }
+
+          const result = await execute({
+            agent: payload.agent,
+            prompt: payload.prompt,
+            cwd: payload.cwd,
+            parentDepth: payload.parentDepth,
+            signal,
+          });
+          return { ok: true, summary: result.slice(0, 200) };
+        },
+        notify: async (job) => {
+          await notifyBackgroundTeam(job, teamService);
+          await notify(job);
+        },
+      });
+      backgroundRunners.add(runner);
+      const disposeRunner = runner.dispose;
+      runner.dispose = async () => {
+        try {
+          const result = await disposeRunner();
+          if (!result.settled) console.warn(`BACKGROUND_CLEANUP_PENDING: ${result.pendingJobs.join(', ')}`);
+          return result;
+        } finally {
+          backgroundRunners.delete(runner);
+        }
+      };
+      return runner;
+    },
+  };
+}
+
+async function connectWorkspaceLspServers(
+  pluginRuntime: PlatformPluginRuntimeState,
+  lspManager: ReturnType<typeof createLspManager>,
+  cwd: string,
+  capabilityHealth: PlatformCapabilityHealth[],
+  disposables: Array<{ dispose(): void }>,
+  assertCurrent?: () => Promise<void>,
+): Promise<LspClientLike | undefined> {
+  const rootUri = pathToFileUri(cwd);
+  const openableDocuments = collectLspSeedDocuments(cwd);
+  let firstClient: LspClientLike | undefined;
+
+  for (const declaration of pluginRuntime.lspServers) {
+    try {
+      await assertCurrent?.();
+      const connection = await connectDeclaredLspServer(declaration, lspManager, rootUri);
+      for (const document of openableDocuments) {
+        await connection.didOpenDocument(document);
+      }
+      disposables.push(connection);
+      firstClient ??= connection;
+      capabilityHealth.push({
+        kind: 'lsp',
+        name: declaration.name,
+        status: 'connected',
+        detail: `seeded ${openableDocuments.length} documents`,
+      });
+    } catch (error) {
+      capabilityHealth.push({
+        kind: 'lsp',
+        name: declaration.name,
+        status: 'degraded',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+  }
+  return firstClient;
+}
+
+async function connectWorkspaceMcpServers(
+  servers: NamedMcpServerConfig[],
+  capabilityHealth: PlatformCapabilityHealth[],
+  registerDisposable: (disposable: { dispose(): void }) => boolean,
+  shouldStop: () => boolean = () => false,
+  classificationRegistry: readonly McpClassificationEntry[] = BUILT_IN_MCP_CLASSIFICATIONS,
+  platform: NodeJS.Platform = process.platform,
+  onToolsChanged?: (tools: Tool[]) => void,
+  activity?: Parameters<PlatformRuntimeContext['setMcpActivityHooks']>[0],
+  assertCurrent?: () => Promise<void>,
+): Promise<Tool[]> {
+  const tools: Tool[] = [];
+  const globalCatalogTimeoutMs = resolveMcpCatalogTimeoutMs();
+  const globalCallToolTimeoutMs = resolveMcpCallToolTimeoutMs();
+
+  for (const server of servers) {
+    if (shouldStop()) {
+      break;
+    }
+
+    const policy = classifyMcpServer(server, classificationRegistry);
+    if (policy.activation.mode === 'blocked') {
+      capabilityHealth.push({ kind: 'mcp', name: server.name, status: 'degraded', detail: policy.reason });
+      continue;
+    }
+
+    if (policy.activation.mode === 'lazy' && policy.activation.adapter === 'cua-computer-use-wrapper') {
+      if (platform !== 'darwin') {
+        capabilityHealth.push({
+          kind: 'mcp',
+          name: server.name,
+          status: 'degraded',
+          detail: 'Computer Use / CUA is macOS-only and is disabled on this platform',
+        });
+        continue;
+      }
+
+      const frozenSnapshot = freezeServerSnapshot(server);
+      const { CuaConnectionManager } = await import('../mcp/cua-connection-manager.js');
+      const { createMacosCuaConnection, macosCuaCatalog } = await import('../computer-use/macos-cua-connection.js');
+      const cuaManager = new CuaConnectionManager(async () => {
+        await assertCurrent?.();
+        const conn = await createMcpClientConnection(server.name, frozenSnapshot);
+        registerDisposable(conn);
+        const callToolTimeoutMs = frozenSnapshot.timeout?.call ?? globalCallToolTimeoutMs;
+        try {
+          const schemas = (await conn.client.listTools(undefined, { timeout: frozenSnapshot.timeout?.catalog ?? globalCatalogTimeoutMs })).tools;
+          return createMacosCuaConnection(macosCuaCatalog(schemas), {
+            callToolResult: async (name, input, options) => {
+              const result = await callMcpToolWithSignal(conn.client,
+                { name, arguments: input },
+                { timeout: callToolTimeoutMs, signal: options?.signal, ...(options?.onProgress ? { onprogress: options.onProgress } : {}) },
+              );
+              options?.signal?.throwIfAborted();
+              return normalizeMcpRuntimeToolResult(result);
+            },
+            dispose: () => conn.dispose(),
+          });
+        } catch (error) {
+          await conn.close();
+          throw error;
+        }
+      });
+      tools.push(createComputerUseTool({
+        callToolResult: (name, input, options) => cuaManager.callToolResult(name, input, options),
+      }));
+      registerDisposable({ dispose: () => cuaManager.dispose() });
+      capabilityHealth.push({
+        kind: 'mcp',
+        name: server.name,
+        status: 'deferred',
+        detail: policy.reason || 'lazy activation',
+      });
+      continue;
+    }
+
+    let connection: Awaited<ReturnType<typeof createMcpClientConnection>> | undefined;
+    try {
+      const launchServer = await resolveBuiltinSlideRendererConfig(server, { platform });
+      await assertCurrent?.();
+      const connectResult = await tryConnect(server.name, launchServer);
+      if (connectResult.status === 'disabled') {
+        capabilityHealth.push({
+          kind: 'mcp',
+          name: connectResult.serverName,
+          status: 'degraded',
+          detail: connectResult.error.message,
+        });
+        continue;
+      }
+      connection = connectResult.connection;
+      const activeConnection = connection;
+      activity?.connected(activeConnection);
+      const catalogTimeoutMs = server.timeout?.catalog ?? globalCatalogTimeoutMs;
+      const callToolTimeoutMs = server.timeout?.call ?? globalCallToolTimeoutMs;
+      let serverTools: Tool[] = [];
+      let connected = true;
+      let catalogRevision = 0;
+      const replaceServerTools = (next: Tool[]): void => {
+        const previous = new Set(serverTools);
+        const remaining = tools.filter((tool) => !previous.has(tool));
+        serverTools = next;
+        tools.splice(0, tools.length, ...remaining, ...next);
+        onToolsChanged?.([...tools]);
+      };
+      const refreshTools = async (): Promise<number> => {
+        if (!connected || shouldStop()) return 0;
+        const revision = ++catalogRevision;
+        let toolsResult: Awaited<ReturnType<typeof activeConnection.client.listTools>>;
+        try {
+          toolsResult = await activeConnection.client.listTools(undefined, { timeout: catalogTimeoutMs });
+        } catch (error) {
+          if (!connected || shouldStop() || revision !== catalogRevision) return serverTools.length;
+          replaceServerTools([]);
+          throw error;
+        }
+        if (!connected || shouldStop() || revision !== catalogRevision) return 0;
+        const schemas = toolsResult.tools ?? [];
+        replaceServerTools(buildMcpRuntimeTools(
+          { name: server.name, command: '' },
+          {
+            listTools: async () => schemas,
+            callTool: async (name, input, options) => {
+              options?.signal?.throwIfAborted();
+              if (!connected) throw new Error(`MCP server is disconnected: ${server.name}`);
+              const observer = options?.executionContext ? await activity?.observer(options.executionContext, activeConnection) : undefined;
+              const result = await callMcpToolWithTasks(activeConnection,
+                { name, arguments: input },
+                { timeout: callToolTimeoutMs, signal: options?.signal, observer, detachOnTask: Boolean(observer),
+                  declaration: schemas.find(schema => schema.name === name), ...(options?.onProgress ? { onprogress: options.onProgress } : {}) },
+              );
+              options?.signal?.throwIfAborted();
+              return normalizeMcpRuntimeToolResult(result).text;
+            },
+            dispose: activeConnection.dispose,
+          },
+          schemas,
+        ));
+        return schemas.length;
+      };
+      const previousOnClose = activeConnection.client.onclose;
+      activeConnection.client.onclose = () => {
+        try { previousOnClose?.(); } finally {
+          connected = false;
+          catalogRevision++;
+          replaceServerTools([]);
+        }
+      };
+      activeConnection.client.setNotificationHandler('notifications/tools/list_changed', async () => {
+        try {
+          await refreshTools();
+        } catch {
+          // refreshTools revokes only the failed current revision.
+        }
+      });
+      let eventsClosed = false;
+      const subscription = await startMcpToolSubscription(activeConnection, {
+        timeout: catalogTimeoutMs,
+        onClosed: () => {
+          eventsClosed = true;
+          connected = false;
+          catalogRevision++;
+          replaceServerTools([]);
+          const health = capabilityHealth.find(entry => entry.kind === 'mcp' && entry.name === server.name);
+          if (health) {
+            health.status = 'degraded';
+            health.detail = 'MCP tool subscription ended; reconnect required';
+          }
+        },
+      });
+      const schemaCount = await refreshTools();
+
+      if (!registerDisposable(activeConnection)) {
+        connection = undefined;
+        continue;
+      }
+      connection = undefined;
+      const detailParts: string[] = [
+        `${schemaCount} tools`,
+        `protocol ${activeConnection.protocolEra}`,
+        ...(subscription ? ['tool events subscribed'] : []),
+      ];
+      if (policy.source === 'legacy-manifest' && policy.reason) {
+        detailParts.push(policy.reason);
+      }
+      capabilityHealth.push({
+        kind: 'mcp',
+        name: server.name,
+        status: eventsClosed ? 'degraded' : 'connected',
+        detail: eventsClosed ? 'MCP tool subscription ended; reconnect required' : detailParts.join('; '),
+      });
+    } catch (error) {
+      connection?.dispose();
+      const detailParts: string[] = [error instanceof Error ? error.message : String(error)];
+      if (policy.source === 'legacy-manifest' && policy.reason) {
+        detailParts.unshift(policy.reason);
+      }
+      capabilityHealth.push({
+        kind: 'mcp',
+        name: server.name,
+        status: 'degraded',
+        detail: detailParts.join('; '),
+      });
+    }
+  }
+
+  return tools;
+}
+
+/**
+ * 把 lazy 激活前的 launch plan 冻结成 plain object。
+ * - stdio: 解析 command + 合并 process.env + 平台特化,激活时不再读 process.env。
+ * - 其它 transport: 浅拷贝避免后续 manifest 变更影响。
+ */
+function freezeServerSnapshot(server: NamedMcpServerConfig): NamedMcpServerConfig {
+  if (server.type === 'stdio') {
+    const platform = process.platform;
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries({ ...process.env, ...server.env })) {
+      if (value !== undefined) {
+        env[key] = value;
+      }
+    }
+    return Object.freeze({
+      ...server,
+      command: resolveStdioCommand(server.command, platform),
+      args: server.args ? [...server.args] : [],
+      env,
+    }) as NamedMcpServerConfig;
+  }
+  return Object.freeze({ ...server }) as NamedMcpServerConfig;
+}
+
+function buildConflictHealthEntry(conflict: McpServerConfigConflict): PlatformCapabilityHealth {
+  const winner = conflict.winner.pluginName ?? conflict.winner.origin;
+  const loser = conflict.loser.pluginName ?? conflict.loser.origin;
+  return {
+    kind: 'mcp',
+    name: conflict.name,
+    status: 'degraded',
+    detail: `mcp server "${conflict.name}" overridden: ${loser} -> ${winner}`,
+  };
+}
+
+function collectLspSeedDocuments(cwd: string): Array<{ uri: string; languageId: string; text: string }> {
+  const candidates = ['src/index.ts', 'src/commands/chat.ts', 'src/commands/yzj.ts', 'tsconfig.json']
+    .map((relativePath) => join(cwd, relativePath));
+  const docs: Array<{ uri: string; languageId: string; text: string }> = [];
+
+  for (const filePath of candidates) {
+    try {
+      const text = readFileSync(filePath, 'utf8');
+      docs.push({
+        uri: pathToFileUri(filePath),
+        languageId: filePath.endsWith('.json') ? 'json' : 'typescript',
+        text,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return docs;
+}
+
+function pathToFileUri(path: string): string {
+  return `file://${path.startsWith('/') ? '' : '/'}${path.replace(/\\/g, '/')}`;
+}
+
+function createPlatformRuntimeHealth(capabilities: PlatformCapabilityHealth[]): PlatformRuntimeHealth {
+  const updatedAt = Date.now();
+  return {
+    capabilities,
+    summary() {
+      if (capabilities.length === 0) {
+        return 'capabilities: none declared';
+      }
+
+      return capabilities
+        .map((entry) => `${entry.kind}:${entry.name} ${entry.status}${entry.detail ? ` (${entry.detail})` : ''}`)
+        .join('\n');
+    },
+    hasDegradedCapabilities() {
+      return capabilities.some((entry) => entry.status === 'degraded');
+    },
+    snapshot() {
+      return {
+        updatedAt,
+        summary: this.summary(),
+        capabilities: capabilities.map((entry) => ({ ...entry })),
+      };
+    },
+  };
+}
+
+async function notifyBackgroundTeam(job: BackgroundJobRecord, teamService: TeamService): Promise<void> {
+  const teamName = job.metadata?.team?.trim();
+  if (!teamName) {
+    return;
+  }
+
+  const team = teamService.findTeamByName(teamName);
+  if (!team) {
+    return;
+  }
+
+  const from = job.metadata?.agent ?? 'background';
+  const status = job.status;
+  const detail = job.resultSummary ?? job.errorMessage ?? job.inputSummary;
+  teamService.sendMessage({
+    teamId: team.teamId,
+    from,
+    to: team.name,
+    body: `[background ${status}] ${detail}`,
+  });
+}

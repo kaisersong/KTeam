@@ -1,6 +1,6 @@
 import { KTeamError, record } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
-import { supportsRoomWorkspaceProtocol } from '../vendor/xiaok/room-workspace-protocol.js';
+import { supportsRoomWorkspaceProtocol } from '../core-protocol/room-workspace-protocol.js';
 
 export interface UpstreamOptions {
   brokerUrl: string; kswarmUrl: string; brokerToken?: string; kswarmToken?: string;
