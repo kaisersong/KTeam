@@ -1,8 +1,9 @@
 import {createContext,useContext,useMemo,type ReactNode} from 'react';
+import {userAvatarSource} from '../../../src/user-avatars';
 export interface UserProfile {displayName:string;avatarDataUrl:string}
-const UserProfileContext=createContext<UserProfile>({displayName:'我',avatarDataUrl:''});
+const UserProfileContext=createContext<UserProfile>({displayName:'我',avatarDataUrl:userAvatarSource()});
 export function UserProfileProvider({profile,children}:{profile?:Partial<UserProfile>;children:ReactNode}){
- const value=useMemo(()=>({displayName:profile?.displayName||'我',avatarDataUrl:profile?.avatarDataUrl||''}),[profile?.displayName,profile?.avatarDataUrl]);
+ const value=useMemo(()=>({displayName:profile?.displayName||'我',avatarDataUrl:userAvatarSource(profile?.avatarDataUrl)}),[profile?.displayName,profile?.avatarDataUrl]);
  return <UserProfileContext.Provider value={value}>{children}</UserProfileContext.Provider>;
 }
 export const useUserProfile=()=>useContext(UserProfileContext);

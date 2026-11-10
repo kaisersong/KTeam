@@ -1,8 +1,9 @@
 import {useEffect,useRef,useState} from 'react';
-import {Camera,LoaderCircle,UserRound} from 'lucide-react';
+import {Camera,Check,LoaderCircle} from 'lucide-react';
 import {api,explain} from './api';
 import {settingsAutosave} from './autosave-api';
 import type {AppPreferences} from '../../../src/service/app-preferences';
+import {USER_AVATAR_PRESETS,DEFAULT_USER_AVATAR,userAvatarSource} from '../../../src/user-avatars';
 import {prepareProfileAvatar} from './user-profile';
 import {nameImeActive,validProfileName} from './profile-name';
 
@@ -33,9 +34,12 @@ export function ProfileSettings({preferences,onSaved}:{preferences?:AppPreferenc
   try{await save({displayName:normalized});}finally{nameWrites.current--;if(!nameWrites.current)lastNameWrite.current=undefined;}
  }
  function editName(value:string){if(nameRef.current===value)return;nameVersion.current++;displayName(value);dirty.current=true;setError('');}
- async function choose(file?:File){if(!file)return;const sequence=++imageGeneration.current;setProcessing(true);setError('');try{const next=await prepareProfileAvatar(file);if(alive.current&&sequence===imageGeneration.current){setAvatar(next);void save({avatarDataUrl:next});}}catch(e){if(alive.current&&sequence===imageGeneration.current)setError(explain(e));}finally{if(alive.current&&sequence===imageGeneration.current)setProcessing(false);}}
+ async function choose(file?:File){if(!file)return;const sequence=++imageGeneration.current;setProcessing(true);setError('');try{const next=await prepareProfileAvatar(file);if(alive.current&&sequence===imageGeneration.current){setAvatar(next);setProcessing(false);void save({avatarDataUrl:next});}}catch(e){if(alive.current&&sequence===imageGeneration.current)setError(explain(e));}finally{if(alive.current&&sequence===imageGeneration.current)setProcessing(false);}}
+ function choosePreset(dataUrl:string){imageGeneration.current++;setProcessing(false);const value=dataUrl===DEFAULT_USER_AVATAR.dataUrl?'':dataUrl;setAvatar(value);void save({avatarDataUrl:value});}
+ const avatarBusy=processing||pending>0;
  return <section className="settings-block profile-settings"><h2>个人资料</h2><p className="settings-description">设置你在消息和群成员中显示的名字与头像。</p>{loading?<p className="settings-loading" role="status"><LoaderCircle size={16} className="spinner"/>正在读取个人资料…</p>:<>
-  <div className="profile-picture-row"><div className="profile-picture" role="img" aria-label="头像预览">{avatar?<img src={avatar} alt=""/>:<UserRound size={34}/>}</div><div><div className="profile-picture-actions"><button type="button" className="secondary" disabled={processing||!base} onClick={()=>input.current?.click()}><Camera size={15}/>{processing?'正在处理…':avatar?'更换头像':'选择头像'}</button>{avatar&&<button type="button" className="text-link" disabled={processing} onClick={()=>{imageGeneration.current++;setAvatar('');void save({avatarDataUrl:''});}}>移除头像</button>}</div><p className="settings-description">支持 PNG、JPG、WebP，最大 10 MB。仅保存在本机。</p></div><input ref={input} type="file" accept="image/png,image/jpeg,image/webp" aria-label="选择头像图片" hidden onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';void choose(file);}}/></div>
+  <div className="profile-picture-row"><div className="profile-picture" role="img" aria-label="头像预览"><img src={userAvatarSource(avatar)} alt=""/></div><div><div className="profile-picture-actions"><button type="button" className="secondary" disabled={avatarBusy||!base} onClick={()=>input.current?.click()}><Camera size={15}/>{processing?'正在处理…':'上传图片'}</button>{avatar&&!USER_AVATAR_PRESETS.some(p=>p.dataUrl===avatar)&&<button type="button" className="text-link" disabled={avatarBusy} onClick={()=>choosePreset(DEFAULT_USER_AVATAR.dataUrl)}>恢复默认头像</button>}</div><p className="settings-description">支持 PNG、JPG、WebP，最大 10 MB。仅保存在本机。</p></div><input ref={input} type="file" accept="image/png,image/jpeg,image/webp" aria-label="选择头像图片" hidden onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';void choose(file);}}/></div>
+  <fieldset className="profile-avatar-presets" disabled={avatarBusy||!base}><legend>选择初始头像</legend><div className="profile-avatar-options">{USER_AVATAR_PRESETS.map(preset=>{const selected=userAvatarSource(avatar)===preset.dataUrl;return <button key={preset.id} type="button" className="profile-avatar-option" aria-label={'选择'+preset.label+'头像'} aria-pressed={selected} onClick={()=>choosePreset(preset.dataUrl)}><span><img src={preset.dataUrl} alt=""/>{selected&&<Check size={13} className="profile-avatar-check"/>}</span><small>{preset.label}{preset.id===DEFAULT_USER_AVATAR.id?' · 默认':''}</small></button>;})}</div></fieldset>
   <div className="settings-field profile-name"><label htmlFor="profile-display-name">你的名字</label><div><input id="profile-display-name" aria-label="用户名字" autoComplete="off" value={name} maxLength={80} placeholder="输入你的名字" disabled={!base}
    onFocus={()=>{focused.current=true;}} onInput={e=>editName(e.currentTarget.value)} onChange={e=>editName(e.currentTarget.value)}
    onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={e=>{composing.current=false;editName(e.currentTarget.value);}}
