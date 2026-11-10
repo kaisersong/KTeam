@@ -49,6 +49,11 @@ test('real host binds settings to KTeam client and semantic API; model failure l
   try{mkdirSync(process.env.KTEAM_MODEL_CONFIG_DIR);writeFileSync(join(process.env.KTEAM_MODEL_CONFIG_DIR,'config.json'),'{invalid');await assert.rejects(api.modelSettings());assert.equal((await api.appPreferences()).preferences.fontSize,16);}finally{if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;}
   assert.equal((await api.appPreferences()).preferences.revision,2);
   await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/integrations'),/app_settings_forbidden/);
+  assert.deepEqual((await hostRequest(root,'kteam-main','/v1/app/tool-permissions')).permissions,[]);
+  await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/tool-permissions'),/app_settings_forbidden/);
+  await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/tool-permissions/revoke',{id:'forged'}),/app_settings_forbidden/);
+  await assert.rejects(hostRequest(root,'xiaok-main','/v1/tool-approvals/decide',{id:'forged',expectedHash:'forged',decision:'allow_always'}),/app_settings_forbidden/);
+  await assert.rejects(hostRequest(root,'kteam-main','/v1/app/tool-permissions/revoke',{id:'forged'}),/tool_permission_changed/);
   await assert.rejects(dispatchDesktop(api,'setConfig',[{apiKey:'forged'}]),/desktop_method_forbidden/);
  }finally{await host.close();rmSync(root,{recursive:true,force:true});}
 });

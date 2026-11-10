@@ -153,5 +153,11 @@
   ],
   "src/platform/mcp/config.ts": [
     "loadSettingsMcpServers"
+  ],
+  "src/ai/permissions/policy-engine.ts": [
+    "requiresAlwaysCommandConfirmation"
+  ],
+  "src/ai/permissions/sensitive-paths.ts": [
+    "isSensitiveToolInvocation"
   ]
 }

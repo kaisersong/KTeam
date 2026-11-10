@@ -78,7 +78,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "7ce8caebad3a67ef40e2d9ce9cad23b0a8aa3187",
+    "revision": "ab6ecd42a05a3626fb2de485564121bca3f19197",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -2195,7 +2195,7 @@
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "9e90de8247439cfb6a16b8de15785d8bb7d99da3773067f542fde4ab7fc8757a"
+          "sha256": "fb2bf29687691e719b737f773af2cad312adca3145b2f581e14e3d29eb01dc13"
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",

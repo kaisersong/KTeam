@@ -123,6 +123,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
         }
         if(url.pathname==='/v1/app/voice/transcribe'&&req.method==='POST')return send(res,200,await transcribeAudio(await body(req,12*1024*1024)));
+        if(url.pathname==='/v1/app/tool-permissions'&&req.method==='GET')return send(res,200,{ok:true,permissions:approvals.permissions.list()});
+        if(url.pathname==='/v1/app/tool-permissions/revoke'&&req.method==='POST')return send(res,200,approvals.permissions.revoke(await body(req)));
         if(url.pathname==='/v1/app/integrations'&&req.method==='GET')return send(res,200,await integrationSettings.view());
         if(url.pathname==='/v1/app/integrations'&&req.method==='POST')return send(res,200,await integrationSettings.save(await body(req)));
         if(url.pathname==='/v1/app/integrations/test'&&req.method==='POST')return send(res,200,await integrationSettings.test(await body(req)));
@@ -149,7 +151,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/bot-profile'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(value.botId,()=>saveBotProfile(upstream,teamStore,value)));}
       if(url.pathname==='/v1/bot-source'&&req.method==='POST'){const value=record(await body(req));if(typeof value.botId!=='string')throw new KTeamError('invalid_bot_id');return send(res,200,await changeSource(value.botId,()=>links.useSystem(value)));}
       if(url.pathname==='/v1/tool-approvals'&&req.method==='GET')return send(res,200,{ok:true,approvals:approvals.list()});
-      if(url.pathname==='/v1/tool-approvals/decide'&&req.method==='POST')return send(res,200,await approvals.decide(await body(req)));
+      if(url.pathname==='/v1/tool-approvals/decide'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await approvals.decide(await body(req)));}
       if(url.pathname==='/v1/decision-models'&&req.method==='GET')return send(res,200,{ok:true,...await decisionModels()});
       if(url.pathname==='/v1/assistant/state'&&req.method==='GET')return send(res,200,{ok:true,...automation.assistant.state()});
       if(url.pathname==='/v1/assistant/proactivity'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='enabled')||typeof input.enabled!=='boolean')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...automation.assistant.setEnabled(input.enabled)});}
