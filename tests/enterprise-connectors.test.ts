@@ -61,3 +61,14 @@ test('updater verifies native candidates, rejects duplicate owners, preserves wo
   await updateCli(input,deps);assert.equal((await connectorCommand(cli.binaryPath,['--version'])).stdout.trim(),'yzj-cli 0.1.8');
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('desktop CommonJS bundle launches the packaged runner with Electron-compatible Node arguments',async()=>{
+ const {build}=await import('esbuild');const {createRequire}=await import('node:module');const {dirname,resolve}=await import('node:path');const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-cjs-')));
+ try{
+  const entry=resolve('src/runtime/bundled-yzj-cli.ts'),bundle=join(root,'bundled.cjs'),packageRoot=dirname(createRequire(import.meta.url).resolve('@yunzhijia/cli/package.json'));
+  await build({entryPoints:[entry],outfile:bundle,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
+  const script=`const m=require(${JSON.stringify(bundle)});const cli=m.configureBundledYzjCli({configDir:${JSON.stringify(root)},packageRoot:${JSON.stringify(packageRoot)}});if(!cli)process.exit(1);console.log(require('node:child_process').execFileSync(require('node:path').join(cli.binDir,'yzj-cli'),['--version'],{encoding:'utf8'}));`;
+  const child=await new Promise<{code:number|null;stdout:string;stderr:string}>(async(resolve,reject)=>{const previous=process.env.KTEAM_DESKTOP_RESOURCES;process.env.KTEAM_DESKTOP_RESOURCES=process.cwd()+'/desktop';try{resolve(await connectorCommand(process.execPath,['-e',script]));}catch(e){reject(e);}finally{if(previous===undefined)delete process.env.KTEAM_DESKTOP_RESOURCES;else process.env.KTEAM_DESKTOP_RESOURCES=previous;}});
+  assert.equal(child.code,0,child.stderr);assert.match(child.stdout,/yzj-cli 0.1.8/);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
