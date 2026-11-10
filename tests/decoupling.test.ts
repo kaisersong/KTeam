@@ -73,11 +73,16 @@ test('runtime code has no xiaok default path, env var or keychain service outsid
 });
 
 test('KTeam source never reads xiaok config, the xiaok keychain or xiaok shared-service settings',()=>{
- // No exceptions: not even the xiaok-cli local agent reads xiaok's files.
+ // No exceptions for xiaok files or keychain: not even the xiaok-cli local agent reads them.
+ // One narrowly scoped exception for the legacy *key name* only: src/service/config.ts names it once, in a
+ // constant used solely to detect the dropped 0.2 key and show the one-time 0.3 notice (its value is never read).
+ const LEGACY_KEY_FILE='src/service/config.ts',LEGACY_KEY_DECLARATION=/^const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';$/m;
+ assert.match(read(LEGACY_KEY_FILE),LEGACY_KEY_DECLARATION);
  const XIAOK_CONFIG=/\.xiaok['"\x60]?\s*(?:,\s*['"\x60]|[/\\])config\.json|xiaok[/\\]config\.json/g,XIAOK_KEYCHAIN=/com\.xiaok\.credentials/g,XIAOK_SHARED=/xiaokActivityConfig/g;
  const hits:string[]=[];
  for(const file of tracked('src','desktop','runtime-core','scripts','electron-builder.yml','package.json').filter(f=>!f.startsWith('tests/'))){
-  const text=read(file);
+  let text=read(file);
+  if(file===LEGACY_KEY_FILE)text=text.replace(LEGACY_KEY_DECLARATION,'');
   for(const pattern of [XIAOK_CONFIG,XIAOK_KEYCHAIN,XIAOK_SHARED])for(const m of text.matchAll(pattern))hits.push(file+': '+m[0]);
  }
  assert.deepEqual(hits,[]);

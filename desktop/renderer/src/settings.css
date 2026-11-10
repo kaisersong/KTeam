@@ -58,3 +58,4 @@
 /* Groups own their outer divider; rows only separate adjacent items. */
 .settings-list>:is(.settings-row,.settings-model,.settings-member,.settings-resource):last-child{border-bottom:0}
 .settings-block>.settings-row:last-of-type{border-bottom:0}
+.legacy-shared-notice{margin:0 24px 12px}.legacy-shared-notice-actions{display:flex;gap:12px;flex-shrink:0}
