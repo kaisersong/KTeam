@@ -134,5 +134,30 @@
   ],
   "src/utils/protected-json.ts": [
     "ProtectedJsonFile"
+  ],
+  "src/ai/tools/connectors/registry.ts": [
+    "ConnectorRegistry"
+  ],
+  "src/ai/tools/web-fetch.ts": [
+    "createWebFetchTool"
+  ],
+  "src/ai/tools/web-search.ts": [
+    "createWebSearchTool"
+  ],
+  "src/platform/mcp/transport.ts": [
+    "createMcpClientConnection"
+  ],
+  "src/platform/computer-use/macos-cua-connection.ts": [
+    "macosCuaCatalog",
+    "selectMacosCuaAbiProfile"
+  ],
+  "src/platform/mcp/config.ts": [
+    "loadSettingsMcpServers"
+  ],
+  "src/ai/permissions/policy-engine.ts": [
+    "requiresAlwaysCommandConfirmation"
+  ],
+  "src/ai/permissions/sensitive-paths.ts": [
+    "isSensitiveToolInvocation"
   ]
 }

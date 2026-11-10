@@ -18,7 +18,8 @@ for (const entry of [...lock.vendoredFiles,...(lock.runtime?.files??[]),...(lock
   verified++;
 }
 for (const source of lock.sources) {
-  const path = resolve(root, '..', source.name);
+  // Isolated frozen checkouts keep validation independent from active sibling development.
+  const path = resolve(process.env.KTEAM_UPSTREAM_ROOT ?? resolve(root, '..'), source.name);
   if (!existsSync(join(path, '.git'))) {
     if (source.name === 'xiaok-cli') continue; // Vendored contracts are self-contained.
     throw new Error('test_source_missing:' + source.name);

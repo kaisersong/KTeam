@@ -1,0 +1,2 @@
+/** macOS may list a voice twice for installed quality variants with the same say name. */
+export function parseSystemVoices(output:string){const voices=new Map<string,{name:string;language:string}>();for(const line of output.split('\n')){const match=line.match(/^(.*?)\s+([a-z]{2}_[A-Z]{2})\s+#/);if(match){const name=match[1]!.trim();if(name&&!voices.has(name))voices.set(name,{name,language:match[2]!});}}return [...voices.values()];}
