@@ -6,8 +6,10 @@ import type {AppPreferences} from '../../../src/service/app-preferences';
 import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
 import './settings.css';
 import {ModelSettingsPanel,DecisionModelSettings} from './model-settings';
-import {WebToolsSettings,MemorySettings,MCPSettings,CUASettings,MailSettings,VoiceSettings} from './integration-settings';
+import {WebToolsSettings,MemorySettings,MailSettings,VoiceSettings} from './integration-settings';
 import {ConnectorsSettings} from './connector-settings';
+import {MCPSettings} from './mcp-settings';
+import {ComputerSettings as CUASettings} from './computer-settings';
 import {ProfileSettings} from './profile-settings';
 
 function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'appResources'|'localAgents'|'assistantState'){

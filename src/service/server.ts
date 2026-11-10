@@ -132,6 +132,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/app/tool-permissions/revoke'&&req.method==='POST')return send(res,200,approvals.permissions.revoke(await body(req)));
         if(url.pathname==='/v1/app/integrations'&&req.method==='GET')return send(res,200,await integrationSettings.view());
         if(url.pathname==='/v1/app/integrations'&&req.method==='POST')return send(res,200,await integrationSettings.save(await body(req)));
+        if(url.pathname==='/v1/app/integrations/import-mcp'&&req.method==='POST')return send(res,200,await integrationSettings.importMcp(await body(req)));
         if(url.pathname==='/v1/app/integrations/test'&&req.method==='POST')return send(res,200,await integrationSettings.test(await body(req)));
         if(url.pathname==='/v1/app/resources'&&req.method==='GET')return send(res,200,{ok:true,...await appResources()});
         throw new KTeamError('app_settings_operation_forbidden',403);

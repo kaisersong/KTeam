@@ -6,6 +6,7 @@ export interface KTeamAPI {
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
  removeModel(input:any):Promise<any>;discoverModels(input:any):Promise<any>;
+ importMcpServers(input:any):Promise<any>;computerAccess():Promise<any>;openComputerPermission(input:any):Promise<any>;
  integrationSettings():Promise<any>;saveIntegrationSettings(input:any):Promise<any>;testIntegration(input:any):Promise<any>;importProviderModels(input:any):Promise<any>;voiceOptions():Promise<any>;previewVoice():Promise<any>;transcribeAudio(input:any):Promise<any>;
  appPreferences():Promise<any>;saveAppPreferences(input:any):Promise<any>;appResources():Promise<any>;openSettingsLocation(input:any):Promise<any>;
  reconnectServices():Promise<any>;modelSettings():Promise<any>;saveModel(input:any):Promise<any>;setCredentialStorage(input:any):Promise<any>;saveDecisionModels(input:any):Promise<any>;importXiaokModels(input:any):Promise<any>;
@@ -52,6 +53,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
  model_discovery_failed:'无法获取模型列表，请检查地址、密钥或手动填写模型 ID',model_provider_not_found:'服务商已被移除，请重新读取模型设置',model_not_found:'模型已被移除，请重新读取模型设置',
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',
  invalid_profile_name:'请输入 1–40 个字符的名字，不含换行或控制字符',invalid_profile_avatar:'图片无法读取，请重新选择 PNG、JPG 或 WebP 图片',profile_avatar_type:'请选择 PNG、JPG 或 WebP 图片',profile_avatar_too_large:'图片过大，请选择 10 MB、4000 万像素以内的图片',
