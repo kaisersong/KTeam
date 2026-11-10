@@ -1,3 +1,4 @@
+import {scopedCatalog,skillBindingRoot,assertSkillPins,parseSkillPins,type SkillPin} from './skill-library.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {homedir,hostname} from 'node:os';
@@ -14,9 +15,10 @@ import {openHarnessSession,type HarnessSessionScope} from './harness-session.js'
 
 export function harnessWorkspace(configured=''){try{const path=realpathSync(configured||homedir());if(!statSync(path).isDirectory())throw Error();return path;}catch{throw new KTeamError('bot_workspace_invalid');}}
 const expand=(value:string,cwd:string)=>resolve(cwd,value==='~'?homedir():value.startsWith('~/')?resolve(homedir(),value.slice(2)):value);
-export interface HarnessContext {recoveryReview?:boolean;permissions?:{store:ToolPermissions;botId:string;bindingRevision?:number};disabledSkills?:string[];assertSkillsCurrent?:()=>void;scope?:HarnessSessionScope;onCloseFailure?:()=>void;onPrepared?:(facts:any)=>void;workspace?:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>;onTool?:(event:any)=>void;onProcess?:(process:any)=>void|Promise<void>}
+export interface HarnessContext {recoveryReview?:boolean;permissions?:{store:ToolPermissions;botId:string;bindingRevision?:number};disabledSkills?:string[];skillPins?:SkillPin[];assertSkillsCurrent?:()=>void;scope?:HarnessSessionScope;onCloseFailure?:()=>void;onPrepared?:(facts:any)=>void;workspace?:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>;onTool?:(event:any)=>void;onProcess?:(process:any)=>void|Promise<void>}
 /** Original first-party tool implementations and permission rules; KTeam binds actor, cwd and lifecycle. */
 export async function createHarness(input:HarnessContext){
+ const pinnedSkills=parseSkillPins(input.skillPins).filter(pin=>!input.disabledSkills?.includes(pin.name));
  const integrations=await readIntegrations(),settingsRevision=await runtimeIntegrationRevision();
  const core=await sharedRuntime(),webRegistry=new core.ConnectorRegistry(integrations.web),cwd=harnessWorkspace(input.workspace),settings=await core.loadSettings(cwd),rules=core.mergeRules(settings);
  const normalize=(name:string,raw:Record<string,unknown>,base=cwd)=>{const args={...raw};if(name==='install_skill'&&typeof args.source==='string')args.source=args.source.trim();if(name==='render_ui'&&typeof args.output_path==='string')args.output_path=args.output_path.trim();if(['read','write','edit'].includes(name)&&typeof args.file_path==='string')args.file_path=expand(args.file_path,base);if(['glob','grep'].includes(name))args.path=expand(typeof args.path==='string'?args.path:'.',base);if(name==='bash')args.workdir=expand(typeof args.workdir==='string'?args.workdir:'.',base);return args;};
@@ -31,15 +33,15 @@ export async function createHarness(input:HarnessContext){
  const permissionManager=new BoundPermissions({mode:'default',cwd,...rules,allowRules:[...rules.allowRules,'propose_team','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','read_runtime_output']});
  const permissionManagerForCwd=(base:string)=>base===cwd?permissionManager:new BoundPermissions({mode:'default',cwd:base,...rules,allowRules:[...rules.allowRules,'propose_team','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','read_runtime_output']},base);
  const permissionFingerprint=createHash('sha256').update(JSON.stringify(rules)).digest('hex');
- const guard=async()=>{input.signal.throwIfAborted();for(const [base,epoch] of permissionEpochs){const scope=permissionScope(base);if(scope&&input.permissions!.store.revision(scope)!==epoch)throw new KTeamError('harness_permissions_changed',409);}if(await runtimeIntegrationRevision()!==settingsRevision)throw new KTeamError('integration_changed',409);input.assertSkillsCurrent?.();await input.assertCurrent();const latest=core.mergeRules(await core.loadSettings(cwd));if(createHash('sha256').update(JSON.stringify(latest)).digest('hex')!==permissionFingerprint)throw new KTeamError('harness_permissions_changed',409);};
- const sourceCatalog=core.createSkillCatalog(core.getConfigDir(),cwd,{extraRoots:[...(input.scope?[join(input.scope.root,'harness-assets',createHash('sha256').update(input.scope.botId+'\n'+input.scope.roomId).digest('hex'),'skills')]:[]),process.env.KTEAM_SKILLS_ROOT,resolve(process.cwd(),'desktop/skills')].filter((p):p is string=>typeof p==='string'&&existsSync(p))});await sourceCatalog.reload();
+ const guard=async()=>{input.signal.throwIfAborted();for(const [base,epoch] of permissionEpochs){const scope=permissionScope(base);if(scope&&input.permissions!.store.revision(scope)!==epoch)throw new KTeamError('harness_permissions_changed',409);}if(await runtimeIntegrationRevision()!==settingsRevision)throw new KTeamError('integration_changed',409);input.assertSkillsCurrent?.();if(input.scope)assertSkillPins(sourceCatalog,pinnedSkills,input.scope.roomId);await input.assertCurrent();const latest=core.mergeRules(await core.loadSettings(cwd));if(createHash('sha256').update(JSON.stringify(latest)).digest('hex')!==permissionFingerprint)throw new KTeamError('harness_permissions_changed',409);};
+ const sourceCatalog=scopedCatalog(core,cwd,input.scope);await sourceCatalog.reload();if(input.scope)assertSkillPins(sourceCatalog,pinnedSkills,input.scope.roomId);
  const enabled=(skill:any)=>!input.disabledSkills?.includes(skill.name);
  const catalog={...sourceCatalog,list:()=>sourceCatalog.list().filter(enabled),get:(name:string)=>{const skill=sourceCatalog.get(name);return skill&&enabled(skill)?skill:undefined;},resolve:(names:string[])=>sourceCatalog.resolve(names).filter(enabled)};
  const skill=core.createSkillTool(catalog),metadata=new Map();
  const native=core.buildToolList(skill,{cwd,allowOutsideCwd:false},[],metadata,{isYolo:()=>false}).filter((t:any)=>!['install_skill','uninstall_skill','render_ui','kim_judge_messages'].includes(t.definition.name));
  const boundSet=new WeakSet<object>();
  const privateFence=input.scope?core.createSandboxPolicy({pathAllowlist:[resolve('/')],pathDenylist:[input.scope.root],network:'allow'}):undefined;
- const bindingRoot=input.scope?join(input.scope.root,'harness-assets',createHash('sha256').update(input.scope.botId+'\n'+input.scope.roomId).digest('hex')):undefined;
+ const bindingRoot=input.scope?skillBindingRoot(input.scope):undefined;
  const bind=(source:any,toolCwd=cwd):any=>{if(boundSet.has(source))return source;let tool=source;const name=tool.definition.name;
  if(name==='web_search')tool=core.createWebSearchTool({registry:webRegistry});
  if(name==='web_fetch')tool=core.createWebFetchTool({registry:webRegistry});

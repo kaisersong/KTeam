@@ -103,6 +103,10 @@
       "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
       "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
       "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
+    },
+    {
+      "file": "docs/design/desktop/bot-skill-library-20261111.md",
+      "sha256": "e7a36806ded2549157b50d6f14821d7b56965ae81f78250cc90bc4d9835ba9ff"
     }
   ],
   "productBaseline": {
@@ -112,7 +116,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "54e46190c4c7cbbfbe94e46ffe09d097a5d6cc69",
+    "revision": "ddc509c2b039631c514e5b9b9f04bae6af735170",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
