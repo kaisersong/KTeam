@@ -1,7 +1,8 @@
+import {EnterpriseConnectorSettings} from './enterprise-connectors';
 import {useState,type ReactNode} from 'react';
 import {Check,Mail,Plus,RefreshCw,Trash2} from 'lucide-react';
 import {SettingsSection,SettingsFeedback,SettingsLoading,SettingsSearch,SettingsTabs,SettingField as Field,SettingToggle,SecretInput,ConfirmRemove,useIntegrationSettings} from './settings-shared';
-export function ConnectorsSettings({agents}:{agents:ReactNode}){const [tab,setTab]=useState<'mail'|'agents'>('mail');return <><SettingsSection title="连接器" description="连接邮箱与本机 Agent，查看连接范围、凭证和可用状态。网页搜索、读取和通用工具在工具管理中配置。"><SettingsTabs label="连接器分类" tabs={[{id:'mail',label:'邮箱账号'},{id:'agents',label:'CLI 与本机 Agent'}]} value={tab} onChange={setTab}/></SettingsSection>{tab==='agents'?agents:<MailConnectors/>}</>;}
+export function ConnectorsSettings({agents}:{agents:ReactNode}){const [tab,setTab]=useState<'enterprise'|'mail'|'agents'>('enterprise');return <><SettingsSection title="连接器" description="连接企业应用、邮箱与本机 Agent，查看连接范围、凭证和可用状态。网页搜索、读取和通用工具在工具管理中配置。"><SettingsTabs label="连接器分类" tabs={[{id:'enterprise',label:'企业应用'},{id:'mail',label:'邮箱账号'},{id:'agents',label:'CLI 与本机 Agent'}]} value={tab} onChange={setTab}/></SettingsSection>{tab==='enterprise'?<EnterpriseConnectorSettings/>:tab==='agents'?agents:<MailConnectors/>}</>;}
 const empty={name:'',enabled:true,username:'',imapHost:'',imapPort:993,imapSecure:true,smtpHost:'',smtpPort:465,smtpSecure:true};
 export function MailConnectors(){
  const state=useIntegrationSettings(),[query,setQuery]=useState(''),[draft,setDraft]=useState<any>(),[id,setId]=useState<string>(),[password,setPassword]=useState(''),[remove,setRemove]=useState<any>(),[checks,setChecks]=useState<Record<string,{revision:string;ok:boolean}>>({});

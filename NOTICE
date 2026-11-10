@@ -26,3 +26,7 @@ Their original text, test-vector provenance and review limitations are retained.
 KTeam direct local Agent integration reuses source-pinned KSwarm runtime-capabilities.js, kimi-cli-harness.js and pi-cli-harness.js (Apache-2.0), and the existing Intent Broker participant registration protocol. Native CLI programs remain separately installed and retain their own licenses and configuration.
 
 The original xiaok builtin Skills shipped in desktop/skills (except KTeam's own collaboration Skill) are unchanged Apache-2.0 source assets; their originating paths and digests are recorded in sources.lock.json.
+- Enterprise CLI installation/authentication services and desktop/yzj-cli/runner.cjs
+  derive from xiaok-cli e385c26508fb942670b8816a92d0044c7bf4ebfc.
+  KTeam owns and adapts this code for its connector lifecycle, private runtime
+  directories and independently packaged official CLI distributions.

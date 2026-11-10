@@ -5,6 +5,7 @@ export interface KTeamAPI {
  scheduledWork(roomId:string):Promise<any>;changeScheduledWork(input:{roomId:string;id:string;expectedRevision:number;action:'pause'|'resume'|'cancel'}):Promise<any>;
  teamRoles(roomId:string):Promise<any>;ensureTeamRoles(input:{roomId:string;force?:boolean}):Promise<any>;assignTeamCoordinator(input:{roomId:string;coordinatorBotId:string;expectedRevision:number;requestId:string}):Promise<any>;
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
+ enterpriseConnectors():Promise<any>;controlEnterpriseConnector(input:any):Promise<any>;
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
  removeModel(input:any):Promise<any>;discoverModels(input:any):Promise<any>;
  importMcpServers(input:any):Promise<any>;computerAccess():Promise<any>;openComputerPermission(input:any):Promise<any>;
@@ -59,6 +60,7 @@ const reasons:Record<string,string>={
  tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
  model_discovery_failed:'无法获取模型列表，请检查地址、密钥或手动填写模型 ID',model_provider_not_found:'服务商已被移除，请重新读取模型设置',model_not_found:'模型已被移除，请重新读取模型设置',
+ connector_changed:'连接状态已变化，请刷新后重试',connector_busy:'连接器正在执行操作，请完成或取消后重试',connector_cli_unavailable:'CLI 暂不可用，请检查安装',connector_not_found:'连接器不可用，请刷新',connector_action_invalid:'此连接器不支持该操作',
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',
  invalid_profile_name:'请输入 1–40 个字符的名字，不含换行或控制字符',invalid_profile_avatar:'图片无法读取，请重新选择 PNG、JPG 或 WebP 图片',profile_avatar_type:'请选择 PNG、JPG 或 WebP 图片',profile_avatar_too_large:'图片过大，请选择 10 MB、4000 万像素以内的图片',
  memory_embedding_loopback_required:'请使用本机向量服务地址（localhost 或 127.0.0.1）',integration_provider_fallback:'所选服务未成功，运行时已回退到默认服务；请检查所选服务的密钥与网络',integration_input_invalid:'请检查配置格式、端口与必填项',integration_changed:'配置已更新，请重新读取后保存；执行中的旧配置已暂停',integration_busy:'配置正在保存，请稍后重试',integration_not_found:'这个连接已被移除，请刷新',integration_test_failed:'连接检查失败，请检查已保存的地址、凭据、驱动安装与网络',mail_password_required:'启用邮箱前请填写授权码或应用专用密码',cua_macos_required:'CUA 驱动目前仅支持 macOS',voice_asr_unconfigured:'请先在语音设置中启用并配置转写接口',voice_transcription_failed:'语音转写失败，请检查接口、模型、凭据与网络',voice_audio_invalid:'录音格式无效或超过 8 MB',voice_recorder_unavailable:'当前环境不支持录音',model_import_schema_unsupported:'配置格式暂不支持，请选择 API 配置 JSON / TOML，或使用服务商预设手动添加',model_import_source_missing:'未发现这个平台的本机 API 配置，可选择导出文件',model_import_source_unsafe:'导入文件必须是当前用户拥有的普通文件',model_import_too_large:'导入配置最多 1 MB 和 128 个模型',
