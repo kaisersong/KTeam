@@ -1,3 +1,4 @@
+import {ExecutionFailureDetails} from './execution-failure';
 import {useUserProfile} from './user-profile';
 import React,{useEffect,useRef,useState} from 'react';
 import {X,Share,Search,Pin,FilePlus,FileText,ExternalLink,Trash2,MessageSquarePlus,Monitor,ArrowRight,RefreshCw} from 'lucide-react';
@@ -26,7 +27,7 @@ export function ConversationWorkspace(p:Props){
  return <aside className="conversation-workspace" aria-label="会话侧栏"><header className="workspace-heading"><h2>{room.title}</h2><button className="icon-button" aria-label="导出会话" title="导出 Markdown" disabled={busy} onClick={()=>void run(async()=>{const v=await api.exportConversation({roomId:room.roomId});if(!v.cancelled)setNotice('会话已导出');})}><Share size={18}/></button><button className="icon-button" aria-label="关闭会话侧栏" onClick={p.onClose}><X size={19}/></button></header>
  <nav className="workspace-tabs" aria-label="会话资料页签">{tabs.map(([key,label])=><button key={key} aria-current={tab===key?'page':undefined} onClick={()=>setTab(key)}>{label}</button>)}</nav>
  <div className="workspace-body">{error&&<p className="flow-error" role="alert">{error}<button className="text-button" onClick={()=>void run(p.onData)}>重新读取</button></p>}{notice&&<p className="workspace-notice" role="status">{notice}</p>}
- {tab==='details'&&<><div className="workspace-actions">{room.kind==='group'?<button onClick={p.onRename}>修改群名<ArrowRight size={15}/></button>:bots[0]&&<button disabled={busy} onClick={()=>void run(()=>p.onNew(bots[0]))}><MessageSquarePlus size={17}/>新对话</button>}<button onClick={()=>setTab('search')}><Search size={17}/>在对话中查找<kbd>⌘ F</kbd></button></div>
+ {tab==='details'&&<><ExecutionFailureDetails job={jobs[0]} bots={bots}/><div className="workspace-actions">{room.kind==='group'?<button onClick={p.onRename}>修改群名<ArrowRight size={15}/></button>:bots[0]&&<button disabled={busy} onClick={()=>void run(()=>p.onNew(bots[0]))}><MessageSquarePlus size={17}/>新对话</button>}<button onClick={()=>setTab('search')}><Search size={17}/>在对话中查找<kbd>⌘ F</kbd></button></div>
  <section className="workspace-section"><h3>试着这样问</h3><div className="suggested-prompts">{suggestions.map(text=><button key={text} onClick={()=>p.onDraft(text)}>{text}<ArrowRight size={14}/></button>)}</div></section>
  {pins.length>0&&<section className="workspace-section"><h3><Pin size={15}/>置顶消息</h3>{pins.map(m=><button className="pin-preview" key={m.messageId} onClick={()=>p.onMessage(m)}>{m.text?.slice(0,160)}</button>)}{pinKey.split(',').length>50&&<p className="muted">显示最近 50 条置顶消息。</p>}</section>}
  <Inspector room={room} bots={bots} settings={settings} jobs={jobs} tasks={tasks} onPause={()=>{}} onBot={p.onBot} onReview={p.onReview}/>
