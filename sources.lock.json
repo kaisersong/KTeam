@@ -77,6 +77,10 @@
     {
       "file": "docs/design/desktop/async-member-handoffs-20261111.md",
       "sha256": "5907c0d48048175aaf65d5498afb902aa4ab3c34744db04035af8dd7d49eb6ab"
+    },
+    {
+      "file": "docs/design/desktop/condition-work-waits-20261111.md",
+      "sha256": "42f4f7b926371b818d1893d246dbc690196147ace58052ba7c87158f98a08276"
     }
   ],
   "productBaseline": {
@@ -86,7 +90,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "cf002a35e9f50b5ae0bd9754e5ba3300f6e86397",
+    "revision": "1056704cfaf9cff008faabac3c8833cba3ebb065",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
