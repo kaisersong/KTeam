@@ -2,7 +2,7 @@ import http from 'node:http';
 import { KTeamError, record } from '../errors.js';
 import { parseDataJson } from '../protocol/json.js';
 import { clientToken, socketPath, type ClientId } from './config.js';
-import { versionHeaders } from './server.js';
+import { versionHeaders } from './api-version.js';
 
 /** Shared by KTeam main and future xiaok main adapter. Tokens never enter renderer. */
 export async function hostRequest(root: string, client: ClientId, route: string, value?: unknown) {

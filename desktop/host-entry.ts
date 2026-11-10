@@ -4,8 +4,8 @@ import {ensureSharedServices} from '../src/runtime/services.js';
 async function main(){
  const root=dataRoot();
  const config=loadConfig(root);
- try{await ensureSharedServices(config);}catch{process.stdout.write(JSON.stringify({event:'shared-service-owner-unavailable'})+'\n');}
- const host=await startHost({root,upstream:upstreamOptions(config)});
+ try{await ensureSharedServices(config,root);}catch{process.stdout.write(JSON.stringify({event:'shared-service-owner-unavailable'})+'\n');}
+ const host=await startHost({root,upstream:upstreamOptions(loadConfig(root))});
  process.stdout.write(JSON.stringify({event:'kteam-host-ready',pid:process.pid,epoch:host.epoch})+'\n');
  let closing=false;
  for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{if(closing)return;closing=true;void host.close().then(()=>{process.exitCode=0;},()=>{process.exitCode=1;});});

@@ -1,8 +1,9 @@
+import {adaptKTeamConfig} from './kteam-config-adaptation.mjs';
 import {readFileSync} from 'node:fs';
 // Build-time, checked seams. Vendored files remain byte-identical to the pinned commit.
 // No xiaok team store is created: KTeam keeps KSwarm/Intent Broker authoritative.
 export function adaptPlatformSource(path,source){
- let text=source.replaceAll('\r\n','\n');
+ let text=adaptKTeamConfig(path,source.replaceAll('\r\n','\n'));
  const replace=(from,to)=>{if(!text.includes(from))throw Error('xiaok_adaptation_basis_changed:'+path+':'+from.slice(0,60));text=text.replace(from,to);};
  if(path.endsWith('/ai/runtime/agent-runtime.ts')){
   replace('private readonly memoryStore?: MemoryStore;', 'private readonly memoryStore?: MemoryStore;\n  private readonly checkpoint?: () => Promise<void>;\n  private readonly spillDir?: string;');
@@ -86,4 +87,4 @@ export function adaptPlatformSource(path,source){
  }
  return text;
 }
-export const xiaokPlatformAdaptation={name:'kteam-xiaok-platform-seams',setup(build){build.onLoad({filter:/(?:\/platform\/(?:runtime\/(context|registry-factory)|plugins\/runtime|worktrees\/manager)|\/runtime\/hooks-runner|\/tools\/install-skill|\/ai\/tools\/read|\/electron\/pdf-text|\/ai\/runtime\/agent-runtime)\.ts$/},args=>({contents:adaptPlatformSource(args.path,readFileSync(args.path,'utf8')),loader:'ts'}));}};
+export const xiaokPlatformAdaptation={name:'kteam-xiaok-platform-seams',setup(build){build.onLoad({filter:/\/vendor\/xiaok-runtime\/.*\.ts$/},args=>({contents:adaptPlatformSource(args.path,readFileSync(args.path,'utf8')),loader:'ts'}));}};

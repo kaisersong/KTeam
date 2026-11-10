@@ -1,0 +1,7 @@
+import{Server}from'node:net';import{dirname,join}from'node:path';import{pathToFileURL}from'node:url';
+// The upstream API server uses numeric listen(port); contain it to loopback.
+const listen=Server.prototype.listen;Server.prototype.listen=function(...args:any[]){if(typeof args[0]==='number')args=[{port:args[0],host:'127.0.0.1'},...args.slice(1)];return Reflect.apply(listen,this,args);};
+process.once('disconnect',()=>process.kill(process.pid,'SIGTERM'));
+const name=process.env.KTEAM_SERVICE_NAME,entry=name==='broker'?'intent-broker/src/runtime/start-broker-app.js':name==='kswarm'?'kswarm/src/server/index.js':undefined;if(!entry)throw Error('managed_service_unknown');
+const target=join(dirname(process.argv[1]!),'services',entry);process.argv[1]=target;
+void (async()=>{const module=await import(pathToFileURL(target).href);if(name==='broker'){const app=await module.startBrokerApp({socketPath:process.env.INTENT_BROKER_SOCKET_PATH??null,syncAgentBridges:async()=>[],refreshPersistedAgentSessions:async()=>{},persistedSessionRefreshIntervalMs:0,createCodexResumeDiscoveryRuntime:()=>({async start(){},async stop(){}})});let stopping=false;const close=()=>{if(stopping)return;stopping=true;void app.close().then(()=>process.disconnect?.());};process.once('SIGTERM',close);process.once('SIGINT',close);}})().catch(()=>{process.stderr.write('managed_service_failed\n');process.exitCode=1;process.disconnect?.();});

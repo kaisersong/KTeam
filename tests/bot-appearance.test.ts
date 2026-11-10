@@ -31,3 +31,4 @@ test('supplied viewpoints vary by identity, survive rename/order, and genuine wo
  for(const family of BOT_FAMILIES)for(const angle of BOT_ANGLES){const source=botAvatarSource(family,{angle});assert.ok(readFileSync('desktop/renderer/public/'+source.replace('./','')).length);}
  const turns=Array.from({length:9},(_,step)=>workingBotAngle('left34',step));assert.ok(turns.includes('front'));assert.ok(turns.includes('down'));assert.ok(!turns.includes('right'));
 });
+test('assistant stays facing the user while idle and working',()=>{for(const id of ['one','two','three','four'])assert.equal(botAngle({name:'小K',id,isAssistant:true}),'front');for(let step=0;step<32;step++)assert.ok(['front','left34','right34'].includes(workingBotAngle('front',step,true)));});

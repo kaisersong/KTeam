@@ -11,13 +11,13 @@
       "name": "kswarm",
       "repository": "https://github.com/kaisersong/kswarm",
       "revision": "5c64da71305e69cbec72ec68debfad14cd59b099",
-      "usage": "existing authoritative service; linked source for isolated integration tests"
+      "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     },
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
       "revision": "0e3dec43a91d7717cf1935375bc462743d96df8e",
-      "usage": "existing authoritative service; linked source for isolated integration tests"
+      "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     }
   ],
   "vendoredFiles": [
@@ -74,7 +74,7 @@
   "productBaseline": {
     "version": "v5",
     "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
-    "file": "docs/design/baseline-v5/产品设计.md"
+    "file": "docs/design/baseline-v5/\u4ea7\u54c1\u8bbe\u8ba1.md"
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
@@ -2195,15 +2195,19 @@
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "45a5446a2ccec8e696bbbdcb42e2442e72d899c5fe6fe5c16143be325812af14"
+          "sha256": "97149b2826f3ab8067621fe5d4ed8f7f28ff129d4092f0f2cc50b5de430b2b3c"
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "933e68cd20a0e7d22320a2313ba63a3dda23d88213735e83b74050b2805b274b"
+          "sha256": "72a6ff3b4220ac2b935220e7cfee0f00feed3a0d0483e955bcbe70661cf76ef3"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",
           "sha256": "5a39488eb3fa6ec0300c3ab4d32379b83c972136419229936ddf8a7e42fe2a35"
+        },
+        {
+          "file": "scripts/kteam-config-adaptation.mjs",
+          "sha256": "cbb9e0ad470cd6de8f2c4241e8005ea1afc855d5fe91f5cf453293a55786bf44"
         }
       ]
     }

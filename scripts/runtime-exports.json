@@ -51,7 +51,8 @@
   ],
   "src/utils/config.ts": [
     "getConfigDir",
-    "loadConfig"
+    "loadConfig",
+    "saveConfig"
   ],
   "src/shared/stream-safety/redact.ts": [
     "redactSecrets"
@@ -117,5 +118,21 @@
   ],
   "desktop/electron/pdf-text.ts": [
     "extractPdfText"
+  ],
+  "src/utils/credential-store.ts": [
+    "CredentialStore"
+  ],
+  "src/utils/system-credentials.ts": [
+    "getCredentialStore",
+    "setCredentialStore"
+  ],
+  "src/ai/providers/normalize.ts": [
+    "normalizeConfig"
+  ],
+  "src/shared/credential-fields.ts": [
+    "isSensitiveCredentialPath"
+  ],
+  "src/utils/protected-json.ts": [
+    "ProtectedJsonFile"
   ]
 }

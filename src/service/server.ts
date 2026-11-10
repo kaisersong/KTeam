@@ -1,3 +1,6 @@
+import {ensureSharedServices} from '../runtime/services.js';
+import {loadConfig} from './config.js';
+import {ModelSettings} from './model-settings.js';
 import {attentionSource} from './attention.js';
 import {systemOneChoice,kimJudgment,decisionModels} from '../runtime/decision.js';
 import {ToolApprovals} from './tool-approvals.js';
@@ -25,8 +28,8 @@ import { TeamCoordinator } from './coordination.js';
 import { modelCatalog, modelIdentity } from '../runtime/native.js';
 import { createHash } from 'node:crypto';
 
-export const API_VERSION = 1;
-export const SCHEMA_VERSION = 1;
+import {API_VERSION,SCHEMA_VERSION} from './api-version.js';
+export {API_VERSION,SCHEMA_VERSION,versionHeaders} from './api-version.js';
 function equal(a: string, b: string) {
   const x = Buffer.from(a), y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
@@ -61,6 +64,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const teamStore = new TeamStore(options.root);
   const localAgents=new LocalAgents(options.root,teamStore,upstream);
   const builtinAgent=new BuiltinAgent(teamStore);
+  const modelSettings=new ModelSettings();
   const conversations=new ConversationService(options.root,upstream,teamStore);
   const approvals=new ToolApprovals(teamStore);
   const peerExchanges=new PeerExchanges(upstream,teamStore);
@@ -104,7 +108,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['conversation-pins','peer-exchange-summary','working-bot-presence','master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','xiaok-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
+          capabilities: ['independent-model-settings','bundled-services','conversation-pins','peer-exchange-summary','working-bot-presence','master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','xiaok-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
@@ -139,6 +143,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/bootstrap'&&req.method==='POST')return send(res,200,{ok:true,...await coordinator.bootstrap({requestSource:'user'})});
       if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
       if(url.pathname==='/v1/proposals/accept'&&req.method==='POST'){const input=record(await body(req));if(typeof input.roomId!=='string'||typeof input.proposalId!=='string'||typeof input.expectedHash!=='string')throw new KTeamError('invalid_input');const result=await coordinator.accept(input as any,{requestSource:'user'});void automation.tick();return send(res,200,{ok:true,...result});}
+      if(url.pathname==='/v1/model-settings'&&req.method==='GET')return send(res,200,await modelSettings.view());
+      if(req.method==='POST'&&url.pathname.startsWith('/v1/model-settings/')){const action=url.pathname.slice('/v1/model-settings/'.length),input=await body(req);if(action==='model')return send(res,200,await modelSettings.save(input));if(action==='storage')return send(res,200,await modelSettings.storage(input));if(action==='decision')return send(res,200,await modelSettings.decision(input));if(action==='import-xiaok')return send(res,200,await modelSettings.importXiaok(input));throw new KTeamError('route_not_found',404);}
+      if(url.pathname==='/v1/services/ensure'&&req.method==='POST'){await ensureSharedServices(loadConfig(options.root),options.root);return send(res,200,{ok:true,upstream:await upstream.probe()});}
       if (url.pathname === '/v1/models' && req.method === 'GET') return send(res,200,{ok:true,...await modelCatalog()});
       if (url.pathname === '/v1/bot-create' && req.method === 'POST') {
         return send(res,201,await coordinator.createMember(await body(req),{requestSource:'user'}));
@@ -247,5 +254,5 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   };
 }
 
-export function versionHeaders() { return { 'x-kteam-api-version': String(API_VERSION), 'x-kteam-schema-version': String(SCHEMA_VERSION) }; }
+
 export type { ClientId };

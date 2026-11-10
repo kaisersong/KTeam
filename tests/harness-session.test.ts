@@ -10,12 +10,12 @@ import {sharedRuntime} from '../src/runtime/native.js';
 async function fixture(){
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
  const root=realpathSync(mkdtempSync('/tmp/kteam-platform-')),config=join(root,'config'),cwd=join(root,'project');mkdirSync(config);mkdirSync(cwd);
- const before={config:process.env.XIAOK_CONFIG_DIR,plugins:process.env.XIAOK_DISABLE_GLOBAL_PLUGINS};process.env.XIAOK_CONFIG_DIR=config;process.env.XIAOK_DISABLE_GLOBAL_PLUGINS='1';
+ const before={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.XIAOK_DISABLE_GLOBAL_PLUGINS};process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.XIAOK_DISABLE_GLOBAL_PLUGINS='1';
  const core=await sharedRuntime();
  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'text',delta:'done'};yield {type:'done'};}};
  const scope={root:join(root,'host-data'),botId:'bot-a',roomId:'room-a',bindingRevision:1,fingerprint:'fp-a',profileRevision:1};
  const open=async(extra={})=>{const h=await createHarness({scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
- return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({XIAOK_CONFIG_DIR:before.config,XIAOK_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
+ return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,XIAOK_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
 }
 test('production platform factory preserves complete tool history and project instructions across runs, with room/binding isolation',async()=>{
  const f=await fixture();let owner:any;try{

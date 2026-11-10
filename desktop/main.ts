@@ -1,3 +1,4 @@
+import {initStandalone} from '../src/runtime/managed-services.js';
 import {app,BrowserWindow,ipcMain,Menu} from 'electron';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
@@ -15,11 +16,10 @@ let window:BrowserWindow|undefined;
 const root=dataRoot();
 const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
 function resources(){return app.getAppPath().endsWith('.asar')?app.getAppPath()+'.unpacked':app.getAppPath();}
-async function ensureHost(){
- if(!existsSync(join(root,'config.json'))){
-  const source=join(homedir(),'.xiaok','desktop','activity-owner.config.json');
-  initConfig(root,{version:1,brokerUrl:'http://127.0.0.1:4318',kswarmUrl:'http://127.0.0.1:4400',...(existsSync(source)?{xiaokActivityConfig:source}:{})});
- }
+let ensuringHost:Promise<void>|undefined;
+function ensureHost(){return ensuringHost??=(ensureHostBody().finally(()=>{ensuringHost=undefined;}));}
+async function ensureHostBody(){
+ await initStandalone(root);
  try{await hostRequest(root,'kteam-main','/v1/handshake');return;}catch(error){
   const code=(error as NodeJS.ErrnoException).code;
   if(!['ENOENT','ECONNREFUSED','ECONNRESET'].includes(code??''))throw error;
@@ -49,7 +49,7 @@ if(locked){
  app.whenReady().then(async()=>{
   try{await ensureHost();}catch(error){console.error('KTeam host unavailable:',(error as {code?:string}).code??'startup_failed');}
   let buildInfo={version:app.getVersion()};try{buildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
-  const api=createDesktopAPI(async(route,value)=>{const result=await hostRequest(root,'kteam-main',route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:nativeActions(root,()=>window),agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  const api=createDesktopAPI(async(route,value)=>{let result;try{result=await hostRequest(root,'kteam-main',route,value);}catch(error){if(value!==undefined||!['ENOENT','ECONNREFUSED','ECONNRESET'].includes((error as NodeJS.ErrnoException).code??''))throw error;await ensureHost();result=await hostRequest(root,'kteam-main',route);} return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:nativeActions(root,()=>window),agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}

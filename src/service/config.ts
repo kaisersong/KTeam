@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync,existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -11,7 +11,7 @@ export type ClientId = typeof CLIENTS[number];
 export interface Config {
   version: 1; brokerUrl: string; kswarmUrl: string;
   brokerTokenFile?: string; kswarmTokenFile?: string;
-  xiaokActivityConfig?: string;
+  xiaokActivityConfig?: string; managedServiceConfig?:string;
 }
 export function dataRoot(): string { return resolve(process.env.KTEAM_DATA_DIR || join(homedir(), '.kteam')); }
 export function ensurePrivateRoot(root: string): void {
@@ -32,15 +32,16 @@ export function initConfig(root: string, config: Config): void {
   // Never replace a previous installation/configuration or client credential.
   writeFileSync(join(root, 'config.json'), JSON.stringify(config, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
   for (const client of CLIENTS) {
+    if(existsSync(join(root,client+'.token'))){clientToken(root,client);continue;}
     writeFileSync(join(root, client + '.token'), randomBytes(32).toString('base64url') + '\n', { flag: 'wx', mode: 0o600 });
   }
 }
 export function validateConfig(value: unknown): Config {
   const config = record(value);
-  fields(config, ['version','brokerUrl','kswarmUrl','brokerTokenFile','kswarmTokenFile','xiaokActivityConfig']);
+  fields(config, ['version','brokerUrl','kswarmUrl','brokerTokenFile','kswarmTokenFile','xiaokActivityConfig','managedServiceConfig']);
   if (config.version !== 1 || typeof config.brokerUrl !== 'string' || typeof config.kswarmUrl !== 'string') throw new KTeamError('config_version_unsupported');
   loopbackUrl(config.brokerUrl); loopbackUrl(config.kswarmUrl);
-  for (const key of ['brokerTokenFile','kswarmTokenFile','xiaokActivityConfig']) if (config[key] !== undefined && (typeof config[key] !== 'string' || !config[key])) throw new KTeamError('invalid_token_reference');
+  for (const key of ['brokerTokenFile','kswarmTokenFile','xiaokActivityConfig','managedServiceConfig']) if (config[key] !== undefined && (typeof config[key] !== 'string' || !config[key])) throw new KTeamError('invalid_token_reference');
   return config as unknown as Config;
 }
 export function loadConfig(root: string): Config {
