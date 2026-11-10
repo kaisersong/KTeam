@@ -4,7 +4,7 @@ import { parseDataJson } from '../protocol/json.js';
 import { clientToken, socketPath, type ClientId } from './config.js';
 import { versionHeaders } from './api-version.js';
 
-/** Shared by KTeam main and future xiaok main adapter. Tokens never enter renderer. */
+/** Shared by KTeam main and the secondary KTeam companion client. Tokens never enter renderer. */
 export async function hostRequest(root: string, client: ClientId, route: string, value?: unknown) {
   const token = clientToken(root, client);
   return new Promise<Record<string, unknown>>((resolve, reject) => {

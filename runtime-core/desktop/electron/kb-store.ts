@@ -1,0 +1,118 @@
+/**
+ * Knowledge Base — Store Interface
+ *
+ * Defines the contract for KB persistence (knowledge.db).
+ * Implementation in PR-A; this file is the contract for PR0 tests.
+ */
+
+import type {
+  Collection,
+  CollectionState,
+  Chunk,
+  CreateCollectionInput,
+  CreateMeetingInput,
+  GetSourceOutput,
+  KbSearchInput,
+  KbSearchResult,
+  MeetingRecord,
+  RequestSource,
+  Source,
+  AddSourceInput,
+  SourceEmbeddingProgress,
+  UpdateMeetingInput,
+  UpdateSourceParseResultInput,
+} from './kb-types.js';
+import { createHash } from 'node:crypto';
+
+export function computeKbSourceContentDigest(input: Pick<AddSourceInput, 'text'>): string {
+  return createHash('sha256').update(input.text ?? '', 'utf8').digest('hex');
+}
+
+export interface KbStore {
+  _db?: unknown;
+  // Collection CRUD
+  createCollection(input: CreateCollectionInput, requestSource?: RequestSource): Collection;
+  getCollection(id: string): Collection | undefined;
+  listCollections(): Collection[];
+  renameCollection(id: string, name: string, description?: string, requestSource?: RequestSource): Collection | undefined;
+  deleteCollection(id: string, requestSource?: RequestSource): void;
+
+  // Source CRUD
+  addSource(input: AddSourceInput, requestSource: RequestSource): Source;
+  /** Atomic stable assistant source plus exact durable body; legacy stores must refuse this flow. */
+  ensureAssistantSource?(input: AddSourceInput, requestSource: RequestSource): Source;
+  claimSourceContentHash(
+    sourceId: string,
+    sha256: string,
+    requestSource: RequestSource,
+  ): { source: Source; created: boolean };
+  getSource(id: string): Source | undefined;
+  listSources(collectionId: string): Source[];
+  deleteSource(id: string, requestSource?: RequestSource): void;
+  retrySource(id: string, requestSource?: RequestSource): Source | undefined;
+  updateSourceParseResult(id: string, input: UpdateSourceParseResultInput, requestSource: RequestSource): Source;
+  getSourceEmbeddingProgress(sourceId: string): SourceEmbeddingProgress;
+
+  // Chunk operations
+  insertChunks(sourceId: string, chunks: Array<{ idx: number; text: string; charStart: number; charEnd: number; pageIndex?: number; slideIndex?: number; sheetName?: string; cellRange?: string; metadata?: Record<string, unknown> }>, requestSource?: RequestSource): Chunk[];
+  listChunks(sourceId: string): Chunk[];
+  markChunkEmbedded(chunkId: string, requestSource?: RequestSource): void;
+  markChunkFailed(chunkId: string, error: string, requestSource?: RequestSource): void;
+
+  // Meeting operations
+  createMeeting(input: CreateMeetingInput, requestSource?: RequestSource): MeetingRecord;
+  getMeeting(id: string): MeetingRecord | undefined;
+  listMeetings(): MeetingRecord[];
+  updateMeeting(id: string, input: UpdateMeetingInput, requestSource?: RequestSource): MeetingRecord | undefined;
+
+  // Aggregated views
+  getCollectionState(collectionId: string): CollectionState | undefined;
+  getSourceWithContent(sourceId: string, offset?: number, limit?: number): GetSourceOutput | undefined;
+
+  close(): void;
+}
+
+export interface SourceExtractor {
+  extract(input: { filePath: string; mimeType: string }): Promise<SourceExtractionResult>;
+  extractFromUrl(url: string): Promise<SourceExtractionResult>;
+  extractFromText(text: string, title: string): SourceExtractionResult;
+}
+
+export interface SourceExtractionResult {
+  ok: boolean;
+  text?: string;
+  mimeType?: string;
+  error?: string;
+  pageCount?: number;
+  errorCode?: string;
+  engine?: string;
+  engineVersion?: string;
+  truncated?: boolean;
+}
+
+export interface ChunkerInput {
+  text: string;
+  mimeType?: string;
+  pageBreaks?: number[];
+  slideBreaks?: number[];
+  sheetBreaks?: Array<{ name: string; charStart: number }>;
+}
+
+export interface ChunkOutput {
+  idx: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+  pageIndex?: number;
+  slideIndex?: number;
+  sheetName?: string;
+  cellRange?: string;
+}
+
+export interface Chunker {
+  chunk(input: ChunkerInput): ChunkOutput[];
+}
+
+export interface KbRetriever {
+  search(input: KbSearchInput): Promise<KbSearchResult[]>;
+}

@@ -5,7 +5,7 @@ import { createPrivateKey } from 'node:crypto';
 import { canonical, parseJson,parseDataJson } from '../src/protocol/json.js';
 import { intentProjection, projection, sha256, signatureBytes, signProjection, verifyProjection, validateL0, type SignatureDomain } from '../src/protocol/aimp.js';
 
-const vectors = JSON.parse(readFileSync(new URL('../../docs/reference/aimp-v3.1-test-vectors.json', import.meta.url), 'utf8'));
+const vectors = JSON.parse(readFileSync(new URL('../../tests/fixtures/aimp-v3.1-test-vectors.json', import.meta.url), 'utf8'));
 
 test('AIMP v3.1 official four domain vectors: canonical bytes, hashes, Ed25519 signatures', () => {
   const key = createPrivateKey({ key: Buffer.from('302e020100300506032b657004220420' + vectors.public_test_seed_hex, 'hex'), format: 'der', type: 'pkcs8' });

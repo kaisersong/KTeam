@@ -9,7 +9,7 @@ import {TeamAutomation} from '../src/service/automation.js';
 
 const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture-model',fingerprint:'frozen'})};
 for(const scenario of ['resume','quiet','revoked','budget','invalid'] as const)test('System One silence is reviewed with real services: '+scenario,async()=>{
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);
  let automation:TeamAutomation|undefined,routerCalls=0,answerCalls=0;
  try{

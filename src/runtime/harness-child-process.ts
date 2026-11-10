@@ -1,4 +1,5 @@
 import * as childProcess from 'node:child_process';
+export {ChildProcess} from 'node:child_process';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
@@ -53,6 +54,6 @@ export default {...childProcess,spawn,execFile,exec,execSync,execFileSync,spawnS
 
 function censusOptions(){return {encoding:'utf8' as const,env:{PATH:'/usr/bin:/bin',LC_ALL:'C'},stdio:'pipe' as const,timeout:2000,maxBuffer:4*1024*1024};}
 function isCensus(command:string,args:any[]){
- if(command==='/bin/ls')return args.length>1&&args[0]==='-lde'&&args.slice(1).every(path=>typeof path==='string'&&(path==='/'||path==='/Library'||path==='/Library/Application Support'||path==='/var'||path==='/var/lib'||path==='/Library/Application Support/xiaok-verification'||path==='/var/lib/xiaok-verification'||path.startsWith('/Library/Application Support/xiaok-verification/')||path.startsWith('/var/lib/xiaok-verification/'))&&!path.split('/').includes('..'));
+ if(command==='/bin/ls')return args.length>1&&args[0]==='-lde'&&args.slice(1).every(path=>typeof path==='string'&&(path==='/'||path==='/Library'||path==='/Library/Application Support'||path==='/var'||path==='/var/lib'||path==='/Library/Application Support/kteam-verification'||path==='/var/lib/kteam-verification'||path.startsWith('/Library/Application Support/kteam-verification/')||path.startsWith('/var/lib/kteam-verification/'))&&!path.split('/').includes('..'));
  return command==='/bin/ps'&&args.length>0&&args.every(arg=>typeof arg==='string'&&(/^\d+$/.test(arg)||['-axo','-eo','-p','-o','-g','--no-headers','--ppid'].includes(arg)||arg.split(',').every(field=>['pid=','ppid=','pgid=','uid=','stat=','lstart='].includes(field))));
 }

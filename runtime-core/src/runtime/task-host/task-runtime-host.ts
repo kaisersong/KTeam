@@ -1,0 +1,3007 @@
+import {ContinuityInputSource,type PendingTaskInputIdentity} from './continuity-input-source.js';
+export type {PendingTaskInputIdentity} from './continuity-input-source.js';
+import { parseUiJson, validateA2uiMessages } from '../../a2ui/index.js';
+import {createRoomTurnCustody,assertRoomTurnCustody,type RoomTurnCustody} from '../verification/original-sdk-custody.js';
+import {readCurrentOriginalRootExecutionContext} from '../verification/original-root-execution-context.js';
+import {createIntrinsicSet,appendIntrinsic,aggregateIntrinsicErrors,settleIntrinsicOperations} from '../verification/intrinsic-async-collection.js';
+import {isOriginalChildPreparationTaskId,createTaskDefaultDispatchPreparationIssuer,type TaskDefaultDispatchPreparationSource} from './default-dispatch-preparation.js';
+import { isModelTextRepetitionError } from '../../ai/runtime/model-text-repetition.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import {getCompoundFinalPublicationBinding,type CompoundFinalPublicationTicket} from '../sol-pi/compound-publication-producer.js';
+import {computeSessionHistoryDigest} from '../../ai/runtime/session-store/store.js';
+import {getTaskSnapshotWriteReceipt,readOriginalTaskStorePhysicalIO,type OriginalTaskStorePhysicalCut,readOriginalTaskStoreHostIdentityIO,type OriginalTaskStoreHostIdentityIO,readOriginalPreparationStoreBinding,readOriginalPreparationStoreIO,type OriginalPreparationStoreIO,type TaskSnapshotWriteReceipt,type OriginalPreparationStoreBinding} from './snapshot-store.js';
+import { mergeProtectedObservationClosures, type ProtectedObservationClosure } from '../../ai/runtime/protected-observation-closure.js';
+import type { DesktopExecutionPersistence } from './protected-observation-store.js';
+import type { AgentSessionSnapshot } from '../../ai/runtime/session.js';
+import { createExecutionHealthMonitor, resolveExecutionIdleMs } from '../execution-health.js';
+import type { RuntimeEvent } from '../events.js';
+import { randomUUID } from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+import { isDeepStrictEqual,types as preparationHostTypes } from 'node:util';
+import { evaluateArtifactEvidenceGuard } from '../guards/artifact-evidence-guard.js';
+import { collectArtifactEvidence, buildCompletionEvidenceContext, evidenceForExpectation, shouldRequireArtifactEvidence, hasClarificationResult, isEmptyDelivery } from './delivery-pure.js';
+import { runDeliverableGate, type DeliverableGateFunction } from './deliverable-gate.js';
+import { HostDeliveryAttempt } from './delivery-attempt.js';
+import { DeliveryVerifier, verifyOriginalTaskHostDelivery, type DeliveryVerifierOptions, type DeliveryVerificationResult } from './delivery-verifier.js';
+import {buildDeliveryFactsV1,encodeDeliveryFrame,DELIVERY_INPUT_LIMIT} from './delivery-facts.js';
+import type {OriginalHostWorkerContext,OriginalHostWorkerRequest} from './original-host-worker-types.js';
+import type { GuardFailure, HostDeliveryRecord, HostDeliveryReport, HostDeliveryRecoveryAuthority,
+  HostDeliveryRecoveryInvocation } from './delivery-types.js';
+import { projectRuntimeEventsToDesktopEvents } from './event-projection.js';
+import type { MaterialRegistry } from './material-registry.js';
+import { NeedsUserQuestionCorrelator } from './question-correlator.js';
+import type { FileTaskSnapshotStore } from './snapshot-store.js';
+export interface OriginalTaskHostPreparationBinding {readonly identity:object;readonly store:FileTaskSnapshotStore;readonly storeIdentity:object}
+export interface OriginalTaskSourcePopulationPreparationBinding {
+ readonly identity:object;readonly hostIdentity:object;readonly store:FileTaskSnapshotStore;readonly storeIdentity:object;
+}
+type PreparationPopulationReader=(host:unknown,source:TaskDefaultDispatchPreparationSource)=>Readonly<OriginalTaskSourcePopulationPreparationBinding>;
+const preparationPopulationBirths=new WeakMap<object,PreparationPopulationReader>();
+/** Passive membership only. The returned data is neither a lease nor a Host,
+ * Native or execution permission; every use must recheck this original reader. */
+export function readOriginalTaskSourcePopulationPreparationBinding(population:unknown,host:unknown,source:TaskDefaultDispatchPreparationSource):Readonly<OriginalTaskSourcePopulationPreparationBinding>{
+ const read=population&&typeof population==='object'?preparationHostApply(preparationHostGet,preparationPopulationBirths,[population]) as PreparationPopulationReader|undefined:undefined;
+ if(!read)throw Error('DEFAULT_DISPATCH_PREPARATION_POPULATION_REQUIRED');return read(host,source);
+}
+export interface OriginalTaskHostPreparationIO {prepare(proof:unknown,requestSource:'user'|'agent'|'scheduler'):ReturnType<InProcessTaskRuntimeHost['prepareDefaultDispatchTask']>;observe(proof:unknown,requestSource:'user'|'agent'|'scheduler'):ReturnType<InProcessTaskRuntimeHost['readDefaultDispatchPreparation']>}
+interface OriginalPreparationHost {io:Readonly<OriginalTaskHostPreparationIO>;source:TaskDefaultDispatchPreparationSource;view:Readonly<OriginalTaskHostPreparationBinding>;assertLocal():void}
+const PreparationWeakMap=WeakMap,preparationHostAssign=Object.assign;
+const preparationHostBirths=new PreparationWeakMap<object,OriginalPreparationHost>();
+const preparationHostApply=Reflect.apply,preparationHostGet=WeakMap.prototype.get,preparationHostSet=WeakMap.prototype.set,preparationHostFreeze=Object.freeze,preparationHostCreate=Object.create,preparationHostDefine=Object.defineProperty,preparationHostDescriptor=Object.getOwnPropertyDescriptor,preparationHostOwn=Object.hasOwn,preparationHostProxy=preparationHostTypes.isProxy;
+const hostIdentityHosts=new PreparationWeakMap<object,{store:object;io:Readonly<OriginalTaskStoreHostIdentityIO>}>();
+export interface OriginalTaskRunnerResourceContext {
+ readonly kind:'original_task_runner_resource_context_v1';readonly taskId:string;readonly sessionId:string;
+ readonly executionClass:'main_turn'|'goal_turn'|'nested_subagent'|'material_turn'|'canvas_turn'|'snapshot_prep'|'tool_worker';readonly populationId:object;readonly parentContext?:object;readonly parentRef?:object;
+ assertCurrent():void;assertLocal():void;
+}
+export interface OriginalTaskHostPhysicalFate {readonly componentOnly:true;waitKnown():Promise<void>;assertKnown():void}
+interface HostPhysicalExecution {finalSnapshot?:TaskSnapshot;sessionId?:string;host:object;store:object;taskId:string;parentRef:object|null;receipt:object;fates:RoomTurnCustody[];finished:boolean;complete():void;completion:Promise<void>;storeCut?:OriginalTaskStorePhysicalCut;failure?:{error:unknown}}
+const hostPhysicalExecutions=new PreparationWeakMap<object,Map<string,HostPhysicalExecution>>();
+const hostPhysicalReceipts=new PreparationWeakMap<object,HostPhysicalExecution>();
+/** Original execution identity, preserved after effect-context withdrawal. */
+export function readOriginalTaskExecutionPhysicalReceipt(host:unknown,store:unknown,taskId:string,parentRef:unknown):object {
+ const rows=preparationHostApply(preparationHostGet,hostPhysicalExecutions,[host]) as Map<string,HostPhysicalExecution>|undefined;
+ const row=rows?.get(taskId);if(!row||row.store!==store||row.parentRef!==parentRef)throw Error('TASK_HOST_ORIGINAL_PHYSICAL_RECEIPT_REQUIRED');return row.receipt;
+}
+/** Component-only fact; Native still ANDs M/P and original root scope. */
+export function readOriginalTaskHostPhysicalFate(receipt:unknown,host:unknown,store:unknown,parentRef:unknown):OriginalTaskHostPhysicalFate {
+ const row=preparationHostApply(preparationHostGet,hostPhysicalReceipts,[receipt]) as HostPhysicalExecution|undefined;
+ if(!row||row.host!==host||row.store!==store||row.parentRef!==parentRef)throw Error('TASK_HOST_ORIGINAL_PHYSICAL_RECEIPT_REQUIRED');
+ const assertKnown=()=>{if(!row.finished||!row.storeCut||row.failure)throw Error('TASK_HOST_PHYSICAL_UNCONFIRMED',{cause:row.failure?.error});for(let i=0;i<row.fates.length;i++)row.fates[i]!.assertPhysicalKnown();row.storeCut.assertKnown();};
+ return preparationHostFreeze({componentOnly:true as const,async waitKnown(){await row.completion;assertKnown();},assertKnown});
+}
+/** Passive Main continuity cut, never a Native or execution permission. */
+export function readOriginalTaskExecutionContinuityFate(host:unknown,store:unknown,taskId:string,sessionId:string,snapshot:TaskSnapshot):OriginalTaskHostPhysicalFate{
+ const rows=preparationHostApply(preparationHostGet,hostPhysicalExecutions,[host]) as Map<string,HostPhysicalExecution>|undefined;
+ const row=rows?.get(taskId);if(!row||row.store!==store||row.sessionId!==sessionId||!row.finalSnapshot)throw Error('TASK_HOST_ORIGINAL_PHYSICAL_RECEIPT_REQUIRED');
+ const stock=createRoomTurnCustody();stock.inventory(snapshot);stock.assertPhysicalKnown();if(!isDeepStrictEqual(row.finalSnapshot,snapshot))throw Error('TASK_HOST_ORIGINAL_PHYSICAL_RECEIPT_REQUIRED');
+ return readOriginalTaskHostPhysicalFate(row.receipt,host,store,row.parentRef);
+}
+let originalContinuityCommitted:(host:unknown,store:unknown,taskId:string)=>TaskSnapshot|null;
+/** Data-only same-owner negative bookkeeping cut. Never a physical/execution grant. */
+export function readOriginalTaskCommittedContinuitySnapshot(host:unknown,store:unknown,taskId:string):TaskSnapshot|null{return originalContinuityCommitted(host,store,taskId);}
+export interface OwnedTaskHistory{history:HistoryMessage[];audit?:TaskContextAudit}
+const hostResourcePopulations=new PreparationWeakMap<object,{store:object;identity:object;current():void}>();
+interface DeliveryWorkerBirth {
+ host:object;store:object;populationId:object;physical:HostPhysicalExecution;verifier:object;snapshot:TaskSnapshot;options:DeliveryVerifierOptions;
+ active:boolean;context:Readonly<OriginalHostWorkerContext>;request:Readonly<OriginalHostWorkerRequest>;
+}
+const deliveryWorkerBirths=new PreparationWeakMap<object,DeliveryWorkerBirth>();
+/** Only original Population siblings sharing the exact Store can read this
+ * finite readonly producer. It never revives the withdrawn runner context. */
+export function readOptionalOriginalTaskHostDeliveryWorkerContext(ticket:unknown,host:unknown,store:unknown):Readonly<OriginalHostWorkerContext>|undefined {
+ const row=preparationHostApply(preparationHostGet,deliveryWorkerBirths,[ticket]) as DeliveryWorkerBirth|undefined;
+ if(!row)return undefined;
+ const target=preparationHostApply(preparationHostGet,hostResourcePopulations,[host]) as {store:object;identity:object}|undefined;
+ if(!target||target.store!==store||row.store!==store||target.identity!==row.populationId)throw Error('TASK_HOST_DELIVERY_WORKER_CONTEXT_REQUIRED');
+ row.context.assertLocal();return row.context;
+}
+/** Membership precedes all fields. Optional relationship arguments are checked
+ * by the original verifier before the SDK consumes this ticket. */
+export function readOptionalOriginalTaskHostDeliveryWorkerRequest(ticket:unknown,verifier?:unknown,snapshot?:unknown,options?:unknown):Readonly<OriginalHostWorkerRequest>|undefined {
+ const row=preparationHostApply(preparationHostGet,deliveryWorkerBirths,[ticket]) as DeliveryWorkerBirth|undefined;
+ if(!row)return undefined;
+ if(arguments.length>1&&(row.verifier!==verifier||row.snapshot!==snapshot||row.options!==options))throw Error('TASK_HOST_DELIVERY_WORKER_REQUEST_REQUIRED');
+ return row.request;
+}
+const taskRunnerResources=new PreparationWeakMap<object,{host:object;store:object;view:OriginalTaskRunnerResourceContext;fates:RoomTurnCustody[]}>();
+const taskRunnerResourceScope=new AsyncLocalStorage<object>();
+// Inputs are registered only by the actual Host runner, before its callback.
+// A group issuer carries resource provenance, never a Native/effect permission.
+interface ManagedRunnerInput {host:object;store:object;source:object|undefined;context:object|null;view?:OriginalTaskRunnerResourceContext;current():void;groupCurrent():void}
+interface ManagedGroupResource {birth:ManagedRunnerInput;anchor:object;revoked:boolean;controller:AbortController;turns:Set<ManagedGroupTurn>;fates:RoomTurnCustody[];unreturned:Array<{raw:unknown}>}
+interface ManagedGroupTurn {group:ManagedGroupResource;token:object;context:object;controller:AbortController;fates:RoomTurnCustody[];settlementFates:RoomTurnCustody[];phase:'reserved'|'constructing'|'ready'|'running'|'settling'|'known'|'unknown';active:number;failure?:{error:unknown};completion:Promise<void>;resolve():void;reject(error:unknown):void;closing?:Promise<void>}
+const managedRunnerInputs=new PreparationWeakMap<object,ManagedRunnerInput>();
+const managedGroupResources=new PreparationWeakMap<object,ManagedGroupResource>();
+const managedGroupTurns=new PreparationWeakMap<object,ManagedGroupTurn>();
+const managedHostGroups=new PreparationWeakMap<object,Set<ManagedGroupResource>>();
+const managedHostSources=new PreparationWeakMap<object,object>();
+function managedGroup(value:unknown):ManagedGroupResource {
+ const row=preparationHostApply(preparationHostGet,managedGroupResources,[value]) as ManagedGroupResource|undefined;
+ if(!row)throw Error('TASK_MANAGED_GROUP_REQUIRED');return row;
+}
+function managedTurn(value:unknown):ManagedGroupTurn {
+ const row=preparationHostApply(preparationHostGet,managedGroupTurns,[value]) as ManagedGroupTurn|undefined;
+ if(!row)throw Error('TASK_MANAGED_TURN_REQUIRED');return row;
+}
+function assertManagedGroup(row:ManagedGroupResource):void {
+ if(row.revoked)throw Error('TASK_MANAGED_GROUP_CLOSED');row.birth.groupCurrent();
+}
+export function issueOriginalManagedGroupResource(input:unknown,source:unknown):object|null {
+ const birth=preparationHostApply(preparationHostGet,managedRunnerInputs,[input]) as ManagedRunnerInput|undefined;
+ if(!birth||birth.source!==source)throw Error('TASK_MANAGED_ORIGINAL_INPUT_REQUIRED');
+ birth.current();if(!birth.view)return null;
+ const token=preparationHostFreeze(preparationHostCreate(null)),anchor=preparationHostFreeze(preparationHostCreate(null));
+ const row:ManagedGroupResource={birth,anchor,revoked:false,controller:new AbortController(),turns:new Set(),fates:[],unreturned:[]};
+ const view:OriginalTaskRunnerResourceContext=preparationHostFreeze({kind:'original_task_runner_resource_context_v1',taskId:birth.view.taskId,sessionId:birth.view.sessionId,executionClass:'nested_subagent',populationId:birth.view.populationId,...(birth.view.parentRef?{parentRef:birth.view.parentRef}:{}),assertLocal(){assertManagedGroup(row);},assertCurrent(){assertManagedGroup(row);}});
+ preparationHostApply(preparationHostSet,taskRunnerResources,[anchor,{host:birth.host,store:birth.store,view,fates:row.fates}]);
+ preparationHostApply(preparationHostSet,managedGroupResources,[token,row]);
+ let rows=preparationHostApply(preparationHostGet,managedHostGroups,[birth.host]) as Set<ManagedGroupResource>|undefined;
+ if(!rows){rows=new Set();preparationHostApply(preparationHostSet,managedHostGroups,[birth.host,rows]);}rows.add(row);return token;
+}
+/** Ordinary isolated Service callers have no original Host context and acquire
+ * no resource/Native authority. An entered original context cannot downgrade. */
+export function issueOptionalOriginalManagedGroupResource(input:unknown,source:unknown):object|null {
+ if(!taskRunnerResourceScope.getStore()&&!preparationHostApply(preparationHostGet,managedRunnerInputs,[input]))return null;
+ return issueOriginalManagedGroupResource(input,source);
+}
+export function prepareOriginalManagedGroupTurn(group:unknown):object {
+ const owner=managedGroup(group);assertManagedGroup(owner);
+ const token=preparationHostFreeze(preparationHostCreate(null)),context=preparationHostFreeze(preparationHostCreate(null));
+ let resolve!:()=>void,reject!:(error:unknown)=>void;
+ const completion=new Promise<void>((yes,no)=>{resolve=yes;reject=no;});void completion.catch(()=>{});
+ const row:ManagedGroupTurn={group:owner,token,context,controller:new AbortController(),fates:[],settlementFates:[],phase:'reserved',active:0,completion,resolve,reject};
+ const parent=preparationHostApply(preparationHostGet,taskRunnerResources,[owner.anchor]) as {view:OriginalTaskRunnerResourceContext};
+ const local=()=>{if(!row.active||row.phase==='known'||row.phase==='unknown')throw Error('TASK_RUNNER_RESOURCE_CONTEXT_CLOSED');};
+ const view:OriginalTaskRunnerResourceContext=preparationHostFreeze({kind:'original_task_runner_resource_context_v1',taskId:parent.view.taskId,sessionId:parent.view.sessionId,executionClass:'nested_subagent',populationId:parent.view.populationId,parentContext:owner.anchor,assertLocal:local,assertCurrent(){local();assertManagedGroup(owner);row.controller.signal.throwIfAborted();}});
+ preparationHostApply(preparationHostSet,taskRunnerResources,[context,{host:owner.birth.host,store:owner.birth.store,view,fates:row.fates}]);
+ preparationHostApply(preparationHostSet,managedGroupTurns,[token,row]);owner.turns.add(row);return token;
+}
+export function readOriginalManagedGroupTurnSignal(turn:unknown):AbortSignal{return managedTurn(turn).controller.signal;}
+export function retainOriginalManagedGroupTurnTail(turn:unknown,raw:unknown):void {
+ const row=managedTurn(turn),stock=createRoomTurnCustody();row.settlementFates.push(stock);stock.inventory(raw);
+}
+export function failOriginalManagedGroupTurn(turn:unknown,error:unknown):void {
+ const row=managedTurn(turn);retainOriginalManagedGroupTurnTail(turn,error);
+ if(!row.failure)row.failure={error};row.phase='unknown';row.reject(row.failure.error);
+ row.group.revoked=true;row.group.controller.abort(row.failure.error);
+ for(const sibling of row.group.turns)cancelOriginalManagedGroupTurn(sibling.token,row.failure.error);
+}
+
+export function retainOriginalManagedGroupUnreturned(group:unknown,raw:unknown):void {
+ const row=managedGroup(group);row.unreturned.push({raw});
+}
+export function retainOriginalManagedGroupCustody(group:unknown,stock:RoomTurnCustody):void {
+ // The original custody implementation checks its own member before use. This
+ // only adds a negative obligation; it cannot mint a turn or clear one.
+ const row=managedGroup(group);assertRoomTurnCustody(stock);stock.assertPhysicalKnown();row.fates.push(stock);
+}
+async function enterManagedTurn<T>(row:ManagedGroupTurn,work:()=>Promise<T>,construction:boolean):Promise<T>{
+ assertManagedGroup(row.group);row.controller.signal.throwIfAborted();
+ if(construction?row.phase!=='reserved':row.phase!=='reserved'&&row.phase!=='ready')throw Error('TASK_MANAGED_TURN_SPENT');
+ row.phase=construction?'constructing':'running';row.active++;
+ const stock=createRoomTurnCustody();row.fates.push(stock);
+ try{return await taskRunnerResourceScope.run(row.context,()=>invokeTaskPhysicalSdk<T>(stock,work,undefined,[],row.fates));}
+ finally{
+  row.active--;if(construction&&row.phase==='constructing')row.phase='ready';
+  // Revoke can win inside the constructor SDK. Join its real obligations once
+  // the entered body has returned; never classify it as never-born.
+  if(construction&&row.phase==='ready'&&(row.group.revoked||row.controller.signal.aborted))void finishOriginalManagedGroupTurn(row.token).catch(()=>{});
+ }
+}
+export function runOriginalManagedGroupConstruction<T>(turn:unknown,work:()=>Promise<T>):Promise<T>{return enterManagedTurn(managedTurn(turn),work,true);}
+export function runOriginalManagedGroupTurn<T>(turn:unknown,work:()=>Promise<T>):Promise<T>{return enterManagedTurn(managedTurn(turn),work,false);}
+/** Only a never-entered reservation can be cancelled without physical IO. */
+export function cancelOriginalManagedGroupTurn(turn:unknown,reason:unknown):void {
+ const row=managedTurn(turn);row.controller.abort(reason);
+ if(row.phase==='reserved'){row.phase='known';row.resolve();}
+ else if(row.phase==='ready'&&!row.active)void finishOriginalManagedGroupTurn(row.token).catch(()=>{});
+}
+export function finishOriginalManagedGroupTurn(turn:unknown):Promise<void>{
+ const row=managedTurn(turn);if(row.failure)return Promise.reject(row.failure.error);if(row.closing)return row.closing;
+ row.closing=Promise.resolve().then(async()=>{
+  if(row.phase==='known')return;if(row.phase==='unknown')return row.completion;
+  if(row.active)throw Error('TASK_MANAGED_TURN_ACTIVE');row.phase='settling';
+  await joinTaskPhysicalFates([...row.fates,...row.settlementFates]);
+  // A negative observer may have failed while the original SDK tails joined.
+  // It owns the first failure permanently; join success is not a fresh grant.
+  if(row.failure)return row.completion;
+  row.phase='known';row.resolve();
+ }).catch(error=>{
+  const first=row.failure;if(!first)row.failure={error};row.phase='unknown';row.reject(row.failure!.error);
+  if(first&&first.error!==error)throw new AggregateError([first.error,error],'TASK_MANAGED_SETTLEMENT_UNCONFIRMED',{cause:first.error});throw row.failure!.error;
+ });void row.closing.catch(()=>{});return row.closing;
+}
+export function revokeOriginalManagedGroupResource(group:unknown,reason:unknown):void {
+ const row=managedGroup(group);if(row.revoked)return;row.revoked=true;row.controller.abort(reason);
+ for(const turn of row.turns)cancelOriginalManagedGroupTurn(turn.token,reason);
+}
+function revokeManagedHostGroups(host:object,reason:unknown):void {
+ const groups=preparationHostApply(preparationHostGet,managedHostGroups,[host]) as Set<ManagedGroupResource>|undefined;
+ if(groups)for(const group of groups){if(!group.revoked){group.revoked=true;group.controller.abort(reason);}for(const turn of group.turns)cancelOriginalManagedGroupTurn(turn.token,reason);}
+}
+async function drainManagedHostGroups(host:object):Promise<unknown[]> {
+ const groups=preparationHostApply(preparationHostGet,managedHostGroups,[host]) as Set<ManagedGroupResource>|undefined;
+ if(!groups)return [];
+ const results=await Promise.allSettled([...groups].flatMap(row=>[...row.turns].map(turn=>turn.completion).concat([joinTaskPhysicalFates(row.fates)])));
+ return [...results.flatMap(result=>result.status==='rejected'?[result.reason]:[]),...[...groups].flatMap(row=>[...row.turns].flatMap(turn=>turn.failure?[turn.failure.error]:[])),...[...groups].flatMap(row=>row.unreturned.map(entry=>Error('TASK_MANAGED_FACTORY_UNRETURNED',{cause:entry.raw})))];
+}
+
+/** Only original Population hosts sharing this exact Store can share the
+ * resource domain. A new public Host around the same Store has no membership. */
+export function readOriginalTaskRunnerResourceContext(context:unknown,host:unknown,store:unknown):OriginalTaskRunnerResourceContext {
+ const row=preparationHostApply(preparationHostGet,taskRunnerResources,[context]) as {host:object;store:object;view:OriginalTaskRunnerResourceContext}|undefined;
+ const target=preparationHostApply(preparationHostGet,hostResourcePopulations,[host]) as {store:object;identity:object;current():void}|undefined;
+ if(!row||!target||row.store!==store||target.store!==store||target.identity!==row.view.populationId)throw Error('TASK_RUNNER_ORIGINAL_RESOURCE_CONTEXT_REQUIRED');
+ row.view.assertLocal();return row.view;
+}
+/** Exact original runner Host, for producers whose service/session belongs to
+ * one Host. This does not widen the existing Population-sharing reader. */
+export function readOriginalTaskRunnerResourceContextForHost(context:unknown,host:unknown,store:unknown):OriginalTaskRunnerResourceContext {
+ const row=preparationHostApply(preparationHostGet,taskRunnerResources,[context]) as {host:object;store:object;view:OriginalTaskRunnerResourceContext}|undefined;
+ if(!row||row.host!==host||row.store!==store)throw Error('TASK_RUNNER_ORIGINAL_HOST_CONTEXT_REQUIRED');
+ return readOriginalTaskRunnerResourceContext(context,host,store);
+}
+/** Fixed propagation from the original Host runner invocation, not an ALS
+ * setter or a caller supplied execution-class string. */
+export function readCurrentOriginalTaskRunnerResourceContext():object|null {
+ const context=taskRunnerResourceScope.getStore();if(!context)return null;
+ const row=preparationHostApply(preparationHostGet,taskRunnerResources,[context]) as {view:OriginalTaskRunnerResourceContext}|undefined;
+ if(!row)throw Error('TASK_RUNNER_ORIGINAL_RESOURCE_CONTEXT_REQUIRED');row.view.assertLocal();return context;
+}
+async function joinTaskPhysicalFates(fates:RoomTurnCustody[]):Promise<void> {
+ const errors:unknown[]=[];let offset=0;
+ while(offset<fates.length){const batch=fates.slice(offset);offset=fates.length;const results=await Promise.allSettled(batch.map(fate=>fate.waitPhysicalKnown()));for(const result of results)if(result.status==='rejected')errors.push(result.reason);}
+ if(errors.length)throw new AggregateError(errors,'TASK_HOST_PHYSICAL_UNCONFIRMED',{cause:errors[0]});
+}
+async function invokeTaskPhysicalSdk<T>(custody:RoomTurnCustody,fn:Function,receiver:unknown,args:unknown[],fates:RoomTurnCustody[]=[custody]):Promise<T> {
+ let value!:T,failure:{error:unknown}|undefined;
+ try{value=await custody.sdk<T>(fn,receiver,args);}catch(error){failure={error};}
+ try{await joinTaskPhysicalFates(fates);}catch(error){if(failure)throw new AggregateError([failure.error,error],'TASK_HOST_PHYSICAL_UNCONFIRMED',{cause:failure.error});throw error;}
+ if(failure)throw failure.error;return value;
+}
+type TaskResourceChildClass='nested_subagent'|'material_turn'|'canvas_turn'|'snapshot_prep'|'tool_worker';
+async function withTaskResourceChild<T>(executionClass:TaskResourceChildClass,work:()=>Promise<T>):Promise<T>{
+ const parent=taskRunnerResourceScope.getStore();if(!parent)return work();
+ const birth=preparationHostApply(preparationHostGet,taskRunnerResources,[parent]) as {host:object;store:object;view:OriginalTaskRunnerResourceContext;fates:RoomTurnCustody[]}|undefined;
+ if(!birth)throw Error('TASK_RUNNER_ORIGINAL_RESOURCE_CONTEXT_REQUIRED');birth.view.assertCurrent();
+ let active=true;const local=()=>{if(!active)throw Error('TASK_RUNNER_RESOURCE_CONTEXT_CLOSED');birth.view.assertLocal();};
+ const context=preparationHostFreeze(preparationHostCreate(null)),view:OriginalTaskRunnerResourceContext=preparationHostFreeze({kind:'original_task_runner_resource_context_v1',taskId:birth.view.taskId,sessionId:birth.view.sessionId,executionClass,populationId:birth.view.populationId,parentContext:parent,assertLocal:local,assertCurrent(){local();birth.view.assertCurrent();local();}});
+ preparationHostApply(preparationHostSet,taskRunnerResources,[context,{host:birth.host,store:birth.store,view,fates:birth.fates}]);
+ const custody=createRoomTurnCustody();birth.fates.push(custody);
+ try{return await taskRunnerResourceScope.run(context,()=>invokeTaskPhysicalSdk<T>(custody,work,undefined,[]));}finally{active=false;}
+}
+/** Classification inherits original Host/Store/parent permission and priority.
+ * These fixed wrappers issue neither N, M nor P and never widen tool rights. */
+export function withOriginalNestedSubagentResource<T>(work:()=>Promise<T>):Promise<T>{return withTaskResourceChild('nested_subagent',work);}
+export function withOriginalMaterialTurnResource<T>(work:()=>Promise<T>):Promise<T>{return withTaskResourceChild('material_turn',work);}
+export function withOriginalCanvasTurnResource<T>(work:()=>Promise<T>):Promise<T>{return withTaskResourceChild('canvas_turn',work);}
+export function withOriginalSnapshotPrepResource<T>(work:()=>Promise<T>):Promise<T>{return withTaskResourceChild('snapshot_prep',work);}
+export function withOriginalToolWorkerResource<T>(work:()=>Promise<T>):Promise<T>{return withTaskResourceChild('tool_worker',work);}
+/** Fixed original Host AND Store membership. Returned UUID is data only. */
+export function readOriginalTaskHostIdentityIO(host:unknown,store:unknown):Readonly<OriginalTaskStoreHostIdentityIO>{
+ const entry=host&&typeof host==='object'?preparationHostApply(preparationHostGet,hostIdentityHosts,[host]) as {store:object;io:Readonly<OriginalTaskStoreHostIdentityIO>}|undefined:undefined;
+ if(!entry||entry.store!==store)throw Error('TASK_HOST_IDENTITY_HOST_REQUIRED');return entry.io;
+}
+/** Exact original identity, not a Native/source/IO or execution capability. */
+export function readOriginalTaskHostPreparationBinding(host:unknown,source:TaskDefaultDispatchPreparationSource):Readonly<OriginalTaskHostPreparationBinding>{
+ const entry=host&&typeof host==='object'?preparationHostApply(preparationHostGet,preparationHostBirths,[host]) as OriginalPreparationHost|undefined:undefined;
+ if(!entry||entry.source!==source)throw Error('DEFAULT_DISPATCH_PREPARATION_HOST_REQUIRED');entry.assertLocal();return entry.view;
+}
+/** Fixed original IO, not NativeMain or a caller-supplied operation table. */
+export function readOriginalTaskHostPreparationIO(host:unknown,source:TaskDefaultDispatchPreparationSource):Readonly<OriginalTaskHostPreparationIO>{
+ const entry=host&&typeof host==='object'?preparationHostApply(preparationHostGet,preparationHostBirths,[host]) as OriginalPreparationHost|undefined:undefined;
+ if(!entry||entry.source!==source)throw Error('DEFAULT_DISPATCH_PREPARATION_HOST_REQUIRED');entry.assertLocal();return entry.io;
+}
+import { buildTaskUnderstanding } from './task-understanding.js';
+import type {
+  ArtifactKind,
+  ArtifactSummary,
+  DesktopTaskEvent,
+  TaskEventRecord,
+  MaterialRecord,
+  MaterialView,
+  MaterialRole,
+  NeedsUserQuestion,
+  SalvageSummary,
+  TaskContextAudit,
+  TaskContextSkip,
+  TaskCreateContext,
+  TaskCreateInput,
+  TaskPermissionMode,
+  TaskExecutionScope,
+  TaskRuntimeHost,
+  TaskSnapshot,
+  TaskSnapshotStatus,
+  TaskMultiAgentPreparation,
+  TaskUnderstanding,
+  UserAnswer,
+} from './types.js';
+
+export interface HistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface TaskHostCompoundFinalPublicationReceipt { readonly opaqueTaskHostCompoundFinalPublicationReceipt: never }
+const finalPublicationReceipts = new WeakMap<object, Readonly<{
+  ticket: CompoundFinalPublicationTicket; sessionId: string; turnId: string; historyDigest: string;
+  snapshotRevision: number; snapshotDigest: string; taskId: string;
+}>>();
+export function getTaskHostCompoundFinalPublicationReceipt(receipt: unknown) {
+  const facts = receipt && typeof receipt === 'object' ? finalPublicationReceipts.get(receipt) : undefined;
+  if (!facts) throw Error('task_host_final_publication_receipt');
+  return facts;
+}
+
+export interface TaskRunnerInput {
+  /** Main-only exact execution tail; never included in task/renderer DTOs. */
+  registerCompoundFinalPublication?: (ticket: CompoundFinalPublicationTicket,
+    notify: (receipt: TaskHostCompoundFinalPublicationReceipt) => Promise<void>) => Promise<void>;
+  /** Main-issued durable barrier; never sourced from TaskCreateInput or renderer DTO. */
+  persistObservationSnapshot?: (snapshot: AgentSessionSnapshot) => Promise<void>;
+  /** Main-only, task/incarnation scoped; never accepted from a renderer draft. */
+  executionPersistence?: DesktopExecutionPersistence;
+  /** Main-only input-bound wait port; never read from task creation or IPC data. */
+  askUser?: (input: {prompt:string;choices?:Array<{id:string;label:string}>;validateAnswer?:(answer:string)=>void}, signal?:AbortSignal) => Promise<string>;
+  taskId: string;
+  sessionId: string;
+  prompt: string;
+  materials: MaterialRecord[];
+  understanding: TaskUnderstanding;
+  signal: AbortSignal;
+  deadlineMs?: number;
+  history: HistoryMessage[];
+  permissionMode?: 'plan' | 'auto' | 'default';
+  maxToolLoopIterations?: number;
+  executionScope?: TaskExecutionScope;
+  emitRuntimeEvent(event: RuntimeEvent): Promise<void>;
+  emitUsage(input: { inputTokens: number; outputTokens: number }): Promise<void>;
+}
+
+export interface PersistedTaskEvent {
+  taskId: string;
+  eventIndex: number;
+  event: DesktopTaskEvent;
+  snapshot: TaskSnapshot;
+}
+
+export type TaskRunner = (input: TaskRunnerInput) => Promise<void>;
+
+export interface TaskPreparedSourceReceipt {readonly opaqueTaskPreparedSourceReceipt:never}
+interface PreparedSourceFact {
+  taskId:string;sessionId:string;prompt:string;threadId?:string;
+  permissionMode?:TaskPermissionMode;executionScope?:TaskExecutionScope;
+}
+const preparedSourceReceipts=new WeakMap<object,{fact:PreparedSourceFact;assertCurrent:()=>void}>();
+/** Main-only preparation evidence; the renderer TaskSnapshot omits permissions. */
+export function getTaskPreparedSourceReceipt(receipt:TaskPreparedSourceReceipt):Readonly<PreparedSourceFact> {
+  const entry=preparedSourceReceipts.get(receipt);if(!entry)throw Error('task_prepared_source_receipt_invalid');
+  entry.assertCurrent();return Object.freeze(structuredClone(entry.fact));
+}
+
+/** Supplied only by the main-owned runner descriptor, never by TaskCreateInput. */
+export interface TaskExecutionPolicy {
+  deliveryRepair: 'automatic' | 'explicit';
+}
+
+export interface TaskIdentityReservation {
+  readonly taskId: string;
+  readonly reservationId: string;
+  readonly sessionId?: string;
+}
+
+export interface TaskCancellationDecision {
+  hostAbortAllowed: boolean;
+  ack?: 'applied' | 'unknown';
+}
+
+/** Fixed main service owns the private ticket map. Diagnostic fields confer no authority. */
+export interface GroupObservationReferenceTicket { readonly id: string }
+export interface GroupObservationReferenceSource {
+  inspectGroupObservationReference(ticket: GroupObservationReferenceTicket): { taskId: string; canonicalTaskId: string; closure: ProtectedObservationClosure };
+  commitGroupObservationReference(ticket: GroupObservationReferenceTicket): Promise<void>;
+}
+
+export interface InProcessTaskRuntimeHostOptions {
+  /** Internal constructor source; absent means no durable dispatch preparation. */
+  defaultDispatchPreparationSource?:TaskDefaultDispatchPreparationSource;
+  groupObservationSource?: GroupObservationReferenceSource;
+  readPendingInputIdentity?:(inputId:string)=>PendingTaskInputIdentity|null;
+  authorizeInputPreparation?:(inputId:string,identity:PendingTaskInputIdentity,input:TaskCreateInput)=>void;
+  authorizeInputAdmission?:(snapshot:TaskSnapshot)=>void;
+  onPreparedSnapshot?:(snapshot:TaskSnapshot)=>Promise<void>|void;
+  onWorkReleased?:(taskId:string)=>Promise<void>|void;
+  resolveOwnedHistory?:(taskId:string,context:TaskCreateContext|undefined)=>Promise<OwnedTaskHistory|null>|OwnedTaskHistory|null;
+  assertHistoryRead?:(taskId:string,conversationId:string|undefined)=>Promise<void>|void;
+  onHistoryLoaded?:(taskId:string,snapshots:TaskSnapshot[],conversationId:string|undefined)=>Promise<void>|void;
+  materialRegistry: MaterialRegistry;
+  snapshotStore: FileTaskSnapshotStore;
+  runner: TaskRunner;
+  completionGate?: DeliverableGateFunction;
+  now?: () => number;
+  createTaskId?: () => string;
+  createSessionId?: () => string;
+  taskWatchdogMs?: number;
+  taskIdleTimeoutMs?: number;
+  onPersistedEvent?: (input: PersistedTaskEvent) => Promise<void> | void;
+  aheGuards?: {
+    artifactEvidence?: boolean;
+    recoveryContinuity?: boolean;
+  };
+  /**
+   * Design v58 §5.5 / R27-02. `createTask` returns as soon as the task id
+   * exists, but `executeTask()` keeps running for up to the watchdog budget.
+   * The outer IPC token cannot cover that, so every execution takes its own
+   * `task_execution` token and holds it until the outermost `finally` has
+   * finished all store writes and event flushes.
+   */
+  acquireExecutionToken?: (taskId: string) => { release(): void };
+  getExecutionPolicy?: (snapshot: TaskSnapshot) => TaskExecutionPolicy;
+  authorizePreparation?: (taskId: string, marker: TaskMultiAgentPreparation) => void;
+  assertTaskAdmission?: (snapshot: TaskSnapshot, kind?: 'live_answer') => Promise<void> | void;
+  decideCancellation?: (snapshot: TaskSnapshot, reason: string) => Promise<TaskCancellationDecision>;
+  /** Fixed main-owned adapter; the exact durable report is the checking ACK. */
+  onDeliveryReport?: (report: HostDeliveryReport) => Promise<HostDeliveryReport>;
+  /** Fixed synchronous main-only recovery owner; never an IPC/tool callback. */
+  authorizeDeliveryRecovery?: (input: HostDeliveryRecoveryInvocation) => void;
+}
+
+interface LiveSubscription {
+  livePreviews?: boolean;
+  push(event: TaskEventRecord): void;
+  close(): void;
+}
+
+interface ActiveExecution {
+  /** Actual Main group reference, bound only after its original durable commit. */
+  publicationCanonicalTaskId?: string;
+  publication?: { canonicalTaskId: string; ticket: CompoundFinalPublicationTicket; notify: (receipt: TaskHostCompoundFinalPublicationReceipt) => Promise<void> };
+  publicationWrite?: TaskSnapshotWriteReceipt;
+  publicationFailed?: boolean;
+  health?: ReturnType<typeof createExecutionHealthMonitor>;
+  taskId: string;
+  controller: AbortController;
+  phase: 'runner' | 'delivery' | 'settling';
+  delivery?: HostDeliveryAttempt;
+  deliveryShutdownRequested?: boolean;
+}
+
+interface PendingAssistantDelta {
+  delta: string;
+  eventId: string;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+interface TaskSource {
+  taskId: string;
+  marker?: TaskMultiAgentPreparation;
+}
+
+/** A receipt of this host's one write, never a replacement durable outbox. */
+interface MutationReceipt {
+  source: TaskSource;
+  snapshot: TaskSnapshot;
+  eventIndex: number;
+  events: DesktopTaskEvent[];
+  published: number;
+}
+
+type SettlementOutcome = { ok: true } | { ok: false; error: unknown };
+interface CancellationSettlement {
+  source: TaskSource;
+  readonly settlement: Promise<SettlementOutcome>;
+  settled: boolean;
+  receipt?: MutationReceipt;
+}
+
+interface AssistantDeltaFlush {
+  readonly promise: Promise<void>;
+  receipt?: MutationReceipt;
+}
+
+function captureTaskSource(snapshot: TaskSnapshot): TaskSource {
+  return { taskId: snapshot.taskId, ...(snapshot.multiAgentPreparation ? { marker: { ...snapshot.multiAgentPreparation } } : {}) };
+}
+
+function assertTaskSource(source: TaskSource, snapshot: TaskSnapshot): void {
+  const marker = snapshot.multiAgentPreparation;
+  if (source.taskId !== snapshot.taskId || Boolean(source.marker) !== Boolean(marker)
+    || source.marker && (!marker || source.marker.groupId !== marker.groupId || source.marker.rootEpoch !== marker.rootEpoch
+      || source.marker.rootTurnId !== marker.rootTurnId || source.marker.preparationId !== marker.preparationId || source.marker.bootId !== marker.bootId)) {
+    throw new Error('task_cancellation_source_changed');
+  }
+}
+
+const TERMINAL_STATUSES = new Set<TaskSnapshot['status']>(['completed', 'failed', 'cancelled']);
+const DEFAULT_CONTEXT_MAX_TASKS = 12;
+const DEFAULT_CONTEXT_MAX_USER_CHARS = 4000;
+const DEFAULT_CONTEXT_MAX_ASSISTANT_CHARS = 6000;
+const DEFAULT_CONTEXT_MAX_TOTAL_CHARS = 30000;
+const RUNNER_DEADLINE_RESERVE_MS = 2 * 60_000;
+const ASSISTANT_DELTA_FLUSH_MS = 50;
+const ASSISTANT_DELTA_MAX_BUFFER_CHARS = 16 * 1024;
+
+function abortWithReason(controller: AbortController, reason: string): void {
+  controller.abort(new Error(reason));
+}
+
+function normalizeAbortReason(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === 'string') return reason;
+  return 'aborted';
+}
+
+function normalizeUsageValue(value: number): number {
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function computeRunnerDeadlineMs(watchdogMs: number): number {
+  // A delivery reserve cannot consume virtually all of an explicit short
+  // budget. This never extends the host's original absolute watchdog deadline.
+  return watchdogMs - Math.min(RUNNER_DEADLINE_RESERVE_MS, watchdogMs / 2);
+}
+
+export interface BuildHistoryFromTaskSnapshotsOptions {
+  currentTaskId?: string;
+  maxTasks?: number;
+  maxUserChars?: number;
+  maxAssistantChars?: number;
+  maxTotalChars?: number;
+}
+
+export interface BuildHistoryFromTaskSnapshotsResult {
+  history: HistoryMessage[];
+  loadedTaskIds: string[];
+  skipped: TaskContextSkip[];
+}
+
+interface TaskHistoryPair {
+  taskId: string;
+  user: HistoryMessage;
+  assistant: HistoryMessage;
+}
+
+export function buildHistoryFromTaskSnapshots(
+  snapshots: TaskSnapshot[],
+  options: BuildHistoryFromTaskSnapshotsOptions = {},
+): BuildHistoryFromTaskSnapshotsResult {
+  const maxTasks = options.maxTasks ?? DEFAULT_CONTEXT_MAX_TASKS;
+  const maxUserChars = options.maxUserChars ?? DEFAULT_CONTEXT_MAX_USER_CHARS;
+  const maxAssistantChars = options.maxAssistantChars ?? DEFAULT_CONTEXT_MAX_ASSISTANT_CHARS;
+  const maxTotalChars = options.maxTotalChars ?? DEFAULT_CONTEXT_MAX_TOTAL_CHARS;
+  const skipped: TaskContextSkip[] = [];
+  const byTaskId = new Map<string, TaskSnapshot>();
+
+  for (const snapshot of snapshots) {
+    if (snapshot.protectedObservationClosure || snapshot.executionProtected) throw new Error('SOL_PI_PROTECTED_HISTORY_RESTORE_NOT_READY');
+    const taskId = typeof snapshot?.taskId === 'string' ? snapshot.taskId : '';
+    if (!taskId) {
+      skipped.push({ taskId: '', reason: 'invalid' });
+      continue;
+    }
+    if (options.currentTaskId && taskId === options.currentTaskId) {
+      skipped.push({ taskId, reason: 'self' });
+      continue;
+    }
+    if (!isValidContextSnapshot(snapshot)) {
+      skipped.push({ taskId, reason: 'invalid' });
+      continue;
+    }
+    if (!TERMINAL_STATUSES.has(snapshot.status)) {
+      skipped.push({ taskId, reason: 'non_terminal' });
+      continue;
+    }
+    byTaskId.set(taskId, snapshot);
+  }
+
+  const sorted = [...byTaskId.values()].sort((left, right) => {
+    const byCreatedAt = left.createdAt - right.createdAt;
+    return byCreatedAt !== 0 ? byCreatedAt : left.taskId.localeCompare(right.taskId);
+  });
+  const overTaskBudget = Math.max(0, sorted.length - Math.max(0, maxTasks));
+  for (const snapshot of sorted.slice(0, overTaskBudget)) {
+    skipped.push({ taskId: snapshot.taskId, reason: 'too_old' });
+  }
+
+  const pairs: TaskHistoryPair[] = sorted.slice(overTaskBudget).map((snapshot) => ({
+    taskId: snapshot.taskId,
+    user: { role: 'user', content: truncateContextText([snapshot.prompt,...snapshot.events.flatMap(event=>event.type==='question_resolved'&&event.answerText?[`User answer: ${event.answerText}`]:[])].join('\n'), maxUserChars) },
+    assistant: { role: 'assistant', content: truncateContextText(formatAssistantContext(snapshot), maxAssistantChars) },
+  }));
+
+  let totalChars = countHistoryChars(pairs);
+  while (pairs.length > 0 && totalChars > maxTotalChars) {
+    const dropped = pairs.shift()!;
+    skipped.push({ taskId: dropped.taskId, reason: 'too_old' });
+    totalChars = countHistoryChars(pairs);
+  }
+
+  return {
+    history: pairs.flatMap(pair => [pair.user, pair.assistant]),
+    loadedTaskIds: pairs.map(pair => pair.taskId),
+    skipped,
+  };
+}
+
+interface TaskSourceInvocation { readonly host: InProcessTaskRuntimeHost; readonly kind: 'ingress' | 'tail'; open: boolean }
+// Node 22 exposes ALS stores as own Promise symbols. Carry only an opaque
+// original token; Host/queue/lifecycle state remains in private membership.
+// No SDK scanner exception or caller-provided metadata is introduced.
+const taskSourceInvocation = new AsyncLocalStorage<object>();
+const taskSourceInvocationRows=new PreparationWeakMap<object,TaskSourceInvocation>();
+function currentTaskSourceInvocation():TaskSourceInvocation|undefined {
+ const token=taskSourceInvocation.getStore();return token?preparationHostApply(preparationHostGet,taskSourceInvocationRows,[token]) as TaskSourceInvocation|undefined:undefined;
+}
+
+export interface TaskSourceShutdownDrainedReceipt {readonly opaqueTaskSourceShutdownDrainedReceipt:never}
+export interface NativePersistedTaskEventReceipt {readonly opaqueNativePersistedTaskEventReceipt:never}
+interface NativePersistedEventFact {
+  host:InProcessTaskRuntimeHost;active:boolean;receipt:NativePersistedTaskEventReceipt;
+  taskId:string;eventIndex:number;event:DesktopTaskEvent;snapshot:TaskSnapshot;audit:unknown;
+}
+const nativePersistedEventFacts=new WeakMap<PersistedTaskEvent,NativePersistedEventFact>();
+// Only fields consumed by closed native audit are attested. This receipt is
+// never evidence for artifact publication, final text or a new execution.
+function nativePersistedAudit(input:PersistedTaskEvent):unknown {
+  const {taskId,sessionId,status,usage,context,executionScope,createdAt,updatedAt}=input.snapshot;
+  return {taskId,sessionId,status,usage,threadId:context?.threadId,executionScope,createdAt,updatedAt,event:input.event};
+}
+interface TaskSourceParticipant {
+  stopAccepting(reason:string):void;
+  abortAllActive(reason:string):void;
+  seal(): void;
+  drain(): Promise<readonly unknown[]>;
+}
+const taskSourceParticipants = new WeakMap<InProcessTaskRuntimeHost, TaskSourceParticipant>();
+const taskSourcePopulationClosers = new WeakMap<InProcessTaskRuntimeHost, () => Promise<void>>();
+
+async function finishTaskSourcePopulation(store:FileTaskSnapshotStore,participants:readonly TaskSourceParticipant[],initialErrors:readonly unknown[]=[],storeIO?:Readonly<OriginalPreparationStoreIO>):Promise<void> {
+  // Every original participant is invoked independently. A synchronous failure
+  // cannot skip a sibling's accepted SDK tail or the actual shared Store queue.
+  const results=await settleIntrinsicOperations(participants,participant=>participant.drain()),errors:unknown[]=[];
+  for(let i=0;i<initialErrors.length;i++)appendIntrinsic(errors,initialErrors[i]);
+  for(let i=0;i<results.length;i++){const result=results[i]!;
+    if(result.status==='rejected')appendIntrinsic(errors,result.reason);
+    else if(!Array.isArray(result.value)||preparationHostProxy(result.value))appendIntrinsic(errors,Error('task_source_drain_result_unconfirmed'));
+    else for(let j=0;j<result.value.length;j++)appendIntrinsic(errors,result.value[j]);
+  }
+  try{await (storeIO?storeIO.drain():store.closeAndDrain());}catch(error){appendIntrinsic(errors,error);}
+  if(errors.length){const failure=aggregateIntrinsicErrors(errors,'task_source_close_unconfirmed');preparationHostDefine(failure,'cause',{__proto__:null,value:errors[0]} as PropertyDescriptor);throw failure;}
+}
+
+/** Main-owned factory: membership is the actual constructed Host, never a ready report. */
+export function createTaskSourceWriterPopulation(store: FileTaskSnapshotStore) {
+  const participants = createIntrinsicSet<TaskSourceParticipant>();
+  const retirements = new WeakMap<InProcessTaskRuntimeHost, Promise<void>>();
+  const preparationIdentity=preparationHostFreeze(preparationHostCreate(null));
+  const preparationViews=new PreparationWeakMap<object,Readonly<OriginalTaskSourcePopulationPreparationBinding>>();
+  let closing: Promise<void> | undefined;
+  let sourceClosed=false;
+  let sourceStoreIO:Readonly<OriginalPreparationStoreIO>|undefined;
+  let unconfirmed = false;
+  const populationFailures:unknown[]=[];
+  let stopped = false;
+  let shutdownDrain:Promise<boolean>|undefined;
+  let shutdownReceipt:TaskSourceShutdownDrainedReceipt|undefined;
+  const stopAccepting=(reason='app_shutdown'):void=>{
+    stopped=true;
+    const original=participants.snapshot(),errors:unknown[]=[];
+    for(let i=0;i<original.length;i++){const participant=original[i]!;
+      try{participant.stopAccepting(reason);}catch(error){appendIntrinsic(errors,error);}
+      try{participant.seal();}catch(error){appendIntrinsic(errors,error);}
+    }
+    if(errors.length===1)throw errors[0];if(errors.length)throw aggregateIntrinsicErrors(errors,'task_source_population_stop_failed');
+  };
+  const drainShutdown=():Promise<boolean>=>{
+    if(shutdownDrain)return shutdownDrain;
+    let finish!:(result:boolean)=>void;
+    shutdownDrain=new Promise<boolean>(resolve=>finish=resolve);
+    try{stopAccepting();}catch(error){unconfirmed=true;appendIntrinsic(populationFailures,error);}
+    void settleIntrinsicOperations(participants.snapshot(),participant=>participant.drain()).then(async results=>{
+      if(closing){try{await closing;}catch{finish(false);return;}}
+      let failed=unconfirmed||(!!closing&&!sourceClosed);
+      for(let i=0;i<results.length;i++){
+        const result=results[i]!;
+        if(result.status==='rejected'){failed=true;appendIntrinsic(populationFailures,result.reason);}
+        else if(!Array.isArray(result.value)||preparationHostProxy(result.value)){failed=true;appendIntrinsic(populationFailures,Error('task_source_drain_result_unconfirmed'));}
+        else for(let j=0;j<result.value.length;j++){failed=true;appendIntrinsic(populationFailures,result.value[j]);}
+      }
+      if(failed){unconfirmed=true;finish(false);return;}
+      shutdownReceipt=Object.freeze({}) as TaskSourceShutdownDrainedReceipt;
+      finish(true);
+    },error=>{unconfirmed=true;appendIntrinsic(populationFailures,error);finish(false);});
+    return shutdownDrain;
+  };
+  const verifyNativeEvent=(input:PersistedTaskEvent,receipt?:NativePersistedTaskEventReceipt):NativePersistedEventFact=>{
+    const fact=nativePersistedEventFacts.get(input);
+    if(!fact || !fact.active || !participants.has(taskSourceParticipants.get(fact.host)!)
+      || receipt!==undefined && receipt!==fact.receipt
+      || input.taskId!==fact.taskId || input.eventIndex!==fact.eventIndex || input.event!==fact.event
+      || input.snapshot!==fact.snapshot || !isDeepStrictEqual(nativePersistedAudit(input),fact.audit))throw Error('task_persisted_event_unverified');
+    return fact;
+  };
+  const assertAccepting = (): void => {
+    if (closing || stopped) throw Error('task_source_population_closing');
+    if (unconfirmed) throw Error('task_source_population_unconfirmed');
+  };
+  const close = (): Promise<void> => {
+    if (closing) return closing;
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    closing = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    // Publish the one close Promise before synchronously sealing the population.
+    const original = participants.snapshot();
+    const errors:unknown[]=[];for(let i=0;i<populationFailures.length;i++)appendIntrinsic(errors,populationFailures[i]);for(let i=0;i<original.length;i++)try{original[i]!.seal();}catch(error){appendIntrinsic(errors,error);}
+    void finishTaskSourcePopulation(store,original,errors,sourceStoreIO).then(()=>{sourceClosed=true;resolve();},reject);
+    return closing;
+  };
+  const population=Object.freeze({
+    assertAccepting,
+    stopAccepting,
+    abortAllActive(reason='app_shutdown'):void {const rows=participants.snapshot();for(let i=0;i<rows.length;i++)rows[i]!.abortAllActive(reason);},
+    drainWithin(deadlineMs:number):Promise<boolean> {
+      if(!Number.isFinite(deadlineMs)||deadlineMs<=0)return Promise.resolve(false);
+      return new Promise<boolean>(resolve=>{
+        const timer=setTimeout(()=>resolve(false),deadlineMs);
+        void drainShutdown().then(result=>{clearTimeout(timer);resolve(result);},()=>{clearTimeout(timer);resolve(false);});
+      });
+    },
+    drainShutdown,
+    getShutdownDrainedReceipt():TaskSourceShutdownDrainedReceipt|undefined{return shutdownReceipt;},
+    assertShutdownDrainedReceipt(receipt:TaskSourceShutdownDrainedReceipt):void {
+      if(!shutdownReceipt || receipt!==shutdownReceipt)throw Error('task_source_shutdown_receipt_invalid');
+    },
+    async closeAfterShutdown(receipt:TaskSourceShutdownDrainedReceipt):Promise<void> {
+      if(!shutdownReceipt || receipt!==shutdownReceipt)throw Error('task_source_shutdown_receipt_invalid');
+      await close();
+    },
+    getNativePersistedEventReceipt(input:PersistedTaskEvent):NativePersistedTaskEventReceipt{return verifyNativeEvent(input).receipt;},
+    assertNativePersistedEvent(input:PersistedTaskEvent,receipt:NativePersistedTaskEventReceipt):void {
+      if(!receipt)throw Error('task_persisted_event_unverified');
+      verifyNativeEvent(input,receipt);
+    },
+    // Diagnostic count only; it is never a migration or physical-drain grant.
+    get retainedHostCount(): number { return participants.size; },
+    retireHost(host: InProcessTaskRuntimeHost): Promise<void> {
+      const existing = retirements.get(host);
+      if (existing) return existing;
+      const participant = taskSourceParticipants.get(host);
+      if (!participant || !participants.has(participant)) return Promise.reject(Error('task_source_population_member_required'));
+      let resolve!: () => void, reject!: (error: unknown) => void;
+      const retiring = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+      retirements.set(host, retiring);
+      taskSourcePopulationClosers.set(host, () => retiring);
+      const errors:unknown[]=[];
+      try{participant.seal();}catch(error){unconfirmed=true;appendIntrinsic(errors,error);appendIntrinsic(populationFailures,error);}
+      void settleIntrinsicOperations([participant],original=>original.drain()).then(results => {
+        const result=results[0]!;
+        if(result.status==='rejected')appendIntrinsic(errors,result.reason);
+        else if(!Array.isArray(result.value)||preparationHostProxy(result.value))appendIntrinsic(errors,Error('task_source_drain_result_unconfirmed'));
+        else for(let i=0;i<result.value.length;i++)appendIntrinsic(errors,result.value[i]);
+        if(errors.length){const failure=aggregateIntrinsicErrors(errors,'task_source_close_unconfirmed');preparationHostDefine(failure,'cause',{__proto__:null,value:errors[0]} as PropertyDescriptor);throw failure;}
+        participants.delete(participant);
+      }).then(resolve, error => { unconfirmed = true;appendIntrinsic(populationFailures,error);reject(error); });
+      return retiring;
+    },
+    createHost(options: Omit<InProcessTaskRuntimeHostOptions, 'snapshotStore'>): InProcessTaskRuntimeHost {
+      assertAccepting();
+      const host = new InProcessTaskRuntimeHost({ ...options, snapshotStore: store });
+      assertAccepting();
+      const participant = taskSourceParticipants.get(host)!;
+      preparationHostApply(preparationHostSet,hostResourcePopulations,[host,{store,identity:preparationIdentity,current:assertAccepting}]);
+      if(preparationHostApply(preparationHostGet,preparationHostBirths,[host])){const binding=readOriginalPreparationStoreBinding(store);sourceStoreIO=readOriginalPreparationStoreIO(store,binding.identity);}
+      participants.add(participant);
+      taskSourcePopulationClosers.set(host, close);
+      return host;
+    },
+    close,
+  });
+  preparationHostApply(preparationHostSet,preparationPopulationBirths,[population,(host:unknown,source:TaskDefaultDispatchPreparationSource)=>{
+    assertAccepting();
+    const participant=host&&typeof host==='object'?preparationHostApply(preparationHostGet,taskSourceParticipants,[host]) as TaskSourceParticipant|undefined:undefined;
+    if(!participant||!participants.has(participant)||preparationHostApply(preparationHostGet,taskSourcePopulationClosers,[host])!==close||preparationHostApply(preparationHostGet,retirements,[host]))throw Error('DEFAULT_DISPATCH_PREPARATION_POPULATION_MEMBER_REQUIRED');
+    const binding=readOriginalTaskHostPreparationBinding(host,source),originalStore=readOriginalPreparationStoreBinding(store);
+    if(binding.store!==store||binding.storeIdentity!==originalStore.identity)throw Error('DEFAULT_DISPATCH_PREPARATION_POPULATION_STORE_REQUIRED');
+    // A cached view never bypasses the current membership and Host checks.
+    let view=preparationHostApply(preparationHostGet,preparationViews,[host]) as Readonly<OriginalTaskSourcePopulationPreparationBinding>|undefined;
+    if(!view){view=preparationHostFreeze(preparationHostAssign(preparationHostCreate(null),{identity:preparationIdentity,hostIdentity:binding.identity,store,storeIdentity:binding.storeIdentity}));preparationHostApply(preparationHostSet,preparationViews,[host,view]);}
+    return view;
+  }]);
+  return population;
+}
+
+export class InProcessTaskRuntimeHost implements TaskRuntimeHost {
+  readonly #defaultDispatchStoreIO?:Readonly<OriginalPreparationStoreIO>;
+  // Legacy diagnostic reads remain data; Source state is never writable here.
+  private get sourceClosing():boolean{return this.#sourceClosing;}
+  private get sourceTailClosed():boolean{return this.#sourceTailClosed;}
+  private sealSourceIngress():void{this.#sealSourceIngress();}
+  private drainSourceParticipant():Promise<readonly unknown[]>{return this.#drainSourceParticipant();}
+  readonly #defaultDispatchPreparationClock?:{now:()=>number;receiver:unknown};
+  readonly #defaultDispatchPreparationIssuer?:ReturnType<typeof createTaskDefaultDispatchPreparationIssuer>;
+  #sourceClosing = false;
+  #sourceTailClosed = false;
+  #sourceClosePromise: Promise<void> | undefined;
+  #sourceDrainPromise: Promise<readonly unknown[]> | undefined;
+  readonly #sourceOperations = new Set<Promise<unknown>>();
+  readonly #sourceInvocations = new Set<TaskSourceInvocation>();
+  readonly #physicalExecutions=new Map<string,HostPhysicalExecution>();
+  readonly #physicalConsumerFates=new Map<string,Set<RoomTurnCustody>>();
+  readonly #sourceClosingInvocations = new Set<TaskSourceInvocation>();
+  readonly #sourceCloseFailures: unknown[] = [];
+  readonly #sourceClosingExecutions = new Map<string, { promise: Promise<void>; execution?: ActiveExecution }>();
+  private readonly questions = new NeedsUserQuestionCorrelator();
+  private readonly liveQuestionAnswers = new Map<string,{question:NeedsUserQuestion;execution:ActiveExecution;ready:boolean;signal:AbortSignal;validateAnswer?:(answer:string)=>void;resolve:(value:string)=>void;reject:(error:unknown)=>void}>();
+  private readonly subscribers = new Map<string, Set<LiveSubscription>>();
+  private readonly mutationChains = new Map<string, Promise<void>>();
+  private readonly cancellingTaskIds = new Set<string>();
+  private readonly cancellationPromises = new Map<Promise<void>, string>();
+  private readonly cancellationSettlements = new Map<string, CancellationSettlement>();
+  private readonly assistantDeltaFlushes = new Map<string, AssistantDeltaFlush>();
+  private readonly taskHistories = new Map<string, HistoryMessage[]>();
+  private readonly activeExecutions = new Map<string, ActiveExecution>();
+  private readonly executionPromises = new Map<string, Promise<void>>();
+  private readonly pendingExecutionAborts = new Map<string,string>();
+  private readonly staleRecoveryWrites = new Set<string>();
+  private readonly taskWatchdogs = new Map<string, number>();
+  private taskOrdinal = 0;
+  private readonly permissionModes = new Map<string, TaskPermissionMode>();
+  private readonly preparedSources=new Map<string,TaskPreparedSourceReceipt>();
+  private readonly maxToolLoopIterations = new Map<string, number>();
+  private readonly pendingAssistantDeltas = new Map<string, PendingAssistantDelta>();
+  private readonly runtimeEventErrors = new Map<string, unknown>();
+  private readonly persistedEventDispatchChains = new Map<string, Promise<void>>();
+  private readonly pendingTerminalPersistedEvents = new Map<string, PersistedTaskEvent>();
+  #stoppedAcceptingReason: string | null = null;
+  private readonly identityReservations = new WeakSet<TaskIdentityReservation>();
+  readonly #continuityInput:ContinuityInputSource;
+  readonly #continuityPreparing=new Set<string>();
+  private readonly admissionPromises = new Map<string, Promise<void>>();
+  private readonly deliveryVerifier = new DeliveryVerifier();
+  readonly #originalDeliveryVerifier=this.deliveryVerifier;
+  /** Failure fallback only. Successful delivery always rereads and verifies. */
+  private readonly lastCommittedSnapshots = new Map<string, TaskSnapshot>();
+  private multiAgentRecovery?: Promise<void>;
+  private readonly recoveryReadSignal = new AbortController().signal;
+
+  private readonly taskIdleTimeoutMs: number;
+  constructor(private readonly options: InProcessTaskRuntimeHostOptions) {
+    if(!options||typeof options!=='object'||preparationHostProxy(options))throw Error('DEFAULT_DISPATCH_PREPARATION_SOURCE_REQUIRED');
+    this.#continuityStore=options.snapshotStore;
+    const dispatchSource=preparationHostDescriptor(options,'defaultDispatchPreparationSource');
+    if(dispatchSource&&!preparationHostOwn(dispatchSource,'value'))throw Error('DEFAULT_DISPATCH_PREPARATION_SOURCE_REQUIRED');
+    let preparationStore:Readonly<OriginalPreparationStoreBinding>|undefined;
+    if(dispatchSource?.value){
+      const store=preparationHostDescriptor(options,'snapshotStore');if(!store||!preparationHostOwn(store,'value'))throw Error('DEFAULT_DISPATCH_PREPARATION_STORE_REQUIRED');preparationStore=readOriginalPreparationStoreBinding(store.value);
+      const clock=preparationHostDescriptor(options,'now');if(clock&&!preparationHostOwn(clock,'value'))throw Error('DEFAULT_DISPATCH_PREPARATION_SOURCE_REQUIRED');this.#defaultDispatchPreparationClock=preparationHostFreeze({now:clock?.value??Date.now,receiver:options});this.#defaultDispatchPreparationIssuer=createTaskDefaultDispatchPreparationIssuer(preparationStore.store,dispatchSource.value,work=>taskSourceInvocation.exit(work));
+    }
+    // External callbacks may create detached async work. Only Host's own
+    // continuation inherits its private accepted ingress, never these callers.
+    const isolated = { ...options };
+    for (const key of ['runner','completionGate','now','createTaskId','createSessionId','onPersistedEvent',
+      'acquireExecutionToken','getExecutionPolicy','authorizePreparation','assertTaskAdmission',
+      'decideCancellation','onDeliveryReport','authorizeDeliveryRecovery','onPreparedSnapshot','onWorkReleased','resolveOwnedHistory','assertHistoryRead','onHistoryLoaded'] as const) {
+      const callback = options[key];
+      if (callback) Object.defineProperty(isolated, key, { enumerable: true, configurable: false,
+        value: (...args: unknown[]) => taskSourceInvocation.exit(() => Reflect.apply(callback, options, args)) });
+    }
+    if (options.groupObservationSource) {
+      preparationHostApply(preparationHostSet,managedHostSources,[this,options.groupObservationSource]);
+      const source = options.groupObservationSource;
+      const inspect = source.inspectGroupObservationReference, commit = source.commitGroupObservationReference;
+      isolated.groupObservationSource = {
+        inspectGroupObservationReference: ticket => taskSourceInvocation.exit(() => inspect.call(source, ticket)),
+        commitGroupObservationReference: ticket => taskSourceInvocation.exit(() => commit.call(source, ticket)),
+      };
+    }
+    this.options = isolated;
+    this.#continuityInput=new ContinuityInputSource(options,isolated.snapshotStore,isolated.materialRegistry,
+      ()=>{if(this.#sourceClosing||this.#stoppedAcceptingReason)throw Error('input_owner_unavailable');},
+      (taskId,sessionId)=>{const reservation=Object.freeze({taskId,sessionId,reservationId:randomUUID()});this.identityReservations.add(reservation);return reservation;},
+      reservation=>this.identityReservations.has(reservation),
+      taskId=>this.executionPromises.has(taskId)||this.activeExecutions.has(taskId)||this.preparedSources.has(taskId)||this.admissionPromises.has(taskId)||this.#continuityPreparing.has(taskId),
+      (fn,args)=>taskSourceInvocation.exit(()=>Reflect.apply(fn,options,args)));
+    if(preparationStore){
+      this.#defaultDispatchStoreIO=readOriginalPreparationStoreIO(preparationStore.store,preparationStore.identity);
+      preparationHostDefine(isolated,'snapshotStore',{__proto__:null,value:preparationStore.store,writable:false,configurable:false} as PropertyDescriptor);
+      preparationHostDefine(this,'options',{__proto__:null,value:isolated,writable:false,configurable:false} as PropertyDescriptor);
+    }
+    // Identity is available only for a genuine original File Store; ordinary
+    // mock stores keep their previous Host ABI and acquire no identity port.
+    const identityStore=preparationHostDescriptor(isolated,'snapshotStore');
+    if(identityStore&&preparationHostOwn(identityStore,'value')){
+      let originalIdentityIO:Readonly<OriginalTaskStoreHostIdentityIO>|undefined;
+      try{originalIdentityIO=readOriginalTaskStoreHostIdentityIO(identityStore.value);}catch{}
+      if(originalIdentityIO){
+        const original=originalIdentityIO,store=identityStore.value;
+        const enter=(initialize:boolean)=>this.#runSourceOperation(async()=>{
+          const ownOptions=preparationHostDescriptor(this,'options'),ownStore=preparationHostDescriptor(isolated,'snapshotStore');
+          if(this.#stoppedAcceptingReason||this.#sourceClosing||!ownOptions||!preparationHostOwn(ownOptions,'value')||ownOptions.value!==isolated||!ownStore||!preparationHostOwn(ownStore,'value')||ownStore.value!==store)throw Error('TASK_HOST_IDENTITY_HOST_CLOSED');
+          return taskSourceInvocation.exit(()=>initialize?original.initialize():original.read());
+        });
+        const io:Readonly<OriginalTaskStoreHostIdentityIO>=preparationHostFreeze({__proto__:null,initialize:()=>enter(true) as ReturnType<OriginalTaskStoreHostIdentityIO['initialize']>,read:()=>enter(false)});
+        preparationHostApply(preparationHostSet,hostIdentityHosts,[this,{store,io}]);
+      }
+    }
+    this.taskIdleTimeoutMs = resolveExecutionIdleMs(options.taskIdleTimeoutMs === undefined ? process.env.KTEAM_TASK_IDLE_TIMEOUT_MS : String(options.taskIdleTimeoutMs));
+    taskSourceParticipants.set(this, { stopAccepting:reason=>preparationStore?this.#stopAccepting(reason):this.stopAccepting(reason), abortAllActive:reason=>this.abortAllActive(reason),
+      seal: () => preparationStore?this.#sealSourceIngress():this.sealSourceIngress(), drain: () => preparationStore?this.#drainSourceParticipant():this.drainSourceParticipant() });
+    if(preparationStore){
+      const original=preparationStore,source=dispatchSource!.value as TaskDefaultDispatchPreparationSource,view=preparationHostFreeze({__proto__:null,identity:preparationHostFreeze(preparationHostCreate(null)),store:original.store,storeIdentity:original.identity});
+      const assertLocal=()=>{if(this.#sourceClosing||this.#stoppedAcceptingReason||this.options!==isolated||this.options.snapshotStore!==original.store)throw Error('DEFAULT_DISPATCH_PREPARATION_HOST_REQUIRED');};
+      const io:Readonly<OriginalTaskHostPreparationIO>=preparationHostFreeze({__proto__:null,prepare:async(proof:unknown,requestSource:'user'|'agent'|'scheduler')=>{assertLocal();return this.#prepareDefaultDispatchTask(proof,requestSource);},observe:async(proof:unknown,requestSource:'user'|'agent'|'scheduler')=>{assertLocal();return this.#readDefaultDispatchPreparation(proof,requestSource);}});
+      preparationHostApply(preparationHostSet,preparationHostBirths,[this,{source,view,io,assertLocal}]);
+    }
+  }
+
+  /** Installed once by service.initialize, before its recovery microtask runs. */
+  bindMultiAgentRecovery(ready: Promise<void>): void {
+    if (this.multiAgentRecovery && this.multiAgentRecovery !== ready) throw new Error('multi_agent_recovery_already_bound');
+    this.multiAgentRecovery = ready;
+    void ready.catch(() => undefined);
+  }
+
+  /** No filesystem/index write and no runnable task until prepareTask commits. */
+  reserveTaskIdentity(): TaskIdentityReservation {
+    if (this.#stoppedAcceptingReason) throw new Error(`shutting_down: ${this.#stoppedAcceptingReason}`);
+    const reservation = Object.freeze({ taskId: this.options.createTaskId?.() ?? `task_${randomUUID()}`, reservationId: randomUUID(), sessionId:this.createSessionId() });
+    this.identityReservations.add(reservation);
+    return reservation;
+  }
+
+  /** Passive same-Host committed view; never an execution/physical permission. */
+  pendingWorkTaskIds():string[]{return [...new Set([...this.executionPromises.keys(),...this.activeExecutions.keys(),...this.cancellationPromises.values(),...this.admissionPromises.keys(),...this.#continuityPreparing])];}
+  readonly #continuitySnapshots=new Map<string,TaskSnapshot>();
+  #continuityStore:object|undefined;
+  static{originalContinuityCommitted=(host,store,id)=>{if(!host||typeof host!=='object'||!(#continuitySnapshots in host)||host.#continuityStore!==store)throw Error('TASK_HOST_ORIGINAL_COMMITTED_SOURCE_REQUIRED');const value=host.#continuitySnapshots.get(id);return value?structuredClone(value):null;};}
+  readContinuitySourceSnapshot(taskId:string):TaskSnapshot|null{
+    if(this.#sourceClosing)throw Error('input_owner_unavailable');const snapshot=this.#continuitySnapshots.get(taskId);return snapshot?structuredClone(snapshot):null;
+  }
+  assertCurrentInputExecution(taskId:string):void{
+    const snapshot=this.lastCommittedSnapshots.get(taskId),execution=this.activeExecutions.get(taskId);
+    if(!snapshot||!execution||execution.controller.signal.aborted||this.#stoppedAcceptingReason||this.#sourceClosing)throw Error('input_execution_snapshot_unavailable');
+    this.#continuityInput.admit(snapshot);
+  }
+  assertInputOwnerDependencies(store:FileTaskSnapshotStore,materials:MaterialRegistry):void{this.#continuityInput.assertDependencies(store,materials);}
+  bindPendingInputIdentity(id:string,reservation:TaskIdentityReservation):Promise<void>{return this.#runSourceOperation(()=>this.#continuityInput.bind(id,reservation));}
+  restorePendingInputIdentity(id:string):Promise<TaskIdentityReservation>{return this.#runSourceOperation(()=>this.#continuityInput.restore(id));}
+  consumeFailedInputPreparation(id:string,reservation:TaskIdentityReservation,revision:string,digest:string):void{this.#continuityInput.consumeFailed(id,reservation,revision,digest);}
+
+  async prepareTask(input: TaskCreateInput, preparation?: {
+    reservation: TaskIdentityReservation; marker: TaskMultiAgentPreparation;
+  }): Promise<{ taskId: string; understanding?: TaskUnderstanding }> {
+    return this.#runSourceOperation(() => this.prepareTaskSourceOwned(input, preparation));
+  }
+
+  private async prepareTaskSourceOwned(input: TaskCreateInput, preparation?: {
+    reservation: TaskIdentityReservation; marker: TaskMultiAgentPreparation;
+  }): Promise<{ taskId: string; understanding?: TaskUnderstanding }> {
+    const reservation=preparation?.reservation;let failed=true;
+    try{
+      this.#continuityInput.begin(reservation,input);
+      let marker:TaskMultiAgentPreparation|undefined;const taskId=reservation?.taskId??this.createTaskId();
+      if(preparation){
+        if(!this.identityReservations.has(preparation.reservation))throw Error('invalid or consumed task identity reservation');
+        if(!this.options.authorizePreparation)throw Error('multi_agent_preparation_not_supported');
+        marker={...preparation.marker};this.options.authorizePreparation(taskId,marker);this.identityReservations.delete(preparation.reservation);
+      }
+      const result=await this.prepareTaskSnapshot(input,taskId,marker,reservation);failed=false;return result;
+    }finally{this.#continuityInput.finish(reservation,failed);if(reservation&&this.#continuityInput.marker(reservation))this.identityReservations.delete(reservation);}
+  }
+
+  /** Prepare only. Durable child identity is independent of any gesture/parent.
+   * The runtime6 launch/permission/physical resource contract remains closed. */
+  async prepareDefaultDispatchTask(proof:unknown,requestSource:'user'|'agent'|'scheduler'):Promise<Awaited<ReturnType<FileTaskSnapshotStore['prepareDefaultDispatchSnapshot']>>> {return this.#prepareDefaultDispatchTask(proof,requestSource);}
+  async #prepareDefaultDispatchTask(proof:unknown,requestSource:'user'|'agent'|'scheduler'):Promise<Awaited<ReturnType<FileTaskSnapshotStore['prepareDefaultDispatchSnapshot']>>> {
+    return this.#runSourceOperation(async()=>{
+      const issuer=this.#defaultDispatchPreparationIssuer;if(!issuer)throw Error('DEFAULT_DISPATCH_PREPARATION_SOURCE_REQUIRED');
+      if(this.#stoppedAcceptingReason)throw Error('DEFAULT_DISPATCH_PREPARATION_HOST_REQUIRED');
+      const frame=issuer.open(proof,requestSource),input=frame.input;
+      if(this.options.authorizePreparation||input.executionScope)throw Error('DEFAULT_DISPATCH_PREPARATION_CAPABILITY_UNAVAILABLE');
+      const ticket=frame.issue(async()=>{
+        const materials=input.materials.map(item=>{
+          const value=frame.sdk(this.options.materialRegistry,'get',[item.materialId]) as MaterialRecord|undefined;
+          if(!value)throw Error(`unknown material: ${item.materialId}`);return item.role?{...value,role:item.role}:value;
+        });
+        const understanding=buildTaskUnderstanding({prompt:input.prompt,materials});
+        const context=await this.#resolveContextHistory(frame.marker.taskId,input.context),now=frame.sdk(this.#defaultDispatchPreparationClock!,'now',[],this.#defaultDispatchPreparationClock!.receiver);if(typeof now!=='number'||!Number.isSafeInteger(now)||now<0)throw Error('DEFAULT_DISPATCH_PREPARATION_CLOCK_INVALID');frame.assertCurrent();
+        const snapshot:TaskSnapshot={taskId:frame.marker.taskId,sessionId:frame.marker.sessionId,status:'understanding',prompt:input.prompt,
+          materials:materials.map(material=>frame.sdk(this.options.materialRegistry,'toView',[material]) as MaterialView),understanding,
+          events:[{type:'task_started',taskId:frame.marker.taskId},{type:'understanding_updated',understanding}],
+          ...(context.audit?{context:context.audit}:{}),usage:{inputTokens:0,outputTokens:0,known:false},createdAt:now,updatedAt:now};
+        frame.assertCurrent();return frame.capture(snapshot) as TaskSnapshot;
+      });
+      const result=await this.#recordSourcePersistence(()=>this.#defaultDispatchStoreIO!.prepare(ticket));
+      frame.assertCurrent();return result;
+    });
+  }
+
+  /** Observe an original preparation without builder, repair, execution or
+   * durable-write qualification. A null result is only this read cut. */
+  readDefaultDispatchPreparation(proof:unknown,requestSource:'user'|'agent'|'scheduler'):ReturnType<FileTaskSnapshotStore['readDefaultDispatchPreparation']> {return this.#readDefaultDispatchPreparation(proof,requestSource);}
+  #readDefaultDispatchPreparation(proof:unknown,requestSource:'user'|'agent'|'scheduler'):ReturnType<FileTaskSnapshotStore['readDefaultDispatchPreparation']> {
+    return this.#runSourceOperation(async()=>{
+      const issuer=this.#defaultDispatchPreparationIssuer;if(!issuer)throw Error('DEFAULT_DISPATCH_PREPARATION_SOURCE_REQUIRED');
+      if(this.#stoppedAcceptingReason)throw Error('DEFAULT_DISPATCH_PREPARATION_HOST_REQUIRED');
+      const frame=issuer.open(proof,requestSource,'observe'),ticket=frame.issueObservation();
+      const result=await taskSourceInvocation.exit(()=>this.#defaultDispatchStoreIO!.observe(ticket));
+      frame.assertCurrent();return result;
+    });
+  }
+
+  /** Main-only ordinary identity path; multiagent hosts must supply their real marker. */
+  async prepareReservedTask(input: TaskCreateInput, reservation: TaskIdentityReservation): Promise<{taskId:string;understanding?:TaskUnderstanding}> {
+    return this.#runSourceOperation(() => this.prepareReservedTaskSourceOwned(input, reservation));
+  }
+
+  private async prepareReservedTaskSourceOwned(input: TaskCreateInput, reservation: TaskIdentityReservation): Promise<{taskId:string;understanding?:TaskUnderstanding}> {
+    let failed=true;
+    try{this.#continuityInput.begin(reservation,input);const valid=this.identityReservations.has(reservation);this.identityReservations.delete(reservation);
+      if(!valid)throw Error('invalid or consumed task identity reservation');
+      if(this.#stoppedAcceptingReason)throw Error(`shutting_down: ${this.#stoppedAcceptingReason}`);
+      if(this.options.authorizePreparation||input.executionScope)throw Error('multi_agent_preparation_required');
+      const result=await this.prepareTaskSnapshot(input,reservation.taskId,undefined,reservation);failed=false;return result;
+    }finally{this.#continuityInput.finish(reservation,failed);}
+  }
+
+  assertTaskIdentityReservation(reservation: TaskIdentityReservation): void {
+    if(this.#stoppedAcceptingReason||!this.identityReservations.has(reservation))throw Error('invalid or consumed task identity reservation');
+  }
+
+  private async prepareTaskSnapshot(input:TaskCreateInput,taskId:string,marker?:TaskMultiAgentPreparation,reservation?:TaskIdentityReservation):Promise<{taskId:string;understanding?:TaskUnderstanding}> {
+    if(this.#continuityPreparing.has(taskId))throw Error('input_identity_conflict');this.#continuityPreparing.add(taskId);
+    try{
+    if (input.permissionMode) {
+      this.permissionModes.set(taskId, input.permissionMode);
+    }
+    if (input.watchdogMs !== undefined && Number.isFinite(input.watchdogMs) && input.watchdogMs > 0) {
+      this.taskWatchdogs.set(taskId, input.watchdogMs);
+    }
+    if (input.maxToolLoopIterations !== undefined && Number.isFinite(input.maxToolLoopIterations) && input.maxToolLoopIterations > 0) {
+      this.maxToolLoopIterations.set(taskId, input.maxToolLoopIterations);
+    }
+    const sessionId = reservation?.sessionId??this.createSessionId();
+    this.#continuityInput.assertPreparation(reservation,input);
+    const materials = input.materials.map((item) => {
+      const record = taskSourceInvocation.exit(() => this.options.materialRegistry.get(item.materialId));
+      if (!record) {
+        throw new Error(`unknown material: ${item.materialId}`);
+      }
+      return item.role ? { ...record, role: item.role } : record;
+    });
+    const understanding = buildTaskUnderstanding({ prompt: input.prompt, materials });
+    const contextHistory = await this.#resolveContextHistory(taskId, input.context);
+    this.#continuityInput.assertPreparation(reservation,input);
+    this.taskHistories.set(taskId, contextHistory.history);
+    const snapshot: TaskSnapshot = {
+      taskId,
+      sessionId,
+      status: 'understanding',
+      prompt: input.prompt,
+      materials: materials.map((material) => taskSourceInvocation.exit(() => this.options.materialRegistry.toView(material))),
+      understanding,
+      events: [],
+      context: contextHistory.audit,
+      executionScope: input.executionScope,
+      ...(marker ? { multiAgentPreparation: marker } : {}),
+      ...(this.#continuityInput.marker(reservation)?{inputPreparation:this.#continuityInput.marker(reservation)}:{}),
+      usage: { inputTokens: 0, outputTokens: 0, known: false },
+      createdAt: this.now(),
+      updatedAt: this.now(),
+    };
+
+    this.#continuityInput.writeEntered(reservation);
+    await this.saveSnapshot(snapshot);
+    this.#continuityInput.assertPreparation(reservation,input);
+    if(this.options.onPreparedSnapshot)await this.invokePhysicalConsumer(taskId,this.options.onPreparedSnapshot,this.options,[snapshot]);
+    await this.appendEvent(taskId, { type: 'task_started', taskId });
+    await this.appendEvent(taskId, { type: 'understanding_updated', understanding });
+    this.#continuityInput.assertPreparation(reservation,input);
+    const receipt=Object.freeze(Object.create(null)) as TaskPreparedSourceReceipt;
+    const fact:PreparedSourceFact={taskId,sessionId,prompt:snapshot.prompt,threadId:snapshot.context?.threadId,
+      permissionMode:this.permissionModes.get(taskId),executionScope:structuredClone(snapshot.executionScope)};
+    this.preparedSources.set(taskId,receipt);
+    preparedSourceReceipts.set(receipt,{fact,assertCurrent:()=>{
+      if(this.#stoppedAcceptingReason || this.preparedSources.get(taskId)!==receipt || this.executionPromises.has(taskId)
+        || this.activeExecutions.has(taskId) || this.permissionModes.get(taskId)!==fact.permissionMode)throw Error('task_prepared_source_receipt_stale');
+    }});
+    return { taskId, understanding };
+    }finally{this.#continuityPreparing.delete(taskId);}
+  }
+
+  getPreparedSourceReceipt(taskId:string):TaskPreparedSourceReceipt|undefined {
+    return this.preparedSources.get(taskId);
+  }
+
+  async startTask(taskId: string): Promise<void> {
+    return this.#runSourceOperation(() => this.startTaskSourceOwned(taskId));
+  }
+
+  private async startTaskSourceOwned(taskId: string): Promise<void> {
+    if(isOriginalChildPreparationTaskId(taskId))throw Error('DEFAULT_DISPATCH_EXECUTION_UNAVAILABLE');
+    // The duplicate guard runs inside startTrackedExecution, before its first
+    // await, so a concurrent duplicate loses deterministically instead of
+    // racing a snapshot read. This is a deliberate behaviour change (R27-02):
+    // concurrent duplicates now surface "already started" rather than a later
+    // snapshot/terminal error.
+    const tracked = this.startTrackedExecution(taskId);
+    await this.admissionPromises.get(taskId);
+    const snapshot = await this.requireSnapshot(taskId);
+    if (TERMINAL_STATUSES.has(snapshot.status)) {
+      throw new Error(`task is terminal: ${taskId}`);
+    }
+    void tracked;
+  }
+
+  /**
+   * The single production entry point that registers a background execution.
+   * Both `startTask()` and the confirm path of `answerQuestion()` go through
+   * here, so `drain()` observes a real map rather than a second counter.
+   */
+  private startTrackedExecution(taskId: string): Promise<void> {
+    this.preparedSources.delete(taskId);
+    if (this.staleRecoveryWrites.has(taskId)) throw new Error(`task recovery in progress: ${taskId}`);
+    if (this.executionPromises.has(taskId) || this.activeExecutions.has(taskId)) {
+      throw new Error(`task already started: ${taskId}`);
+    }
+    if (this.#stoppedAcceptingReason && !(this.#sourceClosing && this.#stoppedAcceptingReason === 'profile_migration' && this.#continuingSourceInvocation())) {
+      throw new Error(`shutting_down: ${this.#stoppedAcceptingReason}`);
+    }
+    const physical=this.beginPhysicalExecution(taskId);
+    const token = this.options.acquireExecutionToken?.(taskId) ?? null;
+    const admission = this.options.assertTaskAdmission
+      ? this.requireSnapshot(taskId).then(snapshot => {this.#continuityInput.admit(snapshot);return this.options.assertTaskAdmission!(snapshot);})
+      : this.requireSnapshot(taskId).then(snapshot=>{this.#continuityInput.admit(snapshot);});
+    this.admissionPromises.set(taskId, admission);
+    const execPromise = admission.then(() => this.executeTask(taskId)
+      .catch(error => { this.#sourceCloseFailures.push(error); }), () => { /* Original admission promise retains the policy rejection; no IO ran. */ })
+      .finally(() => this.finalizeExecution(taskId, () => {
+          this.executionPromises.delete(taskId);
+          this.admissionPromises.delete(taskId);
+          taskSourceInvocation.exit(() => token?.release());
+      }).catch(error => { this.#sourceCloseFailures.push(error); throw error; }))
+      .finally(()=>physical?this.finishPhysicalExecution(physical):undefined);
+    this.executionPromises.set(taskId, execPromise);
+    if (this.#sourceClosing && this.#continuingSourceInvocation())
+      this.#sourceClosingExecutions.set(taskId, { promise: execPromise, execution: this.activeExecutions.get(taskId) });
+    if(this.options.onWorkReleased){const notification=execPromise.then(()=>{if(this.#stoppedAcceptingReason||this.#sourceClosing)return;return this.#runSourceOperation(()=>this.invokePhysicalConsumer(taskId,this.options.onWorkReleased!,this.options,[taskId]));});void notification.catch(error=>{this.#sourceCloseFailures.push(error);});}
+    return execPromise;
+  }
+
+  private beginPhysicalExecution(taskId:string):HostPhysicalExecution|undefined {
+    const population=preparationHostApply(preparationHostGet,hostResourcePopulations,[this]) as {store:object}|undefined;if(!population)return;
+    let complete!:()=>void;const completion=new Promise<void>(yes=>{complete=yes;}),receipt=preparationHostFreeze(preparationHostCreate(null));
+    const row:HostPhysicalExecution={host:this,store:population.store,taskId,parentRef:readCurrentOriginalRootExecutionContext(),receipt,fates:[...(this.#physicalConsumerFates.get(taskId)??[])],finished:false,complete,completion};
+    this.#physicalExecutions.set(taskId,row);preparationHostApply(preparationHostSet,hostPhysicalExecutions,[this,this.#physicalExecutions]);preparationHostApply(preparationHostSet,hostPhysicalReceipts,[receipt,row]);return row;
+  }
+  private beginDeliveryWorker(taskId:string,snapshot:TaskSnapshot,options:DeliveryVerifierOptions):{ticket:object;seal():void}|undefined {
+    const population=preparationHostApply(preparationHostGet,hostResourcePopulations,[this]) as {store:object;identity:object}|undefined;
+    if(!population)return undefined;
+    const physical=this.#physicalExecutions.get(taskId);
+    if(!physical||physical.finished||physical.store!==population.store||snapshot.taskId!==taskId||this.deliveryVerifier!==this.#originalDeliveryVerifier)throw Error('TASK_HOST_DELIVERY_WORKER_CONTEXT_REQUIRED');
+    const ticket=preparationHostFreeze(preparationHostCreate(null));
+    // The original builder runs once. Neither the SDK nor a public verifier
+    // invocation may replace its request ID, snapshot or frame afterwards.
+    const deliveryRequest=buildDeliveryFactsV1(snapshot,randomUUID());
+    const initialFrameBase64=Buffer.from(encodeDeliveryFrame(deliveryRequest,DELIVERY_INPUT_LIMIT),'utf8').toString('base64');
+    const freezeData=(value:unknown):void=>{if(value&&typeof value==='object'){for(const key of Reflect.ownKeys(value)){const field=preparationHostDescriptor(value,key);if(!field||!preparationHostOwn(field,'value'))throw Error('TASK_HOST_DELIVERY_WORKER_REQUEST_REQUIRED');freezeData(field.value);}preparationHostFreeze(value);}};
+    freezeData(deliveryRequest);
+    let row!:DeliveryWorkerBirth;
+    const assertLocal=()=>{if(!row.active||physical.finished||this.#physicalExecutions.get(taskId)!==physical||this.deliveryVerifier!==row.verifier)throw Error('TASK_HOST_DELIVERY_WORKER_CLOSED');};
+    const assertCurrent=()=>{assertLocal();if(options.signal.aborted)throw options.signal.reason;if(!Number.isFinite(options.deadline)||performance.now()>=options.deadline)throw Error('delivery_timeout');assertLocal();};
+    const context=preparationHostFreeze({pOnly:true as const,executionClass:'snapshot_prep' as const,taskId,parentRef:physical.parentRef,assertCurrent,assertLocal});
+    const workerOptions=preparationHostFreeze({execArgv:preparationHostFreeze([]) as unknown as string[],stdout:true,stderr:true,resourceLimits:preparationHostFreeze({maxOldGenerationSizeMb:256,maxYoungGenerationSizeMb:32,stackSizeMb:4})});
+    const request=preparationHostFreeze({workerKind:'delivery_verifier' as const,entry:fileURLToPath(new URL('./delivery-verifier-worker.js',import.meta.url)),options:workerOptions,initialFrameBase64,deliveryRequest,assertCurrent,assertLocal});
+    row={host:this,store:population.store,populationId:population.identity,physical,verifier:this.#originalDeliveryVerifier,snapshot,options,active:true,context,request};
+    preparationHostApply(preparationHostSet,deliveryWorkerBirths,[ticket,row]);
+    return {ticket,seal(){row.active=false;}};
+  }
+  private async finishPhysicalExecution(row:HostPhysicalExecution):Promise<void> {
+    try{
+      const consumer=this.persistedEventDispatchChains.get(row.taskId);if(consumer)await consumer;
+      await joinTaskPhysicalFates(row.fates);
+      row.finalSnapshot=structuredClone(await this.requireSnapshot(row.taskId));row.sessionId=row.finalSnapshot.sessionId;
+      row.storeCut=readOriginalTaskStorePhysicalIO(row.store).capture();await row.storeCut.waitKnown();row.finished=true;
+    }catch(error){row.failure={error};this.#sourceCloseFailures.push(error);}finally{row.complete();}
+  }
+  private async invokePhysicalConsumer(taskId:string,fn:Function,receiver:unknown,args:unknown[]):Promise<unknown> {
+    const custody=createRoomTurnCustody();let active=this.#physicalConsumerFates.get(taskId);if(!active){active=new Set();this.#physicalConsumerFates.set(taskId,active);}active.add(custody);
+    const execution=this.#physicalExecutions.get(taskId);if(execution&&!execution.finished)execution.fates.push(custody);
+    try{return await invokeTaskPhysicalSdk(custody,fn,receiver,args);}finally{
+      try{custody.assertPhysicalKnown();active.delete(custody);if(!active.size)this.#physicalConsumerFates.delete(taskId);}catch{/* The original unknown custody stays owned. */}
+    }
+  }
+
+  #continuingSourceInvocation(): TaskSourceInvocation | undefined {
+    const scope = currentTaskSourceInvocation();
+    return scope?.host === this && scope.open && scope.kind === 'ingress'
+      && this.#sourceInvocations.has(scope) && this.#sourceClosingInvocations.has(scope) ? scope : undefined;
+  }
+
+  #runSourceOperation<T>(work: () => Promise<T>, tailTaskId?: string): Promise<T> {
+    if (this.#sourceClosing && !this.#continuingSourceInvocation()
+      && (tailTaskId === undefined || !this.#isOriginalSourceTail(tailTaskId)))
+      return Promise.reject(Error('task_source_closing'));
+    const inherited = currentTaskSourceInvocation();
+    const existing = inherited?.host === this && inherited.open && inherited.kind === 'ingress'
+      && this.#sourceInvocations.has(inherited) ? inherited : undefined;
+    const scope = existing ?? { host: this, kind: tailTaskId === undefined ? 'ingress' as const : 'tail' as const, open: true };
+    if (!existing) this.#sourceInvocations.add(scope);
+    let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void;
+    const run = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+    this.#sourceOperations.add(run);
+    const settled = () => {
+      this.#sourceOperations.delete(run);
+      if (!existing) { scope.open = false; this.#sourceInvocations.delete(scope); this.#sourceClosingInvocations.delete(scope); }
+    };
+    void run.then(settled, settled);
+    const token=preparationHostFreeze(preparationHostCreate(null));preparationHostApply(preparationHostSet,taskSourceInvocationRows,[token,scope]);
+    try { taskSourceInvocation.run(token, () => Promise.resolve(work()).then(resolve, reject)); }
+    catch (error) { reject(error); }
+    return run;
+  }
+
+  #isOriginalSourceTail(taskId: string): boolean {
+    if (this.#sourceTailClosed) return false;
+    const original = this.#sourceClosingExecutions.get(taskId);
+    const execution = this.activeExecutions.get(taskId);
+    if (!original || !execution || this.executionPromises.get(taskId) !== original.promise) return false;
+    // A previously admitted execution may install its actual object after close.
+    // Its original pending execution Promise is the fixed generation authority.
+    if (!original.execution) original.execution = execution;
+    return original.execution === execution;
+  }
+
+  /** Permanent metadata source close. Never a native-runtime or import receipt. */
+  closeSourceWriterForMigration(): Promise<void> {
+    const populationClose = taskSourcePopulationClosers.get(this);
+    if (populationClose) return populationClose();
+    if (this.#sourceClosePromise) return this.#sourceClosePromise;
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    this.#sourceClosePromise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    this.#sealSourceIngress();
+    void finishTaskSourcePopulation(this.options.snapshotStore,[taskSourceParticipants.get(this)!],[],this.#defaultDispatchStoreIO).then(resolve, reject);
+    return this.#sourceClosePromise;
+  }
+
+  #sealSourceIngress(): void {
+    if (this.#sourceClosing) return;
+    this.#sourceClosing = true;
+    this.#defaultDispatchPreparationIssuer?.seal();
+    if (!this.#stoppedAcceptingReason)this.#stopAccepting('profile_migration');
+    for (const scope of this.#sourceInvocations) if (scope.open && scope.kind === 'ingress') this.#sourceClosingInvocations.add(scope);
+    for (const [taskId, promise] of this.executionPromises)
+      this.#sourceClosingExecutions.set(taskId, { promise, execution: this.activeExecutions.get(taskId) });
+  }
+
+  #drainSourceParticipant(): Promise<readonly unknown[]> {
+    if (this.#sourceDrainPromise) return this.#sourceDrainPromise;
+    this.#sourceDrainPromise = (async () => {
+      for (;;) {
+        // These are actual registered consumer Promises, including callbacks
+        // queued before seal but not yet entered. They can write other original
+        // stores; closing this participant must not outlive their accepted tail.
+        // This does not grant callbacks a fresh source ingress after seal.
+        const pending = [...this.#sourceOperations, ...this.executionPromises.values(), ...this.cancellationPromises.keys(), ...this.persistedEventDispatchChains.values(),...[...this.#physicalExecutions.values()].filter(row=>!row.finished&&!row.failure).map(row=>row.completion)];
+        if (pending.length) { await Promise.allSettled(pending); continue; }
+        const chains = [...this.mutationChains];
+        if (chains.length) {
+          await Promise.allSettled(chains.map(([, chain]) => chain));
+          for (const [taskId, chain] of chains) if (this.mutationChains.get(taskId) === chain) this.mutationChains.delete(taskId);
+          continue;
+        }
+        this.#sourceCloseFailures.push(...await drainManagedHostGroups(this));
+        if(this.#defaultDispatchPreparationIssuer)try{await this.#defaultDispatchPreparationIssuer.drain();}catch(error){this.#sourceCloseFailures.push(error);}
+        // Each Host seals its tail; only the actual population closes the shared store.
+        this.#sourceTailClosed = true;
+        return [...this.#sourceCloseFailures];
+      }
+    })();
+    return this.#sourceDrainPromise;
+  }
+
+  /** Shutdown owner API (§5.5 phase ③). */
+  stopAccepting(reason = 'app_shutdown'): void {this.#stopAccepting(reason);}
+  #stopAccepting(reason:string):void {
+    this.#stoppedAcceptingReason = typeof reason==='string'&&reason.length?reason:'app_shutdown';
+    revokeManagedHostGroups(this,new Error(this.#stoppedAcceptingReason));
+  }
+
+  abortAllActive(reason = 'app_shutdown'): void {
+    for(const taskId of this.executionPromises.keys())this.pendingExecutionAborts.set(taskId,reason);
+    for (const execution of this.activeExecutions.values()) {
+      if (reason === 'app_shutdown') execution.deliveryShutdownRequested = true;
+      this.requestExecutionAbort(execution, reason);
+    }
+  }
+
+  async drain(): Promise<void> {
+    for(;;){
+      const physical=[...this.#physicalExecutions.values()].filter(row=>!row.finished&&!row.failure).map(row=>row.completion);
+      const pending=[...this.executionPromises.values(),...this.cancellationPromises.keys(),...physical];if(!pending.length)break;
+      await Promise.allSettled(pending);
+    }
+    const groupFailures=await drainManagedHostGroups(this);if(groupFailures.length)throw new AggregateError(groupFailures,'TASK_HOST_PHYSICAL_UNCONFIRMED',{cause:groupFailures[0]});
+    await this.#continuityInput.waitKnown();
+    for(const row of this.#physicalExecutions.values())if(row.failure)throw Error('TASK_HOST_PHYSICAL_UNCONFIRMED',{cause:row.failure.error});
+  }
+
+  activeExecutionCount(): number {
+    return this.executionPromises.size;
+  }
+
+  /** Main owner inspection, including admitted work before executeTask starts. */
+  inFlightTaskIds(): string[] {
+    return [...new Set([...this.executionPromises.keys(), ...this.activeExecutions.keys()])];
+  }
+
+  /** Main routing fact, including admitted work waiting for its execution lane. */
+  ownsLiveExecution(taskId: string): boolean {
+    return this.executionPromises.has(taskId) || this.activeExecutions.has(taskId);
+  }
+
+  async createTask(input: TaskCreateInput): Promise<{ taskId: string; understanding?: TaskUnderstanding }> {
+    return this.#runSourceOperation(() => this.createTaskSourceOwned(input));
+  }
+
+  private async createTaskSourceOwned(input: TaskCreateInput): Promise<{ taskId: string; understanding?: TaskUnderstanding }> {
+    const prepared = await this.prepareTask(input);
+    await this.startTask(prepared.taskId);
+    return prepared;
+  }
+
+  async *subscribeTask(taskId: string, options?: { sinceIndex?: number; signal?: AbortSignal }): AsyncIterable<DesktopTaskEvent> {
+    for await (const record of this.subscribeTaskRecords(taskId, { ...options, livePreviews: true })) yield record.event;
+  }
+
+  async *subscribeTaskRecords(taskId: string, options: { sinceIndex?: number; signal?: AbortSignal; livePreviews?: boolean } = {}): AsyncIterable<TaskEventRecord> {
+    const start = options.sinceIndex ?? 0;
+    if (!Number.isSafeInteger(start) || start < 0) throw new Error('invalid_task_event_cursor');
+    options.signal?.throwIfAborted();
+    const queue: TaskEventRecord[] = [];
+    let wake: (() => void) | undefined;
+    let closed = false;
+    let fault: Error | undefined;
+    let snapshot!: TaskSnapshot;
+    const subscription: LiveSubscription = {
+      livePreviews: options.livePreviews,
+      push(record) {
+        if (closed) return;
+        if (record.event.type === 'ui_preview') {
+          const incoming=record.event;
+          for (let i=queue.length-1;i>=0;i--) {
+            const queued=queue[i]!.event;
+            if (queued.type==='ui_preview' && (incoming.toolUseId==='all' || queued.toolUseId===incoming.toolUseId)) queue.splice(i,1);
+          }
+          let bytes=new TextEncoder().encode(incoming.preview?.content ?? '').length;
+          for (let i=queue.length-1;i>=0;i--) {
+            const queued=queue[i]!.event;
+            if (queued.type!=='ui_preview') continue;
+            const size=new TextEncoder().encode(queued.preview?.content ?? '').length;
+            if (bytes+size>2_000_000) queue.splice(i,1); else bytes+=size;
+          }
+          // Preview backpressure must never fault the durable task event stream.
+          if (queue.length>=1000) return;
+        }
+        if (queue.length >= 1024) {
+          fault = new Error('task_event_subscriber_backpressure');
+          closed = true;
+        } else queue.push(record);
+        wake?.(); wake = undefined;
+      },
+      close() { closed = true; wake?.(); wake = undefined; },
+    };
+    const abort = () => subscription.close();
+    try {
+      // Append and snapshot/live handoff share the same per-task linearization.
+      await this.enqueueMutation(taskId, async () => {
+        snapshot = await this.requireSnapshot(taskId);
+        if (start > snapshot.events.length) throw new Error('task_event_cursor_gap');
+        if (TERMINAL_STATUSES.has(snapshot.status)) closed = true;
+        else this.addSubscriber(taskId, subscription);
+      });
+      options.signal?.addEventListener('abort', abort, { once: true });
+      options.signal?.throwIfAborted();
+      let nextIndex = start;
+      for (; nextIndex < snapshot.events.length; nextIndex++) {
+        options.signal?.throwIfAborted();
+        yield { taskId, eventIndex: nextIndex, sourceDataEpoch: snapshot.sessionId, event: snapshot.events[nextIndex]! };
+      }
+      while (!closed || queue.length) {
+        options.signal?.throwIfAborted();
+        if (!queue.length) { await new Promise<void>(resolve => { wake = resolve; }); continue; }
+        const record = queue.shift()!;
+        if (record.event.type === 'ui_preview') { yield record; continue; }
+        if (record.eventIndex < nextIndex) continue;
+        if (record.eventIndex !== nextIndex) throw new Error('task_event_cursor_gap');
+        nextIndex++;
+        yield record;
+      }
+      options.signal?.throwIfAborted();
+      if (fault) throw fault;
+    } finally {
+      options.signal?.removeEventListener('abort', abort);
+      this.removeSubscriber(taskId, subscription);
+    }
+  }
+
+  async answerQuestion(input: { taskId: string; answer: UserAnswer }): Promise<void> {
+    return this.#runSourceOperation(() => this.answerQuestionSourceOwned(input));
+  }
+
+  private async askExecutionUser(taskId:string,execution:ActiveExecution,input:{prompt:string;choices?:Array<{id:string;label:string}>;validateAnswer?:(answer:string)=>void},outerSignal?:AbortSignal):Promise<string> {
+    const signal=outerSignal?AbortSignal.any([execution.controller.signal,outerSignal]):execution.controller.signal;
+    const current=()=>{if(this.activeExecutions.get(taskId)!==execution||execution.phase!=='runner')throw Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');signal.throwIfAborted();};
+    current();if(this.liveQuestionAnswers.has(taskId))throw Error('task_question_already_pending');
+    if(typeof input.prompt!=='string'||!input.prompt.trim()||input.prompt.length>2000||input.choices&&(input.choices.length>8||input.choices.some(c=>!c.id||c.id.length>80||!c.label||c.label.length>300)||new Set(input.choices.map(c=>c.id)).size!==input.choices.length))throw Error('task_question_invalid');
+    const question:NeedsUserQuestion={taskId,questionId:`question_${randomUUID()}`,kind:'freeform',prompt:input.prompt.trim(),...(input.choices?.length?{choices:input.choices.map(c=>({...c}))}:{})};
+    let resolve!:(value:string)=>void,reject!:(error:unknown)=>void;const answer=new Promise<string>((yes,no)=>{resolve=yes;reject=no;});void answer.catch(()=>{});
+    const pending={question,execution,ready:false,signal,validateAnswer:input.validateAnswer,resolve,reject};this.liveQuestionAnswers.set(taskId,pending);this.questions.publish(question);
+    const abort=()=>reject(Error('task_question_aborted'));signal.addEventListener('abort',abort,{once:true});execution.health?.wait(question.questionId);
+    try{await this.flushRuntimeEvents(taskId);current();await this.appendEvent(taskId,{type:'needs_user',question},{runtimeOrigin:true,execution});current();pending.ready=true;return await answer;}
+    finally{signal.removeEventListener('abort',abort);execution.health?.resume(question.questionId);if(this.liveQuestionAnswers.get(taskId)===pending)this.liveQuestionAnswers.delete(taskId);this.questions.clear(taskId,question.questionId);}
+  }
+
+  private async answerQuestionSourceOwned(input: { taskId: string; answer: UserAnswer }): Promise<void> {
+    if(isOriginalChildPreparationTaskId(input.taskId))throw Error('DEFAULT_DISPATCH_EXECUTION_UNAVAILABLE');
+    const pending=this.liveQuestionAnswers.get(input.taskId);
+    const admissionSnapshot=await this.requireSnapshot(input.taskId);this.#continuityInput.admit(admissionSnapshot);
+    if (this.options.assertTaskAdmission) {
+      const snapshot=admissionSnapshot;
+      if(pending)await this.options.assertTaskAdmission(snapshot,'live_answer');
+      else await this.options.assertTaskAdmission(snapshot);
+    }
+    const currentQuestion=this.questions.getCurrent(input.taskId);
+    if(currentQuestion?.kind==='freeform'&&!pending)throw Error('task_question_execution_not_live');
+    let value:string|undefined;
+    if(pending){
+      if(!pending.ready||this.activeExecutions.get(input.taskId)!==pending.execution||pending.signal.aborted||pending.question.questionId!==input.answer.questionId)throw Error('task_question_stale');
+      if(input.answer.type==='choice'){value=pending.question.choices?.find(c=>c.id===(input.answer as {choiceId:string}).choiceId)?.label;if(value===undefined)throw Error('task_question_invalid_choice');}
+      else if(input.answer.type==='text'&&input.answer.text.trim()&&input.answer.text.length<=12000)value=input.answer.text;
+      else throw Error('task_question_invalid_answer');
+      pending.validateAnswer?.(value!);
+      pending.ready=false;
+    }
+    const result = this.questions.answer(input.taskId, input.answer);
+    if (result.status === 'not_found') {
+      throw new Error(`question not found: ${input.answer.questionId}`);
+    }
+    if (result.status === 'stale') {
+      throw new Error(`stale question answer: ${input.answer.questionId}`);
+    }
+    if(pending){try{await this.appendEvent(input.taskId,{type:'question_resolved',questionId:pending.question.questionId,answerText:value!},{runtimeOrigin:true,execution:pending.execution});pending.signal.throwIfAborted();pending.resolve(value!);}catch(error){pending.reject(error);throw error;}return;}
+    if (
+      result.question.kind === 'confirm_understanding'
+      && input.answer.type === 'choice'
+      && input.answer.choiceId === 'confirm'
+    ) {
+      // Tracked so a confirm-triggered execution is visible to drain(); the
+      // external timing (await until this execution finishes) is preserved.
+      await this.startTrackedExecution(input.taskId);
+    }
+  }
+
+  cancelTask(taskId: string, reason = 'user_cancelled'): Promise<void> {
+    return this.#runSourceOperation(() => this.cancelTaskSourceOwned(taskId, reason));
+  }
+
+  private cancelTaskSourceOwned(taskId: string, reason = 'user_cancelled'): Promise<void> {
+    this.preparedSources.delete(taskId);
+    const existing = this.cancellationSettlements.get(taskId);
+    const joined = existing && !existing.settled ? existing : undefined;
+    const promise = Promise.resolve().then(() => this.cancelTaskOwned(taskId, reason, joined)).finally(() => {
+      this.cancellationPromises.delete(promise);
+      if (!this.executionPromises.has(taskId) && ![...this.cancellationPromises.values()].includes(taskId)) {
+        this.cancellationSettlements.delete(taskId);
+        this.cancellingTaskIds.delete(taskId);
+        this.assistantDeltaFlushes.delete(taskId);
+        this.runtimeEventErrors.delete(taskId);
+      }
+    });
+    this.cancellationPromises.set(promise, taskId);
+    return promise;
+  }
+
+  private async cancelTaskOwned(taskId: string, reason: string, joined?: CancellationSettlement): Promise<void> {
+    const snapshot = await this.requireSnapshot(taskId);
+    if(Object.hasOwn(snapshot,'originalChildPreparation'))throw Error('DEFAULT_DISPATCH_EXECUTION_UNAVAILABLE');
+    const source = captureTaskSource(snapshot);
+    if (TERMINAL_STATUSES.has(snapshot.status)) {
+      if (joined) {
+        assertTaskSource(joined.source, snapshot);
+        const outcome = await joined.settlement;
+        if (!outcome.ok) throw outcome.error;
+      }
+      await this.enqueueMutation(taskId, async () => {
+        const current = await this.requireSnapshot(taskId);
+        assertTaskSource(source, current);
+        await this.cleanupCancellationLocked(taskId, current);
+      });
+      return;
+    }
+    const decision = this.options.decideCancellation
+      ? await this.options.decideCancellation(snapshot, reason)
+      : undefined;
+    if (decision && !decision.hostAbortAllowed) return;
+    let record: CancellationSettlement | undefined;
+    let execution: ActiveExecution | undefined;
+    let settle: ((outcome: SettlementOutcome) => void) | undefined;
+    await this.enqueueMutation(taskId, async () => {
+      const current = await this.requireSnapshot(taskId);
+      assertTaskSource(source, current);
+      const existing = joined ?? this.cancellationSettlements.get(taskId);
+      if (existing && (!existing.settled || joined === existing)) {
+        assertTaskSource(existing.source, current);
+        record = existing;
+        return;
+      }
+      if (TERMINAL_STATUSES.has(current.status)) {
+        await this.cleanupCancellationLocked(taskId, current);
+        return;
+      }
+      const settlement = new Promise<SettlementOutcome>(resolve => { settle = resolve; });
+      record = { source, settlement, settled: false };
+      this.cancellationSettlements.set(taskId, record);
+      this.cancellingTaskIds.add(taskId);
+      execution = this.activeExecutions.get(taskId);
+    });
+    if (!record) return;
+    if (settle) {
+      let failure: { error: unknown } | undefined;
+      try {
+        if (execution && this.activeExecutions.get(taskId) === execution) abortWithReason(execution.controller, reason);
+        try { await this.flushRuntimeEvents(taskId); } catch (error) { failure = { error }; }
+        await this.enqueueMutation(taskId, async () => {
+          const current = await this.requireSnapshot(taskId);
+          assertTaskSource(source, current);
+          if (!TERMINAL_STATUSES.has(current.status)) {
+            const failed = failure !== undefined;
+            const salvage: SalvageSummary = failed
+              ? { summary: ['Cancellation could not flush the original runtime output.'], reason: 'cancellation_flush_failed' }
+              : { summary: ['任务已取消，可基于已识别的任务理解继续。'], reason: 'cancelled' };
+            const status = failed ? 'failed' : 'cancelled';
+            const events: DesktopTaskEvent[] = [failed ? { type: 'error', message: 'cancellation_flush_failed' } : { type: 'salvage', salvage },
+              { type: 'task_terminal', status }];
+            const next: TaskSnapshot = { ...current, status, salvage, events: [...current.events, ...events], updatedAt: this.now() };
+            const receipt: MutationReceipt = { source, snapshot: next, eventIndex: current.events.length, events, published: 0 };
+            record!.receipt = receipt;
+            let committed: TaskSnapshot | undefined;
+            try { await this.saveSnapshot(next, current); committed = next; }
+            catch (error) { failure ??= { error }; }
+            try { committed = await this.confirmReceiptLocked(receipt, committed); }
+            catch (error) { failure ??= { error }; }
+            if (committed) {
+              try { await this.cleanupCancellationLocked(taskId, committed); }
+              catch (error) { failure ??= { error }; }
+              // The original terminal map now owns the only deferred snapshot.
+              // Followers need the outcome, not another entire task history.
+              record!.receipt = undefined;
+            } else this.closeSubscribers(taskId);
+          } else await this.cleanupCancellationLocked(taskId, current);
+        });
+      } catch (error) { failure ??= { error }; }
+      finally { record.settled = true; settle(failure ? { ok: false, error: failure.error } : { ok: true }); }
+    }
+    const outcome = await record.settlement;
+    if (!outcome.ok) throw outcome.error;
+    if (decision?.ack === 'unknown') throw new Error('multi_agent_cancellation_persistence_failed');
+  }
+
+  /** Only original FileStore facts can confirm a save which rejected. Its cache
+   * is committed only after append; an append rejection invalidates that cache. */
+  private async confirmReceiptLocked(receipt: MutationReceipt, committed?: TaskSnapshot): Promise<TaskSnapshot | undefined> {
+    const current = committed ?? await this.requireSnapshot(receipt.source.taskId);
+    assertTaskSource(receipt.source, current);
+    const end = receipt.eventIndex + receipt.events.length;
+    if (current.events.length < end) return undefined; // incomplete append, not a new write permission
+    if (!isDeepStrictEqual(current.events.slice(0, end), receipt.snapshot.events.slice(0, end))) {
+      throw new Error('task_cancellation_receipt_conflict');
+    }
+    if (receipt.events.some(event => event.type === 'task_terminal')
+      && (current.status !== receipt.snapshot.status || !isDeepStrictEqual(current.salvage, receipt.snapshot.salvage))) {
+      throw new Error('task_cancellation_receipt_conflict');
+    }
+    while (receipt.published < receipt.events.length) {
+      const eventIndex = receipt.eventIndex + receipt.published;
+      const event = current.events[eventIndex];
+      const persisted = { taskId: current.taskId, eventIndex, event, snapshot: current };
+      if (event.type === 'task_terminal') this.retainTerminalReceipt(persisted);
+      else this.schedulePersistedEvent(persisted);
+      this.pushLiveEvent(current.taskId, event, eventIndex, current.sessionId);
+      receipt.published++;
+    }
+    return current;
+  }
+
+  private retainTerminalReceipt(input: PersistedTaskEvent): void {
+    const existing = this.pendingTerminalPersistedEvents.get(input.taskId);
+    if (existing) {
+      if (existing.eventIndex !== input.eventIndex || !isDeepStrictEqual(existing.event, input.event)) {
+        throw new Error('task_terminal_receipt_conflict');
+      }
+      assertTaskSource(captureTaskSource(existing.snapshot), input.snapshot);
+    }
+    this.pendingTerminalPersistedEvents.set(input.taskId, input);
+  }
+
+  /** Called under the original writer queue. There is no await between the
+   * final fact validation, replacement and the unique terminal map take. */
+  private handoffTerminalLocked(taskId: string, current: TaskSnapshot): void {
+    const pending = this.pendingTerminalPersistedEvents.get(taskId);
+    if (!pending) return;
+    assertTaskSource(captureTaskSource(pending.snapshot), current);
+    if (current.status !== pending.snapshot.status
+      || !isDeepStrictEqual(current.events.slice(0, pending.eventIndex + 1), pending.snapshot.events.slice(0, pending.eventIndex + 1))) {
+      throw new Error('task_terminal_receipt_conflict');
+    }
+    this.pendingTerminalPersistedEvents.set(taskId, { ...pending, snapshot: current });
+    this.flushPendingTerminalPersistedEvent(taskId);
+  }
+
+  private async cleanupCancellationLocked(taskId: string, current: TaskSnapshot): Promise<void> {
+    if (!TERMINAL_STATUSES.has(current.status)) return;
+    try { await this.clearSourceActiveTask(taskId); }
+    finally {
+      this.closeSubscribers(taskId);
+      // This caller's original IO is settled; it never waits its own Promise.
+      // Admission/runner still present instead leave the receipt to outer finally.
+      if (!this.executionPromises.has(taskId)) this.handoffTerminalLocked(taskId, current);
+    }
+  }
+
+  private async finalizeExecution(taskId: string, release: () => void): Promise<void> {
+    const finalExecution = this.activeExecutions.get(taskId);
+    const pendingCancellations = () => [...this.cancellationPromises].filter(([, id]) => id === taskId).map(([promise]) => promise);
+    try {
+      while (true) {
+        const pending = pendingCancellations();
+        if (pending.length) { await Promise.allSettled(pending); continue; }
+        // Wait the batch actually dispatched by the timer, not a caught queue
+        // tail or a second flush. Never-settling SDK IO keeps the owner resident.
+        const batch = this.assistantDeltaFlushes.get(taskId);
+        if (batch) await Promise.allSettled([batch.promise]);
+        try {
+          await this.enqueueMutation(taskId, async () => {
+            if (pendingCancellations().length) return;
+            const cancellation = this.cancellationSettlements.get(taskId);
+            let current: TaskSnapshot | undefined;
+            if (cancellation?.receipt && cancellation.receipt.published < cancellation.receipt.events.length) {
+              current = await this.confirmReceiptLocked(cancellation.receipt);
+            }
+            if (this.pendingTerminalPersistedEvents.has(taskId)) {
+              if (cancellation) {
+                current ??= await this.requireSnapshot(taskId);
+                if (pendingCancellations().length) return;
+                this.handoffTerminalLocked(taskId, current);
+              } else this.flushPendingTerminalPersistedEvent(taskId);
+            }
+          });
+        } catch (error) {
+          // A missing final fact is unknown, not permission to publish an old
+          // zero-cost snapshot as current. This observation has truly settled.
+          if (finalExecution) finalExecution.publicationFailed = true;
+          this.#sourceCloseFailures.push(error);
+          this.pendingTerminalPersistedEvents.delete(taskId);
+          console.warn('[task-host] cancellation finalization unconfirmed:', error instanceof Error ? error.message : String(error));
+        }
+        // An explicit stop can enter during a real read. Recheck before the
+        // synchronous physical release, not only before that read began.
+        if (!pendingCancellations().length) {
+          if (finalExecution?.publication && !finalExecution.publicationFailed) {
+            let confirmed = false;
+            await this.enqueueMutation(taskId, async () => {
+              if (pendingCancellations().length) return;
+              const publication = finalExecution.publication!, write = finalExecution.publicationWrite;
+              if (this.activeExecutions.get(taskId) !== finalExecution || !write) throw Error('task_host_final_write_unknown');
+              const facts = getCompoundFinalPublicationBinding(publication.ticket);
+              const persisted = getTaskSnapshotWriteReceipt(write, this.options.snapshotStore);
+              if (persisted.taskId !== taskId || !TERMINAL_STATUSES.has(persisted.status)) throw Error('task_host_final_write_unknown');
+              const canonical = await this.options.snapshotStore.observations.loadSessionSnapshot(publication.canonicalTaskId);
+              if (pendingCancellations().length) return;
+              if (this.activeExecutions.get(taskId) !== finalExecution || finalExecution.publication !== publication || finalExecution.publicationWrite !== write
+                || (finalExecution.publicationCanonicalTaskId ?? taskId) !== publication.canonicalTaskId
+                || !canonical || canonical.sessionId !== facts.sessionId || computeSessionHistoryDigest(canonical) !== facts.historyDigest
+                || computeSessionHistoryDigest(facts.session.exportSnapshot()) !== facts.historyDigest) throw Error('task_host_final_history_changed');
+              const receipt = Object.freeze({}) as TaskHostCompoundFinalPublicationReceipt;
+              finalPublicationReceipts.set(receipt, Object.freeze({ ticket: publication.ticket, taskId,
+                sessionId: facts.sessionId, turnId: facts.turnId, historyDigest: facts.historyDigest,
+                snapshotRevision: persisted.sequence, snapshotDigest: persisted.snapshotDigest }));
+              await taskSourceInvocation.exit(() => this.invokePhysicalConsumer(taskId,publication.notify,publication,[receipt]));
+              confirmed = true;
+            }).catch(error => { this.#sourceCloseFailures.push(error); finalExecution.publicationFailed = true; console.warn('[task-host] final publication unconfirmed:', error instanceof Error ? error.message : String(error)); confirmed = true; });
+            if (!confirmed) continue;
+          }
+          break;
+        }
+      }
+    } finally {
+      this.taskHistories.delete(taskId);
+      this.permissionModes.delete(taskId);
+      this.preparedSources.delete(taskId);
+      this.taskWatchdogs.delete(taskId);
+      this.maxToolLoopIterations.delete(taskId);
+      this.activeExecutions.delete(taskId);
+      this.pendingExecutionAborts.delete(taskId);
+      this.cancellingTaskIds.delete(taskId);
+      this.clearPendingAssistantDelta(taskId);
+      this.assistantDeltaFlushes.delete(taskId);
+      this.runtimeEventErrors.delete(taskId);
+      this.lastCommittedSnapshots.delete(taskId);
+      this.cancellationSettlements.delete(taskId);
+      this.pendingTerminalPersistedEvents.delete(taskId);
+      this.closeSubscribers(taskId);
+      release();
+    }
+  }
+
+  async getActiveTasks(): Promise<{ taskId: string }[]> {
+    return this.#runSourceOperation(() => this.getActiveTasksSourceOwned());
+  }
+
+  private async getActiveTasksSourceOwned(): Promise<{ taskId: string }[]> {
+    const refs = await this.inspectActiveTasks();
+    const activeRefs: { taskId: string }[] = [];
+    for (const ref of refs) {
+      let snapshot = await this.inspectTask(ref.taskId);
+      if (snapshot && Object.hasOwn(snapshot, 'multiAgentPreparation')) {
+        await this.waitForMultiAgentRecovery();
+        snapshot = await this.inspectTask(ref.taskId);
+      }
+      if (!snapshot || TERMINAL_STATUSES.has(snapshot.status)) {
+        await this.clearSourceActiveTask(ref.taskId);
+        continue;
+      }
+      activeRefs.push(ref);
+    }
+    return activeRefs;
+  }
+
+  async getActiveTask(): Promise<{ taskId: string } | null> {
+    const tasks = await this.getActiveTasks();
+    return tasks[0] ?? null;
+  }
+
+  async recoverTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return this.#runSourceOperation(() => this.recoverTaskSourceOwned(taskId));
+  }
+
+  private async recoverTaskSourceOwned(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    let current = await this.requireSnapshot(taskId);
+    if(Object.hasOwn(current,'originalChildPreparation'))return {snapshot:current};
+    if (Object.hasOwn(current, 'multiAgentPreparation')) {
+      await this.waitForMultiAgentRecovery();
+      current = await this.requireSnapshot(taskId);
+    }
+    const snapshot = await this.recoverStaleRunningTask(current);
+    this.rehydrateWaitingQuestion(snapshot);
+    return { snapshot };
+  }
+
+  /** Read-only startup inspection; unlike recoverTask, this never changes status. */
+  inspectTask(taskId: string, options?: { trackPending(raw: Promise<unknown>): void }): Promise<TaskSnapshot | null> {
+    const raw = this.options.snapshotStore.recoverTask(taskId, options
+      ? { signal: this.recoveryReadSignal, trackPending: options.trackPending } : undefined);
+    options?.trackPending(raw);
+    return raw;
+  }
+
+  /** Startup uses this read-only index access; public reads must not await
+   * themselves through service.initialize or clear index entries prematurely. */
+  inspectActiveTasks(): Promise<{ taskId: string }[]> {
+    return this.options.snapshotStore.getActiveTasks();
+  }
+
+  private async waitForMultiAgentRecovery(): Promise<void> {
+    if (!this.multiAgentRecovery) throw new Error('multi_agent_recovery_not_bound');
+    await this.multiAgentRecovery;
+  }
+
+  async abandonMultiAgentPreparation(input: {
+    requestSource: 'user' | 'agent' | 'scheduler'; taskId: string; expectedMarker: TaskMultiAgentPreparation;
+    delivery?: { authority: HostDeliveryRecoveryAuthority; record: HostDeliveryRecord };
+    /** Main recovery owner records original IO, never an outward abort waiter. */
+    trackPending?: (raw: Promise<unknown>) => void;
+  }): Promise<void> {
+    return this.#runSourceOperation(() => this.abandonMultiAgentPreparationSourceOwned(input));
+  }
+
+  private async abandonMultiAgentPreparationSourceOwned(input: {
+    requestSource: 'user' | 'agent' | 'scheduler'; taskId: string; expectedMarker: TaskMultiAgentPreparation;
+    delivery?: { authority: HostDeliveryRecoveryAuthority; record: HostDeliveryRecord };
+    /** Main recovery owner records original IO, never an outward abort waiter. */
+    trackPending?: (raw: Promise<unknown>) => void;
+  }): Promise<void> {
+    if (input.requestSource !== 'scheduler') throw new Error('preparation recovery source is not permitted');
+    const taskId = input.taskId;
+    const expectedMarker = { ...input.expectedMarker };
+    const trackPending = input.trackPending;
+    const recovery = input.delivery ? { authority: input.delivery.authority, record: structuredClone(input.delivery.record) } : undefined;
+    const track = <T>(raw: Promise<T>): Promise<T> => { trackPending?.(raw); return raw; };
+    const load = async (): Promise<TaskSnapshot> => {
+      if (!trackPending && !recovery) return this.requireSnapshot(taskId);
+      const snapshot = await this.inspectTask(taskId, { trackPending: track });
+      if (!snapshot) throw new Error(`task not found: ${taskId}`);
+      return snapshot;
+    };
+    const authorize = (snapshot: TaskSnapshot): void => {
+      if (!recovery) return;
+      if (!this.options.authorizeDeliveryRecovery) throw new Error('host_delivery_recovery_not_supported');
+      this.options.authorizeDeliveryRecovery({ authority: recovery.authority, taskId,
+        snapshot, delivery: recovery.record });
+    };
+    if (recovery) authorize(await load());
+    let persisted: PersistedTaskEvent | undefined;
+    await track(this.enqueueMutation(taskId, async () => {
+      const snapshot = await load();
+      authorize(snapshot);
+      const marker = snapshot.multiAgentPreparation;
+      if (!marker || (['groupId', 'rootEpoch', 'rootTurnId', 'preparationId', 'bootId'] as const)
+        .some(key => marker[key] !== expectedMarker[key])) throw new Error('preparation recovery marker mismatch');
+      if (this.executionPromises.has(taskId) || this.activeExecutions.has(taskId)) throw new Error('cannot recover a live execution');
+      if (TERMINAL_STATUSES.has(snapshot.status)) return;
+      if (recovery && !Number.isSafeInteger(recovery.record.revision + 1)) throw new Error('host_delivery_recovery_revision_overflow');
+      const event: DesktopTaskEvent = { type: 'task_terminal', status: 'failed' };
+      const reason = recovery ? 'recovery_unconfirmed' : 'multi_agent_prepare_interrupted';
+      const hostDelivery: HostDeliveryRecord | undefined = recovery ? {
+        ...recovery.record, revision: recovery.record.revision + 1,
+        status: 'unknown', stage: 'settle', hostSettlement: 'committed', hostTerminalStatus: 'failed',
+        guardFailure: { code: 'recovery_unconfirmed', stage: 'settle', needsExplicitFollowup: true },
+        finishedAt: this.now(), readerCleanup: recovery.record.readerCleanup === 'none' ? 'none' : 'settled',
+        storeCleanup: 'settled',
+      } : undefined;
+      const next: TaskSnapshot = { ...snapshot, status: 'failed', updatedAt: this.now(),
+        salvage: { summary: [reason], reason },
+        events: [...snapshot.events, { type: 'error', message: reason }, event],
+        ...(hostDelivery ? { hostDelivery } : {}),
+      };
+      // All construction above is synchronous. This is the final authority
+      // boundary immediately before the sole recovery mutation is dispatched.
+      authorize(snapshot);
+      await track(this.saveSnapshot(next, snapshot));
+      persisted = { taskId, eventIndex: next.events.length - 1, event, snapshot: next };
+      for (let index = snapshot.events.length; index < next.events.length; index++) this.pushLiveEvent(taskId, next.events[index]!, index, next.sessionId);
+    }));
+    await track(this.clearSourceActiveTask(taskId));
+    this.closeSubscribers(taskId);
+    if (persisted) this.schedulePersistedEvent(persisted);
+  }
+
+  isExecutingForTest(taskId: string): boolean {
+    return this.activeExecutions.has(taskId);
+  }
+
+  private async invokeOriginalRunner(execution:ActiveExecution,snapshot:TaskSnapshot,input:TaskRunnerInput):Promise<void> {
+    const population=preparationHostApply(preparationHostGet,hostResourcePopulations,[this]) as {store:object;identity:object;current():void}|undefined;
+    // Legacy isolated Host tests retain their ABI but obtain no original Main
+    // resource context. Activated Native composition requires a genuine one.
+    if(!population){
+      // No original Population membership is ever upgraded by this record. Keep
+      // the existing isolated Host return/adoption timing exactly unchanged.
+      preparationHostApply(preparationHostSet,managedRunnerInputs,[input,{host:this,store:this.options.snapshotStore,source:preparationHostApply(preparationHostGet,managedHostSources,[this]),context:null,current:()=>{if(this.#sourceClosing||this.#stoppedAcceptingReason||this.activeExecutions.get(snapshot.taskId)!==execution||execution.phase!=='runner'||execution.controller.signal.aborted)throw Error('TASK_RUNNER_RESOURCE_CONTEXT_CLOSED');},groupCurrent:()=>{if(this.#sourceClosing||this.#stoppedAcceptingReason)throw Error('TASK_MANAGED_GROUP_CLOSED');}}]);
+      return this.options.runner(input);
+    }
+    let active=true;
+    const local=()=>{
+      if(!active||this.#sourceClosing||this.#stoppedAcceptingReason||this.activeExecutions.get(snapshot.taskId)!==execution||execution.phase!=='runner'||execution.controller.signal.aborted||this.cancellingTaskIds.has(snapshot.taskId))throw Error('TASK_RUNNER_RESOURCE_CONTEXT_CLOSED');
+    };
+    const context=preparationHostFreeze(preparationHostCreate(null));
+    const view:OriginalTaskRunnerResourceContext=preparationHostFreeze({kind:'original_task_runner_resource_context_v1',taskId:snapshot.taskId,sessionId:snapshot.sessionId,executionClass:snapshot.executionScope?.kind==='goal_turn'?'goal_turn':snapshot.executionScope?.kind==='artifact_workspace_generation'?'canvas_turn':'main_turn',populationId:population.identity,...(readCurrentOriginalRootExecutionContext()===null?{}:{parentRef:readCurrentOriginalRootExecutionContext()!}),assertCurrent:local,assertLocal:local});
+    const custody=createRoomTurnCustody(),fates=this.#physicalExecutions.get(snapshot.taskId)?.fates??[];fates.push(custody);
+    local();preparationHostApply(preparationHostSet,taskRunnerResources,[context,{host:this,store:population.store,view,fates}]);
+    preparationHostApply(preparationHostSet,managedRunnerInputs,[input,{host:this,store:population.store,source:preparationHostApply(preparationHostGet,managedHostSources,[this]),context,view,current:local,groupCurrent:()=>{if(this.#sourceClosing||this.#stoppedAcceptingReason)throw Error('TASK_MANAGED_GROUP_CLOSED');population.current();}}]);
+    try{await taskRunnerResourceScope.run(context,()=>invokeTaskPhysicalSdk<void>(custody,this.options.runner,this.options,[input],fates));}finally{active=false;}
+  }
+  private async executeTask(taskId: string): Promise<void> {
+    const snapshot = await this.requireSnapshot(taskId);
+    const pendingAbort=this.pendingExecutionAborts.get(taskId);
+    if(pendingAbort!==undefined){await this.cancelTaskSourceOwned(taskId,pendingAbort);return;}
+    if (snapshot.protectedObservationClosure || snapshot.executionProtected) throw new Error('SOL_PI_PROTECTED_HISTORY_RESTORE_NOT_READY');
+    if (!snapshot.understanding) {
+      throw new Error(`task has no understanding: ${taskId}`);
+    }
+    const policy = this.options.getExecutionPolicy?.(snapshot);
+
+    const materials = snapshot.materials.map((material) => {
+      const record = taskSourceInvocation.exit(() => this.options.materialRegistry.get(material.materialId));
+      if (!record) {
+        throw new Error(`unknown material: ${material.materialId}`);
+      }
+      return record;
+    });
+    const controller = new AbortController();
+    const taskHistory = this.taskHistories.get(taskId) ?? [];
+    const execution: ActiveExecution = { taskId, controller, phase: 'runner' };
+    let started = false;
+    await this.enqueueMutation(taskId, async () => {
+      const current = await this.requireSnapshot(taskId);
+      assertTaskSource(captureTaskSource(snapshot), current);
+      if (TERMINAL_STATUSES.has(current.status) || this.cancellationSettlements.has(taskId)) return;
+      this.activeExecutions.set(taskId, execution);
+      const event: DesktopTaskEvent = { type: 'task_execution_started', taskId };
+      const next: TaskSnapshot = { ...current, status: 'running', events: [...current.events, event], updatedAt: this.now() };
+      await this.saveSnapshot(next, current);
+      this.pushLiveEvent(taskId, event, next.events.length - 1, next.sessionId);
+      this.schedulePersistedEvent({ taskId, eventIndex: next.events.length - 1, event, snapshot: next });
+      started = true;
+    });
+    if (!started) return;
+
+    execution.health = createExecutionHealthMonitor({
+      idleMs: this.taskIdleTimeoutMs,
+      onStalled: () => {if (this.activeExecutions.get(taskId) === execution) this.requestExecutionAbort(execution, 'task_idle_timeout');},
+      onState: state => {
+        if (this.activeExecutions.get(taskId) !== execution) return;
+        // Health is a later observation, never a shortcut around an already
+        // buffered model event and its checkpoint/publication receipt.
+        void this.flushPendingAssistantDelta(taskId)
+          .then(()=>this.activeExecutions.get(taskId)===execution
+            ? this.appendEvent(taskId, {type:'execution_health',state}, {runtimeOrigin:true}) : undefined)
+          .catch(error => this.runtimeEventErrors.set(taskId,error));
+      },
+    });
+    const onHealthAbort = () => execution.health?.cancel();
+    controller.signal.addEventListener('abort', onHealthAbort, {once:true});
+    const configuredWatchdog = this.taskWatchdogs.get(taskId) ?? this.options.taskWatchdogMs;
+    const watchdogMs = configuredWatchdog !== undefined && Number.isFinite(configuredWatchdog) && configuredWatchdog > 0
+      ? configuredWatchdog : undefined;
+    const deadlineMs = watchdogMs === undefined ? undefined : computeRunnerDeadlineMs(watchdogMs);
+    // Runtime duration is unlimited unless explicitly bounded. Delivery is a
+    // separate finite I/O transaction, begun only after that runner returns.
+    let deliveryDeadline = watchdogMs === undefined ? undefined : performance.now() + watchdogMs;
+    let watchdogStartedAt = this.now();
+    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+    const onWatchdog = () => {
+      const execution = this.activeExecutions.get(taskId);
+      if (execution?.controller !== controller) return;
+      // Ordinary runner timing stays unchanged. Once sealed, both watchdog
+      // and verifier honor the same absolute monotonic delivery deadline.
+      if (deliveryDeadline !== undefined) {
+        const remaining = deliveryDeadline - performance.now();
+        if (remaining > 0) {
+          watchdogTimer = setTimeout(onWatchdog, Math.min(2 ** 31 - 1, Math.max(1, Math.ceil(remaining))));
+          return;
+        }
+      }
+      this.requestExecutionAbort(execution, 'task_watchdog_timeout');
+    };
+    if (watchdogMs !== undefined) watchdogTimer = setTimeout(onWatchdog, Math.min(2 ** 31 - 1, watchdogMs));
+
+    try {
+      const lateAbort=this.pendingExecutionAborts.get(taskId);
+      if(lateAbort!==undefined && !controller.signal.aborted)this.requestExecutionAbort(execution,lateAbort);
+      if (this.activeExecutions.get(taskId) !== execution || this.cancellingTaskIds.has(taskId)) return;
+      controller.signal.throwIfAborted();
+      await this.invokeOriginalRunner(execution,snapshot,{
+        taskId,
+        sessionId: snapshot.sessionId,
+        prompt: snapshot.prompt,
+        materials,
+        understanding: snapshot.understanding,
+        signal: controller.signal,
+        deadlineMs,
+        history: [...taskHistory],
+        registerCompoundFinalPublication: (ticket, notify) => this.registerCompoundFinalPublication(taskId, execution, ticket, notify),
+        persistObservationSnapshot: observed => this.persistObservationSnapshot(taskId, execution, observed),
+        executionPersistence: this.options.snapshotStore.observations.getExecutionPersistence(taskId, () => {
+          if (this.activeExecutions.get(taskId) !== execution || execution.phase !== 'runner' || controller.signal.aborted || this.cancellingTaskIds.has(taskId)) throw Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');
+        }, {
+          run: work => this.#runSourceOperation(work, taskId),
+          write: (work, confirmed) => this.#recordSourcePersistence(work, confirmed),
+        }),
+        permissionMode: this.permissionModes.get(taskId),
+        maxToolLoopIterations: this.maxToolLoopIterations.get(taskId),
+        executionScope: snapshot.executionScope,
+        emitRuntimeEvent: (event) => this.activeExecutions.get(taskId) === execution ? this.appendRuntimeEvent(taskId, event) : Promise.resolve(),
+        emitUsage: (usage) => this.appendUsage(taskId, execution, usage),
+        askUser: (input,signal) => this.askExecutionUser(taskId,execution,input,signal),
+      });
+      controller.signal.throwIfAborted();
+      if (policy?.deliveryRepair === 'explicit' && snapshot.multiAgentPreparation
+        && !controller.signal.aborted && !this.cancellingTaskIds.has(taskId)) {
+        const deliveryBudget = watchdogMs ?? RUNNER_DEADLINE_RESERVE_MS;
+        if (deliveryDeadline === undefined) {
+          watchdogStartedAt = this.now();
+          deliveryDeadline = performance.now() + deliveryBudget;
+          watchdogTimer = setTimeout(onWatchdog, deliveryBudget);
+        }
+        await this.finishExplicitDelivery(execution, snapshot, deliveryDeadline, watchdogStartedAt, deliveryBudget);
+        return;
+      }
+      if (this.cancellingTaskIds.has(taskId)) return;
+      await this.flushRuntimeEvents(taskId);
+      const latest = await this.requireSnapshot(taskId);
+      if (latest.status !== 'cancelled' && !this.cancellingTaskIds.has(taskId)) {
+        // Layer 3: Deliverable Gate — check if all requested deliverables were produced
+        // A sealed multi-agent root cannot be reentered by a model-backed gate
+        // or an implicit repair turn. Its built-in evidence check still runs.
+        const gatePass = await runDeliverableGate(latest,
+          policy?.deliveryRepair === 'explicit' || latest.protectedObservationClosure || latest.executionProtected ? undefined : this.options.completionGate, controller.signal);
+        if (!gatePass && !this.cancellingTaskIds.has(taskId)) {
+          if (latest.protectedObservationClosure || latest.executionProtected) throw new Error('SOL_PI_PROTECTED_HISTORY_RESTORE_NOT_READY');
+          if (policy?.deliveryRepair === 'explicit') throw new Error('needs_explicit_followup');
+          // Retry once with a resume prompt
+          await this.invokeOriginalRunner(execution,snapshot,{
+            taskId,
+            sessionId: snapshot.sessionId,
+            prompt: '你之前的执行遗漏了部分交付物。请回顾用户原始请求，继续完成所有尚未生成的产物。',
+            materials: [],
+            understanding: snapshot.understanding,
+            signal: controller.signal,
+            deadlineMs,
+            history: [...taskHistory],
+            permissionMode: this.permissionModes.get(taskId),
+            maxToolLoopIterations: this.maxToolLoopIterations.get(taskId),
+            executionScope: snapshot.executionScope,
+            emitRuntimeEvent: (event) => this.activeExecutions.get(taskId) === execution ? this.appendRuntimeEvent(taskId, event) : Promise.resolve(),
+            emitUsage: (usage) => this.appendUsage(taskId, execution, usage),
+          });
+          await this.flushRuntimeEvents(taskId);
+        }
+        const guardedLatest = await this.requireSnapshot(taskId);
+        if (!await this.applyArtifactEvidenceGuard(taskId, guardedLatest, execution)) {
+          await this.clearSourceActiveTask(taskId);
+          this.closeSubscribers(taskId);
+          return;
+        }
+        if (this.isEmptyDelivery(guardedLatest)) {
+          await this.appendEvent(taskId, {
+            type: 'progress',
+            eventId: `${taskId}:degraded`,
+            message: '任务完成但未产出实质内容，已标记为降级交付。',
+            stage: 'warning',
+          }, { runtimeOrigin: true });
+          const currentResult = guardedLatest.result ?? { summary: '', artifacts: [] };
+          await this.updateSnapshot(taskId, { result: { ...currentResult, degraded: true } }, execution);
+        }
+        await this.updateSnapshot(taskId, { status: 'completed' }, execution);
+        await this.clearSourceActiveTask(taskId);
+        this.closeSubscribers(taskId);
+      }
+    } catch (error) {
+      // Delivery has one settlement owner. Never reenter the runner catch's
+      // flush/write sequence after a post-seal error or partially committed save.
+      if (execution.delivery) throw error;
+      if (this.cancellingTaskIds.has(taskId)) return;
+      let executionError: unknown = error;
+      try {
+        await this.flushRuntimeEvents(taskId);
+      } catch (flushError) {
+        executionError = flushError;
+      }
+      if (this.cancellingTaskIds.has(taskId)) {
+        return;
+      }
+      const message = controller.signal.aborted
+        ? normalizeAbortReason(controller.signal.reason)
+        : executionError instanceof Error
+          ? executionError.message
+          : String(executionError);
+      const salvage: SalvageSummary = {
+        summary: [
+          snapshot.understanding ? '已保留任务理解' : '已保留任务输入',
+          `已保留 ${snapshot.materials.length} 个材料引用`,
+        ],
+        reason: message,
+      };
+      await this.appendEvent(taskId, { type: 'error', message,
+        ...(isModelTextRepetitionError(executionError)
+          ? { retryable: false, code: 'MODEL_TEXT_REPETITION_DETECTED' as const } : {}),
+      }, { runtimeOrigin: true });
+      await this.updateSnapshot(taskId, { status: 'failed', salvage }, execution);
+      await this.clearSourceActiveTask(taskId);
+      this.closeSubscribers(taskId);
+      // The original business error is now durable. Only an unsuccessful
+      // failure write/cleanup escapes to the source-close uncertainty latch.
+      return;
+    } finally {
+      clearTimeout(watchdogTimer);
+      execution.health?.dispose();
+      controller.signal.removeEventListener('abort', onHealthAbort);
+    }
+  }
+
+  private async finishExplicitDelivery(execution: ActiveExecution, initial: TaskSnapshot,
+    deadline: number, startedAt: number, watchdogMs: number): Promise<void> {
+    const taskId = execution.taskId;
+    const delivery = new HostDeliveryAttempt({ sourceTaskId: taskId, ...initial.multiAgentPreparation! },
+      deadline, startedAt, startedAt + watchdogMs, () => this.now(), this.options.onDeliveryReport);
+    execution.delivery = delivery;
+    execution.health?.dispose();
+    execution.phase = 'delivery';
+    // Buffer timers belong to the runner. Do not let a previously scheduled
+    // delta flush cross the durable checking handoff ahead of its ACK.
+    const buffered = this.pendingAssistantDeltas.get(taskId);
+    if (buffered?.timer) { clearTimeout(buffered.timer); buffered.timer = null; }
+    let verified: DeliveryVerificationResult | undefined;
+    let guardMessage: string | undefined;
+    let validationStarted = false;
+    try {
+      await delivery.begin();
+      if (execution.deliveryShutdownRequested) delivery.abort('app_shutdown');
+      delivery.assertActive();
+      validationStarted = true;
+      delivery.record = { ...delivery.record, storeCleanup: 'pending' };
+      await delivery.wait(this.flushRuntimeEvents(taskId));
+      delivery.record = { ...delivery.record, stage: 'snapshot' };
+      await delivery.wait(this.requireSnapshot(taskId));
+      const latest = await delivery.wait(this.requireSnapshot(taskId));
+      delivery.assertActive();
+      delivery.record = { ...delivery.record, stage: 'verify' };
+      const verifierOptions:DeliveryVerifierOptions={
+        signal: delivery.controller.signal, deadline, trackPending: raw => {
+          delivery.readerStarted = true;
+          delivery.record = { ...delivery.record, readerCleanup: 'pending' };
+          delivery.track(raw);
+        },
+        artifactEvidence: this.options.aheGuards?.artifactEvidence === true,
+      };
+      const workerBirth=this.beginDeliveryWorker(taskId,latest,verifierOptions);
+      try{verified=await delivery.wait(verifyOriginalTaskHostDelivery(this.#originalDeliveryVerifier,latest,verifierOptions,workerBirth?.ticket));}
+      finally{workerBirth?.seal();}
+      // verify only resolves after the actual Worker exit and file checks; its
+      // separate physical receipt remains owned through every exceptional path.
+      delivery.assertActive();
+      if (!verified.planComplete) delivery.fail('deliverables_incomplete');
+      else if (verified.guard && !verified.guard.ok) {
+        guardMessage = verified.guard.reason;
+        delivery.fail('artifact_evidence_failed');
+      } else delivery.pass();
+    } catch (error) {
+      if (delivery.record.verification === 'pending') {
+        const code = error instanceof Error ? error.message : '';
+        const verifierCodes: GuardFailure['code'][] = ['delivery_timeout', 'app_shutdown', 'verifier_start_failed',
+          'verifier_crashed', 'verifier_protocol_error', 'verifier_internal_error', 'verifier_capacity', 'validation_limit'];
+        delivery.fail(verifierCodes.includes(code as GuardFailure['code']) ? code as GuardFailure['code']
+          : delivery.record.stage === 'snapshot' ? 'snapshot_read_failed'
+            : delivery.record.stage === 'verify' ? 'verifier_internal_error' : 'snapshot_write_failed');
+      }
+      delivery.unknown();
+    }
+    execution.phase = 'settling';
+    delivery.record = { ...delivery.record, stage: 'settle' };
+    try {
+      // No second writer is dispatched while a timed-out flush/read/Worker or
+      // opaque reporting call still owns its physical operation.
+      await delivery.drain();
+      await this.settleExplicitDelivery(taskId, initial, delivery, validationStarted, verified?.emptyDelivery === true, guardMessage);
+    } catch {
+      // A failed persistence receipt is not a verifier decision and cannot
+      // reverse a terminal that the original writer may already have committed.
+      const alreadyUnknown = delivery.record.status === 'unknown';
+      if (!delivery.record.guardFailure) delivery.record = { ...delivery.record,
+        guardFailure: { code: 'snapshot_write_failed', stage: 'settle', needsExplicitFollowup: true } };
+      delivery.unknown();
+      if (alreadyUnknown) delivery.publish();
+    } finally {
+      await delivery.drain();
+      if (delivery.record.status === 'unknown' && (delivery.record.storeCleanup === 'pending'
+        || delivery.record.readerCleanup === 'pending')) {
+        // Rejection is a physical settlement too. Keep persistence unknown,
+        // but do not leave a false cleanup lock once every original IO exited.
+        // This is one observation, not another snapshot writer or verifier.
+        delivery.record = { ...delivery.record, stage: 'cleanup', storeCleanup: 'settled',
+          readerCleanup: delivery.readerStarted ? 'settled' : 'none' };
+        delivery.publish();
+        await delivery.drain();
+      }
+    }
+  }
+
+  private async settleExplicitDelivery(taskId: string, initial: TaskSnapshot, delivery: HostDeliveryAttempt,
+    validationStarted: boolean, emptyDelivery: boolean, guardMessage?: string): Promise<void> {
+    const passed = delivery.record.verification === 'passed';
+    const status = passed ? 'completed' : 'failed';
+    let persisted: PersistedTaskEvent | undefined;
+    await delivery.track(this.enqueueMutation(taskId, async () => {
+      // Before the checking ACK there is no permission for a delivery read.
+      // The last actual commit is used only to preserve the failure identity.
+      const snapshot = validationStarted ? await this.requireSnapshot(taskId)
+        : this.lastCommittedSnapshots.get(taskId) ?? initial;
+      if (TERMINAL_STATUSES.has(snapshot.status)) return;
+      let events = [...snapshot.events];
+      let result = snapshot.result;
+      let salvage = snapshot.salvage;
+      if (passed && emptyDelivery) {
+        events.push({ type: 'progress', eventId: `${taskId}:degraded`,
+          message: '任务完成但未产出实质内容，已标记为降级交付。', stage: 'warning' });
+        result = { ...(result ?? { summary: '', artifacts: [] }), degraded: true };
+      } else if (!passed) {
+        if (delivery.record.guardFailure?.code === 'artifact_evidence_failed') {
+          events.push({ type: 'progress', eventId: `${taskId}:guard:artifact-evidence`,
+            message: guardMessage ?? 'artifact_evidence_failed', stage: 'blocked' });
+          salvage = { summary: ['Completion evidence guard blocked task completion.'], reason: guardMessage ?? 'artifact_evidence_failed' };
+        } else {
+          salvage = { summary: [initial.understanding ? '已保留任务理解' : '已保留任务输入',
+            `已保留 ${initial.materials.length} 个材料引用`], reason: 'needs_explicit_followup' };
+        }
+        events.push({ type: 'error', message: guardMessage ?? 'needs_explicit_followup' });
+      }
+      const terminal: DesktopTaskEvent = { type: 'task_terminal', status };
+      events.push(terminal);
+      const committed = (finishedAt = this.now()): HostDeliveryRecord => {
+        // Reserve the candidate's number before dispatching its writer. A
+        // concurrent timeout observation must not reuse that same revision for
+        // a different payload while the journal is already durably visible.
+        delivery.record = { ...delivery.record, revision: delivery.record.revision + 1 };
+        return { ...delivery.record, status: passed ? 'passed' : 'failed', stage: 'settle', hostSettlement: 'committed',
+          hostTerminalStatus: status, finishedAt,
+          readerCleanup: delivery.readerStarted ? 'settled' : 'none', storeCleanup: 'settled' };
+      };
+      let candidate = committed();
+      let next: TaskSnapshot = { ...snapshot, status, result, salvage, events, updatedAt: this.now(),
+        ...(delivery.acknowledged ? { hostDelivery: candidate } : {}) };
+      let repairIndex = false;
+      try {
+        await this.saveSnapshot(next, snapshot);
+      } catch (error) {
+        // save() has physically exited. Journal commit can precede checkpoint
+        // or index failure, so read that original aggregate before compensating.
+        if (!delivery.acknowledged) throw error;
+        repairIndex = true;
+        delivery.unknown();
+        const actual = await this.requireSnapshot(taskId);
+        if (TERMINAL_STATUSES.has(actual.status)) {
+          if (actual.status !== status || !actual.hostDelivery
+            || actual.hostDelivery.verification !== delivery.record.verification) throw error;
+          next = actual;
+        } else {
+          // One registered compensation, in this same mutation queue; it never
+          // reruns the verifier or flushes buffered output a second time.
+          candidate = committed();
+          next = { ...actual, status, result, salvage, events: [...actual.events,
+            ...events.slice(snapshot.events.length)], updatedAt: this.now(), hostDelivery: candidate };
+          await this.saveSnapshot(next, actual);
+        }
+      }
+      // save() already owns the successful terminal/index transition. Only a
+      // rejected original receipt needs this one bounded index compensation.
+      if (repairIndex) await delivery.track(this.clearSourceActiveTask(taskId));
+      if (delivery.acknowledged) {
+        // A deadline may have published unknown while the original save/index
+        // was pending. Reconcile its higher observation revision without ever
+        // appending a second terminal or changing the won verification.
+        if (!next.hostDelivery || next.hostDelivery.revision < delivery.record.revision) {
+          candidate = committed(next.hostDelivery?.finishedAt);
+          const revised = { ...next, hostDelivery: candidate, updatedAt: this.now() };
+          await this.saveSnapshot(revised, next);
+          next = revised;
+        }
+        delivery.record = next.hostDelivery!;
+      }
+      this.lastCommittedSnapshots.set(taskId, next);
+      persisted = { taskId, eventIndex: next.events.length - 1, event: terminal, snapshot: next };
+      for (let index = snapshot.events.length; index < next.events.length; index++) this.pushLiveEvent(taskId, next.events[index]!, index, next.sessionId);
+    }));
+    if (persisted) this.pendingTerminalPersistedEvents.set(taskId, persisted);
+    this.closeSubscribers(taskId);
+    delivery.publish(false);
+  }
+
+  private requestExecutionAbort(execution: ActiveExecution, reason: string): void {
+    if (execution.phase !== 'runner') {
+      execution.delivery?.abort(reason === 'app_shutdown' ? 'app_shutdown' : 'delivery_timeout');
+      return;
+    }
+    if (!this.options.decideCancellation) {
+      abortWithReason(execution.controller, reason);
+      return;
+    }
+    void this.requireSnapshot(execution.taskId)
+      .then(snapshot => execution.phase === 'runner' && this.activeExecutions.get(execution.taskId) === execution
+        ? this.options.decideCancellation!(snapshot, reason) : { hostAbortAllowed: false } as TaskCancellationDecision)
+      .then(decision => {
+        if (decision.hostAbortAllowed && this.activeExecutions.get(execution.taskId) === execution && execution.phase === 'runner') {
+          abortWithReason(execution.controller, reason);
+        }
+        if (decision.ack === 'unknown') console.warn('[task-host] cancellation persisted state is unknown:', execution.taskId);
+      })
+      .catch(error => console.warn('[task-host] cancellation decision failed; host not aborted:', error instanceof Error ? error.message : String(error)));
+  }
+
+  async #resolveContextHistory(
+    currentTaskId: string,
+    context: TaskCreateContext | undefined,
+  ): Promise<{ history: HistoryMessage[]; audit?: TaskContextAudit }> {
+    const owned=this.options.resolveOwnedHistory?await this.invokePhysicalConsumer(currentTaskId,this.options.resolveOwnedHistory,this.options,[currentTaskId,context]) as OwnedTaskHistory|null:undefined;
+    if(owned)return owned;
+    if (!context) {
+      return { history: [] };
+    }
+
+    const requestedTaskIds = dedupeTaskIds(context.taskIds ?? []);
+    const skipped: TaskContextSkip[] = [];
+    const snapshots: TaskSnapshot[] = [];
+    for (const taskId of requestedTaskIds) {
+      if (taskId === currentTaskId) {
+        skipped.push({ taskId, reason: 'self' });
+        continue;
+      }
+      if(this.options.assertHistoryRead)await this.invokePhysicalConsumer(currentTaskId,this.options.assertHistoryRead,this.options,[taskId,context.threadId]);
+      try {
+        const snapshot = await this.options.snapshotStore.recoverTask(taskId);
+        if (!snapshot) {
+          skipped.push({ taskId, reason: 'missing' });
+          continue;
+        }
+        snapshots.push(snapshot);
+      } catch (error) {
+        if ((error as { code?: string })?.code === 'SOL_PI_PROTECTED_HISTORY_STORE_UNAVAILABLE') throw error;
+        skipped.push({ taskId, reason: 'invalid' });
+      }
+    }
+
+    if(this.options.onHistoryLoaded)await this.invokePhysicalConsumer(currentTaskId,this.options.onHistoryLoaded,this.options,[currentTaskId,snapshots,context.threadId]);
+    const built = buildHistoryFromTaskSnapshots(snapshots, { currentTaskId });
+    const threadId = normalizeContextId(context.threadId);
+    return {
+      history: built.history,
+      audit: {
+        ...(threadId ? { threadId } : {}),
+        taskIds: requestedTaskIds,
+        loadedTaskIds: built.loadedTaskIds,
+        skipped: [...skipped, ...built.skipped],
+      },
+    };
+  }
+
+  private isEmptyDelivery(snapshot: TaskSnapshot): boolean {
+    return isEmptyDelivery(snapshot);
+  }
+
+  private async appendRuntimeEvent(taskId: string, event: RuntimeEvent): Promise<void> {
+    this.throwRuntimeEventError(taskId);
+    if (event.type === 'ui_preview') {
+      let preview = event.preview;
+      try {
+        if (typeof event.toolUseId !== 'string' || event.toolUseId.length > 256) return;
+        if (preview && (typeof preview.title !== 'string' || preview.title.length > 10000 || !validateA2uiMessages(parseUiJson(preview.content)).ok)) preview=null;
+      } catch { preview=null; }
+      await this.enqueueMutation(taskId, async () => {
+        const snapshot = await this.requireSnapshot(taskId);
+        if (TERMINAL_STATUSES.has(snapshot.status) || !this.activeExecutions.has(taskId)) return;
+        this.pushLiveEvent(taskId,{type:'ui_preview',turnId:event.turnId,toolUseId:event.toolUseId,preview},snapshot.events.length,snapshot.sessionId);
+      });
+      return;
+    }
+    const health = this.activeExecutions.get(taskId)?.health;
+    if (event.type === 'tool_finished') {health?.resume(`managed:${event.invocationId}`);health?.resume(`tool:${event.invocationId}`);}
+    if (event.type === 'approval_required') health?.wait(event.approvalId);
+    else if (event.type === 'approval_resolved') health?.resume(event.approvalId);
+    else if (event.type === 'execution_health') {
+      if (event.state === 'running' && event.invocationId) health?.delegate(`managed:${event.invocationId}`);
+      if (event.state === 'cleanup_pending') health?.cancel();
+      else if (event.state === 'waiting') health?.wait(`tool:${event.invocationId ?? event.turnId}`);
+      else {health?.resume(`tool:${event.invocationId ?? event.turnId}`); health?.progress(event.state === 'recovering');}
+    } else if (['execution_progress','assistant_delta','tool_started','tool_finished','artifact_recorded','receipt_emitted','step_activated','turn_started'].includes(event.type)) health?.progress();
+    const desktopEvents = projectRuntimeEventsToDesktopEvents({ taskId, events: [event] });
+    for (const desktopEvent of desktopEvents) {
+      if (desktopEvent.type === 'assistant_delta') {
+        await this.bufferAssistantDelta(taskId, desktopEvent);
+        continue;
+      }
+      await this.flushPendingAssistantDelta(taskId);
+      this.throwRuntimeEventError(taskId);
+      await this.appendEvent(taskId, desktopEvent, { runtimeOrigin: true });
+    }
+  }
+
+  private async appendUsage(
+    taskId: string,
+    execution: ActiveExecution,
+    usage: { inputTokens: number; outputTokens: number },
+  ): Promise<void> {
+    if (this.activeExecutions.get(taskId) !== execution) throw Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');
+    const inputTokens = normalizeUsageValue(usage.inputTokens);
+    const outputTokens = normalizeUsageValue(usage.outputTokens);
+    return this.#runSourceOperation(() => this.appendEvent(taskId, { type: 'usage_recorded', inputTokens, outputTokens },
+      { runtimeOrigin: true, execution }), taskId);
+  }
+
+  private bufferAssistantDelta(
+    taskId: string,
+    event: Extract<DesktopTaskEvent, { type: 'assistant_delta' }>,
+  ): Promise<void> {
+    let pending = this.pendingAssistantDeltas.get(taskId);
+    if (!pending) {
+      pending = { delta: '', eventId: event.eventId, timer: null };
+      this.pendingAssistantDeltas.set(taskId, pending);
+    }
+    pending.delta += event.delta;
+
+    if (pending.delta.length >= ASSISTANT_DELTA_MAX_BUFFER_CHARS) {
+      return this.flushPendingAssistantDelta(taskId);
+    }
+    if (!pending.timer) {
+      pending.timer = setTimeout(() => {
+        void this.flushPendingAssistantDelta(taskId).catch((error) => {
+          this.runtimeEventErrors.set(taskId, error);
+        });
+      }, ASSISTANT_DELTA_FLUSH_MS);
+    }
+    return Promise.resolve();
+  }
+
+  private async flushPendingAssistantDelta(taskId: string): Promise<void> {
+    const inFlight = this.assistantDeltaFlushes.get(taskId);
+    if (inFlight) {
+      await inFlight.promise;
+      if (this.assistantDeltaFlushes.get(taskId) === inFlight) this.assistantDeltaFlushes.delete(taskId);
+    }
+    const pending = this.pendingAssistantDeltas.get(taskId);
+    if (!pending) {
+      return;
+    }
+    this.pendingAssistantDeltas.delete(taskId);
+    if (pending.timer) {
+      clearTimeout(pending.timer);
+    }
+    if (pending.delta.length === 0) {
+      return;
+    }
+    // Publish the fixed raw batch Promise before it can dispatch. All original
+    // flush callers share it, including a timer which already took the buffer.
+    const batch: AssistantDeltaFlush = {
+      promise: Promise.resolve().then(() => this.appendEvent(taskId, {
+        type: 'assistant_delta', eventId: pending.eventId, delta: pending.delta,
+      }, { runtimeOrigin: true, batch })),
+    };
+    this.assistantDeltaFlushes.set(taskId, batch);
+    await batch.promise;
+    if (this.assistantDeltaFlushes.get(taskId) === batch) this.assistantDeltaFlushes.delete(taskId);
+  }
+
+  private async flushRuntimeEvents(taskId: string): Promise<void> {
+    try { await this.flushPendingAssistantDelta(taskId); }
+    catch (error) {
+      const batch = this.assistantDeltaFlushes.get(taskId);
+      if (batch?.receipt && batch.receipt.published < batch.receipt.events.length) {
+        try {
+          await this.enqueueMutation(taskId, async () => { await this.confirmReceiptLocked(batch.receipt!); });
+        } catch { /* Original flush error remains the caller's outcome. */ }
+        if (batch.receipt.published === batch.receipt.events.length) batch.receipt = undefined;
+      }
+      throw error;
+    }
+    await this.flushMutations(taskId);
+    this.throwRuntimeEventError(taskId);
+  }
+
+  private throwRuntimeEventError(taskId: string): void {
+    if (!this.runtimeEventErrors.has(taskId)) {
+      return;
+    }
+    const error = this.runtimeEventErrors.get(taskId);
+    throw error;
+  }
+
+  private clearPendingAssistantDelta(taskId: string): void {
+    const pending = this.pendingAssistantDeltas.get(taskId);
+    if (pending?.timer) {
+      clearTimeout(pending.timer);
+    }
+    this.pendingAssistantDeltas.delete(taskId);
+  }
+
+  private async applyArtifactEvidenceGuard(taskId: string, snapshot: TaskSnapshot, execution?: ActiveExecution): Promise<boolean> {
+    if (!this.options.aheGuards?.artifactEvidence) {
+      return true;
+    }
+    const completionContext = buildCompletionEvidenceContext(taskId, snapshot);
+    const expectation = completionContext.expectation;
+    if (!expectation && hasClarificationResult(snapshot)) {
+      return true;
+    }
+    if (!expectation && !shouldRequireArtifactEvidence(snapshot)) {
+      return true;
+    }
+    const artifacts = collectArtifactEvidence(snapshot);
+    const decision = expectation
+      ? evaluateArtifactEvidenceGuard({
+          taskId,
+          status: 'completed',
+          expectation,
+          evidence: evidenceForExpectation(expectation, completionContext.evidence),
+        })
+      : evaluateArtifactEvidenceGuard({
+          taskId,
+          status: 'completed',
+          artifacts,
+        });
+    if (decision.ok) {
+      return true;
+    }
+    await this.appendEvent(taskId, {
+      type: 'progress',
+      eventId: `${taskId}:guard:artifact-evidence`,
+      message: decision.reason,
+      stage: 'blocked',
+    }, { runtimeOrigin: Boolean(execution) });
+    await this.appendEvent(taskId, { type: 'error', message: decision.reason }, { runtimeOrigin: Boolean(execution) });
+    await this.updateSnapshot(taskId, {
+      status: 'failed',
+      salvage: {
+        summary: ['Completion evidence guard blocked task completion.'],
+        reason: decision.reason,
+      },
+    }, execution);
+    return false;
+  }
+
+  private async recoverStaleRunningTask(snapshot: TaskSnapshot): Promise<TaskSnapshot> {
+    if(Object.hasOwn(snapshot,'originalChildPreparation'))return snapshot;
+    if (snapshot.status !== 'running') return snapshot;
+    const taskId = snapshot.taskId;
+    // Fast path: a live execution owns this task, so polling reads must not
+    // queue behind (and congest) its mutation chain. Re-checked in the queue.
+    if (this.activeExecutions.has(taskId) || this.executionPromises.has(taskId)) return snapshot;
+    let recovered = false;
+    await this.enqueueMutation(taskId, async () => {
+      // An earlier async read can return running after this execution completed.
+      // Read under the same queue that owns terminal writes, then keep both
+      // original durable event/snapshot transitions in that queue.
+      const current = await this.requireSnapshot(taskId);
+      if (current.status !== 'running' || this.activeExecutions.has(taskId) || this.executionPromises.has(taskId)) return;
+      if (Object.hasOwn(current, 'multiAgentPreparation')) throw new Error('multi_agent_recovery_unconfirmed');
+      this.staleRecoveryWrites.add(taskId);
+      try {
+        const error: DesktopTaskEvent = { type: 'error', message: 'stale_running_task_recovered' };
+        const withError: TaskSnapshot = { ...current, events: [...current.events, error], updatedAt: this.now() };
+        await this.saveSnapshot(withError, current);
+        this.pushLiveEvent(taskId, error, withError.events.length - 1, withError.sessionId);
+        this.schedulePersistedEvent({ taskId, eventIndex: withError.events.length - 1, event: error, snapshot: withError });
+        const terminal: DesktopTaskEvent = { type: 'task_terminal', status: 'failed' };
+        const next: TaskSnapshot = { ...withError, status: 'failed',
+          salvage: { summary: ['任务执行进程已中断，已保留当前快照，可重新发起或基于现有上下文继续。'], reason: 'stale_running_task_recovered' },
+          events: [...withError.events, terminal], updatedAt: this.now() };
+        await this.saveSnapshot(next, withError);
+        this.pushLiveEvent(taskId, terminal, next.events.length - 1, next.sessionId);
+        this.schedulePersistedEvent({ taskId, eventIndex: next.events.length - 1, event: terminal, snapshot: next });
+        recovered = true;
+      } finally { this.staleRecoveryWrites.delete(taskId); }
+    });
+    if (recovered) {
+      await this.clearSourceActiveTask(taskId);
+      this.closeSubscribers(taskId);
+    }
+    return this.requireSnapshot(taskId);
+  }
+
+  private async appendEvent(taskId: string, event: DesktopTaskEvent, options?: { runtimeOrigin?: boolean; batch?: AssistantDeltaFlush; execution?: ActiveExecution }): Promise<void> {
+    let persisted: PersistedTaskEvent | undefined;
+    await this.enqueueMutation(taskId, async () => {
+      if (options?.execution && this.activeExecutions.get(taskId) !== options.execution) throw Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');
+      const snapshot = await this.requireSnapshot(taskId);
+      if (options?.execution && this.activeExecutions.get(taskId) !== options.execution) throw Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');
+      if (options?.runtimeOrigin && TERMINAL_STATUSES.has(snapshot.status)) {
+        const cancellation = this.cancellationSettlements.get(taskId);
+        if (event.type !== 'usage_recorded' || !options.execution || snapshot.status !== 'cancelled' || !cancellation) return;
+        // The original still-live execution may report its actual final cost.
+        // It cannot reopen terminal output or write through a replaced source.
+        assertTaskSource(cancellation.source, snapshot);
+      }
+      // Merge artifacts when appending artifact_recorded events
+      let nextResult = snapshot.result;
+      if (event.type === 'result') {
+        nextResult = event.result;
+      } else if (event.type === 'artifact_recorded' && snapshot.result) {
+        const artifact: ArtifactSummary = {
+          artifactId: event.artifactId,
+          kind: event.kind as ArtifactKind,
+          title: event.label,
+          createdAt: event.turnId,
+          previewAvailable: event.previewAvailable,
+          filePath: event.filePath,
+          creator: event.creator ?? 'agent',
+        };
+        nextResult = {
+          ...snapshot.result,
+          artifacts: [...(snapshot.result.artifacts || []), artifact],
+        };
+      }
+      const next: TaskSnapshot = {
+        ...snapshot,
+        status: event.type === 'task_cancelled' ? 'cancelled' : event.type === 'needs_user' ? 'waiting_user' : event.type === 'question_resolved' && snapshot.status === 'waiting_user' ? 'running' : snapshot.status,
+        events: [...snapshot.events, event],
+        result: nextResult,
+        salvage: event.type === 'salvage' ? event.salvage : snapshot.salvage,
+        usage: event.type === 'usage_recorded'
+          ? {
+              inputTokens: (snapshot.usage?.inputTokens ?? 0) + event.inputTokens,
+              outputTokens: (snapshot.usage?.outputTokens ?? 0) + event.outputTokens,
+              known: true,
+            }
+          : snapshot.usage,
+        updatedAt: this.now(),
+      };
+      if (options?.batch) {
+        options.batch.receipt = { source: captureTaskSource(snapshot), snapshot: next,
+          eventIndex: snapshot.events.length, events: [event], published: 0 };
+      }
+      await this.saveSnapshot(next, snapshot);
+      persisted = {
+        taskId,
+        eventIndex: next.events.length - 1,
+        event,
+        snapshot: next,
+      };
+      this.pushLiveEvent(taskId, event, next.events.length - 1, next.sessionId);
+      if (options?.batch?.receipt) options.batch.receipt.published = 1;
+    });
+    if (persisted) this.schedulePersistedEvent(persisted);
+  }
+
+  private async updateSnapshot(
+    taskId: string,
+    patch: Partial<Pick<TaskSnapshot, 'status' | 'result' | 'salvage'>>,
+    execution?: ActiveExecution,
+  ): Promise<void> {
+    let persisted: PersistedTaskEvent | undefined;
+    await this.enqueueMutation(taskId, async () => {
+      const snapshot = await this.requireSnapshot(taskId);
+      if (execution && (this.activeExecutions.get(taskId) !== execution || TERMINAL_STATUSES.has(snapshot.status)
+        || this.cancellationSettlements.has(taskId))) return;
+      const terminalStatus = patch.status !== undefined
+        && patch.status !== snapshot.status
+        && TERMINAL_STATUSES.has(patch.status)
+        ? patch.status as Extract<TaskSnapshotStatus, 'completed' | 'failed' | 'cancelled'>
+        : undefined;
+      const terminalEvent: DesktopTaskEvent | undefined = terminalStatus
+        ? { type: 'task_terminal', status: terminalStatus }
+        : undefined;
+      const next: TaskSnapshot = {
+        ...snapshot,
+        ...patch,
+        events: terminalEvent ? [...snapshot.events, terminalEvent] : snapshot.events,
+        updatedAt: this.now(),
+      };
+      await this.saveSnapshot(next, snapshot);
+      if (terminalEvent) {
+        persisted = {
+          taskId,
+          eventIndex: next.events.length - 1,
+          event: terminalEvent,
+          snapshot: next,
+        };
+        this.pushLiveEvent(taskId, terminalEvent, next.events.length - 1, next.sessionId);
+      }
+    });
+    if (persisted) {
+      if (this.activeExecutions.has(taskId) || this.executionPromises.has(taskId)) {
+        this.pendingTerminalPersistedEvents.set(taskId, persisted);
+      } else {
+        this.schedulePersistedEvent(persisted);
+      }
+    }
+  }
+
+  private flushPendingTerminalPersistedEvent(taskId: string): void {
+    const persisted = this.pendingTerminalPersistedEvents.get(taskId);
+    if (!persisted) return;
+    this.pendingTerminalPersistedEvents.delete(taskId);
+    this.schedulePersistedEvent(persisted);
+  }
+
+  private schedulePersistedEvent(input: PersistedTaskEvent): void {
+    if (!this.options.onPersistedEvent) return;
+    taskSourceInvocation.exit(() => {
+    const previous = this.persistedEventDispatchChains.get(input.taskId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(() => new Promise<void>(resolve => setImmediate(resolve)))
+      .then(async () => {
+        const fact:NativePersistedEventFact={host:this,active:true,receipt:Object.freeze({}) as NativePersistedTaskEventReceipt,
+          taskId:input.taskId,eventIndex:input.eventIndex,event:input.event,snapshot:input.snapshot,audit:structuredClone(nativePersistedAudit(input))};
+        nativePersistedEventFacts.set(input,fact);
+        try {
+          if(this.options.onPersistedEvent)await this.invokePhysicalConsumer(input.taskId,this.options.onPersistedEvent,this.options,[input]);
+        } catch (error) {
+          this.#sourceCloseFailures.push(error);
+          console.warn('[task-host] persisted event consumer failed:', error instanceof Error ? error.message : String(error));
+        } finally {fact.active=false;}
+      })
+      .finally(() => {
+        if (this.persistedEventDispatchChains.get(input.taskId) === next) {
+          this.persistedEventDispatchChains.delete(input.taskId);
+        }
+      });
+    this.persistedEventDispatchChains.set(input.taskId, next);
+    });
+  }
+
+  private async enqueueMutation(taskId: string, action: () => Promise<void>): Promise<void> {
+    const previous = this.mutationChains.get(taskId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(action);
+    this.mutationChains.set(taskId, next.catch(() => undefined));
+    await next;
+  }
+
+  private async flushMutations(taskId: string): Promise<void> {
+    while (true) {
+      const chain = this.mutationChains.get(taskId);
+      if (!chain) {
+        return;
+      }
+      await chain;
+      if (this.mutationChains.get(taskId) === chain) {
+        this.mutationChains.delete(taskId);
+        return;
+      }
+    }
+  }
+
+  /** Metadata-only monotonic protection, including terminal tasks. Does not reactivate execution. */
+  async publishGroupObservationReference(ticket: GroupObservationReferenceTicket): Promise<void> {
+    const source = this.options.groupObservationSource;
+    if (!source) throw new Error('SOL_PI_GROUP_REFERENCE_AUTHORIZATION_UNAVAILABLE');
+    const initial = source.inspectGroupObservationReference(ticket);
+    const admittedWhileClosing = this.#sourceClosing;
+    return this.#runSourceOperation(() => this.publishGroupObservationReferenceSourceOwned(ticket, admittedWhileClosing), initial.taskId);
+  }
+
+  private async publishGroupObservationReferenceSourceOwned(ticket: GroupObservationReferenceTicket, admittedWhileClosing: boolean): Promise<void> {
+    const source = this.options.groupObservationSource;
+    if (!source) throw new Error('SOL_PI_GROUP_REFERENCE_AUTHORIZATION_UNAVAILABLE');
+    const initial = source.inspectGroupObservationReference(ticket);
+    const assertTail = () => { if (admittedWhileClosing && !this.#isOriginalSourceTail(initial.taskId)) throw Error('task_source_closing'); };
+    await this.enqueueMutation(initial.taskId, async () => {
+      assertTail();
+      const facts = source.inspectGroupObservationReference(ticket);
+      const execution = this.activeExecutions.get(facts.taskId);
+      if (execution?.publicationCanonicalTaskId && execution.publicationCanonicalTaskId !== facts.canonicalTaskId)
+        throw Error('task_host_final_canonical_changed');
+      const canonical = await this.options.snapshotStore.observations.read(facts.canonicalTaskId);
+      if (!canonical || !isDeepStrictEqual(mergeProtectedObservationClosures(canonical, facts.closure), canonical))
+        throw new Error('SOL_PI_GROUP_REFERENCE_CANONICAL_NOT_DURABLE');
+      source.inspectGroupObservationReference(ticket);
+      assertTail();
+      const current = await this.requireSnapshot(facts.taskId);
+      // The canonical native sidecar has one writer. Never rewrite it from a stale
+      // load merely to publish protection in another task's journal.
+      if (facts.taskId !== facts.canonicalTaskId) await this.#recordSourcePersistence(() => this.options.snapshotStore.observations.save(facts.taskId, facts.closure));
+      source.inspectGroupObservationReference(ticket);
+      assertTail();
+      await this.saveSnapshot({ ...current, protectedObservationClosure: mergeProtectedObservationClosures(current.protectedObservationClosure, facts.closure) }, current);
+      await this.#recordSourcePersistence(() => source.commitGroupObservationReference(ticket));
+      if (execution && this.activeExecutions.get(facts.taskId) === execution) {
+        if (execution.publicationCanonicalTaskId && execution.publicationCanonicalTaskId !== facts.canonicalTaskId)
+          throw Error('task_host_final_canonical_changed');
+        execution.publicationCanonicalTaskId = facts.canonicalTaskId;
+      }
+    });
+  }
+
+  private async persistObservationSnapshot(taskId: string, execution: ActiveExecution, observed: AgentSessionSnapshot): Promise<void> {
+    if (this.activeExecutions.get(taskId) !== execution || execution.controller.signal.aborted) throw new Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');
+    return this.#runSourceOperation(async () => {
+      if (!this.options.snapshotStore.observations.publishCanonicalFacts(taskId, observed)) {
+        await this.#recordSourcePersistence(() => this.options.snapshotStore.observations.persistSession(taskId, observed));
+      }
+      await this.enqueueMutation(taskId, async () => {
+        if (this.activeExecutions.get(taskId) !== execution || execution.controller.signal.aborted) throw new Error('SOL_PI_DESKTOP_EXECUTION_EXPIRED');
+        const current = await this.requireSnapshot(taskId);
+        await this.saveSnapshot({ ...current, protectedObservationClosure: observed.protectedObservationClosure, updatedAt: this.now() }, current);
+      });
+    }, taskId);
+  }
+
+  private async registerCompoundFinalPublication(taskId: string, execution: ActiveExecution,
+    ticket: CompoundFinalPublicationTicket, notify: (receipt: TaskHostCompoundFinalPublicationReceipt) => Promise<void>): Promise<void> {
+    const facts = getCompoundFinalPublicationBinding(ticket);
+    const assertExecution = () => {
+      if (this.activeExecutions.get(taskId) !== execution || execution.publication || execution.phase !== 'runner'
+        || facts.role !== 'root' || facts.rootSessionId !== facts.sessionId || typeof notify !== 'function') throw Error('task_host_final_publication_binding');
+    };
+    assertExecution();
+    const canonicalTaskId = execution.publicationCanonicalTaskId ?? taskId;
+    const canonical = await this.options.snapshotStore.observations.loadSessionSnapshot(canonicalTaskId);
+    assertExecution();
+    if ((execution.publicationCanonicalTaskId ?? taskId) !== canonicalTaskId) throw Error('task_host_final_canonical_changed');
+    if (!canonical || canonical.sessionId !== facts.sessionId || computeSessionHistoryDigest(canonical) !== facts.historyDigest
+      || computeSessionHistoryDigest(facts.session.exportSnapshot()) !== facts.historyDigest) throw Error('task_host_final_history_changed');
+    execution.publication = { canonicalTaskId, ticket, notify };
+    execution.publicationWrite = undefined;
+  }
+
+  async #recordSourcePersistence<T>(write: () => Promise<T>, confirmedRejection?: (originalPromise: Promise<T>) => boolean): Promise<T> {
+    let original: Promise<T> | undefined;
+    // Store diagnostics and injected IO callbacks are external observers, not
+    // continuations entitled to borrow the Host's admitted ingress scope.
+    try { original = taskSourceInvocation.exit(write); return await original; }
+    catch (error) {
+      if (!original || !confirmedRejection?.(original)) this.#sourceCloseFailures.push(error);
+      throw error;
+    }
+  }
+
+  private clearSourceActiveTask(taskId: string): Promise<void> {
+    return this.#recordSourcePersistence(() => this.options.snapshotStore.clearActiveTask(taskId));
+  }
+
+  private async saveSnapshot(snapshot: TaskSnapshot, expectedPrevious?: TaskSnapshot): Promise<void> {
+    const execution = this.activeExecutions.get(snapshot.taskId);
+    if (execution?.publication) execution.publicationWrite = undefined;
+    const raw = this.#recordSourcePersistence<void | TaskSnapshotWriteReceipt>(() => execution?.publication
+      ? this.options.snapshotStore.saveWithReceipt(snapshot, expectedPrevious)
+      : this.options.snapshotStore.save(snapshot, expectedPrevious));
+    execution?.delivery?.track(raw.then(() => undefined));
+    const receipt = await raw;
+    this.#continuitySnapshots.set(snapshot.taskId,structuredClone(snapshot));
+    if (execution && this.activeExecutions.get(snapshot.taskId) === execution && receipt) execution.publicationWrite = receipt;
+    if (this.activeExecutions.has(snapshot.taskId)) this.lastCommittedSnapshots.set(snapshot.taskId, snapshot);
+  }
+
+  private async requireSnapshot(taskId: string): Promise<TaskSnapshot> {
+    const execution = this.activeExecutions.get(taskId);
+    const delivery = execution?.delivery;
+    const raw = this.options.snapshotStore.recoverTask(taskId, delivery && execution.phase === 'delivery'
+      ? { signal: delivery.controller.signal, trackPending: delivery.track } : undefined);
+    delivery?.track(raw);
+    const snapshot = await raw;
+    if (!snapshot) {
+      throw new Error(`task not found: ${taskId}`);
+    }
+    return snapshot;
+  }
+
+  private rehydrateWaitingQuestion(snapshot: TaskSnapshot): void {
+    if (TERMINAL_STATUSES.has(snapshot.status)) {
+      return;
+    }
+    const questionEvent = [...snapshot.events]
+      .reverse()
+      .find((event): event is Extract<DesktopTaskEvent, { type: 'needs_user' }> => event.type === 'needs_user');
+    if (questionEvent && !snapshot.events.some(event=>event.type==='question_resolved'&&event.questionId===questionEvent.question.questionId)) {
+      this.questions.publish(questionEvent.question);
+    }
+  }
+
+  private addSubscriber(taskId: string, subscription: LiveSubscription): void {
+    const existing = this.subscribers.get(taskId) ?? new Set<LiveSubscription>();
+    existing.add(subscription);
+    this.subscribers.set(taskId, existing);
+  }
+
+  private removeSubscriber(taskId: string, subscription: LiveSubscription): void {
+    const existing = this.subscribers.get(taskId);
+    if (!existing) {
+      return;
+    }
+    existing.delete(subscription);
+    if (existing.size === 0) {
+      this.subscribers.delete(taskId);
+    }
+  }
+
+  private pushLiveEvent(taskId: string, event: DesktopTaskEvent, eventIndex: number, sourceDataEpoch: string): void {
+    for (const subscriber of this.subscribers.get(taskId) ?? []) {
+      if (event.type === 'ui_preview' && !subscriber.livePreviews) continue;
+      subscriber.push({ taskId, eventIndex, sourceDataEpoch, event });
+    }
+  }
+
+  private closeSubscribers(taskId: string): void {
+    for (const subscriber of this.subscribers.get(taskId) ?? []) {
+      subscriber.close();
+    }
+    this.subscribers.delete(taskId);
+  }
+
+  private createTaskId(): string {
+    if (this.options.createTaskId) {
+      return this.options.createTaskId();
+    }
+    this.taskOrdinal += 1;
+    return `task_${this.taskOrdinal}`;
+  }
+
+  private createSessionId(): string {
+    if (this.options.createSessionId) {
+      return this.options.createSessionId();
+    }
+    return `sess_${randomUUID()}`;
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? Date.now();
+  }
+}
+
+function isValidContextSnapshot(snapshot: TaskSnapshot): boolean {
+  return typeof snapshot.taskId === 'string'
+    && snapshot.taskId.trim().length > 0
+    && typeof snapshot.prompt === 'string'
+    && typeof snapshot.createdAt === 'number'
+    && typeof snapshot.updatedAt === 'number'
+    && typeof snapshot.status === 'string';
+}
+
+// Core and Desktop have separate compile roots; the history test pins this protocol to Desktop's public predicate.
+function isTaskExecutionInterruption(message: unknown): boolean {
+  return message === 'app_shutdown' || message === 'multi_agent_prepare_interrupted';
+}
+
+function formatAssistantContext(snapshot: TaskSnapshot): string {
+  const progress = formatAssistantProgressContext(snapshot);
+  // Recognize only exact persisted interruption codes, not localized or substring matches.
+  const lastError = [...snapshot.events].reverse().find((event): event is Extract<DesktopTaskEvent, {type: 'error'}> => event.type === 'error');
+  if (snapshot.status !== 'failed' || !isTaskExecutionInterruption(lastError?.message)) return progress;
+  const resolved = new Set<string>();
+  for (let index = snapshot.events.length - 1; index >= 0; index--) {
+    const event = snapshot.events[index];
+    if (event.type === 'question_resolved') resolved.add(event.questionId);
+    if (event.type !== 'needs_user') continue;
+    const question = event.question;
+    // Never promote another task's question, an approval, or an older question.
+    if (question.taskId !== snapshot.taskId || question.kind !== 'freeform' || resolved.has(question.questionId)) return progress;
+    return ['上一轮执行已中断，以下问题尚未收到用户回答：', question.prompt,
+      ...(question.choices ?? []).map(choice => `- ${choice.label}`), '此前进展：', progress].join('\n');
+  }
+  return progress;
+}
+
+function formatAssistantProgressContext(snapshot: TaskSnapshot): string {
+  const explicitSummary = snapshot.result?.summary?.trim();
+  if (explicitSummary) {
+    return explicitSummary;
+  }
+
+  const resultEvent = [...snapshot.events]
+    .reverse()
+    .find((event): event is Extract<DesktopTaskEvent, { type: 'result' }> => event.type === 'result');
+  const resultSummary = resultEvent?.result.summary?.trim();
+  if (resultSummary) {
+    return resultSummary;
+  }
+
+  const assistantText = snapshot.events
+    .filter((event): event is Extract<DesktopTaskEvent, { type: 'assistant_delta' }> => event.type === 'assistant_delta')
+    .map(event => event.delta)
+    .join('')
+    .trim();
+  if (assistantText) {
+    return assistantText;
+  }
+
+  const salvageText = snapshot.salvage?.summary.join('\n').trim();
+  if (snapshot.status === 'cancelled') {
+    return salvageText ? '上一轮已取消：\n' + salvageText : '上一轮已取消：任务已取消。';
+  }
+  if (snapshot.status === 'failed') {
+    const errorEvent = [...snapshot.events]
+      .reverse()
+      .find((event): event is Extract<DesktopTaskEvent, { type: 'error' }> => event.type === 'error');
+    const failureText = salvageText || errorEvent?.message || '模型没有返回可恢复摘要。';
+    return '上一轮失败：\n' + failureText;
+  }
+
+  return '模型没有返回内容。';
+}
+
+function truncateContextText(text: string, maxChars: number): string {
+  if (maxChars < 0 || text.length <= maxChars) {
+    return text;
+  }
+  return text.slice(0, maxChars) + '[已截断，保留前 ' + maxChars + ' 字符]';
+}
+
+function countHistoryChars(pairs: TaskHistoryPair[]): number {
+  return pairs.reduce((sum, pair) => sum + pair.user.content.length + pair.assistant.content.length, 0);
+}
+
+function dedupeTaskIds(taskIds: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const rawTaskId of taskIds) {
+    const taskId = normalizeContextId(rawTaskId);
+    if (!taskId || seen.has(taskId)) {
+      continue;
+    }
+    seen.add(taskId);
+    deduped.push(taskId);
+  }
+  return deduped;
+}
+
+function normalizeContextId(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}

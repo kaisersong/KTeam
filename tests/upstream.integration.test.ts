@@ -62,7 +62,7 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     const roomId = (created.room as any).roomId;
     assert.equal(((await request('/v1/teams', input)).room as any).roomId, roomId);
     await assert.rejects(request('/v1/teams', { ...input, goal: 'different' }), /room_create_request_conflict/);
-    assert.equal(((await hostRequest(state, 'xiaok-main', '/v1/teams')).rooms as any[]).filter(room => room.roomId === roomId).length, 1);
+    assert.equal(((await hostRequest(state, 'kteam-companion', '/v1/teams')).rooms as any[]).filter(room => room.roomId === roomId).length, 1);
     const directory=()=>request('/v1/teams').then(result=>(result.rooms as any[]).find(room=>room.roomId===roomId));
     assert.equal((await directory()).pinnedAt,null);
     const pin=await request(`/v1/teams/${roomId}/sidebar`,{pinned:true});

@@ -5,6 +5,7 @@ import { startHost } from './service/server.js';
 import { hostRequest } from './service/client.js';
 import { LOCAL_HUMAN } from './service/collaboration.js';
 import { KTeamError } from './errors.js';
+import { discoveredServiceUrls } from './service/service-endpoints.js';
 
 const help = `KTeam 0.1 开发版 — 组建你的 AI 团队，让工作主动向前。
 
@@ -17,7 +18,7 @@ kteam send --room 房间ID --text 正文 [--id msg_加32位hex] [--thread 线程
 kteam history --room 房间ID [--after 0] [--limit 50]
 
 KTEAM_DATA_DIR 指定专用目录（默认 ~/.kteam）。init 可读取以下配置引用：
-KTEAM_BROKER_URL / KTEAM_KSWARM_URL（仅允许 loopback）；
+KTEAM_BROKER_URL / KTEAM_KSWARM_URL（仅允许 loopback；未设置时读取桌面端写入的 service-endpoints.json）；
 KTEAM_BROKER_TOKEN_FILE / KTEAM_KSWARM_TOKEN_FILE（凭据文件，不是明文 key）。
 当前为 P0a 协议基础切片，尚无桌面 UI、自动 Bot 回复或任务执行。`;
 
@@ -41,8 +42,8 @@ async function main() {
   if (['help','--help','-h'].includes(command)) { process.stdout.write(help + '\n'); return; }
   const input = args(rest);
   if (command === 'init') {
-    initConfig(root, { version: 1, brokerUrl: process.env.KTEAM_BROKER_URL || 'http://127.0.0.1:4318',
-      kswarmUrl: process.env.KTEAM_KSWARM_URL || 'http://127.0.0.1:4400',
+    // No fixed default port: use KTEAM_*_URL, else the ports KTeam's desktop recorded in its discovery file.
+    initConfig(root, { version: 1, ...discoveredServiceUrls(root),
       ...(process.env.KTEAM_BROKER_TOKEN_FILE ? { brokerTokenFile: process.env.KTEAM_BROKER_TOKEN_FILE } : {}),
       ...(process.env.KTEAM_KSWARM_TOKEN_FILE ? { kswarmTokenFile: process.env.KTEAM_KSWARM_TOKEN_FILE } : {}) });
     print({ ok: true, dataRoot: root, next: 'kteam start', backgroundAutostartInstalled: false }); return;

@@ -10,7 +10,7 @@ KTeam 是独立的多 Bot 协作桌面应用，按[产品设计](docs/design/pro
 
 当前 **0.1.0-preview.15** 可验证：按名字创建长期成员、独立配置模型（也可显式导入小K配置）、建立群聊并持续更新共享共识、自然语言自动选择相关成员（包括不回应）、后台完成多成员讨论、会话内答复、组队方案卡片和单成员私聊、用户验收、暂停/继续、历史分页与崩溃核对。窗口关闭后后台工作继续，未安装开机启动项。
 
-内置 xiaok 使用原平台注册工厂、连续 Session、分层记忆、MCP/插件/Hooks、子 Agent 与 Worktree，并保留文件、终端（含 SSH）、网络和 Skill 工具。工具记录随回复展示；精确审批转到对应 Bot 私聊。小 K 可读取所有可访问团队的真实消息、共享纪要和工作状态，按重要变化主动提醒；群成员可私聊本人澄清，也可调用另一名群成员实际协作。消息内支持原 A2UI 表格和图表卡片。
+KTeam 内置 Agent 使用自带平台注册工厂、连续 Session、分层记忆、MCP/插件/Hooks、子 Agent 与 Worktree，并保留文件、终端（含 SSH）、网络和 Skill 工具。工具记录随回复展示；精确审批转到对应 Bot 私聊。小 K 可读取所有可访问团队的真实消息、共享纪要和工作状态，按重要变化主动提醒；群成员可私聊本人澄清，也可调用另一名群成员实际协作。消息内支持原 A2UI 表格和图表卡片。
 
 **完整 v5 与全部 harness 等量迁移尚未交付**。完整 PTY/安全终端、通用循环提醒、严格 Skill fork/验收工作流、完整观察资格协议等差异列在 [迁移清单](docs/design/desktop/harness-parity.md)。密码不通过聊天收集，原生 CLI 使用其自己的本机权限与登录。未宣称完整 AIMP Core-L2 认证，也不把讨论答复或投递回执说成业务已执行。
 
@@ -36,7 +36,7 @@ macOS arm64，应用包为 `release/mac-arm64/KTeam.app`。直接打开 KTeam，
 
 ## 来源与状态所有权
 
-- `vendor/xiaok-runtime` 是锁定源码的最小依赖闭包，原样保留 AgentRuntime、模型适配器、ToolRegistry、兼容凭据加载链及活动 owner 客户端。420 个运行时原始文件各有来源路径与 SHA-256；构建不依赖开发机临时 worktree。见 [NOTICE](NOTICE)。
+- `runtime-core/` 是 KTeam 自己维护的运行时代码（AgentRuntime、模型适配器、ToolRegistry、凭据加载链及活动 owner 客户端），最初从 xiaok-cli `f8728a34` 一次性复制而来，之后不再同步；原构建期补丁已直接写进源码。构建和测试不读取 xiaok-cli 或 mydocs。来源说明见 [NOTICE](NOTICE)。
 - KSwarm 是 Agent/项目唯一 owner；intent-broker 是 Room/成员/群消息唯一 owner。KTeam 保存执行绑定、设置、工作队列、预算、稀疏已读、发送 outbox，以及冻结提案/创建阶段和收据；不复制原服务名册或群消息。
 - broker 持有实验性讨论任务链、签名定序、准入 epoch/lease、交付字节验证；自然语言不能授予权限。人工验收在独立字节核验之后。
 - host 使用私有 Unix socket、独立客户端 token、API/schema 握手与 SQLite OS 锁。未知 POST 只核对事实，不自动重发或重新调用模型。调用预算按会话设置执行，路由及 SDK 重试都计入。
@@ -44,7 +44,7 @@ macOS arm64，应用包为 `release/mac-arm64/KTeam.app`。直接打开 KTeam，
 
 ## 构建和检查
 
-需要 Node >=22.22.0，桌面打包当前验证 macOS arm64。同级放置 `kswarm`、`intent-broker` 和 `mydocs`，版本由 sources.lock 锁定。
+需要 Node >=22.22.0，桌面打包当前验证 macOS arm64。同级放置 `kswarm` 和 `intent-broker`，版本由 sources.lock 锁定；`mydocs` 只用于文档，可不放，构建与测试不依赖它。
 
 ```sh
 npm ci --ignore-scripts
@@ -54,7 +54,7 @@ npm run pack:desktop
 
 集成测试使用真实隔离服务、专属临时数据库与随机 loopback 端口，并回收记录的 PID；控制器异常测试明确使用推理 fixture，另有真实模型与正式安装包验证。不会用 mock 代替本地 Agent 资格探针。Electron 下载由校验和验证后解压，本地包使用 ad-hoc 签名并验证，未做 Apple notarization。
 
-文档实体位于同级 `mydocs/kteam/`，项目 `docs -> ../mydocs/kteam`，不建立第二份实体目录。
+文档实体位于同级 `mydocs/kteam/`，项目 `docs -> ../mydocs/kteam`，不建立第二份实体目录。链接存在时 `verify:sources` 会核对文档摘要；不存在时跳过，测试所需的 AIMP 向量在 `tests/fixtures/`。
 
 发布预览版时，先更新 `package.json` / lockfile 版本并通过本机完整检查，再推送同版本 `v*` 标签。`KTeam desktop release` 工作流会在 macOS arm64 构建、校验签名并发布 ZIP、构建信息与 `SHA256SUMS`；标签、应用版本和源码必须一致。完整协议/文档检查需要已授权的私有 mydocs 访问；桌面发布流程使用仓库内固定运行时源码独立构建。
 
@@ -79,4 +79,4 @@ node dist/src/cli.js teams
 
 首次打开会引导创建具名 Bot，并自动发现本机 xiaok / Codex / Kimi / ZCode。已支持的 Agent 直接验证调用并沿用自身配置与登录，无需复制指令或邀请码。Bot 设置分为“属性与主动性”和“Agent”：可配置职责、背景、相关时参与或仅点名、授权资料目录、一次性跟进，以及内置模型或本机 Agent。暂不认识的 Agent 才使用手动邀请、核对确认码的降级接入；仅凭邀请编号不能收发消息。
 
-群名直接使用团队名称，方向和目标在群里讨论，并随共识变化记录到共享纪要。内置 xiaok 复用完整平台工具与权限规则，本机 Agent 使用原生会话与批准方式。允许跟进后可对未完成事项安排一次有界检查；没有新发现不发言，暂停或来源/目标变化会停止旧计划。详情及验证见 [首次引导设计](docs/design/desktop/onboarding-agent-link.md) 和 [界面 QA](design-qa.md)。
+群名直接使用团队名称，方向和目标在群里讨论，并随共识变化记录到共享纪要。KTeam 内置 Agent 使用完整平台工具与权限规则，本机 Agent 使用原生会话与批准方式。允许跟进后可对未完成事项安排一次有界检查；没有新发现不发言，暂停或来源/目标变化会停止旧计划。详情及验证见 [首次引导设计](docs/design/desktop/onboarding-agent-link.md) 和 [界面 QA](design-qa.md)。

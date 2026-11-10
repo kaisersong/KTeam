@@ -14,7 +14,7 @@ globalThis.fetch=async(input,init)=>{
  return nativeFetch(input,init);
 };
 
-const entry=process.env.KTEAM_RUNTIME_ENTRY??resolve('build/shared/xiaok-runtime.mjs');
+const entry=process.env.KTEAM_RUNTIME_ENTRY??resolve('build/shared/kteam-runtime.mjs');
 let loaded:Promise<any>|undefined;
 export const sharedRuntime=()=>loaded??=import(pathToFileURL(entry).href);
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');

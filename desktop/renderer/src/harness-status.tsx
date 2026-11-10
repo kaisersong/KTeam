@@ -1,4 +1,4 @@
-import {A2uiArtifactRenderer} from '../../xiaok/renderer/src/components/a2ui/A2uiArtifactRenderer';
+import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
 import React,{useState}from'react';
 import{Terminal,Check,ShieldCheck,X}from'lucide-react';
