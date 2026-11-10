@@ -2199,7 +2199,7 @@
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "ee6ac56829d71c9524e63e76a555d7bb8bd313969128d6fd760fcd8e024fadfa"
+          "sha256": "f95e3ade2888ecf6711533c30bc62b5760b45c33a6bbaa1f940672b1ff5f4549"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",
