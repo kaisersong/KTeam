@@ -227,7 +227,7 @@ export async function showPermissionPrompt(
       try { renderer?.closeModal(); } catch {}
       renderWithRenderer = false;
       try {
-        stdout.write(`\n${dim(`[xiaok] UI 已降级：${context}`)}\n`);
+        stdout.write(`\n${dim(`[kteam] UI 已降级：${context}`)}\n`);
       } catch {}
     };
 

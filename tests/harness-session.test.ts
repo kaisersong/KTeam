@@ -10,12 +10,12 @@ import {sharedRuntime} from '../src/runtime/native.js';
 async function fixture(){
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  const root=realpathSync(mkdtempSync('/tmp/kteam-platform-')),config=join(root,'config'),cwd=join(root,'project');mkdirSync(config);mkdirSync(cwd);
- const before={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.XIAOK_DISABLE_GLOBAL_PLUGINS};process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.XIAOK_DISABLE_GLOBAL_PLUGINS='1';
+ const before={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.KTEAM_DISABLE_GLOBAL_PLUGINS};process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_DISABLE_GLOBAL_PLUGINS='1';
  const core=await sharedRuntime();
  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'text',delta:'done'};yield {type:'done'};}};
  const scope={root:join(root,'host-data'),botId:'bot-a',roomId:'room-a',bindingRevision:1,fingerprint:'fp-a',profileRevision:1};
  const open=async(extra={})=>{const h=await createHarness({scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
- return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,XIAOK_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
+ return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
 }
 test('production platform factory preserves complete tool history and project instructions across runs, with room/binding isolation',async()=>{
  const f=await fixture();let owner:any;try{
@@ -30,7 +30,7 @@ test('production platform factory preserves complete tool history and project in
   owner=await f.open();assert.match(JSON.stringify(owner.session.getMessages()),/PERSISTED_SESSION_21/);assert.match(owner.system,/PRIVATE_ROOM_MEMORY_33/);await owner.close();owner=undefined;
   owner=await f.open({roomId:'room-b'});assert.doesNotMatch(owner.system,/PRIVATE_ROOM_MEMORY_33/);assert.doesNotMatch(JSON.stringify(owner.session.getMessages()),/PERSISTED_SESSION_21/);await owner.close();owner=undefined;
   owner=await f.open({bindingRevision:2});assert.equal(owner.session.getMessages().length,0);
-  assert.equal(existsSync(join(f.cwd,'.xiaok/state/teams.json')),false);
+  assert.equal(existsSync(join(f.cwd,'.kteam/state/teams.json')),false);assert.equal(existsSync(join(f.cwd,'.xiaok')),false);
  }finally{await owner?.close();f.close();}
 });
 
@@ -47,7 +47,7 @@ test('complete AgentRuntime turn checkpoints through the original SessionStore w
 
 test('revoked scope cannot launch a real plugin PreToolUse command before the tool execute guard',async()=>{
  const f=await fixture();let owner:any;try{
-  const plugin=join(f.cwd,'.xiaok/plugins/review');mkdirSync(plugin,{recursive:true});
+  const plugin=join(f.cwd,'.kteam/plugins/review');mkdirSync(plugin,{recursive:true});
   const marker=join(f.root,'must-not-start');
   writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',events:['PreToolUse'],command:'printf synthetic > '+marker}]}));
   writeFileSync(join(f.cwd,'proof'),'read-only');let current=true;
@@ -113,7 +113,7 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
    platform=await f.core.createPlatformRuntimeContext({cwd:f.cwd,builtinCommands:[],assertCurrent:processOwner.assertCurrent,stateRootDir:join(f.root,'platform-state'),teamService:{}});await platform.mcpReady;
    const first=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-release',branch:'fixture-release',cleanup:'delete'});assert.equal(existsSync(first.path),true);await platform.worktreeManager.release(first.path);assert.equal(existsSync(first.path),false);
    const second=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-gc',branch:'fixture-gc',cleanup:'delete'});
-   const path=join(f.cwd,'.worktrees/.xiaok-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
+   const path=join(f.cwd,'.worktrees/.kteam-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
    const result=await platform.worktreeManager.gc({dryRun:false});assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);
   });
   assert.ok(records.filter(r=>r.state==='running').length>=5);for(const r of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(r.pid,0));

@@ -21,7 +21,7 @@ export type ProjectAgentModel = Awaited<ReturnType<typeof createProjectAgentMode
 
 export function validateProjectAgentModelSelection(modelId: unknown, runtimeType: unknown, config: Config, requestSource?: 'user'|'agent'|'scheduler'): void {
   if (requestSource !== 'user') throw new Error('project_agent_model_user_required');
-  if (runtimeType !== 'xiaok') throw new Error('project_agent_model_xiaok_required');
+  if (runtimeType !== 'kteam') throw new Error('project_agent_model_kteam_required');
   if (modelId !== null && (typeof modelId !== 'string' || !Object.hasOwn(config.models, modelId))) throw new Error('project_agent_model_not_configured');
 }
 

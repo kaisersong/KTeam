@@ -72,7 +72,7 @@ async function hasSafeMacAcl(paths: string[]): Promise<boolean> {
 export function withObservationMetrics<T>(surface: Surface, action: () => Promise<T>, options?: {
   directory: string; maxEvents?: number;
 }): Promise<T> {
-  const directory = options?.directory ?? process.env['XIAOK_METRICS_DIR'];
+  const directory = options?.directory ?? process.env['KTEAM_METRICS_DIR'];
   if (!directory || typeof process.getuid !== 'function') {
     try { return context.run(undefined, action); } catch (error) { return Promise.reject(error); }
   }

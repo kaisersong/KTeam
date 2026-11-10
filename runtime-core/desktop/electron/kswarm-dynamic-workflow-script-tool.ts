@@ -68,7 +68,7 @@ function ownOriginalScriptAdmission<T>(service:KSwarmService,begin:(beforeEffect
   try{fresh();Promise.resolve(begin(fresh)).then(complete,fail);}catch(error){fail(error);}
   return reservation;
 }
-const DEFAULT_DESKTOP_WORKFLOW_AGENT_ID = 'xiaok-worker';
+const DEFAULT_DESKTOP_WORKFLOW_AGENT_ID = 'kteam-worker';
 
 const WORKFLOW_SCRIPT_EXAMPLE = `export const meta = {
   name: 'project_snapshot_review',

@@ -91,7 +91,7 @@ export function buildSynthesizedProviderContext(
   let firstRecord = 0;
   while (firstRecord < records.length) {
     const envelope = JSON.stringify({
-      kind: `xiaok.synthesized-${kind}-context`,
+      kind: `kteam.synthesized-${kind}-context`,
       version: 1,
       records: records.slice(firstRecord),
     });
@@ -101,7 +101,7 @@ export function buildSynthesizedProviderContext(
     firstRecord += 1;
   }
   return JSON.stringify({
-    kind: `xiaok.synthesized-${kind}-context`,
+    kind: `kteam.synthesized-${kind}-context`,
     version: 1,
     records: [],
   });

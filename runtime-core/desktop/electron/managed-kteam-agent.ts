@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 
 import { resolveConfiguredModelBinding } from '../../src/ai/providers/model-binding.js';
 import type { Config } from '../../src/types.js';
-import { XIAOK_DESKTOP_HOST_PARTICIPANT_ID } from '../shared/kswarm-seed-contract.js';
+import { KTEAM_DESKTOP_HOST_PARTICIPANT_ID } from '../shared/kswarm-seed-contract.js';
 
 const DEFAULT_CAPABILITIES = [
   'coding',
@@ -31,12 +31,12 @@ const DEFAULT_CAPABILITIES = [
   'slide_generation',
 ];
 const DEFAULT_OUTPUT_CAPABILITIES = ['markdown', 'html', 'report_html'];
-const HOSTED_XIAOK_EXECUTION = {
+const HOSTED_KTEAM_EXECUTION = {
   mode: 'hosted',
-  hostParticipantId: XIAOK_DESKTOP_HOST_PARTICIPANT_ID,
+  hostParticipantId: KTEAM_DESKTOP_HOST_PARTICIPANT_ID,
 } as const;
 
-export interface ManagedXiaokAgentInput {
+export interface ManagedKTeamAgentInput {
   desktopModelId?: string | null;
   id?: string;
   name: string;
@@ -47,16 +47,16 @@ export interface ManagedXiaokAgentInput {
   maxConcurrentTasks?: number;
 }
 
-export interface ManagedXiaokAgentPayload {
+export interface ManagedKTeamAgentPayload {
   desktopModelId?: string | null;
   id?: string;
   name: string;
   description: string;
   instructions: string;
-  runtimeType: 'xiaok';
+  runtimeType: 'kteam';
   runtimeSource: 'desktop-agent-runtime';
   runtimePath: string | null;
-  execution: typeof HOSTED_XIAOK_EXECUTION;
+  execution: typeof HOSTED_KTEAM_EXECUTION;
   runtimeModel: string;
   provider: null;
   model: null;
@@ -75,21 +75,21 @@ export interface ManagedXiaokAgentPayload {
   maxConcurrentTasks: number;
 }
 
-export interface ResolveLocalXiaokRuntimePathOptions {
+export interface ResolveLocalKTeamRuntimePathOptions {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   exists?: (candidate: string) => boolean;
 }
 
-export function resolveLocalXiaokRuntimePath(
-  options: ResolveLocalXiaokRuntimePathOptions = {},
+export function resolveLocalKTeamRuntimePath(
+  options: ResolveLocalKTeamRuntimePathOptions = {},
 ): string | null {
   const env = options.env ?? process.env;
   const pathExists = options.exists ?? existsSync;
 
-  // Default desktop-managed xiaok agents must not depend on a separately
-  // installed xiaok CLI. Only an explicit native override is honored.
-  const hinted = env.KSWARM_XIAOK_PATH?.trim();
+  // Default desktop-managed kteam agents must not depend on a separately
+  // installed kteam CLI. Only an explicit native override is honored.
+  const hinted = env.KSWARM_KTEAM_PATH?.trim();
   if (hinted && pathExists(hinted)) {
     return hinted;
   }
@@ -102,8 +102,8 @@ function arraysEqual(a: string[] | undefined, b: string[] | undefined): boolean 
 }
 
 /** Public metadata only; transport bindings and observed health belong to main/server owners. */
-export function buildManagedXiaokAgentSemanticPayload(
-  payload: Partial<ManagedXiaokAgentPayload>,
+export function buildManagedKTeamAgentSemanticPayload(
+  payload: Partial<ManagedKTeamAgentPayload>,
   options: { update?: boolean } = {},
 ): Record<string, unknown> {
   const fields = ['id', 'name', 'description', 'instructions', 'roles', 'capabilities', 'taskCapabilities',
@@ -115,11 +115,11 @@ export function buildManagedXiaokAgentSemanticPayload(
   }));
 }
 
-export function buildManagedXiaokAgentPayload(
-  input: ManagedXiaokAgentInput,
+export function buildManagedKTeamAgentPayload(
+  input: ManagedKTeamAgentInput,
   config: Config,
   options: { runtimePath?: string | null; modelId?: string } = {},
-): ManagedXiaokAgentPayload {
+): ManagedKTeamAgentPayload {
   const binding = resolveConfiguredModelBinding(config, input.desktopModelId ?? options.modelId ?? config.defaultModelId);
   const runtimePath = options.runtimePath === undefined ? null : options.runtimePath;
   const taskCapabilities = input.capabilities ?? [...DEFAULT_CAPABILITIES];
@@ -129,12 +129,12 @@ export function buildManagedXiaokAgentPayload(
     id: input.id,
     ...(input.desktopModelId !== undefined ? { desktopModelId: input.desktopModelId } : {}),
     name: input.name,
-    description: input.description ?? `xiaok desktop 智能体 (${binding.providerId}/${binding.modelEntry.model})`,
+    description: input.description ?? `kteam desktop 智能体 (${binding.providerId}/${binding.modelEntry.model})`,
     instructions: input.instructions ?? '',
-    runtimeType: 'xiaok',
+    runtimeType: 'kteam',
     runtimeSource: 'desktop-agent-runtime',
     runtimePath,
-    execution: HOSTED_XIAOK_EXECUTION,
+    execution: HOSTED_KTEAM_EXECUTION,
     runtimeModel: binding.modelEntry.model,
     provider: null,
     model: null,
@@ -154,13 +154,13 @@ export function buildManagedXiaokAgentPayload(
   };
 }
 
-export function diffManagedXiaokAgentPatch(
+export function diffManagedKTeamAgentPatch(
   current: Record<string, unknown>,
-  desired: ManagedXiaokAgentPayload,
-): Partial<ManagedXiaokAgentPayload> | null {
-  const patch: Partial<ManagedXiaokAgentPayload> = {};
+  desired: ManagedKTeamAgentPayload,
+): Partial<ManagedKTeamAgentPayload> | null {
+  const patch: Partial<ManagedKTeamAgentPayload> = {};
 
-  const scalarFields: Array<keyof ManagedXiaokAgentPayload> = [
+  const scalarFields: Array<keyof ManagedKTeamAgentPayload> = [
     'name',
     'description',
     'instructions',

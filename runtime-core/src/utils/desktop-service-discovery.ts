@@ -7,7 +7,7 @@ export interface DesktopServicePorts { broker: number; kswarm: number }
 
 /** Per Desktop process: concurrent installations must never overwrite each other's endpoint. */
 export function desktopServiceDiscoveryFile(): string {
-  return process.env.XIAOK_DESKTOP_DISCOVERY_FILE ?? join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), `desktop-services-${process.pid}.json`);
+  return process.env.KTEAM_DESKTOP_DISCOVERY_FILE ?? join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), `desktop-services-${process.pid}.json`);
 }
 function configuredPort(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
@@ -16,7 +16,7 @@ function configuredPort(value: string | undefined, fallback: number, name: strin
   return port;
 }
 export function configuredDesktopServicePorts(env: NodeJS.ProcessEnv = process.env): DesktopServicePorts {
-  return { broker: configuredPort(env.XIAOK_DESKTOP_PORT ?? env.INTENT_BROKER_PORT, 4318, 'XIAOK_DESKTOP_PORT'),
+  return { broker: configuredPort(env.KTEAM_DESKTOP_PORT ?? env.INTENT_BROKER_PORT, 4318, 'KTEAM_DESKTOP_PORT'),
     kswarm: configuredPort(env.KSWARM_PORT, 4400, 'KSWARM_PORT') };
 }
 async function bindPort(port: number) {

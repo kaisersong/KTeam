@@ -7,7 +7,7 @@ export type CanonicalStickyFact={kind:'grant'|'scope'|'message'|'reference'|'ext
 export interface CanonicalStoreState {policyHash:string;publicationHash:string;stickyFacts:CanonicalStickyFact[]}
 const unavailable=()=>new Error('canonical_store_state_unavailable');
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const subject=(kind:string,id:string)=>hash(['xiaok/canonical-sticky-subject/v1',kind,id]);
+const subject=(kind:string,id:string)=>hash(['kteam/canonical-sticky-subject/v1',kind,id]);
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
 const policyTables=new Set(['conversations','source_bindings','message_anchors','archive_visibilities','legacy_claims','source_cursors','source_event_digests',
  'context_refs','context_ref_entries','read_grants','task_bindings','task_public_inputs','task_presentation_sources','guarded_effect_runs','effect_owner_receipts','effect_history_dependencies','unproven_effects','source_settlements','native_context_fences','projection_failures',
@@ -41,7 +41,7 @@ function captureState(db:DatabaseSync,sourceIntent?:CanonicalSourceIntentRow):Ca
   if(schema.length>4096)throw unavailable();count(JSON.stringify(schema));
   const tables=schema.filter(row=>row.type==='table');if(tables.length>128)throw unavailable();
   const publication=createHash('sha256'),policy=createHash('sha256');
-  const schemaText=JSON.stringify(['xiaok/canonical-store-schema/v1',schema]);publication.update(schemaText);policy.update(schemaText);
+  const schemaText=JSON.stringify(['kteam/canonical-store-schema/v1',schema]);publication.update(schemaText);policy.update(schemaText);
   const tableNames=new Set(tables.map(row=>String(row.name)));
   for(const required of ['continuity_meta','conversations','message_anchors','message_versions','read_grants','context_dependencies','task_history_dependencies','effect_history_dependencies','external_readers'])if(!tableNames.has(required))throw unavailable();
   const values=(row:Record<string,unknown>,columns:string[])=>columns.map(name=>{

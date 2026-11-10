@@ -46,10 +46,10 @@ export async function loadPlatformPluginRuntime(
   cwd: string,
   builtinCommands: string[],
 ): Promise<PlatformPluginRuntimeState> {
-  const disableGlobalPlugins = process.env.XIAOK_DISABLE_GLOBAL_PLUGINS === '1';
+  const disableGlobalPlugins = process.env.KTEAM_DISABLE_GLOBAL_PLUGINS === '1';
   const pluginDirs = [
     ...(disableGlobalPlugins ? [] : [join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), 'plugins')]),
-    join(cwd, '.xiaok', 'plugins'),
+    join(cwd, '.kteam', 'plugins'),
   ];
   const plugins = await loadPlugins(pluginDirs, { builtinCommands });
 

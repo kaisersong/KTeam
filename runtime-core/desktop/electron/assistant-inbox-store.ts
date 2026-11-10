@@ -12,7 +12,7 @@ export class AssistantInboxStore {
  publishTestMessage(locale:'zh'|'en',now:number,source:AssistantActor):AssistantMessage {
   assistantUser(source);
   const en=locale==='en';
-  const message=ASSISTANT_MESSAGE_SCHEMA.parse({id:`assistant-test:${randomUUID()}`,kind:'test',createdAt:now,title:en?'Proactive message test':'主动消息测试',text:en?'I am here. This is a test message from XiaoK, delivered directly into our conversation. Future morning suggestions will appear here too.':'我在这里。这是一条小 K 主动发来的测试消息，直接出现在我们的对话中。以后的晨间建议也会在这里发给你。'});
+  const message=ASSISTANT_MESSAGE_SCHEMA.parse({id:`assistant-test:${randomUUID()}`,kind:'test',createdAt:now,title:en?'Proactive message test':'主动消息测试',text:en?'I am here. This is a test message from KTeam, delivered directly into our conversation. Future morning suggestions will appear here too.':'我在这里。这是一条小 K 主动发来的测试消息，直接出现在我们的对话中。以后的晨间建议也会在这里发给你。'});
   this.transaction(()=>{this.db.prepare('INSERT INTO assistant_test_messages(id,created_at,data) VALUES(?,?,?)').run(message.id,message.createdAt,JSON.stringify(message));this.db.exec('DELETE FROM assistant_test_messages WHERE rowid NOT IN (SELECT rowid FROM assistant_test_messages ORDER BY created_at DESC,rowid DESC LIMIT 50)');});return message;
  }
  testMessages():AssistantMessage[]{return this.db.prepare('SELECT data FROM assistant_test_messages ORDER BY created_at,rowid').all().map(r=>ASSISTANT_MESSAGE_SCHEMA.parse(JSON.parse(String(r.data))));}

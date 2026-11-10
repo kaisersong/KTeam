@@ -1,5 +1,5 @@
 import { isKimiCodingModel } from '../providers/kimi-models.js';
-import { XIAOK_BUILD_FLAVOR } from '../../build-flavor.js';
+import { KTEAM_BUILD_FLAVOR } from '../../build-flavor.js';
 
 export interface KimiTransportIdentity {
   canonicalBaseUrl?: string;
@@ -8,7 +8,7 @@ export interface KimiTransportIdentity {
 
 export function assertKimiTransportAllowed(
   identity: KimiTransportIdentity,
-  buildFlavor: 'normal' | 'rollback' = XIAOK_BUILD_FLAVOR,
+  buildFlavor: 'normal' | 'rollback' = KTEAM_BUILD_FLAVOR,
 ): void {
   if (buildFlavor !== 'rollback') {
     return;

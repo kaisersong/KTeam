@@ -106,7 +106,7 @@ export function describeProductObservationPolicy(approved: ProductObservationPol
     localPersistence: policy.localPersistence, allowUnclassifiedText: policy.allowUnclassifiedText, allowModelDisclosure: policy.allowModelDisclosure });
 }
 function trustedEnvironment(root: string): { environment: DeepSeekRecipeEnvironment; manifest: DeepSeekRecipeManifest; assertCurrent():void; close():void } {
-  const registered = join(homedir(), '.cache', 'xiaok', 'sol-pi', ENVIRONMENT_ID);
+  const registered = join(homedir(), '.cache', 'kteam', 'sol-pi', ENVIRONMENT_ID);
   if (resolve(root) !== registered || realpathSync(root) !== registered) deny('ENVIRONMENT_NOT_REGISTERED');
   for (const file of [root, join(root, 'environment.json')]) {
     const stat = lstatSync(file); if (stat.isSymbolicLink() || stat.uid !== process.getuid?.() || stat.mode & 0o022) deny('ENVIRONMENT_PERMISSIONS');

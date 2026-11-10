@@ -7,7 +7,7 @@ export function loadAssistantSkillInstructions():string {
  for(const root of getBundledSkillRoots()){
   let raw:string;
   try{
-   const realRoot=realpathSync(root),file=realpathSync(join(root,'xiaok-assistant','SKILL.md')),local=relative(realRoot,file);
+   const realRoot=realpathSync(root),file=realpathSync(join(root,'kteam-assistant','SKILL.md')),local=relative(realRoot,file);
    if(!local||isAbsolute(local)||local==='..'||local.startsWith('..'+sep))throw Error('assistant_builtin_skill_invalid');
    const expected=statSync(file);if(!expected.isFile()||expected.size>16000)throw Error('assistant_builtin_skill_invalid');
    const fd=openSync(file,constants.O_RDONLY|(constants.O_NOFOLLOW??0));
@@ -17,8 +17,8 @@ export function loadAssistantSkillInstructions():string {
   catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')continue;if(error instanceof Error&&error.message==='assistant_builtin_skill_invalid')throw error;throw Error('assistant_builtin_skill_unavailable');}
   if(Buffer.byteLength(raw)>16000)throw Error('assistant_builtin_skill_invalid');
   const skill=parseFrontmatter(raw);
-  if(skill?.name!=='xiaok-assistant')throw Error('assistant_builtin_skill_invalid');
-  return `\n\n## 内置技能：小K助理\n${skill.content}`;
+  if(skill?.name!=='kteam-assistant')throw Error('assistant_builtin_skill_invalid');
+  return `\n\n## 内置技能：KTeam助理\n${skill.content}`;
  }
  throw Error('assistant_builtin_skill_unavailable');
 }

@@ -123,7 +123,7 @@ export function A2uiSurfaceRenderer({ messages }: { messages: unknown }) {
   const spec = useMemo(() => buildA2uiSpec(messages), [messages]);
   if (!spec) return null;
   return (
-    <div className="xiaok-a2ui" style={styles.surface}>
+    <div className="kteam-a2ui" style={styles.surface}>
       <JSONUIProvider registry={registry} handlers={{}}>
         <Renderer spec={spec} registry={registry} />
       </JSONUIProvider>

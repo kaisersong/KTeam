@@ -151,7 +151,7 @@ export function createLspTool(options: LspToolOptions): Tool {
         if (operation === 'documentSymbol') {
           return await fallbackDocumentSymbols(absPath);
         }
-        return 'Error: 没有可用的 LSP 服务器。请在 .xiaok/settings.json 中配置 lspServers。（documentSymbol 操作支持无 server 正则降级，其余操作需要 LSP）';
+        return 'Error: 没有可用的 LSP 服务器。请在 .kteam/settings.json 中配置 lspServers。（documentSymbol 操作支持无 server 正则降级，其余操作需要 LSP）';
       }
 
       const uri = fileToUri(absPath);

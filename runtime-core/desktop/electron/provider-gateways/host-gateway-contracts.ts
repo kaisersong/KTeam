@@ -4,7 +4,7 @@
  *
  * Why gateways instead of the generic loader's raw tools: the three reserved MCP
  * servers are removed from the generic loader, but Desktop still scans
- * each `~/.xiaok/plugins/<name>/skills` directory, and the bundled report/slide Skills reference eight
+ * each `~/.kteam/plugins/<name>/skills` directory, and the bundled report/slide Skills reference eight
  * historical `mcp__…` canonical names. Those names must stay reachable, yet the
  * registration owner, schema, permission and output-path contract have to be the
  * host's — not the server's tool catalog.
@@ -144,7 +144,7 @@ export const HOST_GATEWAY_CONTRACTS: readonly HostGatewayContract[] = Object.fre
 /** Canonical ids no third-party generic tool may claim (design R9-02). */
 export const RESERVED_HOST_TOOL_IDS: readonly string[] = Object.freeze([
   ...HOST_GATEWAY_CONTRACTS.map((c) => c.canonicalName),
-  'xiaok_computer_use',
+  'kteam_computer_use',
 ]);
 
 export function gatewayContract(canonicalName: string): HostGatewayContract {

@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 
-export const XIAOK_DAEMON_PROTOCOL_VERSION = 1;
+export const KTEAM_DAEMON_PROTOCOL_VERSION = 1;
 
-export interface XiaokDaemonClientInfo {
+export interface KTeamDaemonClientInfo {
   clientInstanceId: string;
   sessionId: string;
   creatorUserId: string;
@@ -14,25 +14,25 @@ export interface XiaokDaemonClientInfo {
   defaultTimeZone: string;
 }
 
-export interface XiaokDaemonHelloMessage extends XiaokDaemonClientInfo {
+export interface KTeamDaemonHelloMessage extends KTeamDaemonClientInfo {
   type: 'hello';
   sentAt: number;
 }
 
-export interface XiaokDaemonHelloAckMessage {
+export interface KTeamDaemonHelloAckMessage {
   type: 'hello_ack';
   daemonVersion: string;
   protocolVersion: number;
   sentAt: number;
 }
 
-export interface XiaokDaemonHeartbeatMessage {
+export interface KTeamDaemonHeartbeatMessage {
   type: 'heartbeat';
   clientInstanceId: string;
   sentAt: number;
 }
 
-export interface XiaokDaemonRpcRequestMessage {
+export interface KTeamDaemonRpcRequestMessage {
   type: 'rpc';
   id: string;
   service: string;
@@ -40,46 +40,46 @@ export interface XiaokDaemonRpcRequestMessage {
   params: Record<string, unknown>;
 }
 
-export interface XiaokDaemonRpcResultMessage {
+export interface KTeamDaemonRpcResultMessage {
   type: 'rpc_result';
   id: string;
   result: unknown;
 }
 
-export interface XiaokDaemonRpcErrorMessage {
+export interface KTeamDaemonRpcErrorMessage {
   type: 'rpc_error';
   id: string;
   message: string;
   code?: string;
 }
 
-export interface XiaokDaemonServiceEventMessage {
+export interface KTeamDaemonServiceEventMessage {
   type: 'service_event';
   service: string;
   name: string;
   payload: Record<string, unknown>;
 }
 
-export type XiaokDaemonClientMessage =
-  | XiaokDaemonHelloMessage
-  | XiaokDaemonHeartbeatMessage
-  | XiaokDaemonRpcRequestMessage;
+export type KTeamDaemonClientMessage =
+  | KTeamDaemonHelloMessage
+  | KTeamDaemonHeartbeatMessage
+  | KTeamDaemonRpcRequestMessage;
 
-export type XiaokDaemonServerMessage =
-  | XiaokDaemonHelloAckMessage
-  | XiaokDaemonRpcResultMessage
-  | XiaokDaemonRpcErrorMessage
-  | XiaokDaemonServiceEventMessage;
+export type KTeamDaemonServerMessage =
+  | KTeamDaemonHelloAckMessage
+  | KTeamDaemonRpcResultMessage
+  | KTeamDaemonRpcErrorMessage
+  | KTeamDaemonServiceEventMessage;
 
-export function createXiaokDaemonRpcId(): string {
+export function createKTeamDaemonRpcId(): string {
   return randomUUID();
 }
 
-export function resolveXiaokDaemonSocketPath(label?: string): string {
+export function resolveKTeamDaemonSocketPath(label?: string): string {
   const base = label ?? `${os.userInfo().username}:${os.homedir()}`;
   const id = createHash('sha256').update(base).digest('hex').slice(0, 16);
   if (process.platform === 'win32') {
-    return `\\\\.\\pipe\\xiaok-daemon-${id}`;
+    return `\\\\.\\pipe\\kteam-daemon-${id}`;
   }
-  return path.join(os.tmpdir(), `xiaok-daemon-${id}.sock`);
+  return path.join(os.tmpdir(), `kteam-daemon-${id}.sock`);
 }

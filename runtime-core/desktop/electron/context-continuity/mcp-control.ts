@@ -46,7 +46,7 @@ export class ContinuityMcpController {
   });}
   issue(input:IssueExternalReaderInput):Promise<{credentialId:string;clientConfig:string}>{return this.serial(async()=>{
     const state=await this.enable(),issued=this.service.issueExternalReader(this.actor,input);
-    return {credentialId:issued.credentialId,clientConfig:JSON.stringify({mcpServers:{'xiaok-context':{type:'http',url:state.url,headers:{Authorization:`Bearer ${issued.secret}`}}}},null,2)};
+    return {credentialId:issued.credentialId,clientConfig:JSON.stringify({mcpServers:{'kteam-context':{type:'http',url:state.url,headers:{Authorization:`Bearer ${issued.secret}`}}}},null,2)};
   });}
   async close():Promise<void>{this.stopped=true;await this.changes;const endpoint=this.endpoint;this.endpoint=null;this.url=null;await endpoint?.close();}
 }

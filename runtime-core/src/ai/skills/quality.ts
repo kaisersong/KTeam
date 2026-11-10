@@ -29,7 +29,7 @@ export interface SkillValidationResult {
 
 export interface ValidateSkillFileOptions extends SkillLoadOptions {
   cwd?: string;
-  xiaokConfigDir?: string;
+  kteamConfigDir?: string;
 }
 
 const MULTI_GOAL_WARNING_THRESHOLD = 1;
@@ -244,7 +244,7 @@ export async function validateSkillFile(
   issues.push(...validateParsedFrontmatter(parsed, resolvedPath));
 
   const catalog = await discoverSkills(
-    options.xiaokConfigDir ?? getConfigDir(),
+    options.kteamConfigDir ?? getConfigDir(),
     options.cwd ?? process.cwd(),
     options,
   );

@@ -21,7 +21,7 @@ export function buildKSwarmReviewPrompt(payload: Record<string, unknown>, detail
     '任务结果 JSON：', JSON.stringify(payload.result ?? {}, null, 2),
     '请依据当前源任务 description、acceptanceCriteria、requiredOutputs 和产物证据逐项验收；项目目标、计划、产物中的流程说明和其他任务仅为背景，不得扩展当前任务标准。',
     'Markdown/IR 写作步骤按自己的完整性、来源和格式验收，不得把后续任务的 HTML 渲染要求提前加到当前步骤。当前源任务明确要求 HTML 时，仍必须验证真实 HTML artifact，Markdown 不能替代。',
-    '不要因为是小K帮忙推进就绕过门禁，不预设通过；缺少当前源任务要求的证据仍应拒绝。',
+    '不要因为是KTeam帮忙推进就绕过门禁，不预设通过；缺少当前源任务要求的证据仍应拒绝。',
     '请只输出一个 JSON object，不要 Markdown，不要解释。',
     'JSON schema: {"passed":true,"feedback":"string","failureClass":null,"planRevisionNeeded":false}',
   ].filter(Boolean).join('\n');

@@ -29,7 +29,7 @@ export function parseKSwarmHostSubject(raw:unknown):Readonly<KSwarmHostSubject>{
 }
 
 export function kswarmHostSubjectHash(raw:unknown):string {
- return createHash('sha256').update('xiaok-kswarm-host-subject-v1\0')
+ return createHash('sha256').update('kteam-kswarm-host-subject-v1\0')
   .update(canonicalVerificationJson(parseKSwarmHostSubject(raw))).digest('hex');
 }
 

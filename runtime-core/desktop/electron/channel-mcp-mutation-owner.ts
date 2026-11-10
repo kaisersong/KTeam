@@ -120,7 +120,7 @@ export function createChannelMcpMutationOwner(dataRoot: string) {
       try {
         const start = Date.now();
         const response = await fetch(target.href, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ msgtype: 'text', text: { content: 'xiaok 测试连接 ✅' } }) });
+          body: JSON.stringify({ msgtype: 'text', text: { content: 'kteam 测试连接 ✅' } }) });
         const latencyMs = Math.max(0, Date.now() - start);
         return response.ok ? { success: true, latencyMs } : { success: false, latencyMs, error: `HTTP ${response.status}` };
       } catch { return { success: false, error: 'channel_mcp_mutation_network_failed' }; }

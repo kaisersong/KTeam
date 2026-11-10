@@ -2,7 +2,7 @@
  * MCP Server Configuration Loading
  *
  * 从两个源加载 MCP server 配置：
- * 1. ~/.xiaok/settings.json (user-level)
+ * 1. ~/.kteam/settings.json (user-level)
  * 2. Plugin manifests (project/user-level)
  *
  * 合并策略：plugin 覆盖 settings 的同名 server,同名冲突在 conflicts 中可观测。
@@ -20,7 +20,7 @@ import type {
 } from './types.js';
 
 /**
- * 从 ~/.xiaok/settings.json 加载 MCP servers
+ * 从 ~/.kteam/settings.json 加载 MCP servers
  */
 export function loadSettingsMcpServers(): SettingsMcpServers {
   const settingsPath = join(getConfigDir(), 'settings.json');

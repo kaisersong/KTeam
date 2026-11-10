@@ -29,7 +29,7 @@ export function activityOwnerAddress(dataRoot: string): ActivityOwnerAddress {
     if (!state.isDirectory() || state.isSymbolicLink() || state.uid !== uid || (state.mode & 0o077) !== 0) throw new Error('activity_socket_directory_not_private');
   }
   return { dataRoot, rootHash, credentialsPath: join(dataRoot, ACTIVITY_STORAGE_NAMES.credentials),
-    socketPath: process.platform === 'win32' ? `\\\\.\\pipe\\xiaok-activity-${rootHash.slice(0, 24)}` : join(socketDir, 's') };
+    socketPath: process.platform === 'win32' ? `\\\\.\\pipe\\kteam-activity-${rootHash.slice(0, 24)}` : join(socketDir, 's') };
 }
 
 export function readActivityOwnerCredentials(address: ActivityOwnerAddress): ActivityOwnerCredentials {

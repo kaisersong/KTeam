@@ -58,8 +58,8 @@ export function createComputerUseTool(backend: ComputerUseBackend, abiProfile: C
   return {
     permission: 'write',
     definition: {
-      name: 'xiaok_computer_use',
-      description: `Observe and operate local ${abiProfile.platform === 'win32' ? 'Windows' : 'macOS'} apps through CUA Driver with Xiaok safety checks. Session revival and transport reconnection are owned internally by Xiaok; never search for or call start_session or raw cua-driver commands. If an error has waitForUserAction=true, stop and wait for that user action. If a reobserve-required error has waitForUserAction=false, first capture the current target UI again, then decide whether the interrupted mutation still needs to be retried. On Windows, open a user-authorized HTTP/HTTPS webpage with open_url, then list_windows and capture the browser to verify it. Never use shell start to open a browser, and never blindly repeat a launch after timeout or interruption. Windows mutations default to background. An explicit foreground retry requires COMPUTER_USE_BACKGROUND_UNAVAILABLE for that exact target/operation (and button/count for clicks) and another fresh capture; never switch focus preemptively. Windows double/right clicks without observed web content refuse background pen input before dispatch; capture again before explicitly requesting foreground mouse input. Windows middle clicks refuse the background route before input because the pinned driver may invoke the primary action instead. An observed Windows text editor may refuse background pen drag before sending input so that text selection uses an explicitly authorized foreground mouse drag. Windows mutations require a fresh capture, explicit pid + window_id, and tokens/indices from that exact host snapshot. Never fall back to shell screenshot, osascript, cliclick, open, or cua-driver commands.`,
+      name: 'kteam_computer_use',
+      description: `Observe and operate local ${abiProfile.platform === 'win32' ? 'Windows' : 'macOS'} apps through CUA Driver with KTeam safety checks. Session revival and transport reconnection are owned internally by KTeam; never search for or call start_session or raw cua-driver commands. If an error has waitForUserAction=true, stop and wait for that user action. If a reobserve-required error has waitForUserAction=false, first capture the current target UI again, then decide whether the interrupted mutation still needs to be retried. On Windows, open a user-authorized HTTP/HTTPS webpage with open_url, then list_windows and capture the browser to verify it. Never use shell start to open a browser, and never blindly repeat a launch after timeout or interruption. Windows mutations default to background. An explicit foreground retry requires COMPUTER_USE_BACKGROUND_UNAVAILABLE for that exact target/operation (and button/count for clicks) and another fresh capture; never switch focus preemptively. Windows double/right clicks without observed web content refuse background pen input before dispatch; capture again before explicitly requesting foreground mouse input. Windows middle clicks refuse the background route before input because the pinned driver may invoke the primary action instead. An observed Windows text editor may refuse background pen drag before sending input so that text selection uses an explicitly authorized foreground mouse drag. Windows mutations require a fresh capture, explicit pid + window_id, and tokens/indices from that exact host snapshot. Never fall back to shell screenshot, osascript, cliclick, open, or cua-driver commands.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -302,7 +302,7 @@ function classifyRecoverableComputerUseError(value: unknown): ComputerUseUnavail
   }
   const nativeMessage = value && typeof value === 'object' ? (value as Partial<McpRuntimeToolResult>).summary ?? (value as Partial<McpRuntimeToolResult>).text : undefined;
   if (code === 'foreground_unavailable' || (code === 'tool_invocation_failed' && typeof nativeMessage === 'string' && nativeMessage.startsWith('foreground_unavailable:'))) return { code: 'COMPUTER_USE_FOREGROUND_UNAVAILABLE', message: 'Windows 未确认目标窗口或控件获得焦点。请检查目标状态后重新观察，避免重复发送操作。', waitForUserAction: true, retryable: false, notifyBackend: false, remember: false };
-  if (code === 'background_uipi_blocked') return { code: 'COMPUTER_USE_WINDOWS_TARGET_PERMISSION_DENIED', message: 'Windows 阻止了向此目标发送输入，请将目标与小K运行在相同权限级别后重新观察。', waitForUserAction: true, retryable: false, notifyBackend: false, remember: false };
+  if (code === 'background_uipi_blocked') return { code: 'COMPUTER_USE_WINDOWS_TARGET_PERMISSION_DENIED', message: 'Windows 阻止了向此目标发送输入，请将目标与KTeam运行在相同权限级别后重新观察。', waitForUserAction: true, retryable: false, notifyBackend: false, remember: false };
   if (code === 'COMPUTER_USE_WINDOW_AMBIGUOUS') {
     return { code, message: value instanceof Error ? value.message : '多个窗口匹配，请明确 pid + window_id。', waitForUserAction: false, retryable: true, notifyBackend: false, remember: false, nextAction: 'list_windows' };
   }
@@ -329,7 +329,7 @@ function classifyRecoverableComputerUseError(value: unknown): ComputerUseUnavail
 
   return {
     code: 'COMPUTER_USE_MCP_CONNECT_TIMEOUT',
-    message: 'CUA Driver 后台服务不可达，请在小K设置里重新连接 Computer Use。',
+    message: 'CUA Driver 后台服务不可达，请在KTeam设置里重新连接 Computer Use。',
     userAction: { type: 'reconnect_computer_use', label: '重新连接' },
   };
 }

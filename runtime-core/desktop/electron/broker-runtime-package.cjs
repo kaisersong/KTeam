@@ -8,12 +8,12 @@ const rawLock = require('../resources/broker-runtime-lock.json');
 // mutate future verification through the shared JSON require cache.
 const lock = Object.freeze({...rawLock,targets:Object.freeze(Object.fromEntries(Object.entries(rawLock.targets).map(([name,entry])=>[name,Object.freeze({...entry})])))});
 const {readPackageFile, assertRuntimeFileReadsKnown} = require('./broker-runtime-file.cjs');
-const blocked = new Set(['XIAOK_NODE_CMD', 'NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE']);
+const blocked = new Set(['KTEAM_NODE_CMD', 'NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE']);
 const manifestKeys = ['schema', 'target', 'node', 'sqlite', 'executable', 'archiveSha256', 'executableSha256', 'executableSize', 'licenseSha256', 'licenseSize'];
 function targetEntry(target) {
   if (!Object.hasOwn(lock.targets, target)) return null;
   const entry = lock.targets[target];
-  if (lock.schema !== 'xiaok-broker-runtime-lock/v1' || lock.node !== '24.19.0' || lock.sqlite !== '3.53.3') throw Error('broker_runtime_lock');
+  if (lock.schema !== 'kteam-broker-runtime-lock/v1' || lock.node !== '24.19.0' || lock.sqlite !== '3.53.3') throw Error('broker_runtime_lock');
   const prefix = `node-v${lock.node}-${target === 'darwin-arm64' ? 'darwin-arm64' : 'win-x64'}`;
   const exe = target === 'darwin-arm64' ? 'node' : 'node.exe';
   if (!['darwin-arm64', 'win32-x64'].includes(target) || entry.archive !== `${prefix}.${target === 'darwin-arm64' ? 'tar.gz' : 'zip'}` || entry.executable !== exe || entry.member !== `${prefix}/${target === 'darwin-arm64' ? 'bin/' : ''}${exe}` || entry.license !== `${prefix}/LICENSE`) throw Error('broker_runtime_lock');
@@ -40,7 +40,7 @@ function packageDirectory(resourcesPath, target) {
 function expectedManifest(target) {
   const entry = targetEntry(target);
   if (!entry) throw Error('broker_runtime_target');
-  return {schema: 'xiaok-broker-runtime/v1', target, node: lock.node, sqlite: lock.sqlite, executable: entry.executable, archiveSha256: entry.archiveSha256, executableSha256: entry.executableSha256, executableSize: entry.executableSize, licenseSha256: entry.licenseSha256, licenseSize: entry.licenseSize};
+  return {schema: 'kteam-broker-runtime/v1', target, node: lock.node, sqlite: lock.sqlite, executable: entry.executable, archiveSha256: entry.archiveSha256, executableSha256: entry.executableSha256, executableSize: entry.executableSize, licenseSha256: entry.licenseSha256, licenseSize: entry.licenseSize};
 }
 function verifyRuntimeDirectory(dir, target) {
   assertRuntimeFileReadsKnown(); directory(dir);

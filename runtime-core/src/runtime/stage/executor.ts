@@ -252,7 +252,7 @@ function createCheckpointWarning(
     timestamp: Date.now(),
     phase: 'checkpoint',
     stage: stageLabel,
-    detail: `Stage "${stageTitle}" failed. ${modifiedFiles} files modified. Run \`xiaok revert ${checkpointId}\` to undo.`,
+    detail: `Stage "${stageTitle}" failed. ${modifiedFiles} files modified. Run \`kteam revert ${checkpointId}\` to undo.`,
     durationMs: 0,
     level: 'warn',
   };
@@ -384,7 +384,7 @@ function findBestSkillMatch(input: string, skills: SkillMeta[]): SkillMeta | nul
 export function formatDebugOutput(result: StageOutput): string {
   const lines: string[] = [];
 
-  lines.push(`[xiaok] Skill execution: ${result.stages.map(s => s.title).join(' → ')}`);
+  lines.push(`[kteam] Skill execution: ${result.stages.map(s => s.title).join(' → ')}`);
   lines.push(`[stage:plan] Analyzing intent... (${result.debugEvents.find(e => e.phase === 'intent_analysis')?.durationMs ?? 0}ms)`);
   lines.push(`[stage:plan] Detected ${result.stages.length} stages:`);
   for (const stage of result.stages) {
@@ -420,7 +420,7 @@ export function formatDebugOutput(result: StageOutput): string {
   }
 
   const totalMs = result.results.reduce((sum, r) => sum + r.timing.totalMs, 0);
-  lines.push(`[xiaok] Skill flow completed (${result.results.filter(r => r.status === 'completed').length}/${result.stages.length} stages)`);
+  lines.push(`[kteam] Skill flow completed (${result.results.filter(r => r.status === 'completed').length}/${result.stages.length} stages)`);
   lines.push(`  Total: ${(totalMs / 1000).toFixed(1)}s`);
 
   return lines.join('\n');

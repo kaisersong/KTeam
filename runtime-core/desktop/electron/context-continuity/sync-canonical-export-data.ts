@@ -100,7 +100,7 @@ export function captureCanonicalExportData(service:ContinuityService,actor:Conti
   node.version.originHash=canonicalVersionDigest(node.batch.scope,node.message,node.version);node.state=2;
  };
  for(const node of nodes.values())resolve(node);
- for(const batch of batches){const {manifestHash:_ignored,...body}=batch;batch.manifestHash=hash(['xiaok/canonical-batch/v1',body]);}
+ for(const batch of batches){const {manifestHash:_ignored,...body}=batch;batch.manifestHash=hash(['kteam/canonical-batch/v1',body]);}
  const result=validateCanonicalBundle(batches),after=captureCanonicalStoreState(db);
  if(db.isTransaction||before.policyHash!==after.policyHash||before.publicationHash!==after.publicationHash)throw unavailable('canonical_source_rows_changed');
  return result;

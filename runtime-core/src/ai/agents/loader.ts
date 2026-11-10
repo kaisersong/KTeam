@@ -72,7 +72,7 @@ function loadAgentsFromDir(dir: string, source: 'builtin' | 'global' | 'project'
       const parsed = parseAgentFile(entry.replace(/\.md$/i, ''), raw);
       agents.push({ ...parsed, source });
     } catch {
-      console.warn(`[xiaok] Agents: 读取文件失败: ${entry}`);
+      console.warn(`[kteam] Agents: 读取文件失败: ${entry}`);
     }
   }
 
@@ -80,13 +80,13 @@ function loadAgentsFromDir(dir: string, source: 'builtin' | 'global' | 'project'
 }
 
 export async function loadCustomAgents(
-  xiaokConfigDir = getConfigDir(),
+  kteamConfigDir = getConfigDir(),
   cwd = process.cwd(),
   extraDirs: string[] = [],
 ): Promise<CustomAgentDef[]> {
   const builtinAgents = loadAgentsFromDir(BUILTIN_AGENTS_DIR, 'builtin');
-  const globalAgents = loadAgentsFromDir(join(xiaokConfigDir, 'agents'), 'global');
-  const projectAgents = loadAgentsFromDir(join(cwd, '.xiaok', 'agents'), 'project');
+  const globalAgents = loadAgentsFromDir(join(kteamConfigDir, 'agents'), 'global');
+  const projectAgents = loadAgentsFromDir(join(cwd, '.kteam', 'agents'), 'project');
   const pluginAgents = extraDirs.flatMap((dir) => loadAgentsFromDir(dir, 'project'));
 
   // Priority: project > global > builtin (later entries override earlier ones)

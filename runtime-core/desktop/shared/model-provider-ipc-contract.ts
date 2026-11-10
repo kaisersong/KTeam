@@ -24,13 +24,13 @@ export const MODEL_PROVIDER_INPUT_SCHEMAS = Object.freeze({
   getModelConfig: z.tuple([]), saveModelConfig: z.tuple([SAVE_MODEL_CONFIG_SCHEMA]),
   updateModelRuntimeOptions: z.tuple([UPDATE_MODEL_RUNTIME_SCHEMA]), getSystemOneConfig: z.tuple([]),
   saveSystemOneConfig: z.union([z.tuple([]), z.tuple([SYSTEM_ONE_PATCH_SCHEMA.optional()])]),
-  createManagedXiaokAgent: z.tuple([MANAGED_AGENT_INPUT_SCHEMA]), testProviderConnection: z.tuple([PROVIDER_CONNECTION_INPUT_SCHEMA]),
+  createManagedKTeamAgent: z.tuple([MANAGED_AGENT_INPUT_SCHEMA]), testProviderConnection: z.tuple([PROVIDER_CONNECTION_INPUT_SCHEMA]),
   listAvailableModelsForProvider: z.tuple([z.string()]), deleteProvider: z.tuple([z.string()]), deleteModel: z.tuple([z.string()]),
 });
 export const MODEL_PROVIDER_OUTPUT_SCHEMAS = Object.freeze({
   getModelConfig: MODEL_CONFIG_RESULT_SCHEMA, saveModelConfig: MODEL_CONFIG_RESULT_SCHEMA, updateModelRuntimeOptions: MODEL_CONFIG_RESULT_SCHEMA,
   getSystemOneConfig: SYSTEM_ONE_RESULT_SCHEMA, saveSystemOneConfig: SYSTEM_ONE_RESULT_SCHEMA,
-  createManagedXiaokAgent: z.object({ ok: z.literal(true), agent: KSWARM_AGENT_FACT_SCHEMA, reused: z.boolean() }).strict(),
+  createManagedKTeamAgent: z.object({ ok: z.literal(true), agent: KSWARM_AGENT_FACT_SCHEMA, reused: z.boolean() }).strict(),
   testProviderConnection: z.object({ success: z.boolean(), latencyMs: z.number().finite().optional(), error: z.string().optional() }).strict(),
   listAvailableModelsForProvider: z.array(availableModel), deleteProvider: z.undefined(), deleteModel: z.undefined(),
 });
@@ -45,6 +45,6 @@ export type AvailableModelResult = z.infer<typeof availableModel>;
 export type SaveModelConfigInput = z.infer<typeof SAVE_MODEL_CONFIG_SCHEMA>;
 export type UpdateModelRuntimeInput = z.infer<typeof UPDATE_MODEL_RUNTIME_SCHEMA>;
 export type SystemOneConfigPatch = z.infer<typeof SYSTEM_ONE_PATCH_SCHEMA>;
-export type ManagedAgentResult = z.infer<typeof MODEL_PROVIDER_OUTPUT_SCHEMAS.createManagedXiaokAgent>;
+export type ManagedAgentResult = z.infer<typeof MODEL_PROVIDER_OUTPUT_SCHEMAS.createManagedKTeamAgent>;
 export type ProviderConnectionInput = z.infer<typeof PROVIDER_CONNECTION_INPUT_SCHEMA>;
 export type ProviderConnectionResult = z.infer<typeof MODEL_PROVIDER_OUTPUT_SCHEMAS.testProviderConnection>;

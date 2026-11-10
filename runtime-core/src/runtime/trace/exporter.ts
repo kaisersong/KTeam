@@ -121,7 +121,7 @@ export function buildSessionTraceBundleFromSnapshots(
     schemaVersion: 1,
     bundleId: `trace_${safeFilePart(input.sessionId)}_${createdAt.replace(/[^0-9]/g, '')}`,
     createdAt,
-    source: { app: 'xiaok-desktop', version: input.version, command: input.command },
+    source: { app: 'kteam-desktop', version: input.version, command: input.command },
     scope: { kind: 'session', sessionId: input.sessionId },
     environment: { dataRoot: dataRoot?.value },
     turns: [...turns.values()],

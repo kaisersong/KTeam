@@ -114,8 +114,8 @@ export class ConversationActivityOwnerHost {
 }) {
     this.now = options.now ?? Date.now;
     this.lastActivity = this.unattendedSince = this.now();
-    this.idleMs = activityOwnerTimeout((options.env ?? process.env).XIAOK_ACTIVITY_OWNER_IDLE_MS, ACTIVITY_OWNER_IDLE_MS);
-    this.unattendedMs = activityOwnerTimeout((options.env ?? process.env).XIAOK_ACTIVITY_OWNER_MAX_UNATTENDED_MS, ACTIVITY_OWNER_MAX_UNATTENDED_MS);
+    this.idleMs = activityOwnerTimeout((options.env ?? process.env).KTEAM_ACTIVITY_OWNER_IDLE_MS, ACTIVITY_OWNER_IDLE_MS);
+    this.unattendedMs = activityOwnerTimeout((options.env ?? process.env).KTEAM_ACTIVITY_OWNER_MAX_UNATTENDED_MS, ACTIVITY_OWNER_MAX_UNATTENDED_MS);
     this.address = activityOwnerAddress(options.dataRoot);
     this.store = new ConversationActivityStore(join(this.address.dataRoot, ACTIVITY_STORAGE_NAMES.database),options.projectSource?{projectOrdinarySource:frame=>this.service.resolveProjectOrdinarySource(frame),projectDeliverySource:frame=>this.service.resolveProjectDeliverySource(frame)}:{});
     this.actor = { requestSource: 'user' as const, actorId: options.actorId };

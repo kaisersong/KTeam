@@ -14,7 +14,7 @@ export function createWindowsCuaDependency(localAppData: string, privateBinary?:
   ];
   return {
     id: 'cua-driver', kind: 'native_cli', supportedPlatforms: ['win32'], displayName: 'CUA Driver',
-    envOverride: 'XIAOK_CUA_DRIVER_CMD', binaryCandidates, exactVersion: WINDOWS_CUA_RELEASE.version,
+    envOverride: 'KTEAM_CUA_DRIVER_CMD', binaryCandidates, exactVersion: WINDOWS_CUA_RELEASE.version,
     install: { kind: 'official_release_archive', requiresUserConfirmation: true },
     update: { kind: 'official_release_archive', requiresUserConfirmation: true },
     health: { version: [binaryCandidates[0], '--version'] },

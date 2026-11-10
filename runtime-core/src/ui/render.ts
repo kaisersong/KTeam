@@ -239,7 +239,7 @@ export function renderWelcomeScreen(opts: {
   // 如果终端太小（小于 50 列），跳过欢迎界面，避免 String.repeat 负数错误
   if (cols < 50 || rightWidth < 0) {
     console.log();
-    console.log(boldCyan("欢迎使用 xiaok code!"));
+    console.log(boldCyan("欢迎使用 kteam code!"));
     console.log(dim(`${opts.model} · ${opts.mode} · ${opts.cwd}`));
     console.log();
     // Count actual terminal rows (with wrapping)
@@ -315,7 +315,7 @@ export function renderWelcomeScreen(opts: {
   console.log(topBorder);
   rowCount += countRows(stripAnsi(topBorder));
 
-  const welcome = "欢迎使用 xiaok code!";
+  const welcome = "欢迎使用 kteam code!";
   const welcomeLeft = centerVisible(boldCyan(welcome), leftWidth);
   const welcomeLine = line(welcomeLeft, "");
   console.log(welcomeLine);
@@ -576,7 +576,7 @@ export function renderBanner(opts: {
   console.log();
   console.log(`  ${dimCyan(line)}`);
   console.log();
-  console.log(`  ${boldCyan("◆")} ${bold("xiaok code")} ${dim(`(${opts.model})`)}`);
+  console.log(`  ${boldCyan("◆")} ${bold("kteam code")} ${dim(`(${opts.model})`)}`);
   console.log();
 
   const info: [string, string][] = [

@@ -187,7 +187,7 @@ function resolveInstallTarget(
 
   return {
     scope: 'project',
-    skillDir: join(cwd, '.xiaok', 'skills'),
+    skillDir: join(cwd, '.kteam', 'skills'),
   };
 }
 
@@ -319,7 +319,7 @@ export function createInstallSkillTool(options: InstallSkillToolOptions = {}): T
       const existed = existsSync(targetPath);
 
       mkdirSync(dirname(targetPath), { recursive: true });
-      const tempPath = join(dirname(targetPath), `.xiaok-install-${Date.now()}.tmp`);
+      const tempPath = join(dirname(targetPath), `.kteam-install-${Date.now()}.tmp`);
       writeFileSync(tempPath, raw, 'utf8');
       renameSync(tempPath, targetPath);
 

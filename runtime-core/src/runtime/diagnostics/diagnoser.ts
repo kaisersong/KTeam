@@ -76,7 +76,7 @@ export function diagnoseTraceBundle(bundle: TraceBundleV1): DiagnosisReport {
 export function formatDiagnosisMarkdown(report: DiagnosisReport): string {
   const primary = report.primaryFinding;
   return [
-    '# Xiaok Diagnosis',
+    '# KTeam Diagnosis',
     '',
     '## 主要问题',
     primary ? `- ${primary.title}：${primary.explanation}` : '- 未发现明确问题',

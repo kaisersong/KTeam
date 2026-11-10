@@ -466,7 +466,7 @@ export function truncateToolResult(
     const safeSessionId = safeId(options.sessionId) || 'unknown';
     const safeToolCallId = safeId(options.toolCallId) || 'unknown';
     const spillPath = join(options.spillDir, safeSessionId, `${safeToolCallId}.txt`);
-    const relativeHint = `.xiaok/spill/${safeSessionId}/${safeToolCallId}.txt`;
+    const relativeHint = `.kteam/spill/${safeSessionId}/${safeToolCallId}.txt`;
 
     try {
       mkdirSync(dirname(spillPath), { recursive: true });

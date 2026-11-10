@@ -114,5 +114,5 @@ export function parseLoopBusinessContract(raw: unknown): Readonly<LoopBusinessCo
     return freeze(value) as Readonly<LoopBusinessContract>;
 }
 export function loopBusinessContractHash(raw: unknown): string {
-    return ownDataHashPrototypeDigest(ownDataHashPrototypeUpdate(ownDataHashPrototypeUpdate(ownDataCryptoCreateHash('sha256'), 'xiaok-loop-business-contract-v1\0'), json(parseLoopBusinessContract(raw))), 'hex');
+    return ownDataHashPrototypeDigest(ownDataHashPrototypeUpdate(ownDataHashPrototypeUpdate(ownDataCryptoCreateHash('sha256'), 'kteam-loop-business-contract-v1\0'), json(parseLoopBusinessContract(raw))), 'hex');
 }

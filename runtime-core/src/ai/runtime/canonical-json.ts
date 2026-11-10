@@ -1,6 +1,6 @@
 import { types as utilTypes } from 'node:util';
 
-export const CANONICAL_JSON_V1_ENCODER_ID = 'xiaok-canonical-json-direct-v1';
+export const CANONICAL_JSON_V1_ENCODER_ID = 'kteam-canonical-json-direct-v1';
 
 export const CANONICAL_JSON_V1_LIMITS = Object.freeze({
   maxCanonicalDepth: 128,

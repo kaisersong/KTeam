@@ -40,7 +40,7 @@ export function parseGoalApplicationBinding(raw: unknown): Readonly<GoalApplicat
     ownDataObjectFreeze(r.expectedEvidenceKinds);
     return ownDataObjectFreeze(r) as Readonly<GoalApplicationBinding>;
 }
-export function goalApplicationBindingHash(raw: unknown): string { return ownDataHashPrototypeDigest(ownDataHashPrototypeUpdate(ownDataHashPrototypeUpdate(ownDataCryptoCreateHash('sha256'), 'xiaok-goal-application-binding-v1\0'), json(parseGoalApplicationBinding(raw))), 'hex'); }
+export function goalApplicationBindingHash(raw: unknown): string { return ownDataHashPrototypeDigest(ownDataHashPrototypeUpdate(ownDataHashPrototypeUpdate(ownDataCryptoCreateHash('sha256'), 'kteam-goal-application-binding-v1\0'), json(parseGoalApplicationBinding(raw))), 'hex'); }
 export interface ActiveGoalApplicationBinding {
     binding: Readonly<GoalApplicationBinding>;
     bindingHash: string;

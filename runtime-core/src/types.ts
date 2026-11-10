@@ -173,7 +173,7 @@ export interface YZJChannelConfig {
 /**
  * TypeSafe System One（Jev）配置。
  *
- * Jev 不是 xiaok 的推理模型，而是辅助决策模型：它不参与 `models` /
+ * Jev 不是 kteam 的推理模型，而是辅助决策模型：它不参与 `models` /
  * `defaultModelId` 的模型选择，也不出现在 `providers` 里，因此单独占一个
  * 顶层配置块，避免被 `config set model` 抢成默认聊天模型。
  */

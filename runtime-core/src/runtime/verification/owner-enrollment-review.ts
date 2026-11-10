@@ -68,7 +68,7 @@ export function parseGoalForkSource(raw:unknown):Readonly<GoalForkSource> {
  return freeze(source) as Readonly<GoalForkSource>;
 }
 export function goalRegistrationHash(registration:OwnerEnrollmentReview['registration']):string {
- return createHash('sha256').update('xiaok-goal-original-registration-v1\0').update(json(registration)).digest('hex');
+ return createHash('sha256').update('kteam-goal-original-registration-v1\0').update(json(registration)).digest('hex');
 }
 /** Pure read-result parser; a snapshot is neither an approval nor a proof. */
 export function parseGoalForkSourceSnapshot(raw:unknown):Readonly<GoalForkSourceSnapshot> {

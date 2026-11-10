@@ -103,14 +103,14 @@ export interface WorktreeManager {
 }
 
 const REGISTRY_SCHEMA_VERSION = 1;
-const LOCK_REF = 'refs/xiaok/worktree-registry-lock';
+const LOCK_REF = 'refs/kteam/worktree-registry-lock';
 
 export function createWorktreeManager(options: WorktreeManagerOptions): WorktreeManager {
   const normalizedRoot = resolve(options.repoRoot);
   const normalizedWorktreesDir = resolve(options.worktreesDir);
   const registryPath = resolve(
     options.registryPath
-      ?? join(normalizedWorktreesDir, '.xiaok-worktree-registry'),
+      ?? join(normalizedWorktreesDir, '.kteam-worktree-registry'),
   );
   if (
     !isWithinBoundary(normalizedRoot, registryPath)
@@ -386,7 +386,7 @@ export function createWorktreeManager(options: WorktreeManagerOptions): Worktree
     };
     const ownerPath = join(
       normalizedWorktreesDir,
-      `.xiaok-worktree-lock-owner-${owner.token}`,
+      `.kteam-worktree-lock-owner-${owner.token}`,
     );
     writeFileAtomicallySync(ownerPath, JSON.stringify(owner));
     let ownerOid = '';

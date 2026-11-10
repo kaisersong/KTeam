@@ -8,7 +8,7 @@ export async function runMonitoredTool<T>(options: {
   const {context}=options;
   const owned=new AbortController();
   let active=true;
-  const idleMs=resolveExecutionIdleMs(options.idleMs === undefined ? process.env.XIAOK_TOOL_IDLE_TIMEOUT_MS : String(options.idleMs));
+  const idleMs=resolveExecutionIdleMs(options.idleMs === undefined ? process.env.KTEAM_TOOL_IDLE_TIMEOUT_MS : String(options.idleMs));
   const health=createExecutionHealthMonitor({idleMs,
     onState:state=>{if(context?.onExecutionHealth) context.onExecutionHealth(state);else if(state === 'cleanup_pending') console.warn(`[tool-health] ${options.name}: waiting for actual execution settlement`);},
     onStalled:()=>owned.abort(new Error(`TOOL_IDLE_TIMEOUT: ${options.name}; cancellation requested; waiting for execution to settle`)),

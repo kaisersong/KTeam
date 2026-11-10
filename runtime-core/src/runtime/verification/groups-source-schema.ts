@@ -1323,325 +1323,325 @@ const schema5=freezeCapturedData([
     "type": "trigger",
     "name": "dsh_a_guard_activity_members_delete",
     "tbl_name": "activity_members",
-    "sql": "CREATE TRIGGER dsh_a_guard_activity_members_delete BEFORE DELETE ON activity_members BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_activity_members_delete BEFORE DELETE ON activity_members BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_activity_members_insert",
     "tbl_name": "activity_members",
-    "sql": "CREATE TRIGGER dsh_a_guard_activity_members_insert BEFORE INSERT ON activity_members BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_activity_members_insert BEFORE INSERT ON activity_members BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_activity_members_update",
     "tbl_name": "activity_members",
-    "sql": "CREATE TRIGGER dsh_a_guard_activity_members_update BEFORE UPDATE ON activity_members BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_activity_members_update BEFORE UPDATE ON activity_members BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_activity_runs_delete",
     "tbl_name": "activity_runs",
-    "sql": "CREATE TRIGGER dsh_a_guard_activity_runs_delete BEFORE DELETE ON activity_runs BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_activity_runs_delete BEFORE DELETE ON activity_runs BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_activity_runs_insert",
     "tbl_name": "activity_runs",
-    "sql": "CREATE TRIGGER dsh_a_guard_activity_runs_insert BEFORE INSERT ON activity_runs BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_activity_runs_insert BEFORE INSERT ON activity_runs BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_activity_runs_update",
     "tbl_name": "activity_runs",
-    "sql": "CREATE TRIGGER dsh_a_guard_activity_runs_update BEFORE UPDATE ON activity_runs BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_activity_runs_update BEFORE UPDATE ON activity_runs BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_agents_delete",
     "tbl_name": "agents",
-    "sql": "CREATE TRIGGER dsh_a_guard_agents_delete BEFORE DELETE ON agents BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_agents_delete BEFORE DELETE ON agents BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_agents_insert",
     "tbl_name": "agents",
-    "sql": "CREATE TRIGGER dsh_a_guard_agents_insert BEFORE INSERT ON agents BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_agents_insert BEFORE INSERT ON agents BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_agents_update",
     "tbl_name": "agents",
-    "sql": "CREATE TRIGGER dsh_a_guard_agents_update BEFORE UPDATE ON agents BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_agents_update BEFORE UPDATE ON agents BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_boot_owners_delete",
     "tbl_name": "boot_owners",
-    "sql": "CREATE TRIGGER dsh_a_guard_boot_owners_delete BEFORE DELETE ON boot_owners BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_boot_owners_delete BEFORE DELETE ON boot_owners BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_boot_owners_insert",
     "tbl_name": "boot_owners",
-    "sql": "CREATE TRIGGER dsh_a_guard_boot_owners_insert BEFORE INSERT ON boot_owners BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_boot_owners_insert BEFORE INSERT ON boot_owners BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_boot_owners_update",
     "tbl_name": "boot_owners",
-    "sql": "CREATE TRIGGER dsh_a_guard_boot_owners_update BEFORE UPDATE ON boot_owners BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_boot_owners_update BEFORE UPDATE ON boot_owners BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_contents_delete",
     "tbl_name": "contents",
-    "sql": "CREATE TRIGGER dsh_a_guard_contents_delete BEFORE DELETE ON contents BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_contents_delete BEFORE DELETE ON contents BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_contents_insert",
     "tbl_name": "contents",
-    "sql": "CREATE TRIGGER dsh_a_guard_contents_insert BEFORE INSERT ON contents BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_contents_insert BEFORE INSERT ON contents BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_contents_update",
     "tbl_name": "contents",
-    "sql": "CREATE TRIGGER dsh_a_guard_contents_update BEFORE UPDATE ON contents BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_contents_update BEFORE UPDATE ON contents BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_inbox_delete",
     "tbl_name": "dsh_a_inbox",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_inbox_delete BEFORE DELETE ON dsh_a_inbox BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_inbox_delete BEFORE DELETE ON dsh_a_inbox BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_inbox_insert",
     "tbl_name": "dsh_a_inbox",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_inbox_insert BEFORE INSERT ON dsh_a_inbox BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_inbox_insert BEFORE INSERT ON dsh_a_inbox BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_inbox_update",
     "tbl_name": "dsh_a_inbox",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_inbox_update BEFORE UPDATE ON dsh_a_inbox BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_inbox_update BEFORE UPDATE ON dsh_a_inbox BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_input_proofs_delete",
     "tbl_name": "dsh_a_input_proofs",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_input_proofs_delete BEFORE DELETE ON dsh_a_input_proofs BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_input_proofs_delete BEFORE DELETE ON dsh_a_input_proofs BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_input_proofs_insert",
     "tbl_name": "dsh_a_input_proofs",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_input_proofs_insert BEFORE INSERT ON dsh_a_input_proofs BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_input_proofs_insert BEFORE INSERT ON dsh_a_input_proofs BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_input_proofs_update",
     "tbl_name": "dsh_a_input_proofs",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_input_proofs_update BEFORE UPDATE ON dsh_a_input_proofs BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_input_proofs_update BEFORE UPDATE ON dsh_a_input_proofs BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_object_heads_delete",
     "tbl_name": "dsh_a_object_heads",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_object_heads_delete BEFORE DELETE ON dsh_a_object_heads BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_object_heads_delete BEFORE DELETE ON dsh_a_object_heads BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_object_heads_insert",
     "tbl_name": "dsh_a_object_heads",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_object_heads_insert BEFORE INSERT ON dsh_a_object_heads BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_object_heads_insert BEFORE INSERT ON dsh_a_object_heads BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_object_heads_update",
     "tbl_name": "dsh_a_object_heads",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_object_heads_update BEFORE UPDATE ON dsh_a_object_heads BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_object_heads_update BEFORE UPDATE ON dsh_a_object_heads BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_profile_delete",
     "tbl_name": "dsh_a_profile",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_profile_delete BEFORE DELETE ON dsh_a_profile BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END;SELECT RAISE(ABORT,'dsh_a_profile_immutable'); END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_profile_delete BEFORE DELETE ON dsh_a_profile BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END;SELECT RAISE(ABORT,'dsh_a_profile_immutable'); END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_profile_insert",
     "tbl_name": "dsh_a_profile",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_profile_insert BEFORE INSERT ON dsh_a_profile BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END;SELECT RAISE(ABORT,'dsh_a_profile_immutable'); END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_profile_insert BEFORE INSERT ON dsh_a_profile BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END;SELECT RAISE(ABORT,'dsh_a_profile_immutable'); END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_profile_update",
     "tbl_name": "dsh_a_profile",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_profile_update BEFORE UPDATE ON dsh_a_profile BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END;SELECT RAISE(ABORT,'dsh_a_profile_immutable'); END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_profile_update BEFORE UPDATE ON dsh_a_profile BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END;SELECT RAISE(ABORT,'dsh_a_profile_immutable'); END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_source_bindings_delete",
     "tbl_name": "dsh_a_source_bindings",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_source_bindings_delete BEFORE DELETE ON dsh_a_source_bindings BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_source_bindings_delete BEFORE DELETE ON dsh_a_source_bindings BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_source_bindings_insert",
     "tbl_name": "dsh_a_source_bindings",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_source_bindings_insert BEFORE INSERT ON dsh_a_source_bindings BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_source_bindings_insert BEFORE INSERT ON dsh_a_source_bindings BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_dsh_a_source_bindings_update",
     "tbl_name": "dsh_a_source_bindings",
-    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_source_bindings_update BEFORE UPDATE ON dsh_a_source_bindings BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_dsh_a_source_bindings_update BEFORE UPDATE ON dsh_a_source_bindings BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_events_delete",
     "tbl_name": "events",
-    "sql": "CREATE TRIGGER dsh_a_guard_events_delete BEFORE DELETE ON events BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_events_delete BEFORE DELETE ON events BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_events_insert",
     "tbl_name": "events",
-    "sql": "CREATE TRIGGER dsh_a_guard_events_insert BEFORE INSERT ON events BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_events_insert BEFORE INSERT ON events BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_events_update",
     "tbl_name": "events",
-    "sql": "CREATE TRIGGER dsh_a_guard_events_update BEFORE UPDATE ON events BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_events_update BEFORE UPDATE ON events BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_groups_delete",
     "tbl_name": "groups",
-    "sql": "CREATE TRIGGER dsh_a_guard_groups_delete BEFORE DELETE ON groups BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_groups_delete BEFORE DELETE ON groups BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_groups_insert",
     "tbl_name": "groups",
-    "sql": "CREATE TRIGGER dsh_a_guard_groups_insert BEFORE INSERT ON groups BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_groups_insert BEFORE INSERT ON groups BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_groups_update",
     "tbl_name": "groups",
-    "sql": "CREATE TRIGGER dsh_a_guard_groups_update BEFORE UPDATE ON groups BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_groups_update BEFORE UPDATE ON groups BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_managed_resources_delete",
     "tbl_name": "managed_resources",
-    "sql": "CREATE TRIGGER dsh_a_guard_managed_resources_delete BEFORE DELETE ON managed_resources BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_managed_resources_delete BEFORE DELETE ON managed_resources BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_managed_resources_insert",
     "tbl_name": "managed_resources",
-    "sql": "CREATE TRIGGER dsh_a_guard_managed_resources_insert BEFORE INSERT ON managed_resources BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_managed_resources_insert BEFORE INSERT ON managed_resources BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_managed_resources_update",
     "tbl_name": "managed_resources",
-    "sql": "CREATE TRIGGER dsh_a_guard_managed_resources_update BEFORE UPDATE ON managed_resources BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_managed_resources_update BEFORE UPDATE ON managed_resources BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_messages_delete",
     "tbl_name": "messages",
-    "sql": "CREATE TRIGGER dsh_a_guard_messages_delete BEFORE DELETE ON messages BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_messages_delete BEFORE DELETE ON messages BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_messages_insert",
     "tbl_name": "messages",
-    "sql": "CREATE TRIGGER dsh_a_guard_messages_insert BEFORE INSERT ON messages BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_messages_insert BEFORE INSERT ON messages BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_messages_update",
     "tbl_name": "messages",
-    "sql": "CREATE TRIGGER dsh_a_guard_messages_update BEFORE UPDATE ON messages BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_messages_update BEFORE UPDATE ON messages BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_operations_delete",
     "tbl_name": "operations",
-    "sql": "CREATE TRIGGER dsh_a_guard_operations_delete BEFORE DELETE ON operations BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_operations_delete BEFORE DELETE ON operations BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_operations_insert",
     "tbl_name": "operations",
-    "sql": "CREATE TRIGGER dsh_a_guard_operations_insert BEFORE INSERT ON operations BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_operations_insert BEFORE INSERT ON operations BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_operations_update",
     "tbl_name": "operations",
-    "sql": "CREATE TRIGGER dsh_a_guard_operations_update BEFORE UPDATE ON operations BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_operations_update BEFORE UPDATE ON operations BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_root_turns_delete",
     "tbl_name": "root_turns",
-    "sql": "CREATE TRIGGER dsh_a_guard_root_turns_delete BEFORE DELETE ON root_turns BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_root_turns_delete BEFORE DELETE ON root_turns BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_root_turns_insert",
     "tbl_name": "root_turns",
-    "sql": "CREATE TRIGGER dsh_a_guard_root_turns_insert BEFORE INSERT ON root_turns BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_root_turns_insert BEFORE INSERT ON root_turns BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_root_turns_update",
     "tbl_name": "root_turns",
-    "sql": "CREATE TRIGGER dsh_a_guard_root_turns_update BEFORE UPDATE ON root_turns BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_root_turns_update BEFORE UPDATE ON root_turns BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_thread_bindings_delete",
     "tbl_name": "thread_bindings",
-    "sql": "CREATE TRIGGER dsh_a_guard_thread_bindings_delete BEFORE DELETE ON thread_bindings BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_thread_bindings_delete BEFORE DELETE ON thread_bindings BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_thread_bindings_insert",
     "tbl_name": "thread_bindings",
-    "sql": "CREATE TRIGGER dsh_a_guard_thread_bindings_insert BEFORE INSERT ON thread_bindings BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_thread_bindings_insert BEFORE INSERT ON thread_bindings BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_thread_bindings_update",
     "tbl_name": "thread_bindings",
-    "sql": "CREATE TRIGGER dsh_a_guard_thread_bindings_update BEFORE UPDATE ON thread_bindings BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_thread_bindings_update BEFORE UPDATE ON thread_bindings BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_workspace_execution_authorizations_delete",
     "tbl_name": "workspace_execution_authorizations",
-    "sql": "CREATE TRIGGER dsh_a_guard_workspace_execution_authorizations_delete BEFORE DELETE ON workspace_execution_authorizations BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_workspace_execution_authorizations_delete BEFORE DELETE ON workspace_execution_authorizations BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_workspace_execution_authorizations_insert",
     "tbl_name": "workspace_execution_authorizations",
-    "sql": "CREATE TRIGGER dsh_a_guard_workspace_execution_authorizations_insert BEFORE INSERT ON workspace_execution_authorizations BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_workspace_execution_authorizations_insert BEFORE INSERT ON workspace_execution_authorizations BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   },
   {
     "type": "trigger",
     "name": "dsh_a_guard_workspace_execution_authorizations_update",
     "tbl_name": "workspace_execution_authorizations",
-    "sql": "CREATE TRIGGER dsh_a_guard_workspace_execution_authorizations_update BEFORE UPDATE ON workspace_execution_authorizations BEGIN SELECT CASE WHEN xiaok_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
+    "sql": "CREATE TRIGGER dsh_a_guard_workspace_execution_authorizations_update BEFORE UPDATE ON workspace_execution_authorizations BEGIN SELECT CASE WHEN kteam_main_dsh_source_ingress_v1() IS NOT 'a8b73b2593641b365b4d1f6fd7768a800a031d385317d80b510a6272773a6615' THEN RAISE(ABORT,'dsh_a_writer_required') END; END"
   }
 ]);
 export function readCapturedGroupsSchema(actual:ReturnType<typeof readProfileSqliteReaderSchema>,version:number):Readonly<{version:1|2|3|4|5|6;tables:readonly string[];threadQuery:'groups:thread_bindings'|'groups:thread_bindings-v1-0'|'groups:thread_bindings-v1-1'|'groups:thread_bindings-v1-2'}>{

@@ -145,7 +145,7 @@ export function createRenderUiTool(options: WorkspaceToolOptions = {}): Tool {
 
       const payload = JSON.stringify(compiled.messages);
       mkdirSync(dirname(outputPath), { recursive: true });
-      const tmp = join(dirname(outputPath), `.xiaok-a2ui-${Date.now()}.tmp`);
+      const tmp = join(dirname(outputPath), `.kteam-a2ui-${Date.now()}.tmp`);
       writeFileSync(tmp, payload, 'utf8');
       renameSync(tmp, outputPath);
 

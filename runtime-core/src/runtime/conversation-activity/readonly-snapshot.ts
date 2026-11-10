@@ -116,7 +116,7 @@ export function createActivityReadonlySnapshot(
       throw Error('conversation_activity_readonly_snapshot_invalid');
     }
     // mkdtemp creates a new private directory, without chmod of any shared root.
-    try { root.directory = mkdtempSync(join(tmpdir(), 'xiaok-activity-readonly-')); }
+    try { root.directory = mkdtempSync(join(tmpdir(), 'kteam-activity-readonly-')); }
     catch (error) { root.unknown = true; throw error; }
     const destination = join(root.directory, 'activity.sqlite');
     try { root.copyFd = openSync(destination, 'wx+', 0o600); }

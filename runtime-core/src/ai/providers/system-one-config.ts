@@ -3,7 +3,7 @@ import type { Config, SystemOneConfig } from '../../types.js';
 /**
  * TypeSafe System One（Jev）的配置读取层。
  *
- * Jev 是辅助决策模型，不是 xiaok 的推理模型：它不参与 `config.models` 与
+ * Jev 是辅助决策模型，不是 kteam 的推理模型：它不参与 `config.models` 与
  * `config.defaultModelId` 的模型选择，也不出现在 `config.providers` 里。
  * 它独占 `config.systemOne` 一个块，所有默认值、环境变量回退和端点拼装
  * 都收敛在这里，避免适配器、探活和 CLI 各自硬编码一份。
@@ -17,9 +17,9 @@ export const SYSTEM_ONE_CONTEXT_LIMIT = 64_000;
 
 /**
  * 候选环境变量，按优先级排列。
- * 沿用其它 provider 的 `${PREFIX}_API_KEY` 约定，另留 xiaok 命名空间前缀。
+ * 沿用其它 provider 的 `${PREFIX}_API_KEY` 约定，另留 kteam 命名空间前缀。
  */
-export const SYSTEM_ONE_KEY_ENV_VARS = ['XIAOK_TYPESAFE_API_KEY', 'TYPESAFE_API_KEY'] as const;
+export const SYSTEM_ONE_KEY_ENV_VARS = ['KTEAM_TYPESAFE_API_KEY', 'TYPESAFE_API_KEY'] as const;
 
 export type SystemOneKeySource = 'config' | 'env' | 'none';
 

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 let cachedVersion: string | undefined;
 
-export function readXiaokVersion(): string {
+export function readKTeamVersion(): string {
   if (cachedVersion) {
     return cachedVersion;
   }

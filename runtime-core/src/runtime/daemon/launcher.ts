@@ -1,7 +1,7 @@
 import { spawn } from '../../../../src/runtime/harness-child-process.js';
 import { createConnection } from 'node:net';
 
-export async function spawnXiaokDaemonDetached(socketPath: string): Promise<void> {
+export async function spawnKTeamDaemonDetached(socketPath: string): Promise<void> {
   const args = resolveCurrentCliInvocationArgs(socketPath);
   const child = spawn(process.execPath, args, {
     detached: true,
@@ -11,7 +11,7 @@ export async function spawnXiaokDaemonDetached(socketPath: string): Promise<void
   child.unref();
 }
 
-export async function waitForXiaokDaemon(socketPath: string, timeoutMs = 5_000): Promise<void> {
+export async function waitForKTeamDaemon(socketPath: string, timeoutMs = 5_000): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
@@ -31,7 +31,7 @@ export async function waitForXiaokDaemon(socketPath: string, timeoutMs = 5_000):
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
-  throw new Error(`timed out waiting for xiaok daemon on ${socketPath}`);
+  throw new Error(`timed out waiting for kteam daemon on ${socketPath}`);
 }
 
 function resolveCurrentCliInvocationArgs(socketPath: string): string[] {

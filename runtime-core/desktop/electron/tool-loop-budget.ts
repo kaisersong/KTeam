@@ -14,7 +14,7 @@ export function resolveDesktopToolLoopBudget(taskOverride?: number, env: NodeJS.
     if (!valid(taskOverride)) throw new Error('Invalid iteration budget');
     return {limit:taskOverride,source:'task'};
   }
-  const raw = env.XIAOK_AGENT_MAX_ITERATIONS ?? env.XIAOK_MULTI_AGENT_MAX_ITERATIONS;
+  const raw = env.KTEAM_AGENT_MAX_ITERATIONS ?? env.KTEAM_MULTI_AGENT_MAX_ITERATIONS;
   if (raw !== undefined) {
     if (!raw.trim() || !valid(Number(raw))) throw new Error('Invalid iteration budget');
     return {limit:Number(raw),source:'environment'};

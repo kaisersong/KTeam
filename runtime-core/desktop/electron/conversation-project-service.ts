@@ -62,8 +62,8 @@ function requestsCreation(prompt: string): boolean {
   const clause = prompt.trim().split(/[，。；\n]/, 1)[0] ?? '';
   if (/(?:不要|别|不需要|不用|先不|暂不).{0,8}(?:创建|新建|建立|建项目)/.test(clause)) return false;
   if (/(?:项目(?:的)?(?:流程|方法|步骤)|项目.{0,8}(?:是什么|如何|怎么|了吗|是否))/u.test(clause)) return false;
-  return /^(?:(?:请(?:你)?|帮我|麻烦(?:你)?|我要|我想(?:要)?|我希望|我要求|现在|直接|先|在xiaok里)\s*)*(?:创建|新建|建立|建).{0,40}项目/u.test(clause)
-    || /^(?:please\s+)?(?:create|set up|make)\s+(?:a\s+|an\s+)?(?:xiaok\s+)?project\b/i.test(clause);
+  return /^(?:(?:请(?:你)?|帮我|麻烦(?:你)?|我要|我想(?:要)?|我希望|我要求|现在|直接|先|在kteam里)\s*)*(?:创建|新建|建立|建).{0,40}项目/u.test(clause)
+    || /^(?:please\s+)?(?:create|set up|make)\s+(?:a\s+|an\s+)?(?:kteam\s+)?project\b/i.test(clause);
 }
 
 function confirmsCreation(prompt: string): boolean {
@@ -663,7 +663,7 @@ export class ConversationProjectService {
       const expectedWorkers = Math.max(count, members.length, 1);
       for (let slot = 0; members.length < expectedWorkers; slot++) {
         const suffix = createHash('sha256').update(`${operation.clientRequestKey}:worker:${slot}`).digest('hex').slice(0, 12);
-        const id = `xiaok-worker-${suffix}`;
+        const id = `kteam-worker-${suffix}`;
         if (members.includes(id)) continue;
         const existing = agents.find(agent => agent.id === id && !agent.archivedAt);
         if (existing) {
@@ -671,7 +671,7 @@ export class ConversationProjectService {
           if (provenance.operationId !== operation.clientRequestKey || provenance.roleKey !== `worker:${slot}`) throw new Error('conversation_project_worker_identity_conflict');
         } else {
           const created = await this.request('/agents', { id, name: `${name} · worker ${slot + 1} (${suffix.slice(0, 6)})`,
-            runtimeType: 'xiaok', runtimeSource: 'desktop-agent-runtime', roles: ['worker'],
+            runtimeType: 'kteam', runtimeSource: 'desktop-agent-runtime', roles: ['worker'],
             provisioning: { operationId: operation.clientRequestKey, roleKey: `worker:${slot}` } }, signal);
           if (!record(created.agent) || created.agent.id !== id) throw new Error('conversation_project_worker_creation_invalid');
           agents.push(created.agent);

@@ -13,7 +13,7 @@ function resolveMaxDepth(explicit?: number): number {
   if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit > 0) {
     return explicit;
   }
-  const envValue = process.env.XIAOK_SUBAGENT_MAX_DEPTH;
+  const envValue = process.env.KTEAM_SUBAGENT_MAX_DEPTH;
   if (envValue) {
     const parsed = Number.parseInt(envValue, 10);
     if (Number.isFinite(parsed) && parsed > 0) {

@@ -175,7 +175,7 @@ function captureFileCopy(
   const walk = (dir: string): void => {
     if (stopped) return;
     for (const entry of readdirSync(dir).sort()) {
-      if (entry === 'node_modules' || entry === '.git' || entry === '.xiaok') {
+      if (entry === 'node_modules' || entry === '.git' || entry === '.kteam') {
         continue;
       }
       const fullPath = join(dir, entry);

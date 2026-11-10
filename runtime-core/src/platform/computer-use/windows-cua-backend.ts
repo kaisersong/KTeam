@@ -63,7 +63,7 @@ export function createWindowsCuaBackend(manager: CuaConnectionManager, options: 
         : 'Background pen drag cannot reliably select text in this observed Edit. No input was sent; capture again before explicitly choosing foreground mouse drag.';
       const result = middle || textDrag || nonWebGesture
         ? { isError: true, text, summary: text, images: [], structuredContent: { code: 'background_unavailable',
-          source: 'xiaok_host', inputSent: false, reason: middle ? 'middle_click_requires_mouse_input' : nonWebGesture ? 'non_web_gesture_requires_mouse_input' : 'text_selection_requires_mouse_input', escalation: { recommended: 'foreground' } } }
+          source: 'kteam_host', inputSent: false, reason: middle ? 'middle_click_requires_mouse_input' : nonWebGesture ? 'non_web_gesture_requires_mouse_input' : 'text_selection_requires_mouse_input', escalation: { recommended: 'foreground' } } }
         : await manager.callToolResult(name, input, callOptions);
       callOptions?.signal?.throwIfAborted();
       if (current !== manager.generation) { synchronize(); throw reobserve(); }

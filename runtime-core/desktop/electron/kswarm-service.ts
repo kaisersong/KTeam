@@ -48,8 +48,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, write
 import * as Electron from 'electron';
 import {
   buildSeedAgentReconciliationPlan,
-  createXiaokPoSeed,
-  createXiaokWorkerSeed,
+  createKTeamPoSeed,
+  createKTeamWorkerSeed,
 } from '../shared/kswarm-seed-contract.js';
 import {
   getDevelopmentBrokerLaunchSpec,
@@ -57,7 +57,7 @@ import {
   type ServiceLaunchSpec,
 } from './kswarm-service-paths.js';
 import { getConfigDir, loadConfig } from '../../src/utils/config.js';
-import { buildManagedXiaokAgentPayload, buildManagedXiaokAgentSemanticPayload, diffManagedXiaokAgentPatch } from './managed-xiaok-agent.js';
+import { buildManagedKTeamAgentPayload, buildManagedKTeamAgentSemanticPayload, diffManagedKTeamAgentPatch } from './managed-kteam-agent.js';
 import type { KSwarmHealthDiagnosticInput } from './kswarm-service-diagnostics.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -288,9 +288,9 @@ function appUserDataPath(): string | null {
 
 function generateRoomSecrets(): RoomAuthSecrets {
   return {
-    desktopRoomToken: `xiaok-room-user-${randomBytes(32).toString('base64url')}`,
-    kswarmRoomToken: `xiaok-room-system-${randomBytes(32).toString('base64url')}`,
-    desktopMutationToken: `xiaok-desktop-${randomBytes(32).toString('base64url')}`,
+    desktopRoomToken: `kteam-room-user-${randomBytes(32).toString('base64url')}`,
+    kswarmRoomToken: `kteam-room-system-${randomBytes(32).toString('base64url')}`,
+    desktopMutationToken: `kteam-desktop-${randomBytes(32).toString('base64url')}`,
   };
 }
 
@@ -481,7 +481,7 @@ export function resolveBackgroundNodeRuntime(options: {
   env: NodeJS.ProcessEnv;
 } {
   const env = { ...(options.env ?? process.env) };
-  const explicitNode = env.XIAOK_NODE_CMD?.trim();
+  const explicitNode = env.KTEAM_NODE_CMD?.trim();
   if (explicitNode) {
     return { command: explicitNode, env };
   }
@@ -1079,7 +1079,7 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
         ? await activeOwnerServicePorts(options.activityOwnerDataRoot ?? getConfigDir('desktop')) : undefined;
       if (live) {
         discoveredLiveOwner = true;
-        if ((process.env.XIAOK_DESKTOP_PORT !== undefined || process.env.INTENT_BROKER_PORT !== undefined) && live.broker !== requested.broker
+        if ((process.env.KTEAM_DESKTOP_PORT !== undefined || process.env.INTENT_BROKER_PORT !== undefined) && live.broker !== requested.broker
           || process.env.KSWARM_PORT !== undefined && live.kswarm !== requested.kswarm) throw new Error('Configured ports differ from the active Desktop profile; stop that profile before changing ports');
         writeDesktopServicePorts(discoveryFile, live);
       } else await prepareDesktopServicePorts(discoveryFile);
@@ -1411,8 +1411,8 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
       const plan = buildSeedAgentReconciliationPlan(agents as never);
       const config = await loadConfig();
       const desiredSeeds = [
-        buildManagedXiaokAgentPayload(createXiaokPoSeed(), config),
-        buildManagedXiaokAgentPayload(createXiaokWorkerSeed(), config),
+        buildManagedKTeamAgentPayload(createKTeamPoSeed(), config),
+        buildManagedKTeamAgentPayload(createKTeamWorkerSeed(), config),
       ];
       let liveness: Record<string, { online: boolean }> = {};
       try {
@@ -1434,7 +1434,7 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
           const createRes = await fetchKSwarm('/agents', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(buildManagedXiaokAgentSemanticPayload(desired)),
+            body: JSON.stringify(buildManagedKTeamAgentSemanticPayload(desired)),
           });
           if (!createRes.ok && createRes.status !== 409) {
             console.warn(`[kswarm-service] Failed to create seed agent ${desired.id}: ${createRes.status}`);
@@ -1445,8 +1445,8 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
         const detailRes = await fetchKSwarm(`/agents/${desired.id}`);
         const detailPayload = detailRes.ok ? await detailRes.json() as { agent?: Record<string, unknown> } : null;
         const currentAgent = detailPayload?.agent ?? existing;
-        const rawPatch = diffManagedXiaokAgentPatch(currentAgent, desired);
-        const semanticPatch = rawPatch ? buildManagedXiaokAgentSemanticPayload(rawPatch, { update: true }) : {};
+        const rawPatch = diffManagedKTeamAgentPatch(currentAgent, desired);
+        const semanticPatch = rawPatch ? buildManagedKTeamAgentSemanticPayload(rawPatch, { update: true }) : {};
         const patch = Object.keys(semanticPatch).length > 0 ? semanticPatch : null;
         if (patch) {
           const updateRes = await fetchKSwarm(`/agents/${desired.id}`, {
@@ -1869,8 +1869,8 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
       const ticket=preparationFreeze(businessCreate(null)) as object;
       // Same original startup data as ordinary spawn, with explicit config/root
       // before the child's first business import. No executable or IO path is sent.
-      const projected=buildSidecarEnv(nodeRuntime.env);delete projected.XIAOK_NODE_CMD;
-      const environment=preparationFreeze({...projected,XIAOK_CONFIG_DIR:getConfigDir(),KSWARM_DATA_ROOT:nodeRuntime.env.KSWARM_DATA_ROOT||join(homedir(),'.kswarm')});
+      const projected=buildSidecarEnv(nodeRuntime.env);delete projected.KTEAM_NODE_CMD;
+      const environment=preparationFreeze({...projected,KTEAM_CONFIG_DIR:getConfigDir(),KSWARM_DATA_ROOT:nodeRuntime.env.KSWARM_DATA_ROOT||join(homedir(),'.kswarm')});
       businessApply(preparationWeakSet,protectedKSwarmStartups,[ticket,preparationFreeze({service,environment})]);
       serverChild=await createOriginalProtectedKSwarmServiceChild(service,ticket);
     }else serverChild = spawnProcess(nodeRuntime.command, [serverPath], buildKSwarmServerSpawnOptions({env:nodeRuntime.env}));

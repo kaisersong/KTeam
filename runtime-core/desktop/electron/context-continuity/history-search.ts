@@ -116,7 +116,7 @@ export class HistorySearch {
             const message=this.service.readSearchReferenceMessage(actor,refId,candidate.message_id,Number(candidate.revision));
             if(message.executionState!=='settled'&&message.visibilityBasis!=='user_claimed_archive'&&message.visibilityBasis!=='authenticated_sync')throw new Error('not_readable');
             if(!kinds.includes(message.sourceKind as typeof kinds[number]))throw new Error('not_readable');
-            const hit:HistorySearchHit={refId,url:`xiaok://context/v1/${refId}`,conversationId:candidate.conversation_id,title,messageId:message.messageId,revision:message.revision,
+            const hit:HistorySearchHit={refId,url:`kteam://context/v1/${refId}`,conversationId:candidate.conversation_id,title,messageId:message.messageId,revision:message.revision,
               contentHash:message.contentHash,sourceKind:message.sourceKind,observedAt:message.observedAt,executionState:message.executionState,...(message.visibilityBasis?{visibilityBasis:message.visibilityBasis}:{}),excerpt:''};
             const remaining=24000-Buffer.byteLength(JSON.stringify(result))-2;
             const share=Math.floor(remaining/(limit-result.hits.length));

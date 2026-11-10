@@ -56,10 +56,10 @@ export function createWriteTool(options: WorkspaceToolOptions = {}): WriteTool {
       }
       context?.signal?.throwIfAborted(); context?.assertPermissionApproval?.();
       assertCompoundFileEffectCurrent(context?.compoundPhase);
-      if(context?.compoundPhase)writeFileAtomicallySync(resolvedPath,content,{requireDirectorySync:true,tempName:`.xiaok-tmp-${randomUUID()}`});
+      if(context?.compoundPhase)writeFileAtomicallySync(resolvedPath,content,{requireDirectorySync:true,tempName:`.kteam-tmp-${randomUUID()}`});
       else {
         mkdirSync(dirname(resolvedPath), { recursive: true });
-        const tmp = join(dirname(resolvedPath), `.xiaok-tmp-${Date.now()}`);
+        const tmp = join(dirname(resolvedPath), `.kteam-tmp-${Date.now()}`);
         writeFileSync(tmp, content, 'utf-8');
         renameSync(tmp, resolvedPath);
       }

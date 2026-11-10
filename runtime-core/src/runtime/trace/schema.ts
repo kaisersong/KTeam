@@ -1,4 +1,4 @@
-export type TraceSourceApp = 'xiaok-cli' | 'xiaok-desktop' | 'kswarm';
+export type TraceSourceApp = 'kteam-cli' | 'kteam-desktop' | 'kswarm';
 export type TraceScopeKind = 'session' | 'project' | 'task';
 export type TraceEventSource = 'cli' | 'desktop' | 'kswarm' | 'tool' | 'memory' | 'skill' | 'guard' | 'diagnoser';
 export type TraceSeverity = 'debug' | 'info' | 'warn' | 'error';

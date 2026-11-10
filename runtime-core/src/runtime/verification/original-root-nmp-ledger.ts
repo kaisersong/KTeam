@@ -4,7 +4,7 @@ import {loadOriginalRootLedgerSource} from './original-root-ledger-source-loader
 
 const descriptor=Object.getOwnPropertyDescriptor,own=Object.hasOwn,keys=Reflect.ownKeys;
 const parse=JSON.parse,freeze=Object.freeze,apply=Reflect.apply,isProxy=types.isProxy;
-const domain=Buffer.from('xiaok.original-root-nmp-ledger/v1\0');
+const domain=Buffer.from('kteam.original-root-nmp-ledger/v1\0');
 const limit=64*1024*1024;
 const names=['root_resource_floor','root_resource_policy','root_resources','root_launch_outbox','root_resource_receipts','root_physical_policy','root_physical_resources','root_physical_receipts','root_pool_identity','root_pool_io_binding'] as const;
 const columns=[

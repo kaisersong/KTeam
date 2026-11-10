@@ -73,7 +73,7 @@ export class ContinuityInputJournal {
   private assertAuthority(row:InputRow):void{
     this.assertOwner();this.service.requireConversation(this.actor,row.conversation_id);
     const execution=this.service.store.db.prepare('SELECT * FROM conversation_execution WHERE conversation_id=?').get(row.conversation_id);
-    if(!execution||execution.authority!==row.authority||execution.authority!==this.service.store.profileId||execution.execution_epoch!==row.execution_epoch||execution.harness!=='xiaok-native'||execution.barrier!=='open')throw new Error('input_authority_changed');
+    if(!execution||execution.authority!==row.authority||execution.authority!==this.service.store.profileId||execution.execution_epoch!==row.execution_epoch||execution.harness!=='kteam-native'||execution.barrier!=='open')throw new Error('input_authority_changed');
     const anchor=this.service.store.db.prepare("SELECT a.*,v.record FROM message_anchors a JOIN message_versions v ON v.message_id=a.id AND v.revision=a.latest_revision WHERE a.source_kind='desktop_task' AND a.source_id=? AND a.source_epoch=? AND a.source_message_id='user'").get(row.task_id,row.source_epoch);
     const input=JSON.parse(row.payload) as TaskCreateInput;
     if(!anchor||anchor.deleted||anchor.conversation_id!==row.conversation_id||JSON.parse(String(anchor.record)).contentHash!==digest(input.prompt)||JSON.parse(String(anchor.record)).role!=='user')throw new Error('not_readable');
@@ -118,9 +118,9 @@ export class ContinuityInputJournal {
     const reservation=this.#host.reserveTaskIdentity();if(typeof reservation.sessionId!=='string')throw Error('input_identity_unavailable');const reservedSessionId=reservation.sessionId;
     this.service.store.transaction(()=>{
       this.service.requireConversation(actor,id);
-      this.service.store.db.prepare("INSERT OR IGNORE INTO conversation_execution VALUES (?,?,1,'xiaok-native','open')").run(id,this.service.store.profileId);
+      this.service.store.db.prepare("INSERT OR IGNORE INTO conversation_execution VALUES (?,?,1,'kteam-native','open')").run(id,this.service.store.profileId);
       const execution=this.service.store.db.prepare('SELECT * FROM conversation_execution WHERE conversation_id=?').get(id)!;
-      if(execution.authority!==this.service.store.profileId||execution.harness!=='xiaok-native'||execution.barrier!=='open')throw new Error('input_authority_changed');
+      if(execution.authority!==this.service.store.profileId||execution.harness!=='kteam-native'||execution.barrier!=='open')throw new Error('input_authority_changed');
       const sequence=Number(this.service.store.db.prepare('SELECT COALESCE(MAX(sequence),0)+1 AS next FROM conversation_inputs WHERE conversation_id=?').get(id)!.next);
       this.service.store.db.prepare("INSERT INTO conversation_inputs (input_id,conversation_id,sequence,payload_hash,payload,material_manifest,task_id,source_epoch,authority,execution_epoch,execution_authority,status,claim_boot,revision,deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',NULL,1,0)").run(request.inputId,id,sequence,hash,JSON.stringify(input),manifest,reservation.taskId,reservedSessionId,this.service.store.profileId,Number(execution.execution_epoch),executionAuthority);
       if(files)this.service.store.db.prepare('INSERT INTO conversation_input_files VALUES (?,?,?)').run(request.inputId,files.hash,files.record);

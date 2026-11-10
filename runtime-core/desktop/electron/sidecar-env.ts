@@ -22,7 +22,7 @@ export const SIDECAR_ENV_NAMES = [
   // Agent SSH authentication and Node installation discovery.
   'SSH_AUTH_SOCK', 'NVM_DIR',
   // Desktop background Node command and application configuration location.
-  'XIAOK_NODE_CMD', 'XIAOK_CONFIG_DIR', 'XIAOK_DESKTOP_PORT',
+  'KTEAM_NODE_CMD', 'KTEAM_CONFIG_DIR', 'KTEAM_DESKTOP_PORT',
   // Non-secret configuration read by the sidecars: endpoints, public OAuth IDs, timing and models.
   'PORT', 'BROKER_URL', 'BROKER_ROOT', 'RELAY_AUTH_URL', 'RELAY_GITHUB_CLIENT_ID', 'RELAY_GOOGLE_CLIENT_ID',
   'ENABLE_HUMAN_ESCALATION', 'PRUNE_THRESHOLD_MS', 'POLL_INTERVAL_MS', 'TASK_STALE_MS',
@@ -48,7 +48,7 @@ export function buildSidecarEnv(parent: NodeJS.ProcessEnv, platform = process.pl
 export function buildDesktopServiceEnv(parent: NodeJS.ProcessEnv, ports: DesktopServicePorts): NodeJS.ProcessEnv {
   return {
     ...parent,
-    XIAOK_DESKTOP_PORT: String(ports.broker),
+    KTEAM_DESKTOP_PORT: String(ports.broker),
     INTENT_BROKER_PORT: String(ports.broker),
     KSWARM_PORT: String(ports.kswarm),
   };

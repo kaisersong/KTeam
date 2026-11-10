@@ -38,8 +38,8 @@ function records(service:ContinuityService,batches:ReadonlyArray<Readonly<Canoni
     reference:dep.kind==='reference'?{ref:db.prepare('SELECT * FROM context_refs WHERE id=?').get(dep.reference.refId),grant:db.prepare('SELECT * FROM read_grants WHERE id=?').get(dep.reference.grantId),entries:db.prepare('SELECT * FROM context_ref_entries WHERE ref_id=? ORDER BY position').all(dep.reference.refId)}:null,
    })),
   };
-  const value=JSON.parse(stable({schemaVersion:1,scope:batch.scope,messageId:message.messageId,revision:version.revision,sourceKind:message.sourceKind,sourceId:message.sourceId,sourceEpoch:message.sourceEpoch,sourceMessageId:message.sourceMessageId,sourceRevision:version.sourceRevision,contentHash:version.contentHash,originHash:version.originHash,dependencies:version.dependencies,sourceClosureHash:hash(['xiaok/canonical-export-source-closure/v1',sourceEvidence])}));
-  return {id:hash(['xiaok/canonical-export-version-id/v1',batch.scope,message.messageId,version.revision]),value};
+  const value=JSON.parse(stable({schemaVersion:1,scope:batch.scope,messageId:message.messageId,revision:version.revision,sourceKind:message.sourceKind,sourceId:message.sourceId,sourceEpoch:message.sourceEpoch,sourceMessageId:message.sourceMessageId,sourceRevision:version.sourceRevision,contentHash:version.contentHash,originHash:version.originHash,dependencies:version.dependencies,sourceClosureHash:hash(['kteam/canonical-export-source-closure/v1',sourceEvidence])}));
+  return {id:hash(['kteam/canonical-export-version-id/v1',batch.scope,message.messageId,version.revision]),value};
  }))).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
 }
 
@@ -61,12 +61,12 @@ export function freezeCanonicalExportOrigins(service:ContinuityService,actor:Con
  if(db.isTransaction)throw conflict();const current=captureCanonicalExportData(service,actor,scopes,snapshots);
  if(hash(current)!==hash(batches)||hash(records(service,current,snapshots))!==stamp)throw conflict();
  for(const row of intended){const prior=service.store.existingOperation<typeof row.value>(kind,row.id,row.value);if(!prior||stable(prior.result)!==stable(row.value))throw conflict();}
- return Object.freeze({manifestHash:hash(['xiaok/canonical-export-origins/v1',intended]),versionCount:intended.length});
+ return Object.freeze({manifestHash:hash(['kteam/canonical-export-origins/v1',intended]),versionCount:intended.length});
 }
 
 /** Read-only exact original metadata assertion. Never creates a new COMMIT. */
 export function assertFrozenCanonicalExportOrigins(service:ContinuityService,actor:ContinuityActor,scopes:readonly CanonicalSyncScope[],snapshots:readonly TaskSnapshot[],expected:FrozenOrigins):FrozenOrigins{
- const batches=captureCanonicalExportData(service,actor,scopes,snapshots),intended=records(service,batches,snapshots),current=Object.freeze({manifestHash:hash(['xiaok/canonical-export-origins/v1',intended]),versionCount:intended.length});
+ const batches=captureCanonicalExportData(service,actor,scopes,snapshots),intended=records(service,batches,snapshots),current=Object.freeze({manifestHash:hash(['kteam/canonical-export-origins/v1',intended]),versionCount:intended.length});
  if(stable(current)!==stable(expected))throw conflict();
  for(const row of intended){
   try{const prior=service.store.existingOperation<typeof row.value>(kind,row.id,row.value);if(!prior||stable(prior.result)!==stable(row.value))throw conflict();}

@@ -132,9 +132,9 @@ export function createEditTool(options: WorkspaceToolOptions = {}): Tool {
       if (context?.compoundPhase && readFileSync(resolvedPath, 'utf8') !== content) throw Error('compound_file_changed_before_mutation')
       context?.signal?.throwIfAborted(); context?.assertPermissionApproval?.()
       assertCompoundFileEffectCurrent(context?.compoundPhase);
-      if(context?.compoundPhase)writeFileAtomicallySync(resolvedPath,updated,{requireDirectorySync:true,tempName:`.xiaok-tmp-${randomUUID()}`})
+      if(context?.compoundPhase)writeFileAtomicallySync(resolvedPath,updated,{requireDirectorySync:true,tempName:`.kteam-tmp-${randomUUID()}`})
       else {
-        const tmp = join(dirname(resolvedPath), `.xiaok-tmp-${Date.now()}`)
+        const tmp = join(dirname(resolvedPath), `.kteam-tmp-${Date.now()}`)
         writeFileSync(tmp, updated, 'utf-8')
         renameSync(tmp, resolvedPath)
       }

@@ -171,7 +171,7 @@ export class SessionProbe {
       } catch(error) { this.#fail(this.#processAttempt?error:new Error('invalid or oversized protocol frame')); void this.close().catch(() => {}); }
     });
     if(this.#processAttempt)sealOriginalToolProcessListeners(this.#processAttempt);
-    const initialized = await this.#request('initialize', { clientInfo: { name: 'xiaok_native_validation', version: '1' }, capabilities: { experimentalApi: true } });
+    const initialized = await this.#request('initialize', { clientInfo: { name: 'kteam_native_validation', version: '1' }, capabilities: { experimentalApi: true } });
     this.#send({ method: 'initialized' }); return initialized;
   }
   async #bind(method: string, extra: Record<string, unknown> = {}) {

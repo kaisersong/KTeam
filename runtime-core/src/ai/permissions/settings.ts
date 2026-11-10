@@ -11,7 +11,7 @@ function getGlobalSettingsPath(): string {
 }
 
 function getProjectSettingsPath(cwd: string): string {
-  return join(cwd, '.xiaok', 'settings.json');
+  return join(cwd, '.kteam', 'settings.json');
 }
 
 async function readSettings(path: string): Promise<PermissionSettings> {

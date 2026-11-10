@@ -136,7 +136,7 @@ function normalizeKind(kind: string | undefined, mimeType: string | undefined, f
   if (mime.startsWith('image/')) return 'image';
   if (mime === 'text/html') return 'html';
   if (mime === 'text/markdown') return 'markdown';
-  if (mime.includes('presentation') || mime.includes('xiaok.slides')) return 'slides';
+  if (mime.includes('presentation') || mime.includes('kteam.slides')) return 'slides';
   if (raw === 'pdf') return 'pdf';
   if (raw === 'md' || raw === 'markdown') return 'markdown';
   if (raw === 'text' && /\.(?:md|markdown)$/i.test(filePath)) return 'markdown';
@@ -156,7 +156,7 @@ function artifactMatchesRequestedKind(
     if (requestedKind === 'image') return mime.startsWith('image/');
     if (requestedKind === 'html') return mime === 'text/html';
     if (requestedKind === 'markdown') return mime === 'text/markdown';
-    return mime.includes('presentation') || mime.includes('xiaok.slides');
+    return mime.includes('presentation') || mime.includes('kteam.slides');
   }
   if (requestedKind === 'image' || requestedKind === 'html') return false;
   if (requestedKind === 'markdown') {

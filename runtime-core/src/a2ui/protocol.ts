@@ -1,4 +1,4 @@
-export const A2UI_MIME_TYPE = 'application/vnd.xiaok.a2ui+json';
+export const A2UI_MIME_TYPE = 'application/vnd.kteam.a2ui+json';
 export const SAFE_A2UI_CATALOG_ID = 'xiaok-safe';
 export const A2UI_PROTOCOL_VERSION = '1.0';
 export const A2UI_V1_CATALOG_ID = 'xiaok-safe/1.0';

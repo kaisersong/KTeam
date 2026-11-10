@@ -1,16 +1,16 @@
 import type {
-  XiaokDaemonClientMessage,
-  XiaokDaemonRpcErrorMessage,
-  XiaokDaemonRpcResultMessage,
-  XiaokDaemonServerMessage,
-  XiaokDaemonServiceEventMessage,
+  KTeamDaemonClientMessage,
+  KTeamDaemonRpcErrorMessage,
+  KTeamDaemonRpcResultMessage,
+  KTeamDaemonServerMessage,
+  KTeamDaemonServiceEventMessage,
 } from '../daemon/protocol.js';
 import type { ReminderTaskType, RecurrenceConfig, TaskExecution } from './types.js';
 export {
-  createXiaokDaemonRpcId as createReminderRpcId,
-  resolveXiaokDaemonSocketPath,
-  resolveXiaokDaemonSocketPath as resolveReminderDaemonSocketPath,
-  XIAOK_DAEMON_PROTOCOL_VERSION as REMINDER_DAEMON_PROTOCOL_VERSION,
+  createKTeamDaemonRpcId as createReminderRpcId,
+  resolveKTeamDaemonSocketPath,
+  resolveKTeamDaemonSocketPath as resolveReminderDaemonSocketPath,
+  KTEAM_DAEMON_PROTOCOL_VERSION as REMINDER_DAEMON_PROTOCOL_VERSION,
 } from '../daemon/protocol.js';
 
 export const REMINDER_DAEMON_SERVICE = 'reminder';
@@ -35,11 +35,11 @@ export interface ReminderEventPayload {
   execution?: TaskExecution;
 }
 
-export type ReminderClientMessage = XiaokDaemonClientMessage;
-export type ReminderRpcResultMessage = XiaokDaemonRpcResultMessage;
-export type ReminderRpcErrorMessage = XiaokDaemonRpcErrorMessage;
-export type ReminderServerMessage = XiaokDaemonServerMessage;
-export type ReminderEventMessage = XiaokDaemonServiceEventMessage & {
+export type ReminderClientMessage = KTeamDaemonClientMessage;
+export type ReminderRpcResultMessage = KTeamDaemonRpcResultMessage;
+export type ReminderRpcErrorMessage = KTeamDaemonRpcErrorMessage;
+export type ReminderServerMessage = KTeamDaemonServerMessage;
+export type ReminderEventMessage = KTeamDaemonServiceEventMessage & {
   service: typeof REMINDER_DAEMON_SERVICE;
   name: 'delivery';
   payload: ReminderEventPayload;

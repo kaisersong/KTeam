@@ -108,7 +108,7 @@ export function createUninstallSkillTool(options: UninstallSkillToolOptions = {}
         return 'Error: 缺少 skill 名称';
       }
 
-      const projectDir = join(cwd, '.xiaok', 'skills');
+      const projectDir = join(cwd, '.kteam', 'skills');
       const globalDir = join(configDir, 'skills');
       const searchOrder: Array<'project' | 'global'> = scope
         ? [scope]

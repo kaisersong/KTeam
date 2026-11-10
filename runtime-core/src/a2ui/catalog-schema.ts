@@ -70,7 +70,7 @@ export const A2UI_CATALOG_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   protocolVersion: '1.0',
   catalogId: 'xiaok-safe/1.0',
-  title: 'xiaok analysis cards',
+  title: 'kteam analysis cards',
   components: Object.fromEntries(
     Object.entries(definitions).map(([component, props]) => [
       component,

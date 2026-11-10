@@ -362,7 +362,7 @@ export function resolveKimiHarnessFeatureFlags(
     normalizeToolSchema: true,
     normalizeUsage: true,
     omitEmptyAssistantContent: true,
-    promptCacheKey: env.XIAOK_EXPERIMENTAL_KIMI_PROMPT_CACHE === '1',
+    promptCacheKey: env.KTEAM_EXPERIMENTAL_KIMI_PROMPT_CACHE === '1',
     preservedThinking: true,
   });
 }

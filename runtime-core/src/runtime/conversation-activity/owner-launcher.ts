@@ -18,7 +18,7 @@ export function buildActivityOwnerEnv(parent: NodeJS.ProcessEnv, platform = proc
     'DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','XDG_RUNTIME_DIR','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_CACHE_HOME',
     'NODE_OPTIONS','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','http_proxy','https_proxy','no_proxy']);
   if (platform === 'win32') for (const name of ['USERPROFILE','APPDATA','LOCALAPPDATA','SystemRoot','SYSTEMROOT','windir','ComSpec','PATHEXT','HOMEDRIVE','HOMEPATH']) allowed.add(name);
-  return Object.fromEntries(Object.entries(parent).filter(([name, value]) => value !== undefined && (allowed.has(name) || name.startsWith('LC_') || name.startsWith('XIAOK_') && !/KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(name)))) as Record<string, string>;
+  return Object.fromEntries(Object.entries(parent).filter(([name, value]) => value !== undefined && (allowed.has(name) || name.startsWith('LC_') || name.startsWith('KTEAM_') && !/KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(name)))) as Record<string, string>;
 }
 
 /** The actual sole call site supplies command, argv and SpawnOptions and consumes only ChildProcess. */

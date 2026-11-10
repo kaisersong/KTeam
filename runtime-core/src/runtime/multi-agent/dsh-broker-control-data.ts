@@ -10,7 +10,7 @@ const rejections=new WeakMap<object,string>();
 export function readBrokerControlRejection(raw:unknown):string|undefined{return raw!==null&&(typeof raw==='object'||typeof raw==='function')?rejections.get(raw):undefined;}
 function fail():never{throw Error('BROKER_DSH_CONTROL_CONFLICT');}
 export function brokerAdmissionDigest(raw:unknown):string {
- const value=captureGithubReadData(raw),hash=createHash('sha256');apply(hashUpdate,hash,['xiaok.broker-admission.v1\0'+dshAJson(value)]);return apply(hashDigest,hash,['hex']) as string;
+ const value=captureGithubReadData(raw),hash=createHash('sha256');apply(hashUpdate,hash,['kteam.broker-admission.v1\0'+dshAJson(value)]);return apply(hashDigest,hash,['hex']) as string;
 }
 /** Protocol authentication checks the exact original request, not a caller
  * claimed receipt hash. It grants no Main/Broker/DSH authority on its own. */
@@ -18,7 +18,7 @@ export function readBrokerAdmissionReply(token:string,challenge:string,input:unk
  const reply=captureGithubReadData(raw);dshAFields(reply,['protocol','challenge','requestDigest','body','authentication']);
  const requestDigest=brokerAdmissionDigest(input);
  if(reply.protocol!=='broker_dsh_control_v1'||reply.challenge!==challenge||reply.requestDigest!==requestDigest||typeof reply.authentication!=='string'||!matches(/^[a-f0-9]{64}$/,reply.authentication))fail();
- const state=createHmac('sha256',token);apply(hmacUpdate,state,['xiaok.broker-dsh-reply.v1\0'+dshAJson({protocol:reply.protocol,challenge,requestDigest,body:reply.body})]);
+ const state=createHmac('sha256',token);apply(hmacUpdate,state,['kteam.broker-dsh-reply.v1\0'+dshAJson({protocol:reply.protocol,challenge,requestDigest,body:reply.body})]);
  const expected=apply(hmacDigest,state,[]) as Buffer;
  if(!timingSafeEqual(expected,bytes(reply.authentication,'hex')))fail();
  const body=reply.body;

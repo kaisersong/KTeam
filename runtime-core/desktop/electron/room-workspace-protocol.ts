@@ -13,9 +13,9 @@ type Probe = () => Promise<unknown>;
 export function resolveRoomWorkspaceMinimumPath(options: { platform?: NodeJS.Platform; osHome?: string } = {}): string {
   const platform=options.platform??process.platform;
   const home=options.osHome??userInfo().homedir;
-  if(platform==='win32')return path.win32.join(home,'AppData','Local','xiaok','room-workspace','minimum-protocol.json');
-  if(platform==='darwin')return path.posix.join(home,'Library','Application Support','xiaok','room-workspace','minimum-protocol.json');
-  return path.posix.join(home,'.local','state','xiaok','room-workspace','minimum-protocol.json');
+  if(platform==='win32')return path.win32.join(home,'AppData','Local','kteam','room-workspace','minimum-protocol.json');
+  if(platform==='darwin')return path.posix.join(home,'Library','Application Support','kteam','room-workspace','minimum-protocol.json');
+  return path.posix.join(home,'.local','state','kteam','room-workspace','minimum-protocol.json');
 }
 function minimum(options: ProtocolOptions): Minimum | null {
   const file=options.minimumPath??resolveRoomWorkspaceMinimumPath();

@@ -384,7 +384,7 @@ export async function stagePluginSource(options: StagePluginSourceOptions): Prom
     if (!reuse) {
       const init = await runner.run(
         'git',
-        [...gitConfigArgs, 'init', '--quiet', '--initial-branch=xiaok-install', repoDir],
+        [...gitConfigArgs, 'init', '--quiet', '--initial-branch=kteam-install', repoDir],
         { env, timeoutMs },
       );
       if (init.code !== 0) {

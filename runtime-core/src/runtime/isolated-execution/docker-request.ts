@@ -41,7 +41,7 @@ export function buildDockerWorkerRequest(input: unknown) {
     Image: data.imageDigest, Cmd: [...data.argv] as string[], Entrypoint: [''], User: '10000:10000',
     Env: ['PATH=/usr/local/bin:/usr/bin:/bin', 'HOME=/tmp'], WorkingDir: '/tmp',
     AttachStdin: false, AttachStdout: true, AttachStderr: true, Tty: false, OpenStdin: false,
-    Healthcheck: { Test: ['NONE'] }, Labels: { 'xiaok.attempt': data.attemptId, 'xiaok.scope': data.scopeDigest, 'xiaok.seccomp': WORKER_SECCOMP_SHA256 },
+    Healthcheck: { Test: ['NONE'] }, Labels: { 'kteam.attempt': data.attemptId, 'kteam.scope': data.scopeDigest, 'kteam.seccomp': WORKER_SECCOMP_SHA256 },
     HostConfig: {
       NetworkMode: 'none', ReadonlyRootfs: true, Privileged: false, CapDrop: ['ALL'], CapAdd: [],
       SecurityOpt: ['no-new-privileges:true', 'seccomp=' + WORKER_SECCOMP_JSON],
@@ -76,5 +76,5 @@ export interface DockerStdinDescriptor{readonly sha256:string;readonly bytes:num
 export function buildDockerStdinWorkerRequest(input:{request:unknown;stdin:DockerStdinDescriptor}){
  if(!input||Object.keys(input).sort().join(',')!=='request,stdin')throw Error('worker_stdin_fields');
  const {request,stdin}=input;if(!stdin||Object.keys(stdin).sort().join(',')!=='bytes,sha256'||!Number.isSafeInteger(stdin.bytes)||stdin.bytes<0||stdin.bytes>2*1024**2||!/^([a-f0-9]{64})$/.test(stdin.sha256))throw Error('worker_stdin_descriptor');
- const descriptor={sha256:stdin.sha256,bytes:stdin.bytes},body=buildDockerWorkerRequest(request);return {...body,AttachStdin:true,OpenStdin:true,StdinOnce:true,Labels:{...body.Labels,'xiaok.stdin-sha256':descriptor.sha256,'xiaok.stdin-bytes':String(descriptor.bytes)}};
+ const descriptor={sha256:stdin.sha256,bytes:stdin.bytes},body=buildDockerWorkerRequest(request);return {...body,AttachStdin:true,OpenStdin:true,StdinOnce:true,Labels:{...body.Labels,'kteam.stdin-sha256':descriptor.sha256,'kteam.stdin-bytes':String(descriptor.bytes)}};
 }

@@ -7,8 +7,8 @@ export interface ModelRecoveryPolicy { windowMs: number; idleMs: number; initial
 export interface ModelRecoveryNotice { attempt: number; delayMs: number; remainingMs: number; failure?: ModelFailureDiagnostic }
 export function resolveModelRecoveryPolicy(env: NodeJS.ProcessEnv = process.env): ModelRecoveryPolicy {
   const number = (raw: string | undefined, fallback: number) => raw?.trim() && Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : fallback;
-  return { windowMs: number(env.XIAOK_MODEL_RECOVERY_WINDOW_MS, 30 * 60_000),
-    idleMs: number(env.XIAOK_TURN_TIMEOUT_MS, 4 * 60_000), initialDelayMs: 2000, maxDelayMs: 30_000 };
+  return { windowMs: number(env.KTEAM_MODEL_RECOVERY_WINDOW_MS, 30 * 60_000),
+    idleMs: number(env.KTEAM_TURN_TIMEOUT_MS, 4 * 60_000), initialDelayMs: 2000, maxDelayMs: 30_000 };
 }
 function wait<T>(promise: Promise<T>, signal: AbortSignal, timeoutMs: number, onTimeout: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {

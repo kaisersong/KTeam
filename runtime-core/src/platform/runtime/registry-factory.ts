@@ -91,10 +91,10 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
   let physicalDisposal: Promise<void> | undefined;
   const multiAgentCoordinator = options.source === 'chat'
     ? createMultiAgentCoordinator({
-        maxDepth: readPositiveIntegerEnv('XIAOK_SUBAGENT_MAX_DEPTH'),
-        maxResidentAgents: readPositiveIntegerEnv('XIAOK_MAX_AGENT_THREADS'),
-        idleTimeoutMs: readPositiveIntegerEnv('XIAOK_SUBAGENT_IDLE_TIMEOUT_MS'),
-        turnTimeoutMs: readPositiveIntegerEnv('XIAOK_SUBAGENT_TURN_TIMEOUT_MS'),
+        maxDepth: readPositiveIntegerEnv('KTEAM_SUBAGENT_MAX_DEPTH'),
+        maxResidentAgents: readPositiveIntegerEnv('KTEAM_MAX_AGENT_THREADS'),
+        idleTimeoutMs: readPositiveIntegerEnv('KTEAM_SUBAGENT_IDLE_TIMEOUT_MS'),
+        turnTimeoutMs: readPositiveIntegerEnv('KTEAM_SUBAGENT_TURN_TIMEOUT_MS'),
         onEvent: options.onMultiAgentEvent,
       })
     : undefined;
@@ -412,12 +412,12 @@ function buildCollaborationPrompt(identity: {
   parentCanonicalName: string;
 }): string {
   return [
-    '<xiaok_multi_agent_context>',
+    '<kteam_multi_agent_context>',
     `You are subagent ${identity.canonicalName} (id=${identity.id}).`,
     `Your parent is ${identity.parentCanonicalName} (id=${identity.parentId}).`,
     'Use send_message to report progress, findings, or questions to your parent; target main to reach the root agent.',
     'send_message does not start a new turn. Messages to a running child are delivered at the next complete model-request boundary; wait_agent can also receive replies.',
     'Use interrupt_agent for cancellation, not a message. A failed timeout is not successful completion; do not repeatedly wait or automatically retry it.',
-    '</xiaok_multi_agent_context>',
+    '</kteam_multi_agent_context>',
   ].join('\n');
 }

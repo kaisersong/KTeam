@@ -31,7 +31,7 @@ export const DSH_A_TABLES = Object.freeze([
 export const DSH_A_DIGEST = hashText(
   "main-dsh-source-ingress-v1|original-store-native-transaction|kind-input-key|immutable-input-versioned-proof|same-object-head|original-schema4-inheritance",
 );
-export const DSH_A_FUNCTION = "xiaok_main_dsh_source_ingress_v1";
+export const DSH_A_FUNCTION = "kteam_main_dsh_source_ingress_v1";
 export const DSH_A_DDL = `CREATE TABLE dsh_a_profile(singleton INTEGER PRIMARY KEY CHECK(singleton=1),profile TEXT NOT NULL,digest TEXT NOT NULL,store_id TEXT NOT NULL);
 CREATE TABLE dsh_a_source_bindings(binding_id TEXT PRIMARY KEY,source_key TEXT NOT NULL UNIQUE,revision INTEGER NOT NULL,data_json TEXT NOT NULL,logical_bytes INTEGER NOT NULL);
 CREATE TABLE dsh_a_inbox(input_id TEXT PRIMARY KEY,input_key TEXT NOT NULL UNIQUE,binding_id TEXT NOT NULL REFERENCES dsh_a_source_bindings(binding_id),object_id TEXT NOT NULL,data_json TEXT NOT NULL,logical_bytes INTEGER NOT NULL);

@@ -306,7 +306,7 @@ function artifactFromToolResponse(toolUseId: string, turnId: string, response: u
         ? 'html'
         : mimeType.startsWith('image/')
           ? 'image'
-          : mimeType.includes('xiaok.slides')
+          : mimeType.includes('kteam.slides')
             ? 'other'
             : normalizeArtifactKind(declaredKind);
   const label = typeof record.title === 'string' && record.title.trim()

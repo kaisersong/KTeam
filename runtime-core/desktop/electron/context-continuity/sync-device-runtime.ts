@@ -85,7 +85,7 @@ function fixedServices(){
  if(realpathSync(root)!==root)throw unavailable();
  const sync=path.join(root,'continuity-sync'),device=path.join(root,'continuity-device');
  const packages=[
-  [sync,'@xiaok/continuity-sync','0.1.0'],[device,'@xiaok/continuity-device','0.1.0'],
+  [sync,'@kteam/continuity-sync','0.1.0'],[device,'@kteam/continuity-device','0.1.0'],
   [path.join(sync,'node_modules/libsodium-wrappers'),'libsodium-wrappers','0.8.4'],
   [path.join(sync,'node_modules/libsodium'),'libsodium','0.8.4'],
   [path.join(device,'node_modules/@napi-rs/keyring'),'@napi-rs/keyring','2.1.1'],

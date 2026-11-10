@@ -109,7 +109,7 @@ export function readProfileDomainCensus(dataRoot: string): ProfileDomainCensus {
   if(pendingProfileProbe)throw Error('profile_identity_unavailable');
   const reservation={directory:undefined as string|undefined};
   pendingProfileProbe=reservation;
-  const snapshotRoot=mkdtempSync(join(tmpdir(),'xiaok-profile-census-'));
+  const snapshotRoot=mkdtempSync(join(tmpdir(),'kteam-profile-census-'));
   reservation.directory=snapshotRoot;
   const before=lstatSync(snapshotRoot,{bigint:true});
   const env:NodeJS.ProcessEnv={ELECTRON_RUN_AS_NODE:'1'};

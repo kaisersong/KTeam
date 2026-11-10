@@ -17,7 +17,7 @@ import { FileTeamStore } from '../teams/store.js';
 import { createTeamService, type TeamService } from '../teams/service.js';
 import { createWorktreeManager, type WorktreeManager } from '../worktrees/manager.js';
 import { ReminderClientService } from '../../runtime/reminder/client.js';
-import { resolveXiaokDaemonSocketPath } from '../../runtime/reminder/ipc.js';
+import { resolveKTeamDaemonSocketPath } from '../../runtime/reminder/ipc.js';
 import { createReminderService, type ReminderApi } from '../../runtime/reminder/service.js';
 import { CapabilityRegistry } from './capability-registry.js';
 import { FileCapabilityHealthStore } from './health-store.js';
@@ -118,7 +118,7 @@ export async function createPlatformRuntimeContext(
   const capabilityRegistry = new CapabilityRegistry();
   const capabilityHealth: PlatformCapabilityHealth[] = [];
   const disposables: Array<{ dispose(): void }> = [];
-  const stateRootDir = options.stateRootDir ?? join(options.cwd, '.xiaok', 'state');
+  const stateRootDir = options.stateRootDir ?? join(options.cwd, '.kteam', 'state');
   const healthStore = new FileCapabilityHealthStore(join(stateRootDir, 'capability-health.json'));
   const teamService = options.teamService ?? createTeamService({ store: new FileTeamStore(join(stateRootDir, 'teams.json')) });
   const reminderDefaultTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
@@ -134,13 +134,13 @@ export async function createPlatformRuntimeContext(
         sessionId,
         creatorUserId,
         defaultTimeZone: reminderDefaultTimeZone,
-        socketPath: options.reminderSocketPath ?? resolveXiaokDaemonSocketPath(),
+        socketPath: options.reminderSocketPath ?? resolveKTeamDaemonSocketPath(),
       });
     reminderApis.push(api);
     return api;
   };
   const sandboxPolicy = createSandboxPolicy({pathDenylist:options.privateStateRoots,
-    pathAllowlist: [options.cwd, join(options.cwd, '.xiaok'), join(options.cwd, '.worktrees')],
+    pathAllowlist: [options.cwd, join(options.cwd, '.kteam'), join(options.cwd, '.worktrees')],
     network: 'allow',
   });
   const sandboxEnforcer = createSandboxEnforcer(sandboxPolicy);

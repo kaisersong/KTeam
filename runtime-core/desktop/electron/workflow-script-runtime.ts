@@ -532,7 +532,7 @@ export async function runWorkflowScript(
       log:(...args:Parameters<typeof log>)=>own(()=>log(...args),true),
       workflow,
     },
-    `xiaok-workflow-script:${scriptHash}`,
+    `kteam-workflow-script:${scriptHash}`,
   );
   const compiled = new vm.Script(`(async () => {\n${parsed.body}\n})()`, {
     filename: `workflow-script-${scriptHash}.js`,

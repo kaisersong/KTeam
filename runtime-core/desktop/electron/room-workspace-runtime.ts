@@ -715,7 +715,7 @@ export function createRoomWorkspaceRuntime(options: {
         const wake = native?{ok:true,...native.claim}:await roomRequest(envelope.roomId, 'claim-wake', {
           roomMessageId: envelope.roomMessageId,
           logicalAgentId: envelope.logicalAgentId,
-          hostParticipantId: 'xiaok-desktop',
+          hostParticipantId: 'kteam-desktop',
           discussionOnly: true,
         });
         if (typeof wake.claimToken !== 'string')
@@ -825,7 +825,7 @@ export function createRoomWorkspaceRuntime(options: {
           roomId: envelope.roomId,
           roomMessageId: envelope.roomMessageId,
           logicalAgentId: envelope.logicalAgentId,
-          hostParticipantId: 'xiaok-desktop',
+          hostParticipantId: 'kteam-desktop',
         };
         const wake = (native?{ok:true,...native.claim}:
           snapshot.requiredProtocol === 'room_workspace_v1'
@@ -868,7 +868,7 @@ export function createRoomWorkspaceRuntime(options: {
         const wake = native?{ok:true,...native.claim}:await roomRequest(envelope.roomId, 'claim-wake', {
           roomMessageId: envelope.roomMessageId,
           logicalAgentId: envelope.logicalAgentId,
-          hostParticipantId: 'xiaok-desktop',
+          hostParticipantId: 'kteam-desktop',
           discussionOnly: true,
         });
         if (typeof wake.claimToken !== 'string')
@@ -1015,7 +1015,7 @@ export function createRoomWorkspaceRuntime(options: {
           claimId: context.claimId,
           logicalAgentId: envelope.logicalAgentId,
           roomMessageId: envelope.roomMessageId,
-          hostParticipantId: 'xiaok-desktop',
+          hostParticipantId: 'kteam-desktop',
         });
         if (typeof wake.claimToken !== 'string')
           throw new Error('workspace_wake_unavailable');

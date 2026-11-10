@@ -46,7 +46,7 @@ export function parseLoopHostSubject(raw: unknown): Readonly<LoopHostSubject> {
     return ownDataObjectFreeze({ kind: 'loop-run', loopId: value.loopId, runId: value.runId, stage });
 }
 export function loopHostSubjectHash(raw: unknown): string {
-    return createHash('sha256').update('xiaok-loop-host-subject-v1\0')
+    return createHash('sha256').update('kteam-loop-host-subject-v1\0')
         .update(json(parseLoopHostSubject(raw))).digest('hex');
 }
 /** Shared exact identity mapping; this does not register the owner. */

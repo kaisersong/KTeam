@@ -923,7 +923,7 @@ export class InProcessTaskRuntimeHost implements TaskRuntimeHost {
         preparationHostApply(preparationHostSet,hostIdentityHosts,[this,{store,io}]);
       }
     }
-    this.taskIdleTimeoutMs = resolveExecutionIdleMs(options.taskIdleTimeoutMs === undefined ? process.env.XIAOK_TASK_IDLE_TIMEOUT_MS : String(options.taskIdleTimeoutMs));
+    this.taskIdleTimeoutMs = resolveExecutionIdleMs(options.taskIdleTimeoutMs === undefined ? process.env.KTEAM_TASK_IDLE_TIMEOUT_MS : String(options.taskIdleTimeoutMs));
     taskSourceParticipants.set(this, { stopAccepting:reason=>preparationStore?this.#stopAccepting(reason):this.stopAccepting(reason), abortAllActive:reason=>this.abortAllActive(reason),
       seal: () => preparationStore?this.#sealSourceIngress():this.sealSourceIngress(), drain: () => preparationStore?this.#drainSourceParticipant():this.drainSourceParticipant() });
     if(preparationStore){

@@ -44,7 +44,7 @@ let dictionariesReadable: boolean | null = null;
  * `load` again: Node's require cache still hands back the same, already-loaded
  * nodejieba instance. Lives on globalThis for the same reason.
  */
-const LOADED_KEY = Symbol.for('xiaok.segment.jiebaLoaded');
+const LOADED_KEY = Symbol.for('kteam.segment.jiebaLoaded');
 function loadedDictionaries(): WeakMap<object, string> {
   const holder = globalThis as unknown as Record<symbol, WeakMap<object, string> | undefined>;
   return holder[LOADED_KEY] ??= new WeakMap<object, string>();
@@ -291,7 +291,7 @@ interface SegmentationWorker {
   describe(): { entry: string; options: ReturnType<typeof nativeLoadOptions>; ready: boolean };
 }
 
-const WORKER_KEY = Symbol.for('xiaok.segment.worker');
+const WORKER_KEY = Symbol.for('kteam.segment.worker');
 type WorkerHolder = Record<symbol, SegmentationWorker | null | undefined>;
 
 function startWorker(entry: string, options: ReturnType<typeof nativeLoadOptions>): SegmentationWorker {

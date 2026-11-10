@@ -36,8 +36,8 @@ const owners=new WeakMap<CanonicalStoreSyncOwner,ContinuityStore>(),reservations
 const stable=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
 const hash=(value:unknown)=>createHash('sha256').update(stable(value)).digest('hex');
 const unavailable=(reason:string)=>new ContinuityPolicyUnavailable(reason);
-const local=(kind:string,scope:CanonicalSyncScope,...ids:unknown[])=>'sync_'+kind+'_'+hash(['xiaok/canonical-origin-local/v1',kind,scope,...ids]);
-const localRef=(scope:CanonicalSyncScope,id:string)=>createHash('sha256').update(stable(['xiaok/canonical-origin-local/v1','ref',scope,id])).digest('base64url').slice(0,32);
+const local=(kind:string,scope:CanonicalSyncScope,...ids:unknown[])=>'sync_'+kind+'_'+hash(['kteam/canonical-origin-local/v1',kind,scope,...ids]);
+const localRef=(scope:CanonicalSyncScope,id:string)=>createHash('sha256').update(stable(['kteam/canonical-origin-local/v1','ref',scope,id])).digest('base64url').slice(0,32);
 const equal=(a:unknown,b:unknown)=>stable(a)===stable(b);
 const factSubject=(fact:CanonicalStickyFact)=>stable(fact.kind==='dependency'?[fact.kind,fact.table,fact.taskId,fact.sourceId]:[fact.kind,fact.id]);
 
@@ -53,7 +53,7 @@ class CanonicalOwner {
  constructor(store:ContinuityStore,token:object,device:DesktopSyncDevice){
   this.channel=claimOriginalCanonicalStoreChannel(store,token);this.device=device;assertDesktopSyncDevice(device);
   if(reservations.has(device))throw unavailable('canonical_device_already_bound');
-  this.bindingIds={storeId:this.channel.storeId,profileId:hash(['xiaok/canonical-store-profile/v1',this.channel.profileId])};
+  this.bindingIds={storeId:this.channel.storeId,profileId:hash(['kteam/canonical-store-profile/v1',this.channel.profileId])};
   const cap=this.channel.currentCommitted();if(!cap)throw unavailable('canonical_commit_unavailable');this.#commit=cap;this.#state=this.channel.assertCommitted(cap);
   const current=this.#fact();this.#assertPersisted(current,this.#state);this.#rememberGrantTargets();
   // A durable bootstrap intent never proves that the prior COMMIT returned.
@@ -146,7 +146,7 @@ class CanonicalOwner {
   this.#sourceReady(commit);this.#sourceControls(controls,metadata);const state=this.channel.assertCommitted(commit),base=this.#fact();this.#assertPersisted(base,state);
   if(metadata.storeState.storeId!==this.bindingIds.storeId||metadata.storeState.storeProfileBindingId!==this.bindingIds.profileId||metadata.storeState.policyHash!==state.policyHash||metadata.storeState.publicationHash!==state.publicationHash||!equal(metadata.storeState.capturedStoreHead,base.head))throw unavailable('canonical_source_bootstrap_mismatch');
   friend.assertSourceDraft(store,device,services,draft);this.#sourceControls(controls,metadata);this.channel.assertCommitted(commit);this.#sourceReady(commit);
-  const purpose=base.head.sequence===0?'bootstrap':'reconcile',stageId=hash(['xiaok/canonical-source-stage/v1',this.bindingIds,base.head,metadata.scopes,metadata.manifestHash,metadata.payloadHashes,hash(controls)]);
+  const purpose=base.head.sequence===0?'bootstrap':'reconcile',stageId=hash(['kteam/canonical-source-stage/v1',this.bindingIds,base.head,metadata.scopes,metadata.manifestHash,metadata.payloadHashes,hash(controls)]);
   const value={schemaVersion:1,purpose,stageId,...this.bindingIds,baseHead:base.head,scopes:metadata.scopes,manifestHash:metadata.manifestHash,payloadHashes:metadata.payloadHashes,controlHash:hash(controls)},row=Object.freeze({kind:purpose==='bootstrap'?'canonicalSourceBootstrapV1':'canonicalSourceReconcileV1',id:stageId,request_hash:digest(value),result:JSON.stringify(value)});
   const expected=captureCanonicalStoreStateWithSourceIntent(this.channel.db,row),stage=this.channel.stage(hash(value));
   const active:Bootstrap={services,draft,controls,metadata,stage,expected:state,stageId,row,friend};

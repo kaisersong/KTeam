@@ -8,7 +8,7 @@ import type { MultiAgentManagedResource } from '../shared/multi-agent-types.js';
 import { DesktopMultiAgentStore, type DesktopMultiAgentMutationPort, truncateMultiAgentText } from './desktop-multi-agent-store.js';
 
 const execFileAsync = promisify(execFile);
-const DIRECTORY = '.xiaok-desktop-worktrees';
+const DIRECTORY = '.kteam-desktop-worktrees';
 class PersistedWorktreeCleanupError extends Error {
   constructor(error: unknown) { super(error instanceof Error ? error.message : String(error), { cause: error }); }
 }
@@ -190,7 +190,7 @@ export class DesktopMultiAgentWorktrees {
     }
   }
   private validateAllocatorOwnership(record: MultiAgentManagedResource): void {
-    const registryPath = join(record.repositoryRoot!, DIRECTORY, '.xiaok-worktree-registry');
+    const registryPath = join(record.repositoryRoot!, DIRECTORY, '.kteam-worktree-registry');
     const registry = JSON.parse(readFileSync(registryPath, 'utf8')) as { schemaVersion?: number; leases?: WorktreeLeaseRecord[] };
     const lease = registry.schemaVersion === 1 && registry.leases?.find(item => samePath(item.path, record.canonicalPath));
     if (!lease || lease.branch !== record.allocationToken || lease.owner !== this.owner(record) || lease.taskId !== record.agentId

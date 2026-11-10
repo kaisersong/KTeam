@@ -1,7 +1,7 @@
 /**
  * MCP Server Classification Registry
  *
- * xiaok 维护的运行时 policy 分类表,作为 activation / dispose ownership 的事实来源。
+ * kteam 维护的运行时 policy 分类表,作为 activation / dispose ownership 的事实来源。
  * 不依赖插件作者填 manifest 字段;插件 manifest 上的 requiresUserActivation 仅作为
  * 向后兼容 fallback,且仅在官方 cua-computer-use 插件身份上生效(round-2 B1)。
  *

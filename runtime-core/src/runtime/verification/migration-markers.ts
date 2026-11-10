@@ -75,7 +75,7 @@ export function migrationProfileDirectoryName(profileId:string):string{if(!id(pr
 export function readInstalledMigrationOwner(raw:VerificationOwner):Readonly<InstalledMigrationState>{
  try{
   const o=owner(raw);if(!['darwin','linux'].includes(process.platform))throw Error('migration_marker_platform');
-  const base=process.platform==='darwin'?'/Library/Application Support/xiaok-verification':'/var/lib/xiaok-verification';
+  const base=process.platform==='darwin'?'/Library/Application Support/kteam-verification':'/var/lib/kteam-verification';
   if(!probe(base)){rootAncestors(dirname(base));return Object.freeze({kind:'ordinary'});}
   const manifestPath=join(base,'deployment.json');assertRootProtectedFile(manifestPath);
   const manifest=parseInstalledDeploymentManifest(readSmall(manifestPath,0,65536));
@@ -101,7 +101,7 @@ export function readInstalledCurrentProfile():Readonly<InstalledCurrentProfile>{
  try{
   if(process.platform==='win32'){if(readWindowsInstallationAbsence()==='ordinary')return Object.freeze({kind:'ordinary'});throw Error('profile_installed_windows_unavailable');}
   if(!['darwin','linux'].includes(process.platform))throw Error('profile_installed_platform');
-  const base=process.platform==='darwin'?'/Library/Application Support/xiaok-verification':'/var/lib/xiaok-verification';
+  const base=process.platform==='darwin'?'/Library/Application Support/kteam-verification':'/var/lib/kteam-verification';
   if(!probe(base)){rootAncestors(dirname(base));return Object.freeze({kind:'ordinary'});}
   if(process.platform!=='darwin')throw Error('profile_installed_account_adapter_unavailable');
   const uid=process.getuid?.();if(!uid||process.geteuid?.()!==uid)throw Error('profile_installed_user');

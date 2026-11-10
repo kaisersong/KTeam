@@ -147,7 +147,7 @@ export function createSystemOneAdapter(
   if (!resolved.apiKey) {
     throw new Error(
       '未配置 System One（Jev）API Key。'
-      + '可运行 `xiaok config set system-one-api-key <key>`，'
+      + '可运行 `kteam config set system-one-api-key <key>`，'
       + `或设置环境变量 ${SYSTEM_ONE_KEY_ENV_VARS.join(' / ')}。`,
     );
   }

@@ -88,7 +88,7 @@ export function createBashTool(options: BashApprovalOptions = {}): BashTool {
       return `Error: 命令被安全策略拦截: ${risk.reason}`;
     }
 
-    if (/\bsudo\b/.test(command)) { await context?.compoundPhase?.rejected?.({ toolName: 'bash', reason: 'interactive_sudo' }); return 'Error: sudo 需要主 CLI 的本地交互终端；请交由主会话执行，或在 xiaok 交互输入框使用 !sudo 命令；在系统终端直接执行 sudo 命令（不加 !）。'; }
+    if (/\bsudo\b/.test(command)) { await context?.compoundPhase?.rejected?.({ toolName: 'bash', reason: 'interactive_sudo' }); return 'Error: sudo 需要主 CLI 的本地交互终端；请交由主会话执行，或在 kteam 交互输入框使用 !sudo 命令；在系统终端直接执行 sudo 命令（不加 !）。'; }
 
     await context?.compoundPhase?.beforeCommandStart?.({ command, workdir });
     context?.signal?.throwIfAborted(); context?.assertPermissionApproval?.();

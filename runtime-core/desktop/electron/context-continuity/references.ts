@@ -53,7 +53,7 @@ export class ReferenceService {
       db.prepare('INSERT INTO context_refs VALUES (?,?,?,?)').run(refId, c.id, c.revision, contentHash);
       const insert = db.prepare('INSERT INTO context_ref_entries VALUES (?,?,?,?)');
       selected.forEach((row, position) => insert.run(refId, position, String(row.id), Number(row.latest_revision)));
-      return { refId, url: `xiaok://context/v1/${refId}`, conversationId: c.id, snapshotRevision: c.revision, contentHash };
+      return { refId, url: `kteam://context/v1/${refId}`, conversationId: c.id, snapshotRevision: c.revision, contentHash };
     });
   }
   attach(actor: ContinuityActor, input: { refId: string; targetConversationId: string; operationId: string }): { grantId: string } {

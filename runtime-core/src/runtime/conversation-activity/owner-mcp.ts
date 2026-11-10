@@ -55,7 +55,7 @@ export class ActivityOwnerMcp {
     if (!endpoint.config) {
       let claims = this.localClaims.get(endpoint.endpointId); if (!claims) this.localClaims.set(endpoint.endpointId, claims = new Set()); claims.add(clientId); return;
     }
-    if (await createTaskSessionEndpointId('xiaok-mcp', { serverName: endpoint.name, config: endpoint.config }) !== endpoint.endpointId) throw new Error('activity_mcp_endpoint_mismatch');
+    if (await createTaskSessionEndpointId('kteam-mcp', { serverName: endpoint.name, config: endpoint.config }) !== endpoint.endpointId) throw new Error('activity_mcp_endpoint_mismatch');
     if (this.disposed) throw new Error('activity_mcp_closing');
     if (this.endpoints.size >= 64 && !this.endpoints.has(endpoint.endpointId)) throw new Error('activity_mcp_endpoint_capacity');
     this.endpoints.set(endpoint.endpointId, endpoint);
@@ -75,7 +75,7 @@ export class ActivityOwnerMcp {
     const old = this.connecting.get(endpoint.endpointId); if (old) return old;
     const pending = (async () => {
       if (!endpoint.config) return;
-      const owned = ownPendingClose(createMcpClientConnection(endpoint.name, endpoint.config as McpServerConfig, { cwd: endpoint.cwd, clientName: 'xiaok-activity-owner' }));
+      const owned = ownPendingClose(createMcpClientConnection(endpoint.name, endpoint.config as McpServerConfig, { cwd: endpoint.cwd, clientName: 'kteam-activity-owner' }));
       this.ownedConnections.add(owned);
       let connection: McpClientConnection;
       try { connection = await owned.settled; }

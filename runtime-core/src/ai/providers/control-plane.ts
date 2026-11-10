@@ -32,10 +32,10 @@ export class MissingProviderApiKeyError extends Error {
     envHint: string,
   ) {
     super(
-      `未配置 API Key。首次使用请运行: xiaok login\n`
-      + `脚本配置: xiaok config set api-key <key> --provider ${providerId}\n`
-      + `或设置环境变量 XIAOK_${envHint}_API_KEY（也支持标准环境变量 ${envHint}_API_KEY）\n`
-      + '如果已设置环境变量但仍报此错，可运行: xiaok doctor --check-keys 验证候选 Key 是否可用',
+      `未配置 API Key。首次使用请运行: kteam login\n`
+      + `脚本配置: kteam config set api-key <key> --provider ${providerId}\n`
+      + `或设置环境变量 KTEAM_${envHint}_API_KEY（也支持标准环境变量 ${envHint}_API_KEY）\n`
+      + '如果已设置环境变量但仍报此错，可运行: kteam doctor --check-keys 验证候选 Key 是否可用',
     );
   }
 }
@@ -61,7 +61,7 @@ export function resolveRuntimeModelBinding(rawConfig: ConfigInput, requestedMode
   }
 
   if (providerConfig.type === 'custom' && !transport.baseUrl) {
-    throw new Error('custom 模型需要配置 baseUrl。请运行: xiaok config set model custom --base-url <url>');
+    throw new Error('custom 模型需要配置 baseUrl。请运行: kteam config set model custom --base-url <url>');
   }
 
   const catalogRuntimeModel = providerId === 'kimi'

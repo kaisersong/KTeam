@@ -1,7 +1,7 @@
 /**
  * ControlledStdioClientTransport (design v58 §1.2 item 7, §3.4, §5.5).
  *
- * Why Xiaok owns this instead of the SDK's StdioClientTransport: the SDK close
+ * Why KTeam owns this instead of the SDK's StdioClientTransport: the SDK close
  * path only guards its delayed SIGTERM/SIGKILL with `exitCode === null`, never
  * looks at `signalCode` or descendants, and returns before the child is proven
  * gone — so a background kill can still fire later. Reserved bundled providers

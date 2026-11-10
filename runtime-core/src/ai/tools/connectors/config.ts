@@ -130,7 +130,7 @@ export function resolveCliConnectorsConfig(
 ): ConnectorsConfig {
   const normalized = normalizeConnectorsConfig(base);
 
-  const envSearchProvider = pickString(env.XIAOK_SEARCH_PROVIDER) as SearchProviderName | undefined;
+  const envSearchProvider = pickString(env.KTEAM_SEARCH_PROVIDER) as SearchProviderName | undefined;
   if (envSearchProvider && SEARCH_PROVIDER_NAMES.includes(envSearchProvider)) {
     normalized.search.provider = envSearchProvider;
   }
@@ -150,7 +150,7 @@ export function resolveCliConnectorsConfig(
     normalized.fetch.deepseekApiKey = deepseekKey;
   }
 
-  const envFetchProvider = pickString(env.XIAOK_FETCH_PROVIDER) as FetchProviderName | undefined;
+  const envFetchProvider = pickString(env.KTEAM_FETCH_PROVIDER) as FetchProviderName | undefined;
   if (envFetchProvider && FETCH_PROVIDER_NAMES.includes(envFetchProvider)) {
     normalized.fetch.provider = envFetchProvider;
   }

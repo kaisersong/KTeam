@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { Checkpoint } from './checkpoint.js';
 
 export function getCheckpointRoot(projectRoot: string): string {
-  return join(projectRoot, '.xiaok', 'checkpoints');
+  return join(projectRoot, '.kteam', 'checkpoints');
 }
 
 export function getCheckpointDir(projectRoot: string, sessionId: string): string {

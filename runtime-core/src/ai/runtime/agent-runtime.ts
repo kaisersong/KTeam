@@ -574,7 +574,7 @@ export class AgentRuntime {
           const truncated = truncateToolResult(result, MODEL_OUTPUT_CAP + MODEL_OUTPUT_TRUNCATION_MARKER.length, {
             sessionId: sessionSnapshot.sessionId,
             toolCallId: toolCall.id,
-            spillDir: this.spillDir ?? join(sessionSnapshot.cwd, '.xiaok', 'spill'),
+            spillDir: this.spillDir ?? join(sessionSnapshot.cwd, '.kteam', 'spill'),
           });
           // Exact final history bytes; failure only makes this observation ineligible for P1-B.
           try { this.observationOwner?.finalizeToolResult(toolCall.id, truncated.content); } catch { /* provenance is optional; never replay a completed tool */ }
@@ -868,7 +868,7 @@ function buildGuardTraceBundle(toolCalls: TraceToolCall[]): TraceBundleV1 {
     schemaVersion: 1,
     bundleId: 'runtime_guard_verification',
     createdAt: now,
-    source: { app: 'xiaok-cli' },
+    source: { app: 'kteam-cli' },
     scope: { kind: 'session', sessionId: 'runtime' },
     environment: {},
     turns: [],

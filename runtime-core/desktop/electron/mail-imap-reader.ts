@@ -21,7 +21,7 @@ export class ImapMailReader implements MailReader {
  close(id?:string):void{for(const [key,clients] of this.active)if(!id||id===key){for(const client of clients)client.close();this.active.delete(key);}}
  private async use<T>(account:MailAccountRecord,work:(client:ImapFlow,validity:string)=>Promise<T>):Promise<T>{
   if(account.auth.kind!=='password')throw Error('mail_invalid_input');
-  const client=this.makeClient({host:account.host,port:account.port,secure:true,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},auth:{user:account.email,pass:account.auth.password},logger:false,emitLogs:false,disableAutoIdle:true,disableCompression:true,connectionTimeout:15000,greetingTimeout:10000,socketTimeout:20000,maxLineLength:2*1024*1024,maxLiteralSize:160*1024,clientInfo:{name:'Xiaok',version:'1.0'}});
+  const client=this.makeClient({host:account.host,port:account.port,secure:true,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},auth:{user:account.email,pass:account.auth.password},logger:false,emitLogs:false,disableAutoIdle:true,disableCompression:true,connectionTimeout:15000,greetingTimeout:10000,socketTimeout:20000,maxLineLength:2*1024*1024,maxLiteralSize:160*1024,clientInfo:{name:'KTeam',version:'1.0'}});
   client.on('error',()=>{});const set=this.active.get(account.id)??new Set<ImapFlow>();set.add(client);this.active.set(account.id,set);
   let timer:ReturnType<typeof setTimeout>|undefined;
   const operation=(async()=>{await client.connect();const lock=await client.getMailboxLock('INBOX',{readOnly:true});try{if(!client.mailbox||client.mailbox.readOnly!==true)throw Error('mail_invalid_input');return await work(client,String(client.mailbox.uidValidity));}finally{lock.release();}})();

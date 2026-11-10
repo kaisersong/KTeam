@@ -21,7 +21,7 @@ export function intentContractDependencies(raw:unknown){
  const {subject,contract}=parseIntentContractEnrollment(raw),ids=subject.stageId===null?contract.stages.map(s=>s.stageId):contract.stages.find(s=>s.stageId===subject.stageId)!.dependsOnStageIds;
  return Object.freeze(ids.map(stageId=>intentHostSubjectOwner({...subject,stageId})));
 }
-export function intentOriginalRegistrationHash(raw:OwnerEnrollmentReview['registration']):string{return createHash('sha256').update('xiaok-intent-original-registration-v1\0').update(json(raw)).digest('hex');}
+export function intentOriginalRegistrationHash(raw:OwnerEnrollmentReview['registration']):string{return createHash('sha256').update('kteam-intent-original-registration-v1\0').update(json(raw)).digest('hex');}
 export interface IntentContractRegistrationObservation {readonly owner:{readonly profileId:string;readonly ownerKind:'intent';readonly ownerId:string};readonly subject:Readonly<IntentHostSubject>;readonly contract:Readonly<IntentBusinessContract>;readonly contractHash:string;readonly registrationHash:string}
 export function parseIntentContractRegistrationObservation(raw:unknown):Readonly<IntentContractRegistrationObservation>{
  const d=applicationDataDescriptors(raw,5,'intent_registration_shape');if(Array.isArray(raw)||Object.keys(d).sort().join(',')!=='contract,contractHash,owner,registrationHash,subject')throw Error('intent_registration_shape');

@@ -21,7 +21,7 @@ export function canonicalWorkspaceJson(value: unknown): string {
 }
 
 export function workspaceDigest(kind: string, value: unknown): string {
-  return createHash('sha256').update(`xiaok.room-workspace.v1/${kind}\n${canonicalWorkspaceJson(value)}`).digest('hex');
+  return createHash('sha256').update(`kteam.room-workspace.v1/${kind}\n${canonicalWorkspaceJson(value)}`).digest('hex');
 }
 
 export function pathWithin(root: string, target: string, implementation = path): boolean {
@@ -154,7 +154,7 @@ export async function managedWorkspaceWrite(binding: WorkspaceRoot, relativePath
     }
     if(await resolveWorkspacePath(binding,relativePath,true)!==target)throw new Error('workspace_identity_changed');
     assertBeforeEffects(beforeEffects);
-    temporary = join(dirname(target), `.xiaok-write-${randomUUID()}.tmp`);
+    temporary = join(dirname(target), `.kteam-write-${randomUUID()}.tmp`);
     const handle = await open(temporary, 'wx', 0o600);
     let bodyFailure:{error:unknown}|undefined;
     try { assertBeforeEffects(beforeEffects);await handle.writeFile(content);assertBeforeEffects(beforeEffects);await handle.sync(); }catch(error){bodyFailure={error};throw error;}finally{await closeWorkspaceHandle(handle,bodyFailure);}

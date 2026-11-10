@@ -29,7 +29,7 @@ export function buildKSwarmTaskCreateInput(input:{
     const requiredOutputsText = formatKSwarmRequiredOutputs(handoff.task.requiredOutputs);
     const prompt = [
       'KSwarm 项目任务执行。',
-      `执行者：${targetParticipantId || 'xiaok-worker'}`,
+      `执行者：${targetParticipantId || 'kteam-worker'}`,
       `项目：${handoff.project.name}`,
       `目标：${handoff.project.goal}`,
       handoff.project.requirements ? `要求：${handoff.project.requirements}` : '',

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
-const CLI_CACHE_AFFINITY_DOMAIN = 'xiaok:kimi-prompt-cache:cli:v1\0';
-const DESKTOP_CACHE_AFFINITY_DOMAIN = 'xiaok:kimi-prompt-cache:desktop:v1\0';
+const CLI_CACHE_AFFINITY_DOMAIN = 'kteam:kimi-prompt-cache:cli:v1\0';
+const DESKTOP_CACHE_AFFINITY_DOMAIN = 'kteam:kimi-prompt-cache:desktop:v1\0';
 const CLI_SESSION_ID = /^sess_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DESKTOP_SESSION_ID = /^sess_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DESKTOP_INVOCATION_ID = /^inv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

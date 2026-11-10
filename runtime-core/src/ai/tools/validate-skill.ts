@@ -33,7 +33,7 @@ export function createValidateSkillTool(options: ValidateSkillToolOptions = {}):
       const resolvedPath = assertWorkspacePath(path, cwd, 'read', true);
       const result = await validateSkillFile(resolvedPath, {
         cwd,
-        xiaokConfigDir: configDir,
+        kteamConfigDir: configDir,
       });
       // `ok` here is a verdict about the skill file, not the tool call. Exposing
       // it under that name would make a skill with errors look like a failed

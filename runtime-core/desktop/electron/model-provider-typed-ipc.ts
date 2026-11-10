@@ -26,7 +26,7 @@ export const MODEL_PROVIDER_RISK_TAGS: Readonly<Record<ModelProviderMethod, read
   saveModelConfig: [...configEffects, 'internal-mutation'], updateModelRuntimeOptions: [...configEffects, 'internal-mutation'],
   saveSystemOneConfig: [...configEffects, 'internal-mutation'], deleteProvider: [...configEffects, 'internal-mutation'], deleteModel: [...configEffects, 'internal-mutation'],
   testProviderConnection: [...configEffects, 'network'], listAvailableModelsForProvider: [],
-  createManagedXiaokAgent: [...configEffects, 'network', 'exec', 'external-process', 'internal-mutation'],
+  createManagedKTeamAgent: [...configEffects, 'network', 'exec', 'external-process', 'internal-mutation'],
 });
 const nativeActors = new AsyncLocalStorage<NativeActor | undefined>();
 const owners = new WeakMap<IpcHandleRegistrar, { service: Service | null; authorize?: Authorize; probeSource?:MainDshControlSource; installed: Set<ModelProviderMethod>; registrar: IpcHandleRegistrar }>();
@@ -72,7 +72,7 @@ export function registerModelProviderIpc(ipc: IpcHandleRegistrar, rawService?: S
           case 'updateModelRuntimeOptions': result = service.updateModelRuntimeOptions(args[0] as Parameters<Service['updateModelRuntimeOptions']>[0], 'user'); break;
           case 'getSystemOneConfig': result = service.getSystemOneConfig(); break;
           case 'saveSystemOneConfig': result = service.saveSystemOneConfig(args[0] as Parameters<Service['saveSystemOneConfig']>[0], 'user'); break;
-          case 'createManagedXiaokAgent': result = service.createManagedXiaokAgent(args[0] as Parameters<Service['createManagedXiaokAgent']>[0], { requestSource: 'user' }); break;
+          case 'createManagedKTeamAgent': result = service.createManagedKTeamAgent(args[0] as Parameters<Service['createManagedKTeamAgent']>[0], { requestSource: 'user' }); break;
           case 'testProviderConnection': {
             const input=args[0] as Parameters<Service['testProviderConnection']>[0];
             if(!probeSource){result=service.testProviderConnection(input,'user');break;}

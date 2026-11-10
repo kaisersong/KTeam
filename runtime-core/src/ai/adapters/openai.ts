@@ -455,7 +455,7 @@ export class OpenAIAdapter implements ModelAdapter {
 
   constructor(
     init: OpenAIAdapterInit,
-    experimentalToolOrder = parseExperimentalToolOrder(process.env.XIAOK_EXPERIMENTAL_TOOL_ORDER),
+    experimentalToolOrder = parseExperimentalToolOrder(process.env.KTEAM_EXPERIMENTAL_TOOL_ORDER),
   ) {
     assertKimiTransportAllowed(init.harnessContext.identity);
     const strictKimiK3 = init.harnessContext.profile.id !== 'generic-openai';

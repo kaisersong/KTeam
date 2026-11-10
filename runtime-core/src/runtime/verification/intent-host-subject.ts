@@ -28,7 +28,7 @@ export function parseIntentHostSubject(raw: unknown): Readonly<IntentHostSubject
     return ownDataObjectFreeze({ version: 1, sessionId, intentId, stageId });
 }
 export function intentHostSubjectHash(raw: unknown): string {
-    return ownDataHashPrototypeDigest(ownDataHashPrototypeUpdate(ownDataHashPrototypeUpdate(ownDataCryptoCreateHash('sha256'), 'xiaok-intent-host-subject-v1\0'), json(parseIntentHostSubject(raw))), 'hex');
+    return ownDataHashPrototypeDigest(ownDataHashPrototypeUpdate(ownDataHashPrototypeUpdate(ownDataCryptoCreateHash('sha256'), 'kteam-intent-host-subject-v1\0'), json(parseIntentHostSubject(raw))), 'hex');
 }
 /** Full subject mapping only; no raw intentId fallback and no registry writes. */
 export function intentHostSubjectOwner(raw: unknown): Readonly<{

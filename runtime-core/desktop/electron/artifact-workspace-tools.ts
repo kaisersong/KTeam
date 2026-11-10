@@ -106,7 +106,7 @@ export function createArtifactWorkspacePluginProducerTool(options: {
   requestedKind: 'html' | 'slides';
   outputFileName: string;
   pluginSource: 'kai-report-creator' | 'kai-slide-creator';
-  mimeType: 'text/html' | 'application/vnd.xiaok.slides+html';
+  mimeType: 'text/html' | 'application/vnd.kteam.slides+html';
 }): Tool {
   return {
     permission: 'write',

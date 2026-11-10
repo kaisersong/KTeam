@@ -5,13 +5,13 @@ export const SOURCE_READ_PROFILE='harness_dsh_source_resources_v1';
 export const SOURCE_TENANT_PROFILE='harness_dsh_source_setup_tenant_v2';
 const TABLES=['dsh_budget_accounts','dsh_budget_operations','dsh_budget_attempts','dsh_budget_work_policies','dsh_budget_work_reservations','dsh_budget_work_heads','dsh_budget_work_attempts','dsh_budget_command_attestations','dsh_budget_command_receipts','dsh_budget_work_closures','dsh_budget_source_accounts','dsh_budget_source_scans','dsh_budget_source_attempts','dsh_budget_source_identity_history'];
 let guards='';
-for(let i=0;i<TABLES.length;i++)for(const operation of ['INSERT','UPDATE','DELETE'])guards+=`\nCREATE TRIGGER dsh_v4_${TABLES[i]}_${operation.toLowerCase()} BEFORE ${operation} ON ${TABLES[i]} BEGIN SELECT CASE WHEN xiaok_harness_dsh_budget_v4() IS NOT 1 THEN RAISE(ABORT,'dsh_writer_required') END; END;`;
+for(let i=0;i<TABLES.length;i++)for(const operation of ['INSERT','UPDATE','DELETE'])guards+=`\nCREATE TRIGGER dsh_v4_${TABLES[i]}_${operation.toLowerCase()} BEFORE ${operation} ON ${TABLES[i]} BEGIN SELECT CASE WHEN kteam_harness_dsh_budget_v4() IS NOT 1 THEN RAISE(ABORT,'dsh_writer_required') END; END;`;
 const tenantTables=[...TABLES,'dsh_budget_cost_accounting_receipts','dsh_budget_account_revisions','dsh_budget_draft_usage_receipts','dsh_budget_account_epochs','dsh_budget_source_tenant_transitions'];
 let tenantGuards='';
 const tenantOperations=['INSERT','UPDATE','DELETE'];
 for(let i=0;i<tenantTables.length;i++)for(let j=0;j<tenantOperations.length;j++){
     const operation=tenantOperations[j];
-    tenantGuards+=(tenantGuards?'\n':'')+`CREATE TRIGGER dsh_v9_${tenantTables[i]}_${apply(lower,operation,[])} BEFORE ${operation} ON ${tenantTables[i]} BEGIN SELECT CASE WHEN xiaok_harness_dsh_budget_v9() IS NOT 1 THEN RAISE(ABORT,'dsh_writer_required') END; END;`;
+    tenantGuards+=(tenantGuards?'\n':'')+`CREATE TRIGGER dsh_v9_${tenantTables[i]}_${apply(lower,operation,[])} BEFORE ${operation} ON ${tenantTables[i]} BEGIN SELECT CASE WHEN kteam_harness_dsh_budget_v9() IS NOT 1 THEN RAISE(ABORT,'dsh_writer_required') END; END;`;
 }
 export const SOURCE_TENANT_SQL=`CREATE TABLE dsh_budget_source_tenant_transitions (
  account_id TEXT PRIMARY KEY REFERENCES dsh_budget_source_accounts(account_id),

@@ -421,7 +421,7 @@ function executeCommand(
       shell: config.shell || true,
       detached: !windows,
       windowsHide: true,
-      env: { ...process.env, ...extraEnv, XIAOK_HOOK_PAYLOAD: payloadJson },
+      env: { ...process.env, ...extraEnv, KTEAM_HOOK_PAYLOAD: payloadJson },
       stdio: 'pipe',
     });
     const originalPid = child.pid;
@@ -700,7 +700,7 @@ export function createHooksRunner(config: HooksRunnerConfig = {}): HooksRunner {
     const payloadJson = buildPayload(eventName, payload, ctx);
     const extraEnv: Record<string, string> = {};
     if (ctx.session_id) {
-      extraEnv['XIAOK_CODE_SESSION_ID'] = ctx.session_id;
+      extraEnv['KTEAM_CODE_SESSION_ID'] = ctx.session_id;
     }
 
     for (const hook of allHooks) {

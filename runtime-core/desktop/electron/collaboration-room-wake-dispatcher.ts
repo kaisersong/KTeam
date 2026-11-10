@@ -351,7 +351,7 @@ export function createCollaborationRoomWakeDispatcher({
         roomId: input.roomId,
         roomMessageId: input.roomMessageId,
         logicalAgentId,
-        hostParticipantId: 'xiaok-desktop',
+        hostParticipantId: 'kteam-desktop',
       });
       if (!isRecord(claim) || claim.ok === false || !asString(claim.claimToken)) {
         await settleAgent(logicalAgentId, 'failed');

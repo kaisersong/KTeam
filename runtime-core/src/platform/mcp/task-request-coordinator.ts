@@ -7,7 +7,7 @@ import type { DispatchOptions, JsonRpcResponse } from '@modelcontextprotocol/ext
 /** Shares the authenticated SDK transport without taking its request namespace.
  * Extension request/result decoding belongs to the official Tasks adapter. */
 export class McpTaskRequestCoordinator {
-  private readonly prefix = `xiaok-task:${randomUUID()}:`;
+  private readonly prefix = `kteam-task:${randomUUID()}:`;
   private next = 0;
   private closed = false;
   private captureListen?: (id: string) => void;

@@ -31,7 +31,7 @@ export function resolveNpmInvocation(options: ResolveNpmOptions = {}): NpmInvoca
     return { command: 'npm', prefixArgs: [] };
   }
 
-  const explicit = env.XIAOK_NPM_CLI_JS;
+  const explicit = env.KTEAM_NPM_CLI_JS;
   if (explicit) {
     return { command: execPath, prefixArgs: [explicit] };
   }
@@ -44,7 +44,7 @@ export function resolveNpmInvocation(options: ResolveNpmOptions = {}): NpmInvoca
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) {
     throw new Error(
-      'Unable to locate npm-cli.js for a shell-free npm invocation. Set XIAOK_NPM_CLI_JS to npm\'s bin/npm-cli.js.',
+      'Unable to locate npm-cli.js for a shell-free npm invocation. Set KTEAM_NPM_CLI_JS to npm\'s bin/npm-cli.js.',
     );
   }
   return { command: execPath, prefixArgs: [found] };
@@ -54,7 +54,7 @@ export function resolvePythonCommand(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  if (env.XIAOK_PYTHON_CMD) return env.XIAOK_PYTHON_CMD;
+  if (env.KTEAM_PYTHON_CMD) return env.KTEAM_PYTHON_CMD;
   return platform === 'win32' ? 'python' : 'python3';
 }
 

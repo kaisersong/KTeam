@@ -82,7 +82,7 @@ export function createAuthenticatedControllerClient(options: {
   const receipts = new WeakMap<object, { expected: QuiescenceExpectation; engineId: string; engineEpoch: string; serviceEpoch: string }>();
   function request(method: string, payload: unknown, requestTicket: string | null = null) {
     if (invalidated) throw Error('controller_instance_changed');
-    const body = snapshot({ version: 1, domain: 'xiaok.controller.request.v1', authorityId, serviceEpoch: method === 'controller.identity' ? null : serviceEpoch ?? null, requestTicket, nonce: randomBytes(32).toString('hex'), method, requestHash: hash(payload), payload });
+    const body = snapshot({ version: 1, domain: 'kteam.controller.request.v1', authorityId, serviceEpoch: method === 'controller.identity' ? null : serviceEpoch ?? null, requestTicket, nonce: randomBytes(32).toString('hex'), method, requestHash: hash(payload), payload });
     const bytes = Buffer.from(canonicalVerificationJson(body)); if (bytes.length > 1024 ** 2) throw Error('controller_request_limit');
     return { body, bytes };
   }
@@ -91,7 +91,7 @@ export function createAuthenticatedControllerClient(options: {
     if (bytes.length > 1024 ** 2) throw Error('controller_response_limit');
     const envelope = JSON.parse(bytes.toString('utf8')); object(envelope, ['payload', 'signature']);
     const payload = envelope.payload; object(payload, ['domain', 'authorityId', 'serviceEpoch', 'nonce', 'method', 'requestHash', 'result']);
-    if (payload.domain !== 'xiaok.controller.response.v1' || payload.authorityId !== authorityId || payload.nonce !== expected.nonce || payload.method !== expected.method || payload.requestHash !== expected.requestHash || typeof payload.serviceEpoch !== 'string' || !payload.serviceEpoch.length || payload.serviceEpoch.length > 160) throw Error('controller_response_binding');
+    if (payload.domain !== 'kteam.controller.response.v1' || payload.authorityId !== authorityId || payload.nonce !== expected.nonce || payload.method !== expected.method || payload.requestHash !== expected.requestHash || typeof payload.serviceEpoch !== 'string' || !payload.serviceEpoch.length || payload.serviceEpoch.length > 160) throw Error('controller_response_binding');
     if (typeof envelope.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(envelope.signature) || !verify(null, Buffer.from(canonicalVerificationJson(payload)), publicKey, Buffer.from(envelope.signature, 'base64'))) throw Error('controller_response_signature');
     if (serviceEpoch && serviceEpoch !== payload.serviceEpoch) { invalidated = true; prepared.clear(); executions.clear(); lifetime.abort(); throw Error('controller_instance_changed'); }
     serviceEpoch = payload.serviceEpoch;
@@ -240,7 +240,7 @@ export function createAuthenticatedControllerClient(options: {
 /** Fixed OS installation only: no caller-supplied endpoint, key, config path or environment override. */
 export function createInstalledVerificationClient(): ReturnType<typeof createAuthenticatedControllerClient> {
   if (!['darwin', 'linux'].includes(process.platform)) throw Error('controller_installed_platform_unavailable');
-  const base = process.platform === 'darwin' ? '/Library/Application Support/xiaok-verification' : '/var/lib/xiaok-verification';
+  const base = process.platform === 'darwin' ? '/Library/Application Support/kteam-verification' : '/var/lib/kteam-verification';
   const manifestPath = join(base, 'deployment.json'); assertRootProtectedFile(manifestPath);
   if (lstatSync(manifestPath).size > 65536) throw Error('controller_deployment_manifest');
   const manifest = parseInstalledDeploymentManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));

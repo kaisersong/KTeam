@@ -56,7 +56,7 @@ function plain(input:unknown):unknown {
 }
 /** Producer hash only, no authority. Observations are deliberately excluded. */
 export function canonicalVersionDigest(scope:CanonicalSyncScope,message:Pick<Message,'messageId'|'sequence'|'sourceKind'|'sourceId'|'sourceEpoch'|'sourceMessageId'>,version:Pick<Version,'revision'|'sourceRevision'|'role'|'text'|'contentHash'|'dependencies'>):string {
- return digest(['xiaok/canonical-version/v1',scope,message.messageId,message.sequence,message.sourceKind,message.sourceId,message.sourceEpoch,message.sourceMessageId,version.revision,version.sourceRevision,version.role,version.text,version.contentHash,version.dependencies]);
+ return digest(['kteam/canonical-version/v1',scope,message.messageId,message.sequence,message.sourceKind,message.sourceId,message.sourceEpoch,message.sourceMessageId,version.revision,version.sourceRevision,version.role,version.text,version.contentHash,version.dependencies]);
 }
 export function validateCanonicalBatch(input:unknown,expected:CanonicalSyncScope):Readonly<CanonicalSyncBatch>{
  try{
@@ -82,7 +82,7 @@ export function validateCanonicalBatch(input:unknown,expected:CanonicalSyncScope
    if(digest(ref.entries.map(entry=>[entry.messageId,entry.revision,entry.contentHash]))!==ref.contentHash)throw invalid();
   }
   const grants=new Set<string>();for(const grant of batch.grants){if(grants.has(grant.grantId)||!refs.has(grant.refId))throw invalid();grants.add(grant.grantId);}
-  const {manifestHash,...body}=batch;if(digest(['xiaok/canonical-batch/v1',body])!==manifestHash)throw invalid();
+  const {manifestHash,...body}=batch;if(digest(['kteam/canonical-batch/v1',body])!==manifestHash)throw invalid();
   return freeze(batch);
  }catch(error){if(error instanceof Error&&error.message==='snapshot_chunking_required')throw error;throw invalid();}
 }

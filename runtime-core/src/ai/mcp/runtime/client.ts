@@ -59,7 +59,7 @@ export function createMcpRuntimeClient(transport: McpRuntimeTransport) {
       const result = await request('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'xiaok-desktop', version: '1.0.0' },
+        clientInfo: { name: 'kteam-desktop', version: '1.0.0' },
       });
       transport.notify?.({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
       return result;

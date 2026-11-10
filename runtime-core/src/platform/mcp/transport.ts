@@ -46,7 +46,7 @@ export interface McpClientConnectionOptions {
   clientName?: string;
   /**
    * Design v58 §3.4. Reserved bundled providers must select `controlled` so the
-   * Xiaok-owned transport is the single owner of spawn/close/env; every other
+   * KTeam-owned transport is the single owner of spawn/close/env; every other
    * server keeps `sdk` and therefore its current behaviour, including the
    * inherited-env merge below.
    */
@@ -141,19 +141,19 @@ export const DEFAULT_MCP_CALL_TIMEOUT_MS = 120_000;
 export const DEFAULT_MCP_RESOURCE_TIMEOUT_MS = 30_000;
 
 export function resolveMcpStartupTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  return resolvePositiveTimeout(env.XIAOK_MCP_STARTUP_TIMEOUT_MS, DEFAULT_MCP_STARTUP_TIMEOUT_MS);
+  return resolvePositiveTimeout(env.KTEAM_MCP_STARTUP_TIMEOUT_MS, DEFAULT_MCP_STARTUP_TIMEOUT_MS);
 }
 
 export function resolveMcpCatalogTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  return resolvePositiveTimeout(env.XIAOK_MCP_CATALOG_TIMEOUT_MS, DEFAULT_MCP_CATALOG_TIMEOUT_MS);
+  return resolvePositiveTimeout(env.KTEAM_MCP_CATALOG_TIMEOUT_MS, DEFAULT_MCP_CATALOG_TIMEOUT_MS);
 }
 
 export function resolveMcpCallToolTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  return resolvePositiveTimeout(env.XIAOK_MCP_CALL_TIMEOUT_MS, DEFAULT_MCP_CALL_TIMEOUT_MS);
+  return resolvePositiveTimeout(env.KTEAM_MCP_CALL_TIMEOUT_MS, DEFAULT_MCP_CALL_TIMEOUT_MS);
 }
 
 export function resolveMcpResourceTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  return resolvePositiveTimeout(env.XIAOK_MCP_RESOURCE_TIMEOUT_MS, DEFAULT_MCP_RESOURCE_TIMEOUT_MS);
+  return resolvePositiveTimeout(env.KTEAM_MCP_RESOURCE_TIMEOUT_MS, DEFAULT_MCP_RESOURCE_TIMEOUT_MS);
 }
 
 function resolvePositiveTimeout(raw: string | undefined, fallback: number): number {
@@ -200,7 +200,7 @@ export function createMcpClientOptions(
 export function createMcpSdkClient(
   probeTimeoutMs: number = resolveMcpStartupTimeoutMs(),
   protocol: McpProtocolPolicy = { mode: 'auto' },
-  clientName = 'xiaok-cli',
+  clientName = 'kteam-cli',
 ): Client {
   return new Client(
     { name: clientName, version: resolveMcpClientVersion() },
@@ -215,8 +215,8 @@ export function resolveStdioCommand(
   homeDir: string = homedir(),
 ): string {
   let resolved = command;
-  if ((command === 'python' || command === 'python3') && env.XIAOK_PYTHON_CMD) {
-    resolved = env.XIAOK_PYTHON_CMD;
+  if ((command === 'python' || command === 'python3') && env.KTEAM_PYTHON_CMD) {
+    resolved = env.KTEAM_PYTHON_CMD;
   } else if (platform === 'win32' && command === 'python3') {
     resolved = 'python';
   }
@@ -286,12 +286,12 @@ export async function createMcpClientConnection(
   let disposed = false;
   let closing: Promise<void> | null = null;
   const taskCoordinator = new McpTaskRequestCoordinator(createdTransport.transport);
-  const endpointId = await createTaskSessionEndpointId('xiaok-mcp', { serverName, config });
+  const endpointId = await createTaskSessionEndpointId('kteam-mcp', { serverName, config });
   const taskOptions = { endpointId, maxInputRounds: 32, onInputRequest: deferMcpTaskInput };
   const tasks = protocolEra === 'modern'
     ? createTaskSessionFromClient(client, { ...taskOptions, rawDispatch: taskCoordinator.dispatch,
       v2RequestFraming: { protocolVersion: negotiatedVersion ?? '2026-07-28',
-        clientInfo: { name: options.clientName ?? 'xiaok-cli', version: resolveMcpClientVersion() }, clientCapabilities: {} } })
+        clientInfo: { name: options.clientName ?? 'kteam-cli', version: resolveMcpClientVersion() }, clientCapabilities: {} } })
     : createTaskSessionFromClient(client, taskOptions);
 
   const closeFully = async (): Promise<void> => {
@@ -425,7 +425,7 @@ async function createTransport(
 }
 
 /**
- * Controlled stdio transport (design v58 §3.4): Xiaok owns spawn/close/env for
+ * Controlled stdio transport (design v58 §3.4): KTeam owns spawn/close/env for
  * reserved bundled providers. `finalEnv` is mandatory and passed verbatim, so
  * the inherited-env merge of the `sdk` path can never apply here.
  */

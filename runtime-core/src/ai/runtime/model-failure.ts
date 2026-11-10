@@ -4,7 +4,7 @@ export type ModelFailureCategory = 'quota' | 'balance' | 'subscription' | 'accou
   | 'permission' | 'key_scope' | 'model_not_found' | 'context_length' | 'content_filter' | 'request'
   | 'rate_limit' | 'server' | 'timeout' | 'network' | 'incomplete_response' | 'protocol' | 'internal' | 'aborted' | 'unknown';
 export interface ModelFailureDiagnostic {
-  source: 'provider' | 'connection' | 'xiaok' | 'unknown';
+  source: 'provider' | 'connection' | 'kteam' | 'unknown';
   provider: ModelFailureProvider;
   category: ModelFailureCategory;
   retryable: boolean;
@@ -37,7 +37,7 @@ const TRANSPORT = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', '
 const INTERNAL = new Set(['KIMI_REASONING_ADMISSION_REQUIRED', 'KIMI_REASONING_TERMINAL_BOUNDARY_REQUIRED',
   'MODEL_TEXT_REPETITION_DETECTED', 'OPENAI_STREAM_TEXT_LIMIT_EXCEEDED', 'OPENAI_STREAM_TOOL_ARGUMENT_LIMIT_EXCEEDED',
   'TypeError', 'RangeError', 'SyntaxError', 'Error']);
-const SOURCES = new Set(['provider', 'connection', 'xiaok', 'unknown']);
+const SOURCES = new Set(['provider', 'connection', 'kteam', 'unknown']);
 const CATEGORIES = new Set<ModelFailureCategory>(['quota', 'balance', 'subscription', 'account_restricted', 'authentication',
   'permission', 'key_scope', 'model_not_found', 'context_length', 'content_filter', 'request', 'rate_limit', 'server',
   'timeout', 'network', 'incomplete_response', 'protocol', 'internal', 'aborted', 'unknown']);
@@ -133,7 +133,7 @@ export function getModelFailure(error: unknown): ModelFailureDiagnostic | undefi
 }
 export function classifyModelFailure(raw: unknown, provider: ModelFailureProvider = 'other', now = Date.now()): ModelFailureDiagnostic {
   const previous = getModelFailure(raw); if (previous) return previous;
-  let best: ModelFailureDiagnostic = { source: 'xiaok', provider, category: 'internal', retryable: false };
+  let best: ModelFailureDiagnostic = { source: 'kteam', provider, category: 'internal', retryable: false };
   let rank = -1, forcedStop = false, aborted = false, after: number | undefined, sdkTimeoutCause = false;
   const seen = new Set<object>(); let current = raw;
   while (current && typeof current === 'object' && !seen.has(current) && seen.size < 16) {
@@ -160,7 +160,7 @@ export function classifyModelFailure(raw: unknown, provider: ModelFailureProvide
     if (!category && (transportCode || name === 'APIConnectionError' || /ECONNRESET|ETIMEDOUT|EPIPE|terminated|socket hang up|fetch failed|network|premature close|connection reset|timed?\s*out/i.test(message))) category = 'network';
     category ??= data(current, 'retryable') === true ? 'unknown' : 'internal';
     const candidate: ModelFailureDiagnostic = inherited ?? { provider: protocol ? 'kimi' : provider, category,
-      source: http || providerCode || protocol ? 'provider' : ['network', 'timeout'].includes(category) ? 'connection' : category === 'unknown' ? 'unknown' : 'xiaok',
+      source: http || providerCode || protocol ? 'provider' : ['network', 'timeout'].includes(category) ? 'connection' : category === 'unknown' ? 'unknown' : 'kteam',
       retryable: TRANSIENT.has(category) || data(current, 'retryable') === true,
       ...(http ? { status: http } : {}), ...(providerCode ? { providerCode } : {}), ...(transportCode ? { transportCode } : {}),
       ...(protocol ? { internalCode: rawCode } : category === 'internal' && INTERNAL.has(name) ? { internalCode: name } : {}),
@@ -208,7 +208,7 @@ export function formatModelFailure(value: ModelFailureDiagnostic): string {
   if (failure.transportCode) fields.push(failure.transportCode);
   if (failure.internalCode) fields.push(failure.internalCode);
   if (failure.resetAt) fields.push(`供应商重置时间 ${failure.resetAt}`);
-  return `${failure.source === 'xiaok' ? 'xiaok ' : provider ? provider + ' ' : ''}${LABELS[failure.category]}${fields.length ? `（${fields.join('，')}）` : ''}`;
+  return `${failure.source === 'kteam' ? 'kteam ' : provider ? provider + ' ' : ''}${LABELS[failure.category]}${fields.length ? `（${fields.join('，')}）` : ''}`;
 }
 
 export function formatModelRecoveryExhaustion(failure?: ModelFailureDiagnostic): string {

@@ -363,8 +363,8 @@ export function parseLoopCandidateBody(raw: unknown, subject: unknown, contract:
     return freeze(candidateBody(capture(raw), parseLoopHostSubject(subject), parseLoopBusinessContract(contract)));
 }
 function candidateHashes(value: LoopApplicationCandidate) {
-    const triggerHash = hash('xiaok-loop-trigger-v1', value.originalTriggerJson), contractHash = loopBusinessContractHash(value.contract);
-    const candidatePayloadHash = hash('xiaok-loop-candidate-payload-v1', json({ subject: value.subject, candidateId: value.candidateId, candidateRevision: value.candidateRevision, originalTriggerJson: value.originalTriggerJson, triggerHash, logicalRunKey: value.logicalRunKey, contractHash, body: value.body }));
+    const triggerHash = hash('kteam-loop-trigger-v1', value.originalTriggerJson), contractHash = loopBusinessContractHash(value.contract);
+    const candidatePayloadHash = hash('kteam-loop-candidate-payload-v1', json({ subject: value.subject, candidateId: value.candidateId, candidateRevision: value.candidateRevision, originalTriggerJson: value.originalTriggerJson, triggerHash, logicalRunKey: value.logicalRunKey, contractHash, body: value.body }));
     return { triggerHash, contractHash, candidatePayloadHash };
 }
 /** Pure immutable proposal only. The actual LoopStore capture, native approval,
@@ -439,4 +439,4 @@ function parseBinding(raw: unknown, parsedTrigger?: unknown, triggerWasParsed = 
     return freeze({ ...parsed, ...hashes });
 }
 export function parseLoopApplicationBinding(raw: unknown): Readonly<LoopApplicationBinding> { return parseBinding(raw); }
-export function loopApplicationBindingHash(raw: unknown): string { return hash('xiaok-loop-application-binding-v1', json(parseLoopApplicationBinding(raw))); }
+export function loopApplicationBindingHash(raw: unknown): string { return hash('kteam-loop-application-binding-v1', json(parseLoopApplicationBinding(raw))); }

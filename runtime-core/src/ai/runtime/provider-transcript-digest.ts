@@ -5,7 +5,7 @@ import { canonicalJsonV1 } from './canonical-json.js';
 import type { StrictKimiK3ProfileId } from '../providers/kimi-models.js';
 export type { StrictKimiK3ProfileId } from '../providers/kimi-models.js';
 
-const EPHEMERAL_PROVIDER_TRANSCRIPT_DOMAIN = 'xiaok:ephemeral-provider-transcript:v1\0';
+const EPHEMERAL_PROVIDER_TRANSCRIPT_DOMAIN = 'kteam:ephemeral-provider-transcript:v1\0';
 const CapturedArray = Array;
 
 function canonicalizeBlock(

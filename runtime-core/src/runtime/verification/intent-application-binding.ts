@@ -297,7 +297,7 @@ function parse(raw: unknown, create: boolean): Readonly<IntentApplicationBinding
     if (value.subject.sessionId !== value.contract.sessionId || value.subject.intentId !== value.contract.intentId)
         throw Error('intent_application_subject');
     value.body = body(value.body, value.subject, value.contract);
-    const contractHash = hash(INTENT_BUSINESS_CONTRACT_HASH_DOMAIN, value.contract), candidatePayloadHash = hash('xiaok-intent-candidate-payload-v1', value.body);
+    const contractHash = hash(INTENT_BUSINESS_CONTRACT_HASH_DOMAIN, value.contract), candidatePayloadHash = hash('kteam-intent-candidate-payload-v1', value.body);
     if (!create && (value.contractHash !== contractHash || value.candidatePayloadHash !== candidatePayloadHash))
         throw Error('intent_application_hash');
     defineData(value, 'contractHash', ({ __proto__: null, value: contractHash, enumerable: true, writable: true, configurable: true } as PropertyDescriptor));
@@ -308,7 +308,7 @@ function parse(raw: unknown, create: boolean): Readonly<IntentApplicationBinding
 }
 export function createIntentApplicationBinding(raw: unknown): Readonly<IntentApplicationBinding> { return parse(raw, true); }
 export function parseIntentApplicationBinding(raw: unknown): Readonly<IntentApplicationBinding> { return parse(raw, false); }
-export function intentApplicationBindingHash(raw: unknown): string { return hash('xiaok-intent-application-v1', parseIntentApplicationBinding(raw)); }
+export function intentApplicationBindingHash(raw: unknown): string { return hash('kteam-intent-application-v1', parseIntentApplicationBinding(raw)); }
 /** Validate the original nested value before an outer protocol clone can discard
  * non-JSON keys. This is data validation, not authority or native approval. */
 export function assertIntentApplicationEnvelope(raw: unknown): void {

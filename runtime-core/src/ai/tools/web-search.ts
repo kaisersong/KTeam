@@ -152,7 +152,7 @@ const SEARCH_DEFINITION = {
 } as const;
 
 // Default singleton: CLI uses env-based config so users can set
-// XIAOK_SEARCH_PROVIDER / TAVILY_API_KEY / BRAVE_API_KEY without touching code.
+// KTEAM_SEARCH_PROVIDER / TAVILY_API_KEY / BRAVE_API_KEY without touching code.
 // Desktop main process should construct its own ConnectorRegistry from the
 // encrypted store and pass it via createWebSearchTool({ registry }).
 const defaultCliRegistry = new ConnectorRegistry(

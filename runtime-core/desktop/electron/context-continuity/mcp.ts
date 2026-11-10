@@ -57,13 +57,13 @@ export class ContinuityMcpEndpoint {
     const controller=new AbortController();this.requests.add(controller);
     const abort=()=>controller.abort();req.once('aborted',abort);const close=()=>{if(!res.writableEnded)abort();};res.once('close',close);
     const timer=setTimeout(()=>{controller.abort();this.reply(res,408,'request_timeout');req.destroy();},15000);
-    const server=new McpServer({name:'xiaok-context',version:'1.0.0'});
+    const server=new McpServer({name:'kteam-context',version:'1.0.0'});
     const transport=new WebStandardStreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true,maxRequestBodySize:MAX_REQUEST});
     const closeTransport=()=>{void transport.close().catch(()=>undefined);};controller.signal.addEventListener('abort',closeTransport,{once:true});
     let status=500,body=Buffer.from('{"error":"request_failed"}');
     const pages=new Set<ContextReferencePage>();
     try{
-      server.registerTool('resolve_context_reference',{description:'Read the exact public messages of an explicitly authorized xiaok reference. Archived evidence with unknown execution is not proof of completed work.',inputSchema:schema,annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},input=>{
+      server.registerTool('resolve_context_reference',{description:'Read the exact public messages of an explicitly authorized kteam reference. Archived evidence with unknown execution is not proof of completed work.',inputSchema:schema,annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},input=>{
         try{this.options.service.assertExternalReader(principal);const page=this.options.service.resolveExternalReference(principal,input),encoded=JSON.stringify(page);
           this.options.service.assertExternalReferenceCurrent(page,principal,input);pages.add(page);return {content:[{type:'text' as const,text:encoded}]};}
         catch{return {isError:true,content:[{type:'text' as const,text:'context_not_readable'}]};}

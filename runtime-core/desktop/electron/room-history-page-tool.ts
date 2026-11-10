@@ -1,16 +1,16 @@
 /**
  * getRoomMessagesPage — agent-only 语义 wrapper（design §6.2 RoomHistoryReadCapability）
  *
- * 设计依据：mydocs/xiaok-cli/design/2026-08-31-collaboration-room-evidence-first-execution-and-gate-design.md v8
+ * 设计依据：mydocs/kteam-cli/design/2026-08-31-collaboration-room-evidence-first-execution-and-gate-design.md v8
  *   §6.2 —— "Agent 可调用的语义 wrapper 只有：
  *   getRoomMessagesPage({afterSequence?, beforeSequence?, limit})
  *   冻结分页常量：默认 50，最大 200；limit 非整数/越界直接拒绝，不静默放大。"
  *
- * 架构说明（已核实并记录）：xiaok-cli 的 ToolRegistry 是进程级共享单例，
+ * 架构说明（已核实并记录）：kteam-cli 的 ToolRegistry 是进程级共享单例，
  * InProcessTaskRuntimeHost 没有 per-task 临时工具注入机制，扩展核心
  * TaskExecutionScope union 类型是跨仓库架构变更，需要独立设计评审。本工具
  * 采用最小侵入方案：全局仅注册一次，execute 时用 ToolExecutionContext.taskId
- * （xiaok-cli 既有能力）查 room-history-capability-registry.ts 维护的绑定表。
+ * （kteam-cli 既有能力）查 room-history-capability-registry.ts 维护的绑定表。
  * 未注册的 taskId（所有普通非 Room 任务）查表返回 undefined，工具据此拒绝
  * 执行——模型和 tool input 完全看不到 roomId/claimToken 本身（工具 schema
  * 只暴露 afterSequence/beforeSequence/limit），身份字段只存在于闭包查表，

@@ -10,7 +10,7 @@ export function intentStageMessages(snapshot:StoredSessionSnapshot):Message[]{
  assertCapturedMessageSchema(snapshot.messages);return JSON.parse(JSON.stringify(toDurableSessionSnapshot(snapshot).messages)) as Message[];
 }
 export function intentStageMessagesHash(messages:readonly Message[]):string{
- assertCapturedMessageSchema(messages);return createHash('sha256').update('xiaok-intent-stage-context-v1\0').update(json(messages)).digest('hex');
+ assertCapturedMessageSchema(messages);return createHash('sha256').update('kteam-intent-stage-context-v1\0').update(json(messages)).digest('hex');
 }
 export function captureIntentStageContext(snapshot:PersistedSessionSnapshot,stageId:string):IntentStageContext;
 export function captureIntentStageContext(snapshot:StoredSessionSnapshot,stageId:unknown):IntentStageContext;

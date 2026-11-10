@@ -139,7 +139,7 @@ export interface TaskSnapshotReadOptions {
   trackPending(raw: Promise<unknown>): void;
 }
 
-const CHECKPOINT_META_KEY = '__xiaokJournal';
+const CHECKPOINT_META_KEY = '__kteamJournal';
 const TERMINAL_STATUSES = new Set<TaskSnapshot['status']>(['completed', 'failed', 'cancelled']);
 
 /**

@@ -31,8 +31,8 @@ export function freezeIntentNativeLedger(value:SessionIntentLedger|undefined):Se
 export function freezeIntentNativeLedger(value:StoredSessionSnapshot['intentDelegation']):StoredSessionSnapshot['intentDelegation'];
 export function freezeIntentNativeLedger(value:SessionIntentLedger|StoredSessionSnapshot['intentDelegation']):SessionIntentLedger|StoredSessionSnapshot['intentDelegation']{return value===undefined?undefined:freeze(captureIntentData(value));}
 const digest=(domain:string,v:unknown)=>createHash('sha256').update(domain+'\0').update(json(captureIntentData(v))).digest('hex');
-export const intentNativeLedgerHash=(v:StoredSessionIntentLedgerInput|undefined)=>digest('xiaok-intent-native-ledger-v1',v??null);
-const draftHash=(v:IntentLedgerRecord)=>digest('xiaok-intent-native-draft-v1',v);
+export const intentNativeLedgerHash=(v:StoredSessionIntentLedgerInput|undefined)=>digest('kteam-intent-native-ledger-v1',v??null);
+const draftHash=(v:IntentLedgerRecord)=>digest('kteam-intent-native-draft-v1',v);
 function pristine(contract:Readonly<IntentBusinessContract>,instanceId:string,now:number):IntentLedgerRecord{
  const {version:_,verification:__,...body}=contract;
  const stages=body.stages.map(({verification,...stage})=>({...stage,steps:stage.steps.map(step=>({...step,status:'planned' as const}))}));

@@ -289,7 +289,7 @@ function createSessionCore(rawScope: unknown, rawAuthority: object | undefined):
   async function http(frame: Frame, plan: PhysicalPlan, born: number): Promise<GithubSessionRead> {
     current(frame, born);
     const credentialIdentity=setup(frame.data)?{kind:'source_setup',setupId:frame.data.setupId,candidateRepository:frame.data.candidateRepository,configurationRevision:frame.data.configurationRevision}:{kind:'source_binding',sourceBindingId:frame.data.sourceBindingId,configurationRevision:frame.data.configurationRevision,credentialEpoch:frame.data.credentialEpoch,providerAccountId:frame.data.providerAccountId};
-    const requestDigest=githubReadHash('dsh-github-source-request-v1',{plan,headers:{accept:'application/vnd.github.raw+json',apiVersion:'2026-03-10',userAgent:'xiaok-github-read-source-v1'},credential:credentialIdentity});
+    const requestDigest=githubReadHash('dsh-github-source-request-v1',{plan,headers:{accept:'application/vnd.github.raw+json',apiVersion:'2026-03-10',userAgent:'kteam-github-read-source-v1'},credential:credentialIdentity});
     const reserveProof=githubReadFreeze(nativeCreate(null)) as object;
     apply(weakSet,budgetProofs,[reserveProof,{owner:sessionOwner,purpose:'source_read_reserve',view:githubReadFreeze({frameData:frame.data,plan,requestDigest,assertCurrent(){current(frame,born);},assertLocal(){local(born);}})}]);
     const reservationRaw = (await invoke(authority!.reserve, [frame.raw, { planHash: plan.planHash, requestKind: plan.kind,plan,requestDigest },reserveProof])).value;
@@ -327,7 +327,7 @@ function createSessionCore(rawScope: unknown, rawAuthority: object | undefined):
       const fetch = createSingleRequestHttpsFetch({ destination, expectedBody: '', method: 'GET', timeoutMs: reservation.timeoutMs, maxResponseBytes: reservation.maxResponseBytes, signal: abort.signal,
         sourceHooks: hooks, trackPhysicalDrain(value) { physical = value; } });
       local(born);
-      const response = await fetch(destination, { method: 'GET', headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'xiaok-github-read-source-v1', Authorization: `Bearer ${credential!.token}` }, signal: abort.signal });
+      const response = await fetch(destination, { method: 'GET', headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'kteam-github-read-source-v1', Authorization: `Bearer ${credential!.token}` }, signal: abort.signal });
       const reply = await readSingleRequestOwnedReply(fetch, response); bytes = reply.bytes.byteLength; bodyKnown=true;
       for (let i = 0; i < reply.ownExtras.length; i++) inventory(reply.ownExtras[i]);
       if (reply.ownUnknown) { unknown.add(response); poisoned = true; fail('DSH_GITHUB_SOURCE_UNCONFIRMED'); }

@@ -4,7 +4,7 @@ import {
   createReminderRpcId,
   REMINDER_DAEMON_SERVICE,
   REMINDER_DAEMON_PROTOCOL_VERSION,
-  resolveXiaokDaemonSocketPath,
+  resolveKTeamDaemonSocketPath,
   type ReminderEventMessage,
   type ReminderRpcErrorMessage,
   type ReminderRpcResultMessage,
@@ -18,8 +18,8 @@ import {
 } from './service.js';
 import type { ReminderSink } from './notifier.js';
 import type { ReminderRecord } from './types.js';
-import { spawnXiaokDaemonDetached } from '../daemon/launcher.js';
-import { readXiaokVersion } from './version.js';
+import { spawnKTeamDaemonDetached } from '../daemon/launcher.js';
+import { readKTeamVersion } from './version.js';
 
 export interface ReminderClientServiceOptions {
   workspaceRoot: string;
@@ -65,11 +65,11 @@ export class ReminderClientService implements ReminderApi {
     this.sessionId = options.sessionId;
     this.creatorUserId = options.creatorUserId;
     this.defaultTimeZone = options.defaultTimeZone;
-    this.socketPath = options.socketPath ?? resolveXiaokDaemonSocketPath();
+    this.socketPath = options.socketPath ?? resolveKTeamDaemonSocketPath();
     this.autoStart = options.autoStart ?? true;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 10_000;
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
-    this.clientVersion = options.clientVersion ?? readXiaokVersion();
+    this.clientVersion = options.clientVersion ?? readKTeamVersion();
   }
 
   async start(): Promise<void> {
@@ -156,7 +156,7 @@ export class ReminderClientService implements ReminderApi {
       });
     }
     for (const pending of this.pending.values()) {
-      pending.reject(new Error('xiaok daemon unavailable'));
+      pending.reject(new Error('kteam daemon unavailable'));
     }
     this.pending.clear();
   }
@@ -165,7 +165,7 @@ export class ReminderClientService implements ReminderApi {
     await this.ensureConnected();
     const socket = this.socket;
     if (!socket || socket.destroyed) {
-      throw new Error('xiaok daemon unavailable');
+      throw new Error('kteam daemon unavailable');
     }
 
     const id = createReminderRpcId();
@@ -207,17 +207,17 @@ export class ReminderClientService implements ReminderApi {
       }
     }
 
-    await spawnXiaokDaemonDetached(this.socketPath);
+    await spawnKTeamDaemonDetached(this.socketPath);
     await new Promise((resolve) => setTimeout(resolve, 300));
     if (this.disposed) {
-      throw new Error('xiaok daemon unavailable');
+      throw new Error('kteam daemon unavailable');
     }
     await this.openSocket();
     if (this.disposed) {
       const socket = this.socket;
       this.socket = null;
       socket?.destroy();
-      throw new Error('xiaok daemon unavailable');
+      throw new Error('kteam daemon unavailable');
     }
   }
 
@@ -378,13 +378,13 @@ export class ReminderClientService implements ReminderApi {
     this.socket = null;
 
     if (this.helloRejecter) {
-      this.helloRejecter(new Error('xiaok daemon unavailable'));
+      this.helloRejecter(new Error('kteam daemon unavailable'));
       this.helloResolver = null;
       this.helloRejecter = null;
     }
 
     for (const pending of this.pending.values()) {
-      pending.reject(new Error('xiaok daemon unavailable'));
+      pending.reject(new Error('kteam daemon unavailable'));
     }
     this.pending.clear();
 

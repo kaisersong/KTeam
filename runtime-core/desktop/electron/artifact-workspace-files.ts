@@ -354,7 +354,7 @@ export class ArtifactWorkspaceFileManager {
           if (!stat.isFile()) {
             throw new ArtifactWorkspaceFileError('artifact_package_invalid', 'sealed package contains a non-file entry');
           }
-          if (relativePath === '.xiaok-manifest.json') {
+          if (relativePath === '.kteam-manifest.json') {
             throw new ArtifactWorkspaceFileError('artifact_package_invalid', 'sealed package uses a reserved manifest path');
           }
           const folded = relativePath.toLocaleLowerCase('en-US');
@@ -389,7 +389,7 @@ export class ArtifactWorkspaceFileManager {
         });
       }
       const manifestBytes = JSON.stringify({ schemaVersion: 1, files: manifestEntries });
-      const manifestRef = '.xiaok-manifest.json';
+      const manifestRef = '.kteam-manifest.json';
       writeFileSync(join(stagingDirectory, manifestRef), manifestBytes, { mode: 0o444 });
 
       return this.registerStaged({

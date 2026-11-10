@@ -499,13 +499,13 @@ function loadSkillsFromDir(
       const parsed = parseFrontmatter(raw);
       if (!parsed) {
         reportDiscoveryIssue(options, 'skill_parse_invalid', filePath);
-        console.warn(`[xiaok] Skills: 跳过格式错误的文件: ${displayName}`);
+        console.warn(`[kteam] Skills: 跳过格式错误的文件: ${displayName}`);
         return;
       }
       results.push(normalizeSkill(parsed, filePath, source, tier, aliases, options));
     } catch {
       reportDiscoveryIssue(options, 'skill_read_unavailable', filePath);
-      console.warn(`[xiaok] Skills: 读取文件失败: ${displayName}`);
+      console.warn(`[kteam] Skills: 读取文件失败: ${displayName}`);
     }
   };
 
@@ -529,7 +529,7 @@ function loadSkillsFromDir(
 }
 
 export function resolveSkillRoots(
-  xiaokConfigDir = getConfigDir(),
+  kteamConfigDir = getConfigDir(),
   cwd = process.cwd(),
   options?: SkillLoadOptions,
 ): ResolvedSkillRoots {
@@ -538,17 +538,17 @@ export function resolveSkillRoots(
       ...(options?.builtinRoots ?? getBuiltinSkillRoots()),
       ...(options?.extraRoots ?? []),
     ],
-    globalSkillsDir: join(xiaokConfigDir, 'skills'),
-    projectSkillsDir: join(cwd, '.xiaok', 'skills'),
+    globalSkillsDir: join(kteamConfigDir, 'skills'),
+    projectSkillsDir: join(cwd, '.kteam', 'skills'),
   };
 }
 
 export async function discoverSkills(
-  xiaokConfigDir = getConfigDir(),
+  kteamConfigDir = getConfigDir(),
   cwd = process.cwd(),
   options?: SkillLoadOptions,
 ): Promise<SkillMeta[]> {
-  const roots = resolveSkillRoots(xiaokConfigDir, cwd, options);
+  const roots = resolveSkillRoots(kteamConfigDir, cwd, options);
   const builtinSkills = roots.builtinRoots.flatMap((root) => loadSkillsFromDir(root, 'builtin', 'system', options));
   const globalSkills = loadSkillsFromDir(roots.globalSkillsDir, 'global', 'user', options);
   const projectSkills = loadSkillsFromDir(roots.projectSkillsDir, 'project', 'project', options);
@@ -557,11 +557,11 @@ export async function discoverSkills(
 }
 
 export async function loadSkills(
-  xiaokConfigDir = getConfigDir(),
+  kteamConfigDir = getConfigDir(),
   cwd = process.cwd(),
   options?: SkillLoadOptions,
 ): Promise<SkillMeta[]> {
-  const discovered = await discoverSkills(xiaokConfigDir, cwd, options);
+  const discovered = await discoverSkills(kteamConfigDir, cwd, options);
 
   const map = new Map<string, SkillMeta>();
   for (const skill of discovered) {
@@ -613,7 +613,7 @@ function resolveSkillsByName(names: string[], skills: SkillMeta[]): SkillMeta[] 
 }
 
 export function createSkillCatalog(
-  xiaokConfigDir = getConfigDir(),
+  kteamConfigDir = getConfigDir(),
   cwd = process.cwd(),
   options?: SkillLoadOptions,
 ): SkillCatalog {
@@ -621,7 +621,7 @@ export function createSkillCatalog(
 
   return {
     async reload() {
-      skills = await loadSkills(xiaokConfigDir, cwd, options);
+      skills = await loadSkills(kteamConfigDir, cwd, options);
       return [...skills];
     },
     list() {

@@ -260,7 +260,7 @@ export class ToolRegistry {
       // Do not execute even mutable no-op methods: the factory proved absence of hooks.
       options = { ...options, hooksRunner: undefined };
     }
-    this.toolIdleTimeoutMs = resolveExecutionIdleMs(options.toolIdleTimeoutMs === undefined ? process.env.XIAOK_TOOL_IDLE_TIMEOUT_MS : String(options.toolIdleTimeoutMs));
+    this.toolIdleTimeoutMs = resolveExecutionIdleMs(options.toolIdleTimeoutMs === undefined ? process.env.KTEAM_TOOL_IDLE_TIMEOUT_MS : String(options.toolIdleTimeoutMs));
     const mode = options.permissionManager
       ? options.permissionManager.getMode()
       : options.autoMode

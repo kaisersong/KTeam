@@ -50,8 +50,8 @@ export async function resolveBuiltinSlideRendererConfig(
   const platform = options.platform ?? process.platform;
   const pathApi = platform === 'win32' ? win32 : posix;
   const managedPython = platform === 'win32'
-    ? pathApi.join(options.homeDir ?? homedir(), '.xiaok', 'runtime', 'python-env', 'Scripts', 'python.exe')
-    : pathApi.join(options.homeDir ?? homedir(), '.xiaok', 'runtime', 'python-env', 'bin', 'python3');
+    ? pathApi.join(options.homeDir ?? homedir(), '.kteam', 'runtime', 'python-env', 'Scripts', 'python.exe')
+    : pathApi.join(options.homeDir ?? homedir(), '.kteam', 'runtime', 'python-env', 'bin', 'python3');
   const pathExists = options.pathExists ?? existsSync;
   if (!pathExists(managedPython)) return server;
 

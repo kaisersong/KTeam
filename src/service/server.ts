@@ -112,7 +112,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['independent-model-settings','bundled-services','conversation-pins','peer-exchange-summary','working-bot-presence','master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','xiaok-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
+          capabilities: ['independent-model-settings','bundled-services','conversation-pins','peer-exchange-summary','working-bot-presence','master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','kteam-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-runtime-readiness','conversation-workspace'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);

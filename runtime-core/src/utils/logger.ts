@@ -7,32 +7,32 @@ type Level = keyof typeof levels;
 
 // Resolve log level: env var > config > default
 function resolveLevel(): Level {
-  const env = process.env.XIAOK_LOG;
+  const env = process.env.KTEAM_LOG;
   if (env && levels[env as Level] !== undefined) return env as Level;
   return 'info';
 }
 
 const minLevel = resolveLevel();
 
-// Log file: ~/.xiaok/logs/xiaok.log
+// Log file: ~/.kteam/logs/kteam.log
 function logFilePath(): string {
-  const xiaokDir = (process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime'));
-  const logsDir = join(xiaokDir, 'logs');
+  const kteamDir = (process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime'));
+  const logsDir = join(kteamDir, 'logs');
   if (!existsSync(logsDir)) {
     try { mkdirSync(logsDir, { recursive: true }); } catch {}
   }
-  return join(logsDir, 'xiaok.log');
+  return join(logsDir, 'kteam.log');
 }
 
 // Also keep a recent log for quick debugging
 function recentLogPath(): string {
-  return join(tmpdir(), 'xiaok-recent.log');
+  return join(tmpdir(), 'kteam-recent.log');
 }
 
 const DEFAULT_LOG_ROTATE_MAX_BYTES = 32 * 1024 * 1024;
 
 function resolveMaxLogBytes(): number {
-  const raw = process.env.XIAOK_LOG_MAX_BYTES;
+  const raw = process.env.KTEAM_LOG_MAX_BYTES;
   if (raw !== undefined && raw !== '') {
     const parsed = Number.parseInt(raw, 10);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
@@ -40,10 +40,10 @@ function resolveMaxLogBytes(): number {
   return DEFAULT_LOG_ROTATE_MAX_BYTES;
 }
 
-// Cap runaway log growth (a 2026-09 EIO feedback loop wrote a 129GB xiaok.log):
+// Cap runaway log growth (a 2026-09 EIO feedback loop wrote a 129GB kteam.log):
 // rotate to `<path>.1`, keeping a single previous generation; truncate in place
 // when rename fails. Checked per write because the log file is shared across
-// concurrent xiaok processes, so an in-process byte counter would drift.
+// concurrent kteam processes, so an in-process byte counter would drift.
 function enforceLogSizeCap(path: string): void {
   let size: number;
   try { size = statSync(path).size; } catch { return; }
@@ -83,7 +83,7 @@ function write(level: Level, module: string, args: unknown[], options: LoggerOpt
   } catch {
     // Log file write failure is not fatal
   }
-  if (options.stderr !== false && (levels[level] >= 2 || process.env.XIAOK_LOG)) {
+  if (options.stderr !== false && (levels[level] >= 2 || process.env.KTEAM_LOG)) {
     try { process.stderr.write(line + '\n'); } catch { /* diagnostics must not throw */ }
   }
 }
@@ -99,4 +99,4 @@ export function createLogger(module: string, options: LoggerOptions = {}) {
 }
 
 // Top-level logger for modules that don't use createLogger
-export const log = createLogger('xiaok');
+export const log = createLogger('kteam');
