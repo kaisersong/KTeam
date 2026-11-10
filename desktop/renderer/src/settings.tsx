@@ -6,10 +6,11 @@ import type {AppPreferences} from '../../../src/service/app-preferences';
 import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
 import './settings.css';
 import {ModelSettingsPanel,DecisionModelSettings} from './model-settings';
-import {WebToolsSettings,MemorySettings,MailSettings,VoiceSettings} from './integration-settings';
+import {MemorySettings,MailSettings,VoiceSettings} from './integration-settings';
 import {ConnectorsSettings} from './connector-settings';
 import {MCPSettings} from './mcp-settings';
 import {ComputerSettings as CUASettings} from './computer-settings';
+import {ToolsSettings} from './tool-manager';
 import {ProfileSettings} from './profile-settings';
 
 function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'appResources'|'localAgents'|'assistantState'){
@@ -20,8 +21,8 @@ function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'ap
 function Loading(){return <p className="settings-loading" role="status"><LoaderCircle size={17} className="spinner"/>正在读取…</p>;}
 function Failure({error,retry}:{error:string;retry:()=>void}){return <div className="settings-error" role="alert"><p>{error}</p><button className="secondary" onClick={retry}><RefreshCw size={14}/>重新读取</button></div>;}
 function Section({title,description,children}:{title:string;description?:string;children:React.ReactNode}){return <section className="settings-block"><h2>{title}</h2>{description&&<p className="settings-description">{description}</p>}{children}</section>;}
-const sections=[['general','通用设置',SlidersHorizontal],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','Search / Fetch',Search],['mcp','MCP 服务器',Shield],['cua','电脑操作 CUA',Monitor],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
-type Page=typeof sections[number][0];
+const sections=[['general','通用设置',SlidersHorizontal],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','工具管理',SlidersHorizontal],['mcp','MCP 服务器',Shield],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
+type Page=typeof sections[number][0]|'cua';
 
 export function SettingsWorkspace({initialPage='general',preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
  const [page,setPage]=useState<Page>(initialPage);
@@ -32,7 +33,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='decision'&&<DecisionPanel/>}
  {page==='connectors'&&<ConnectorsSettings agents={<AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/>}/>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
- {page==='tools'&&<WebToolsSettings/>}
+ {page==='tools'&&<ToolsSettings/>}
  {page==='mcp'&&<MCPSettings/>}{page==='cua'&&<CUASettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
  {page==='appearance'&&<PreferencesPanel kind="appearance" preferences={preferences} onSaved={onPreferences}/>}
  {page==='permissions'&&<PermissionsPanel bots={bots}/>}

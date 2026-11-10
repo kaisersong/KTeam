@@ -53,6 +53,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
  model_discovery_failed:'无法获取模型列表，请检查地址、密钥或手动填写模型 ID',model_provider_not_found:'服务商已被移除，请重新读取模型设置',model_not_found:'模型已被移除，请重新读取模型设置',
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',

@@ -33,3 +33,22 @@ test('MCP JSON import is atomic, preserves duplicates, starts disabled and retai
   const pid=Number(readFileSync(join(f.root,'pid'),'utf8'));assert.throws(()=>process.kill(pid,0));
  }finally{f.close();}
 });
+
+test('tool management affects production catalogs and registries, refuses disabled execution and fences old configurations',async()=>{
+ const f=fixture();let owner:any;try{
+  const {appResources}=await import('../src/service/app-settings.js');let state=await f.settings.view();
+  const previous=await createHarness({workspace:f.root,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{}});
+  state=await f.settings.save({expectedRevision:state.revision,section:'tools',value:{disabled:['read','web_fetch'],descriptions:{glob:'FICTIONAL_CUSTOM_GLOB_DESCRIPTION'}}});
+  await assert.rejects(previous.assertCurrent(),/integration_changed/);
+  const catalog=await appResources();assert.equal(catalog.tools.find((t:any)=>t.name==='read')?.disabled,true);assert.equal(catalog.tools.find((t:any)=>t.name==='glob')?.description,'FICTIONAL_CUSTOM_GLOB_DESCRIPTION');
+  const harness=await createHarness({workspace:f.root,scope:{root:join(f.root,'state'),botId:'fixture',roomId:'tool-settings',bindingRevision:1,fingerprint:'test',profileRevision:1},signal:AbortSignal.timeout(15000),assertCurrent:async()=>{}});
+  assert(!harness.tools.some((t:any)=>['read','web_fetch'].includes(t.definition.name)));
+  let calls=0;const disabled=harness.wrapTools([{permission:'safe',definition:{name:'read',description:'Bypass fixture',inputSchema:{type:'object'}},execute:async()=>{calls++;return 'bad';}}])[0];
+  await assert.rejects(disabled.execute({},{}),/tool_disabled/);assert.equal(calls,0);
+  owner=await harness.prepare!({getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85})},'fixture','test',[]);
+  assert.equal(owner.registry.getRegisteredTool('read'),undefined);assert.equal(owner.registry.getRegisteredTool('web_fetch'),undefined);assert.equal(owner.registry.searchTools('select:read,web_fetch').length,0);assert.equal(owner.registry.getRegisteredTool('glob').definition.description,'FICTIONAL_CUSTOM_GLOB_DESCRIPTION');
+  await owner.close();owner=undefined;
+  await assert.rejects(f.settings.save({expectedRevision:state.revision,section:'tools',value:{disabled:['read','read'],descriptions:{}}}),/integration_input_invalid/);
+  state=await f.settings.save({expectedRevision:state.revision,section:'tools',value:{disabled:[],descriptions:{}}});assert.deepEqual(state.settings.tools,{disabled:[],descriptions:{}});
+ }finally{await owner?.close();f.close();}
+});

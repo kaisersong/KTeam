@@ -2191,7 +2191,7 @@
       }
     ],
     "adaptations": {
-      "description": "Build-time checked transformations; vendored source bytes remain unchanged. Process ownership and semantic services are KTeam-owned.",
+      "description": "Build-time checked transformations; vendored source bytes remain unchanged. Process ownership and semantic services are KTeam-owned. Settings tool enablement filters root, child and refreshed MCP registries; the host wrapper also denies disabled execution.",
       "files": [
         {
           "file": "scripts/runtime-exports.json",
@@ -2199,7 +2199,7 @@
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "93822b22bd31510fcd925fe361fab8054e55c5414b9fddf8f95d7729c7d60426"
+          "sha256": "ed588e46c54237bea64cac81b5fb1d78a2284a118a96570755023d683cd091f2"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",

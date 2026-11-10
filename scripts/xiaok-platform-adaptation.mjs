@@ -94,6 +94,8 @@ export function adaptPlatformSource(path,source){
 
  }
  if(path.endsWith('/runtime/registry-factory.ts')){
+  replace('.filter((tool) => !isCcRuntimeOnlyTool(tool));', '.filter((tool) => !isCcRuntimeOnlyTool(tool) && options.isToolEnabled?.(tool.definition.name) !== false);');
+  replace('!state.baseNames.has(tool.definition.name)', 'options.isToolEnabled?.(tool.definition.name) !== false && !state.baseNames.has(tool.definition.name)');
   replace('...createTeamTools(options.platform.teamService),','...(options.teamTools ?? createTeamTools(options.platform.teamService)),');
   replace("const reminders = options.source === 'chat'","const reminders = !options.disableReminders && options.source === 'chat'");
   replace('const name = tool.definition.name;\n      const current', 'tool = options.bindTool?.(tool, state.cwd) ?? tool;\n      const name = tool.definition.name;\n      const current');
