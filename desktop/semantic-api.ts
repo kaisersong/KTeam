@@ -7,6 +7,9 @@ const quote=(value:string)=>"'"+value.replaceAll("'","'\\''")+"'";
 export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nativeActions?:Record<string,(input?:any)=>Promise<any>>}={}){
  const invitation=async(result:any)=>{const command=[...(options.agentLauncher??['kteam']),'agent','connect','--root',result.dataRoot,'--invite',result.connection.id].map(quote).join(' ');return {...result,command,instruction:'请将当前Agent会话接入KTeam，保留当前模型、工作区和权限。先执行下面的命令：\n\n'+command+'\n\n将返回的确认码告诉我；我会在KTeam确认接入。然后阅读命令返回的Skill，用listen/reply在当前会话持续收发KTeam消息。不要新建替身模型或更改原有工具批准策略。'};};
  return {
+ mailConnectors:()=>call('/v1/app/mail-connectors'),controlMailConnector:(input:unknown)=>call('/v1/app/mail-connectors',input),
+ enterpriseConnectors:()=>call('/v1/app/connectors'),controlEnterpriseConnector:(input:unknown)=>call('/v1/app/connectors',input),
+ controlCua:(input:unknown)=>call('/v1/app/integrations/cua',input),saveModelProvider:(input:unknown)=>call('/v1/model-settings/provider',input),
  toolPermissions:()=>call('/v1/app/tool-permissions'),revokeToolPermission:(input:unknown)=>call('/v1/app/tool-permissions/revoke',input),
  integrationSettings:()=>call('/v1/app/integrations'),saveIntegrationSettings:(input:unknown)=>call('/v1/app/integrations',input),testIntegration:(input:unknown)=>call('/v1/app/integrations/test',input),importProviderModels:(input:unknown)=>call('/v1/model-settings/import-provider',input),transcribeAudio:(input:unknown)=>call('/v1/app/voice/transcribe',input),
  appPreferences:()=>call('/v1/app/preferences'),saveAppPreferences:(input:unknown)=>call('/v1/app/preferences',input),appResources:()=>call('/v1/app/resources'),

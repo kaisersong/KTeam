@@ -64,7 +64,8 @@ export function adaptPlatformSource(path,source){
  }
  if(path.endsWith('/runtime/context.ts')){
   replace('const settingsMcpServers = loadSettingsMcpServers();','const settingsMcpServers = options.kteamMcpServers ?? loadSettingsMcpServers();');
-  replace('const pluginMcpServers = loadPluginMcpServers(pluginRuntime);',"const pluginMcpServers = [...loadPluginMcpServers(pluginRuntime),...(options.kteamCuaServer ? [{...options.kteamCuaServer,name:'cua-driver',source:{origin:'plugin',pluginName:'cua-computer-use'},requiresUserActivation:true}] : [])];");
+  replace('const pluginMcpServers = loadPluginMcpServers(pluginRuntime);',"const pluginMcpServers = [...loadPluginMcpServers(pluginRuntime).filter(server=>server.name!=='cua-driver'&&server.source?.pluginName!=='cua-computer-use'),...(options.kteamCuaServer ? [{...options.kteamCuaServer,name:'cua-driver',source:{origin:'plugin',pluginName:'cua-computer-use'},requiresUserActivation:true}] : [])];");
+  replace('  const classificationRegistry =', '  mergedMcpServers.splice(0,mergedMcpServers.length,...mergedMcpServers.filter(server=>!(options.kteamDisabledMcp??[]).includes(server.name)&&(server.name!=="cua-driver"||!!options.kteamCuaServer)));\n  const classificationRegistry =');
   replace('const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs);', 'const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs); await options.assertCurrent?.();');
   replace('connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables)', 'connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables, options.assertCurrent)');
   replace('disposables: Array<{ dispose(): void }>,\n): Promise<LspClientLike', 'disposables: Array<{ dispose(): void }>,\n  assertCurrent?: () => Promise<void>,\n): Promise<LspClientLike');
