@@ -63,13 +63,13 @@ test('hook admission preserves a safe cause and a failed check does not consume 
  const f=await fixture();let owner:any;try{
   const plugin=join(f.cwd,'.xiaok/plugins/review');mkdirSync(plugin,{recursive:true});
   const marker=join(f.root,'ran');
-  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',once:true,events:['PreToolUse'],matcher:'read',command:'printf checked > '+marker}]}));
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',once:true,events:['PreToolUse'],matcher:'read',command:'printf checked >> '+marker}]}));
   writeFileSync(join(f.cwd,'proof'),'read-only');let unavailable=false;
   const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{if(unavailable)throw new KTeamError('broker_unavailable',503);},onPrompt:async()=>true});
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);unavailable=true;
   const failed=await owner.registry.executeTool('read',{file_path:'proof'});
   assert.match(failed,/harness_scope_check_failed:broker_unavailable/);assert.doesNotMatch(failed,/harness_scope_revoked/);assert.equal(existsSync(marker),false);
-  unavailable=false;assert.match(await owner.registry.executeTool('read',{file_path:'proof'}),/read-only/);assert.equal(readFileSync(marker,'utf8'),'checked');
+  unavailable=false;const results=await Promise.all([owner.registry.executeTool('read',{file_path:'proof'}),owner.registry.executeTool('read',{file_path:'proof'})]);for(const value of results)assert.match(value,/read-only/);assert.equal(readFileSync(marker,'utf8'),'checked');
  }finally{await owner?.close();f.close();}
 });
 

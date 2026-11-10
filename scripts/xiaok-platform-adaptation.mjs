@@ -37,7 +37,10 @@ export function adaptPlatformSource(path,source){
         const code = typeof error?.code === 'string' && /^[a-z0-9_-]{1,96}$/.test(error.code) ? error.code : 'scope_check_failed';
         return {ok:false,message:'harness_scope_check_failed:'+code+'。当前执行环境校验未通过；不能据此判定其他成员离线或授权已撤销。'};
       }
-      if (hook.once) executedOnce.add(hookKey);
+      if (hook.once) {
+        if (executedOnce.has(hookKey)) continue;
+        executedOnce.add(hookKey);
+      }
       const timeout = hook.timeoutMs ?? defaultTimeout;`);
  }
  if(path.endsWith('/worktrees/manager.ts')){
