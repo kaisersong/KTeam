@@ -85,6 +85,10 @@
     {
       "file": "docs/design/desktop/assistant-attention-workbench-20261111.md",
       "sha256": "5470420607472933b4a4136632af1fde74e8e86c934a48bf125a71fe1fc958fe"
+    },
+    {
+      "file": "docs/design/desktop/work-notifications-20261111.md",
+      "sha256": "a0ca76b696dde4042b2910ebb62f4a4cdd6a2ee77f093fd8edf9800be8e2e3e5"
     }
   ],
   "productBaseline": {
@@ -94,7 +98,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "be4121aac1405eeaaf20f6c67f99c160996002f8",
+    "revision": "54e46190c4c7cbbfbe94e46ffe09d097a5d6cc69",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

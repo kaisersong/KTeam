@@ -1,3 +1,4 @@
+import {activityRecords} from '../src/protocol/activity-records.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join,resolve} from 'node:path';
@@ -37,7 +38,7 @@ test('pausing a waiting parent stops its real child executions and never resumes
 test('a failed child returns a read-only outcome to the parent instead of being treated as success or retried',async()=>{
  const f=await setup();let automation:TeamAutomation|undefined,childCalls=0,resumes=0;
  try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();const prompt=JSON.parse(input.prompt);if(prompt.sourceConversation){childCalls++;throw new KTeamError('model_quota_exhausted',429);}if(prompt.handoff){resumes++;assert.equal(prompt.handoff.readonly,true);assert.equal(prompt.handoff.results[0].state,'blocked');assert.equal(input.tools?.length,0);return {text:'资料员未完成：额度不足，需要你处理后再安排。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({requests:[{botId:f.bots[1]!.id,message:'核对资料。'}],doneWhen:'返回结果。'},{});return {text:'must not publish before results',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};},f.coordinator);
-  await automation.tick();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='blocked'));await automation.tick();assert.equal(childCalls,1);assert.equal(resumes,1);const parent=f.store.job('handoff-root');assert.equal(parent.state,'delivered',JSON.stringify(parent));const task=(await f.upstream.aimp(f.roomId,'tasks')).tasks[0];assert.match(task.caveats[0],/未全部完成/);assert.match((await f.upstream.conversationMessage(f.roomId,parent.results[0].messageId)).message.text,/未完成/);await automation.tick();assert.equal(childCalls,1);
+  await automation.tick();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='blocked'));await automation.tick();assert.equal(activityRecords([f.store.job('handoff-root')],f.roomId)[0]!.state,'needs_review');assert.equal(childCalls,1);assert.equal(resumes,1);const parent=f.store.job('handoff-root');assert.equal(parent.state,'delivered',JSON.stringify(parent));const task=(await f.upstream.aimp(f.roomId,'tasks')).tasks[0];assert.match(task.caveats[0],/未全部完成/);assert.match((await f.upstream.conversationMessage(f.roomId,parent.results[0].messageId)).message.text,/未完成/);await automation.tick();assert.equal(childCalls,1);
  }finally{await automation?.close();await f.end();}
 });
 test('changed member profiles fence an old waiting scope without another parent inference',async()=>{

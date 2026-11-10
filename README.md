@@ -16,6 +16,8 @@ KTeam 是独立的多 Bot 协作桌面应用，按[产品设计](docs/design/pro
 
 收件箱中的“小K关注”可以查看原关注记录、原因、下一步、来源和更新时间，并筛选分页。未知发送会回到原会话核对；读取失败或来源失效会明确提示，查看不会启动模型或重发消息。详见[关注工作台](docs/design/desktop/assistant-attention-workbench-20261111.md)。
 
+系统通知可在通用设置中开启，并按答复、阻塞和问题/工具批准分类，支持暂停与安静时段。点击定位真实事项，不替你回答、批准或清空其它未读。默认关闭；原生展示、系统勿扰及冷启动点击仍待正式安装验收。见[工作通知](docs/design/desktop/work-notifications-20261111.md)。
+
 ## 下载
 
 **[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)

@@ -1,3 +1,4 @@
+import {WorkNotifications,saveNotificationPreferences} from './work-notifications.js';
 import {ensureSharedServices} from '../runtime/services.js';
 import {WorkRecovery} from './work-recovery.js';
 import {TeamRoles} from './team-roles.js';
@@ -79,6 +80,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
+  const notifications=new WorkNotifications(upstream,teamStore,coordinator,()=>automation.privateChats?.questions()??[],()=>approvals.list(),async job=>{await automation.routines.guard(job);await automation.handoffs?.guard(job);await automation.privateChats?.validatePeer(job);});
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
@@ -166,6 +168,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/tool-approvals'&&req.method==='GET')return send(res,200,{ok:true,approvals:approvals.list()});
       if(url.pathname==='/v1/tool-approvals/decide'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await approvals.decide(await body(req)));}
       if(url.pathname==='/v1/decision-models'&&req.method==='GET')return send(res,200,{ok:true,...await decisionModels()});
+      if(url.pathname.startsWith('/v1/desktop-notifications')){if(client.id!=='kteam-main')throw new KTeamError('notification_client_forbidden',403);if(url.pathname==='/v1/desktop-notifications/settings'){if(req.method==='GET')return send(res,200,notifications.settings());if(req.method==='POST')return send(res,200,saveNotificationPreferences(teamStore,await body(req)));}if(req.method==='GET'&&url.pathname==='/v1/desktop-notifications/pending')return send(res,200,await notifications.pending());if(req.method==='POST'&&url.pathname==='/v1/desktop-notifications/test')return send(res,200,notifications.test());if(req.method==='POST'&&url.pathname==='/v1/desktop-notifications/claim')return send(res,200,await notifications.claim(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/desktop-notifications/receipt')return send(res,200,notifications.acknowledge(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/desktop-notifications/locate')return send(res,200,await notifications.locate(await body(req)));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/assistant/workbench'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('assistant_workbench_forbidden',403);return send(res,200,await automation.assistant.workbench());}
       if(url.pathname==='/v1/assistant/workbench/locate'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('assistant_workbench_forbidden',403);return send(res,200,await automation.assistant.locateAttention(await body(req)));}
       if(url.pathname==='/v1/assistant/state'&&req.method==='GET')return send(res,200,{ok:true,...automation.assistant.state()});

@@ -1,13 +1,16 @@
-import {useId,useState} from 'react';
+import {useEffect,useId,useState} from 'react';
 import {ArrowLeft,ArrowRight,Activity,Bug,CheckCircle2,Clock3,AlertCircle} from 'lucide-react';
 import {activityRecords,readableActivityEvents,activityStateLabels,activityEventLabel,eventStateLabels,type ActivityRecord} from '../../../src/protocol/activity-records';
 import {explain,type Bot} from './api';
 
 const time=(value?:string)=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString(): '时间未记录';
-type Props={roomId:string;jobs:any[];bots:Bot[];mode:'activity'|'inspector';onBack:()=>void;onInspect:()=>void;onLocate:(id:string)=>void};
-export function ConversationActivity({roomId,jobs,bots,mode,onBack,onInspect,onLocate}:Props){
- const [tab,setTab]=useState<'runs'|'events'|'raw'>('runs'),[selected,setSelected]=useState('');
+type Props={focusJobId?:string;roomId:string;jobs:any[];bots:Bot[];mode:'activity'|'inspector';onBack:()=>void;onInspect:()=>void;onLocate:(id:string)=>void};
+export function ConversationActivity({focusJobId,roomId,jobs,bots,mode,onBack,onInspect,onLocate}:Props){
+ const [tab,setTab]=useState<'runs'|'events'|'raw'>('runs'),[selected,setSelected]=useState(focusJobId??'');
+ useEffect(()=>{if(focusJobId)setSelected(focusJobId);},[focusJobId]);
  const uid=useId(),records=activityRecords(jobs,roomId),record=records.find(item=>item.id===selected)??records[0],steps=record?readableActivityEvents(record):[];
+ if(focusJobId&&!records.length)return <section className="conversation-activity"><button className="activity-back" onClick={onBack}><ArrowLeft size={15}/>返回详情</button><p className="muted">正在核对对应的运行记录，原消息仍可在对话中查找。</p></section>;
+ if(focusJobId&&records.length&&!records.some(record=>record.id===focusJobId))return <section className="conversation-activity"><button className="activity-back" onClick={onBack}><ArrowLeft size={15}/>返回详情</button><p className="muted">这项工作已不在最近的运行记录中，请查找原消息核对。</p></section>;
  const names=(item:ActivityRecord)=>item.botIds.map(id=>bots.find(bot=>bot.id===id)?.name.replace(/ · KTeam .+$/,'')??'原成员').join('、');
  const tabs=[['runs','运行记录'],['events','Events'],['raw','Raw']] as const;
  return <section className="conversation-activity" aria-label={mode==='activity'?'会话活动':'会话检查器'}>

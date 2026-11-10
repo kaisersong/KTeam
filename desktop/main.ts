@@ -1,5 +1,5 @@
 import {initStandalone} from '../src/runtime/managed-services.js';
-import {app,BrowserWindow,ipcMain,Menu} from 'electron';
+import {app,BrowserWindow,ipcMain,Menu,Notification} from 'electron';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {existsSync,openSync,closeSync,readFileSync} from 'node:fs';
@@ -8,12 +8,13 @@ import {nativeActions} from './native-actions.js';
 import {dataRoot,initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
+import {NotificationDelivery} from './notification-delivery.js';
 import {hostConnection} from './host-connection.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
 if(!locked)app.quit();
-let window:BrowserWindow|undefined;
+let window:BrowserWindow|undefined;let pendingNotificationNavigation:any;let notificationDelivery:NotificationDelivery|undefined;let notificationTimer:NodeJS.Timeout|undefined;
 const root=dataRoot();
 const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
 function resources(){return app.getAppPath().endsWith('.asar')?app.getAppPath()+'.unpacked':app.getAppPath();}
@@ -51,7 +52,11 @@ if(locked){
   try{await ensureHost();}catch(error){console.error('KTeam host unavailable:',(error as {code?:string}).code??'startup_failed');}
   let buildInfo={version:app.getVersion()};try{buildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
   const connectedRequest=hostConnection({request:(route,value)=>hostRequest(root,'kteam-main',route,value),ensureHost});
-  const api=createDesktopAPI(async(route,value)=>{const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:nativeActions(root,()=>window),agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  notificationDelivery=new NotificationDelivery({request:connectedRequest,supported:()=>Notification.isSupported(),foreground:()=>!!window&&!window.isDestroyed()&&window.isVisible()&&window.isFocused(),create:options=>new Notification(options),navigate:async navigation=>{pendingNotificationNavigation=navigation;await show();window?.webContents.send('kteam:notification-open');}});
+  if(process.platform==='darwin')void Notification.getHistory().then(history=>{for(const notice of history.slice(-100))notificationDelivery?.retain(notice.id,notice);}).catch(()=>{});
+  notificationTimer=setInterval(()=>void notificationDelivery?.poll(),2000);notificationTimer.unref();
+  app.once('before-quit',()=>{if(notificationTimer)clearInterval(notificationTimer);notificationDelivery?.close();});
+  const api=createDesktopAPI(async(route,value)=>{const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}

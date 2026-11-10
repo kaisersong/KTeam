@@ -19,6 +19,7 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS team_outbox(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,intent_hash TEXT NOT NULL,envelope_json TEXT,state TEXT NOT NULL,origin_id TEXT);
    CREATE TABLE IF NOT EXISTS product_state(key TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS product_operations(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,value_json TEXT NOT NULL);
+   CREATE INDEX IF NOT EXISTS notification_claim_time ON product_operations(json_extract(value_json,'$.claimedAt')) WHERE id GLOB 'desktop-notification:*';
    CREATE TABLE IF NOT EXISTS agent_deliveries(bot_id TEXT NOT NULL,room_id TEXT NOT NULL,origin_id TEXT NOT NULL,reads INTEGER NOT NULL,PRIMARY KEY(bot_id,room_id,origin_id));
    CREATE TABLE IF NOT EXISTS agent_reply_outbox(id TEXT PRIMARY KEY,link_id TEXT NOT NULL,room_id TEXT NOT NULL,hash TEXT NOT NULL,state TEXT NOT NULL,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_proposals(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,run_id TEXT NOT NULL,reply_id TEXT,value_json TEXT NOT NULL);`);
@@ -39,6 +40,8 @@ export class TeamStore {
  installationId():string{return this.stateOnce('installation-id',randomUUID()) as string;}
  peerContacts(roomId:string,originIds?:string[]):any[]{if(originIds?.length===0)return [];return this.db.prepare("SELECT o.value_json FROM product_operations o JOIN team_jobs j ON j.id=json_extract(o.value_json,'$.rootJobId') WHERE substr(o.id,1,12)='bot-contact:' AND j.room_id=?"+(originIds?' AND j.origin_id IN ('+originIds.map(()=>'?').join(',')+')':'')+' ORDER BY o.rowid').all(roomId,...(originIds??[])).map(row=>JSON.parse(String(row.value_json)));}
  workingBotIds():string[]{return this.db.prepare("SELECT DISTINCT json_extract(value_json,'$.activeBotId') AS bot FROM team_jobs WHERE state IN ('routing','running','stopping') AND json_extract(value_json,'$.activeBotId') IS NOT NULL").all().map(row=>String(row.bot));}
+ notificationAttempts():any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'desktop-notification:*' ORDER BY json_extract(value_json,'$.claimedAt') DESC LIMIT 20").all().map(row=>JSON.parse(String(row.value_json)));}
+ notificationAttemptCount(since:number,kind?:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'desktop-notification:*' AND json_extract(value_json,'$.claimedAt')>? AND (? IS NULL OR json_extract(value_json,'$.kind')=?)").get(since,kind??null,kind??null)?.n??0);}
  operationsWithPrefix(prefix:string):any[]{return this.db.prepare('SELECT value_json FROM product_operations WHERE substr(id,1,?)=? ORDER BY rowid DESC').all(prefix.length,prefix).map(row=>JSON.parse(String(row.value_json)));}
  operations():any[]{return this.db.prepare('SELECT value_json FROM product_operations ORDER BY rowid DESC LIMIT 100').all().map(row=>JSON.parse(String(row.value_json)));}
  operation(id:string):any{const row=this.db.prepare('SELECT value_json FROM product_operations WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
@@ -122,6 +125,6 @@ export class TeamStore {
  }
  markSeen(roomId:string,sequences:number[]){const statement=this.db.prepare('INSERT OR IGNORE INTO team_seen VALUES(?,?)');for(const seq of sequences)statement.run(roomId,seq);}
  seen(roomId:string):number[]{return this.db.prepare('SELECT sequence FROM team_seen WHERE room_id=? ORDER BY sequence').all(roomId).map(row=>Number(row.sequence));}
- recover(){this.db.exec("UPDATE team_jobs SET state='unknown',value_json=json_set(value_json,'$.state','unknown','$.reason','host_restarted_result_unknown') WHERE state IN ('routing','running','stopping')");}
+ recover(){this.db.prepare("UPDATE team_jobs SET state='unknown',value_json=json_set(value_json,'$.state','unknown','$.reason','host_restarted_result_unknown','$.recoveredAt',?) WHERE state IN ('routing','running','stopping')").run(new Date().toISOString());}
  close(){this.db.close();}
 }

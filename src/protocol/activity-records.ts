@@ -26,7 +26,7 @@ export function activityRecords(jobs:unknown[],roomId:string):ActivityRecord[]{
     input:input.value,result:result.value,code:text(event.code),startedAt:text(event.startedAt),finishedAt:text(event.finishedAt),
     previewTruncated:input.truncated||result.truncated};
   });
-  return {id:job.id,state:text(job.state)??'unknown',reason:text(job.reason),createdAt:text(job.createdAt),originId:job.trigger==='routine'?undefined:text(job.originId),sourceLabel:job.trigger==='routine'?'例行任务：'+(text(job.routine?.name)??'已安排的工作'):undefined,
+  return {id:job.id,state:job.needsReview?'needs_review':text(job.state)??'unknown',reason:text(job.reason),createdAt:text(job.createdAt),originId:job.trigger==='routine'?undefined:text(job.originId),sourceLabel:job.trigger==='routine'?'例行任务：'+(text(job.routine?.name)??'已安排的工作'):undefined,
    resultMessageIds:[...new Set<string>((Array.isArray(job.results)?job.results:[]).map((result:any)=>text(result?.messageId)).filter((id:unknown):id is string=>typeof id==='string'))].slice(0,128),
    botIds:[...new Set<string>([...(Array.isArray(job.members)?job.members:[]),job.activeBotId,...events.map(event=>event.botId)].filter((id:unknown):id is string=>typeof id==='string'))].slice(0,128),
    events,eventsLimited:all.length>=100,calls:Number.isSafeInteger(job.calls)&&job.calls>=0?job.calls:0};
