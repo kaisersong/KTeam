@@ -87,6 +87,7 @@ export class TeamStore {
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
  job(id:string):any{const row=this.db.prepare('SELECT value_json FROM team_jobs WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
+ waitingJobs():any[]{return this.db.prepare("SELECT value_json FROM team_jobs WHERE state='waiting' ORDER BY rowid LIMIT 100").all().map(row=>JSON.parse(String(row.value_json)));}
  recordedJobs(roomId:string){return this.db.prepare('SELECT value_json FROM team_jobs WHERE room_id=? ORDER BY rowid DESC LIMIT 10000').all(roomId).map(r=>JSON.parse(String(r.value_json)));}
  jobForMessage(roomId:string,messageId:string){const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE room_id=? AND EXISTS(SELECT 1 FROM json_each(team_jobs.value_json,'$.results') WHERE json_extract(value,'$.messageId')=?) ORDER BY rowid DESC LIMIT 1").get(roomId,messageId);return row?JSON.parse(String(row.value_json)):null;}
  jobs(roomId?:string){return this.db.prepare('SELECT value_json FROM team_jobs '+(roomId?'WHERE room_id=? ':'')+'ORDER BY rowid DESC LIMIT 100').all(...(roomId?[roomId]:[])).map(row=>JSON.parse(String(row.value_json)));}

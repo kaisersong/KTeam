@@ -23,7 +23,7 @@ export class Routines {
  private runs(id:string){return this.store.operationsWithPrefix('routine-run:'+id+':');}
  async list(roomId:string){
   await this.scope(roomId);
-  return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=run.jobId?this.store.job(run.jobId):null;return job&&reviewStates.includes(job.state)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=run.jobId?this.store.job(run.jobId):null;return {id:run.id,scheduledAt:run.scheduledAt,jobId:job?.id??null,state:job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
+  return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=run.jobId?this.store.job(run.jobId):null;return job&&(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=run.jobId?this.store.job(run.jobId):null;return {id:run.id,scheduledAt:run.scheduledAt,jobId:job?.id??null,state:job?.needsReview?'needs_review':job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
  }
  async save(value:unknown){
   const input=record(value);fields(input,['id','roomId','botId','expectedRevision','requestId','name','prompt','schedule','timeZone','maxRuns','endAt','enabled','overlap']);
@@ -44,7 +44,7 @@ export class Routines {
    if((current?.revision??0)!==input.expectedRevision||current?.deletedAt)throw new KTeamError('routine_changed',409);
    if(!current&&this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).length>=100)throw new KTeamError('routine_limit_reached',409);
    if(this.store.settings(roomId)?.revision!==captured.settings.revision||this.store.binding(botId)?.revision!==captured.binding?.revision||this.store.state('source-changing:'+botId))throw new KTeamError('routine_scope_changed',409);
-   return this.store.saveOperation({id,roomId,botId,name,prompt,schedule,timeZone,maxRuns:input.maxRuns,endAt,enabled:input.enabled,nextAt:input.enabled?nextAt:null,runCount:current?.runCount??0,configVersion:(current?.configVersion??0)+1,captured:captured.captured,reviewedJobIds:[...new Set([...(current?.reviewedJobIds??[]),...this.runs(id).flatMap(run=>{const job=run.jobId?this.store.job(run.jobId):null;return job&&reviewStates.includes(job.state)?[job.id]:[];})])],lastRequestId:requestId,intent,createdAt:current?.createdAt??now,updatedAt:now,reason:input.enabled?null:'user_paused'},Number(input.expectedRevision));
+   return this.store.saveOperation({id,roomId,botId,name,prompt,schedule,timeZone,maxRuns:input.maxRuns,endAt,enabled:input.enabled,nextAt:input.enabled?nextAt:null,runCount:current?.runCount??0,configVersion:(current?.configVersion??0)+1,captured:captured.captured,reviewedJobIds:[...new Set([...(current?.reviewedJobIds??[]),...this.runs(id).flatMap(run=>{const job=run.jobId?this.store.job(run.jobId):null;return job&&(reviewStates.includes(job.state)||job.needsReview)?[job.id]:[];})])],lastRequestId:requestId,intent,createdAt:current?.createdAt??now,updatedAt:now,reason:input.enabled?null:'user_paused'},Number(input.expectedRevision));
   });
   if(!reused)this.changed(saved.id);return {ok:true,reused,routine:this.projection(saved)};
  }
@@ -89,7 +89,7 @@ export class Routines {
     const matches=hash(current.captured)===hash(row.captured)&&!current.settings.paused&&!current.settings.quiet&&this.store.settings(row.roomId)?.revision===current.settings.revision&&this.store.binding(row.botId)?.revision===current.binding?.revision&&!this.store.state('source-changing:'+row.botId);
     if(!matches){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_scope_changed'},row.revision);return;}
     const prior=this.runs(row.id).find(run=>run.jobId),priorJob=prior?this.store.job(prior.jobId):null;
-    if(priorJob&&reviewStates.includes(priorJob.state)&&!(row.reviewedJobIds??[]).includes(priorJob.id)){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_result_needs_review'},row.revision);return;}
+    if(priorJob&&(reviewStates.includes(priorJob.state)||priorJob.needsReview)&&!(row.reviewedJobIds??[]).includes(priorJob.id)){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_result_needs_review'},row.revision);return;}
     const scheduledAt=row.nextAt,runId='routine-run:'+row.id+':'+scheduledAt,next=nextRoutineAt(row.schedule as RoutineSchedule,row.timeZone,now,row.endAt);
     const outcome=now-scheduledAt>300000||row.endAt&&now>row.endAt?'missed':priorJob&&activeStates.includes(priorJob.state)?'overlap':'enqueued';
     const runCount=row.runCount+(outcome==='enqueued'?1:0),enabled=row.schedule.kind!=='once'&&next!==null&&runCount<row.maxRuns;

@@ -1,0 +1,8 @@
+import {Clock3,ArrowRight} from 'lucide-react';
+import type {Bot} from './api';
+const labels:Record<string,string>={queued:'等待执行',held:'已暂停',routing:'准备中',running:'处理中',stopping:'正在停止',waiting:'等待输入',waiting_user:'等待本人确认',delivered:'结果已返回',blocked:'未完成',unknown:'结果待核对',stopped:'已停止',noop:'未执行',cancelled:'已取消'};
+export function WorkWaitingNotice({job,bots,busy,onDetails,onPause,onOpenRoom}:{job:any;bots:Bot[];busy:boolean;onDetails:()=>void;onPause:()=>void;onOpenRoom:(id:string)=>void}){
+ const waiting=job.handoffWait;if(job.state!=='waiting'||!waiting)return null;
+ const name=(id:string)=>bots.find(bot=>bot.id===id)?.name.replace(/ · KTeam .+$/,'')??'原成员';
+ return <section className="work-waiting" role="status" aria-label="等待成员结果"><header><Clock3 size={16}/><strong>{name(job.activeBotId)} 正在等待成员结果</strong><button className="text-button" disabled={busy} onClick={onDetails}>查看活动<ArrowRight size={13}/></button></header><p>原工作已保存，结果齐备后接着做。设置或来源变化时会暂停并提示。</p>{waiting.lastError&&<p>暂时无法读取结果，正在稍后重查。原工作仍已保留。</p>}<ul>{waiting.children.map((child:any)=><li key={child.jobId}><span>{name(child.botId)}</span><small>{labels[child.state]??'状态待核对'}</small>{child.questionRoomId&&<button className="text-link" onClick={()=>onOpenRoom(child.questionRoomId)}>去私聊确认</button>}</li>)}</ul><footer><small>等待至 {new Date(waiting.deadline).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small><button className="secondary" disabled={busy} onClick={onPause}>暂停会话</button></footer></section>;
+}

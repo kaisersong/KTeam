@@ -73,6 +73,10 @@
     {
       "file": "docs/design/desktop/openmausbot-delivery-plan-20261110.md",
       "sha256": "610b1ed8c7bfdce42a1aec85bc4d58eb05b9690ac487770db968f6b60fb78b4a"
+    },
+    {
+      "file": "docs/design/desktop/async-member-handoffs-20261111.md",
+      "sha256": "5907c0d48048175aaf65d5498afb902aa4ab3c34744db04035af8dd7d49eb6ab"
     }
   ],
   "productBaseline": {
@@ -82,7 +86,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "7f6ea40c090e1dfcbf51393b9071f5a33f95e501",
+    "revision": "cf002a35e9f50b5ae0bd9754e5ba3300f6e86397",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

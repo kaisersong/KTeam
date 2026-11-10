@@ -4,7 +4,7 @@ import {KTeamError,record,fields,text} from '../errors.js';
 import type {TeamStore} from './team-store.js';
 import type {TeamCoordinator} from './coordination.js';
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
-export interface BotContactScope {roomId:string;botId:string;jobId:string;originId:string;admission:Record<string,unknown>;signal:AbortSignal;assertCurrent:()=>Promise<void>;rootJobId?:string;path?:string[]}
+export interface BotContactScope {roomId:string;botId:string;jobId:string;originId:string;admission:Record<string,unknown>;signal:AbortSignal;onUnanswered?:()=>void;assertCurrent:()=>Promise<void>;rootJobId?:string;path?:string[]}
 export class PrivateConversations {
  private pending=new Map<string,{guard:()=>Promise<void>;resolve:(answer:string|null)=>void}>();private closed=false;
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private dispatch:()=>void,private validateParent?:(job:any)=>Promise<void>){for(const row of store.operationsWithPrefix('bot-question:').filter(v=>v.status==='pending'))store.saveOperation({...row,status:'cancelled',reason:'host_restarted'},row.revision);}
@@ -26,7 +26,7 @@ export class PrivateConversations {
   let message;try{message=await this.send(scope,roomId,'question',question,id);}catch(error){this.store.saveOperation({...op,status:'unknown'},op.revision);throw error;}
   const pending=this.store.saveOperation({...op,status:'pending',messageId:message.messageId},op.revision);
   const answer=await new Promise<string|null>(resolve=>{let done=false;const finish=(value:string|null)=>{if(done)return;done=true;clearTimeout(timer);scope.signal.removeEventListener('abort',cancel);this.pending.delete(id);const prior=this.store.operation(id);if(prior?.status==='pending')this.store.saveOperation({...prior,status:'cancelled'},prior.revision);resolve(value);},cancel=()=>finish(null),timer=setTimeout(cancel,10*60000);this.pending.set(id,{resolve:finish,guard:async()=>{await this.source(scope);if(this.store.settings(roomId)?.paused)throw new KTeamError('bot_private_target_paused',409);await this.coordinator.guardConversation(roomId);}});scope.signal.addEventListener('abort',cancel,{once:true});if(scope.signal.aborted||this.closed)cancel();});
-  await scope.assertCurrent();return JSON.stringify(answer===null?{answered:false,reason:'cancelled_or_expired'}:{answered:true,answer,source:'user',questionId:pending.id});
+  if(answer===null)scope.onUnanswered?.();await scope.assertCurrent();return JSON.stringify(answer===null?{answered:false,reason:'cancelled_or_expired'}:{answered:true,answer,source:'user',questionId:pending.id});
  }
  questions(roomId?:string){return this.store.operationsWithPrefix('bot-question:').filter(q=>q.status==='pending'&&(!roomId||q.roomId===roomId)).map(({id,roomId,sourceRoomId,sourceRoomTitle,botId,jobId,question,options,expiresAt,messageId})=>({id,roomId,sourceRoomId,sourceRoomTitle,botId,jobId,question,options,expiresAt,messageId}));}
  async answer(value:unknown){

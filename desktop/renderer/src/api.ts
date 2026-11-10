@@ -52,6 +52,8 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ handoff_human_needed:'成员仍需本人确认，未自动继续执行',work_waiting_for_members:'工作已保存，等待成员的真实结果',handoff_input_invalid:'请为 1–3 位不同成员指定工作和完成条件',handoff_budget_exhausted:'本项工作已达到交接上限，请核对已有结果后再安排',handoff_scope_changed:'原会话、成员职责或执行来源已变化，已暂停自动接续',handoff_result_unknown:'交接结果待核对，不会自动重派或重做旧操作',handoff_result_invalid:'成员结果的来源暂无法确认，已暂停自动接续',handoff_wait_expired:'等待成员结果已超时，原结果保留供核对',handoff_resume_blocked:'原工作还有未解除的阻塞，暂不自动接续',handoff_source_unavailable:'暂时无法读取交接来源，正在稍后重查',
+
  routine_scope_denied:'你暂时无法在这个会话管理例行任务',routine_bot_unavailable:'请选择本会话中使用内置 xiaok 的成员',routine_input_invalid:'请检查例行任务的内容和运行次数',routine_time_invalid:'请选择有效的未来时间、周期与结束条件',routine_timezone_invalid:'请输入有效时区，例如 Asia/Shanghai',routine_room_paused:'请先恢复会话并退出安静状态，再启用例行任务',routine_changed:'这项例行任务已变化，请重新读取后保存',routine_scope_changed:'成员、会话或执行来源已变化，请核对后重新启用',routine_missed:'本次已错过执行时间，不会补跑旧工作',routine_source_unavailable:'暂时无法读取来源，正在退避重试，没有推进执行时间',routine_schedule_ended:'计划中的触发已结束，运行结果请查看历史',routine_result_needs_review:'上次工作需要核对，已停止后续触发',routine_limit_reached:'已达到计划的运行次数或会话例行任务上限',routine_request_conflict:'这次保存的内容与原请求不同，请重新打开编辑',user_paused:'你已暂停后续触发',user_removed:'例行任务已移除',
 
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',
