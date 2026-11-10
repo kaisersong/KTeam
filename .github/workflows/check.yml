@@ -17,7 +17,7 @@ jobs:
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
-          for(const source of [...lock.sources, {name:'mydocs', revision:lock.documentation.revision}]) {
+          for(const source of [...lock.sources, {name:'kai-xiaok-plugins',revision:lock.creatorPlugins.revision}, {name:'mydocs', revision:lock.documentation.revision}]) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-','_')+'='+source.revision+String.fromCharCode(10));
           }
           JS
@@ -37,6 +37,12 @@ jobs:
           ref: ${{ steps.pins.outputs.mydocs }}
           path: mydocs
           sparse-checkout: kteam
+          token: ${{ secrets.SIBLING_READ_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kai-xiaok-plugins
+          ref: ${{ steps.pins.outputs.kai_xiaok_plugins }}
+          path: kai-xiaok-plugins
           token: ${{ secrets.SIBLING_READ_TOKEN }}
       - uses: actions/setup-node@v4
         with:

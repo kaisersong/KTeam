@@ -1,3 +1,4 @@
+import {generatedFilePath} from '../runtime/generated-files.js';
 import {ensureSharedServices} from '../runtime/services.js';
 import {loadConfig} from './config.js';
 import {transcribeAudio} from './voice.js';
@@ -192,7 +193,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         const membership=await upstream.membership(roomId);
@@ -205,6 +206,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='GET'&&action==='search')return send(res,200,await conversations.search(roomId,url.searchParams.get('query')??'',url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined));
         if(req.method==='POST'&&action==='library-import')return send(res,201,await conversations.importFile(roomId,await body(req,8*1024*1024)));
         if(req.method==='GET'&&action==='library-file')return send(res,200,await conversations.preview(roomId,url.searchParams.get('fileId')??''));
+        if(req.method==='GET'&&action==='generated-file-open'){if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);await conversations.scope(roomId);const path=generatedFilePath(teamStore,roomId,url.searchParams.get('toolCallId')??'');await conversations.scope(roomId);return send(res,200,{ok:true,path});}
         if(req.method==='GET'&&action==='library-open'){const file=await conversations.file(roomId,url.searchParams.get('fileId')??'');return send(res,200,{ok:true,path:file.path});}
         if(req.method==='POST'&&action==='library-remove'){const input=record(await body(req));return send(res,200,await conversations.removeFile(roomId,String(input.fileId),String(input.requestId)));}
         if(req.method==='GET'&&action==='computer')return send(res,200,await conversations.computer(roomId));

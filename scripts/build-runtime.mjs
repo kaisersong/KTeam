@@ -1,3 +1,4 @@
+import {execFileSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {ownedHarnessProcesses} from './xiaok-process-adaptation.mjs';
 import {xiaokPlatformAdaptation} from './xiaok-platform-adaptation.mjs';
@@ -5,6 +6,7 @@ import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {resolve,join} from 'node:path';
+execFileSync(process.execPath,['scripts/build-creator-plugins.mjs'],{stdio:'inherit'});
 const root=fileURLToPath(new URL('../',import.meta.url));
 const lock=JSON.parse(readFileSync(join(root,'sources.lock.json'),'utf8'));
 const source=resolve(root,lock.runtime.directory);

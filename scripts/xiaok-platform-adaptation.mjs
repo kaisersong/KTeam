@@ -47,6 +47,10 @@ export function adaptPlatformSource(path,source){
   }));`+text.slice(end);
  }
  if(path.endsWith('/plugins/runtime.ts')){
+  text=`import {creatorPluginRoot,bindCreatorPlugin} from ${JSON.stringify(new URL('../src/runtime/creator-plugins.ts',import.meta.url).pathname)};\n`+text;
+  replace('  const pluginDirs = [', '  const pluginDirs = [creatorPluginRoot(),');
+  replace('const plugins = await loadPlugins(pluginDirs, { builtinCommands });', 'const discovered = await loadPlugins(pluginDirs, { builtinCommands }); const plugins = discovered.filter((plugin,index)=>!["kai-report-creator","kai-slide-creator"].includes(plugin.name)||discovered.findIndex(p=>p.name===plugin.name)===index).map(bindCreatorPlugin);');
+
   replace('dispose: () => client.dispose(),', `dispose: () => client.dispose(),
     close: async () => { client.dispose(); processHandle.dispose(); const child = processHandle.child; if(child.exitCode !== null || child.signalCode !== null)return; await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('lsp_shutdown_unconfirmed'));},3000);child.once('exit',()=>{clearTimeout(timer);resolve();});}); },`);
  }

@@ -2199,7 +2199,7 @@
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "f95e3ade2888ecf6711533c30bc62b5760b45c33a6bbaa1f940672b1ff5f4549"
+          "sha256": "1954b962c695c82d4d7d70130b3e7bd5eee0713e5b4437432672d277a79f166a"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",
@@ -2208,6 +2208,18 @@
         {
           "file": "scripts/kteam-config-adaptation.mjs",
           "sha256": "fb3faf2d8e261bca6bd0b2e7f1e183c0f13e983686709bd1ec9b3253d904df93"
+        },
+        {
+          "file": "scripts/build-creator-plugins.mjs",
+          "sha256": "7aab32a83c965b98a8ec94ed1d474b5a57f5e709885dd67a0edb1a16976e5954"
+        },
+        {
+          "file": "src/runtime/creator-plugins.ts",
+          "sha256": "dda37321fbf025cfe98580afd6d119be6c72bb3e1f5c876f93cf6df37a82bcf4"
+        },
+        {
+          "file": "src/runtime/generated-files.ts",
+          "sha256": "a8bc1d5fb93c0b3080ffaba62277d5859c0a6712b5451e6a5e5e241a751de8e0"
         }
       ]
     }
@@ -2254,5 +2266,14 @@
       "manifest": "desktop/assets/brand/provenance.json",
       "usage": "Original V3 Bot hairstyles, lively SVGs, forest native app icon and optically adjusted web glyph; verified original bytes, no regenerated assets"
     }
-  ]
+  ],
+  "creatorPlugins": {
+    "repository": "https://github.com/kaisersong/kai-xiaok-plugins",
+    "revision": "828c4c11122fcbbb50837c34aaac3b98a9f79404",
+    "names": [
+      "kai-report-creator",
+      "kai-slide-creator"
+    ],
+    "adaptation": "Only build assets are copied from the pinned git archive. KTeam binds host Node and bundled Python, removes xiaok installation hooks, exposes skill references, and guards output paths. Original renderer and planner bytes stay unchanged."
+  }
 }

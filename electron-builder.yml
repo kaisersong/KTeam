@@ -16,6 +16,7 @@ extraResources:
     to: skills
 asar: true
 asarUnpack:
+  - build/plugins/**
   - build/host.cjs
   - build/native-child.cjs
   - build/agent-cli.cjs
