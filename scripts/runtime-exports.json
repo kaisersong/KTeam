@@ -124,7 +124,8 @@
   ],
   "src/utils/system-credentials.ts": [
     "getCredentialStore",
-    "setCredentialStore"
+    "setCredentialStore",
+    "systemCredentialBackend"
   ],
   "src/ai/providers/normalize.ts": [
     "normalizeConfig"
@@ -152,12 +153,38 @@
     "selectMacosCuaAbiProfile"
   ],
   "src/platform/mcp/config.ts": [
-    "loadSettingsMcpServers"
+    "loadSettingsMcpServers",
+    "loadPluginMcpServers",
+    "mergeMcpServerConfigs"
   ],
   "src/ai/permissions/policy-engine.ts": [
     "requiresAlwaysCommandConfirmation"
   ],
   "src/ai/permissions/sensitive-paths.ts": [
     "isSensitiveToolInvocation"
+  ],
+  "src/platform/plugins/runtime.ts": [
+    "loadPlatformPluginRuntime"
+  ],
+  "desktop/electron/enterprise-cli-service.ts": [
+    "EnterpriseCliConnectorService"
+  ],
+  "desktop/electron/yzj-cli-auth-service.ts": [
+    "YzjCliAuthService"
+  ],
+  "src/runtime/enterprise-cli-runtime.ts": [
+    "ManagedEnterpriseCliRuntime"
+  ],
+  "desktop/electron/mail-connector-service.ts": [
+    "MailConnectorService"
+  ],
+  "desktop/electron/mail-account-store.ts": [
+    "MailAccountStore"
+  ],
+  "desktop/electron/mail-tools.ts": [
+    "createMailTools"
+  ],
+  "desktop/electron/dependency-task.ts": [
+    "runDependencyProcess"
   ]
 }

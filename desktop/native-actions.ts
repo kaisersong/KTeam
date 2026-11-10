@@ -1,3 +1,4 @@
+import {computerPermissionSettingsUrl} from './computer-permissions.js';
 import {parseSystemVoices} from './system-voices.js';
 import {promisify} from 'node:util';
 import {dialog,shell,type BrowserWindow} from 'electron';
@@ -18,6 +19,7 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
  const voiceSettings=async()=>{const value=await hostRequest(root,'kteam-main','/v1/app/integrations');return (value.settings as any).voice;};
  const speak=async(text:string,id:string)=>{if(process.platform!=='darwin')fail('speech_unavailable');const config=await voiceSettings();await stop();const child=spawn('/usr/bin/say',[...(config.voice?['-v',config.voice]:[]),'-r',String(config.rate),'--',text.slice(0,32768)],{stdio:'ignore'});await new Promise<void>((resolve,reject)=>{child.once('spawn',resolve);child.once('error',()=>reject(Object.assign(Error('speech_unavailable'),{code:'speech_unavailable'})));});speech=child;speakingId=id;child.once('close',()=>{if(speech===child){speech=undefined;speakingId=undefined;}});return {ok:true,speakingId};};
  return {
+  openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   voiceOptions:async()=>{if(process.platform!=='darwin')return {ok:true,voices:[],available:false};const result=await promisify(execFile)('/usr/bin/say',['-v','?'],{timeout:5000,maxBuffer:512*1024});return {ok:true,available:true,voices:parseSystemVoices(result.stdout)};},
   previewVoice:async()=>speak('你好，我是小K，准备和你一起工作。','settings-preview'),
   openSettingsLocation:async(input:any)=>{const value=record(input);fields(value,['location']);const config=process.env.KTEAM_MODEL_CONFIG_DIR??join(root,'runtime');const locations:Record<string,string>={data:root,config,skills:join(config,'skills'),logs:join(root,'host.log')};if(typeof value.location!=='string'||!Object.hasOwn(locations,value.location))fail('desktop_location_forbidden');const error=await shell.openPath(locations[value.location as string]!);if(error)fail('desktop_location_unavailable');return {ok:true};},

@@ -74,7 +74,7 @@
   "productBaseline": {
     "version": "v5",
     "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
-    "file": "docs/design/baseline-v5/产品设计.md"
+    "file": "docs/design/baseline-v5/\u4ea7\u54c1\u8bbe\u8ba1.md"
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
@@ -2188,18 +2188,131 @@
         "file": "vendor/xiaok-runtime/src/utils/ui.ts",
         "upstreamPath": "src/utils/ui.ts",
         "sha256": "e419126e6eb38b4f6412d8196d3cfc6746adaea6f2176437a811ff27e146b21e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/enterprise-cli-service.ts",
+        "sha256": "a816e55f29cec07489b88fadf4c4f57352196a1516f76e6a72d96a0c507bd317",
+        "source": "xiaok-cli",
+        "upstreamPath": "desktop/electron/enterprise-cli-service.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/enterprise-cli-runtime.ts",
+        "sha256": "a4404e0a494e07cf10e08cd28bc91b9ba0c35466fdea02420abbd804000819a6",
+        "source": "xiaok-cli",
+        "upstreamPath": "src/runtime/enterprise-cli-runtime.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/enterprise-cli-catalog.ts",
+        "sha256": "959a4ea650fc72464cbfa86c3bafb9289738528fea956a9d618e7abe4322e08e",
+        "source": "xiaok-cli",
+        "upstreamPath": "src/runtime/enterprise-cli-catalog.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/enterprise-cli-ipc-contract.ts",
+        "sha256": "e2cb3a83511f9b5dc1d400a77218a08d48483a071c4bb607a2601368664157ef",
+        "source": "xiaok-cli",
+        "upstreamPath": "desktop/shared/enterprise-cli-ipc-contract.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/yzj-cli-auth-ipc-contract.ts",
+        "sha256": "1d34937dae04d19117816e178184c0c325cdf7d96e124fbc401a769605c3c250",
+        "source": "xiaok-cli",
+        "upstreamPath": "desktop/shared/yzj-cli-auth-ipc-contract.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/yzj-cli-connection-history.ts",
+        "sha256": "acbe9d4342febde1657184bab60305003ac659d72e7c43e0d7d490bd79d749c8",
+        "source": "xiaok-cli",
+        "upstreamPath": "desktop/electron/yzj-cli-connection-history.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/enterprise-cli-adapters.ts",
+        "sha256": "de44611b98d1833348af6ec1011b0434bf9798898b07c175f89bbe3f04c9a2de",
+        "source": "xiaok-cli",
+        "upstreamPath": "desktop/electron/enterprise-cli-adapters.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/yzj-cli-auth-service.ts",
+        "sha256": "1e41a2199079eeee407b06af1c36813da3b1a8a53134585696808eacd53579cd",
+        "source": "xiaok-cli",
+        "upstreamPath": "desktop/electron/yzj-cli-auth-service.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/bundled-yzj-cli.ts",
+        "sha256": "0c7842d009425d157f6e5e1dcfc8ccb34d712e4e70e11ae01b1cd303fb59c63e",
+        "source": "xiaok-cli",
+        "upstreamPath": "src/runtime/bundled-yzj-cli.ts",
+        "modified": false
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-connector-service.ts",
+        "upstreamPath": "desktop/electron/mail-connector-service.ts",
+        "sha256": "796360f0281296f6bcbeb39d2a022b6a98e05e907561c002c66bb91a02617b22"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-send-errors.ts",
+        "upstreamPath": "desktop/electron/mail-send-errors.ts",
+        "sha256": "83a933ef04b4b21df24800161ec70505e596c6f1bacb0f85438180e8ce4fe038"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/mail-connectors-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/mail-connectors-ipc-contract.ts",
+        "sha256": "f4d40a3d306878ab1aac46f473397328432378bc01aa519037c8559e8aa5b078"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-account-store.ts",
+        "upstreamPath": "desktop/electron/mail-account-store.ts",
+        "sha256": "72a09aa2b8c0b6298ca05cb272b15022b734608676b905434c34b6bcc8ecb506"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-imap-reader.ts",
+        "upstreamPath": "desktop/electron/mail-imap-reader.ts",
+        "sha256": "4e140726407d52bfcf257f4ab86f7845536fc5c2121c14541616816172d8dff2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-oauth-reader.ts",
+        "upstreamPath": "desktop/electron/mail-oauth-reader.ts",
+        "sha256": "4c8f0a899515b9ff191786b128df02b585bbe85999ced66ff68e2453e1f0ad57"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-smtp-sender.ts",
+        "upstreamPath": "desktop/electron/mail-smtp-sender.ts",
+        "sha256": "6a282694695cf8256c4ebc6cff8bd091192d2e7c2119db54861cf72fd34a698d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-oauth-flow.ts",
+        "upstreamPath": "desktop/electron/mail-oauth-flow.ts",
+        "sha256": "601363e0cf20e20217376cc7446172b8428a1d0988aeed392401744b121e4aa4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-tools.ts",
+        "upstreamPath": "desktop/electron/mail-tools.ts",
+        "sha256": "128cae6e8ec44041e8a1ee3288009d3bd934f783451a821961b8a3279bde72d3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dependency-task.ts",
+        "upstreamPath": "desktop/electron/dependency-task.ts",
+        "sha256": "ce03d040f6033ac29b6b1222994f3b6e39a30a35295c48ea0116ffd9946373da"
       }
     ],
     "adaptations": {
-      "description": "Build-time checked transformations; vendored source bytes remain unchanged. Process ownership and semantic services are KTeam-owned.",
+      "description": "Build-time checked transformations; vendored source bytes remain unchanged. Process ownership and semantic services are KTeam-owned. Settings parity reuses original enterprise/mail services and dependency process ownership; KTeam supplies its own credential-backed AES-GCM mail storage, authenticated control routes, installed MCP inventory and persistent MCP disable policy. CUA is exclusively enabled through tools settings.",
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "fb2bf29687691e719b737f773af2cad312adca3145b2f581e14e3d29eb01dc13"
+          "sha256": "bcc392be463edff0df58f3497be2d7c408350b984a67173e5028f3422215d985"
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "f95e3ade2888ecf6711533c30bc62b5760b45c33a6bbaa1f940672b1ff5f4549"
+          "sha256": "a2cd20e88108228a44be9b230050ef90bcdd09cd2d9387a5d5aa30d5ee290408"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",
