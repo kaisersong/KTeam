@@ -99,6 +99,11 @@ export function adaptPlatformSource(path,source){
   replace('}, filteredTools,wrappedDescriptions);','}, boundTools,boundDescriptions);');
   replace('installed: new Map(filteredTools.filter((tool) => platformMcpInstances.has(tool)).map((tool) => [tool.definition.name, tool])),','cwd, installed: new Map(filteredTools.flatMap((tool,index) => platformMcpInstances.has(tool) ? [[boundTools[index].definition.name, boundTools[index]]] : [])),');
  }
+ if(path.endsWith('/mcp/transport.ts')){
+  // waitForProcessExit is awaited by every MCP close; an unref'd poll lets Node drain the loop and abandon the close once the child's own handles are gone.
+  const poll='      const timer = setTimeout(resolve, PROCESS_EXIT_POLL_MS);\n      timer.unref?.();';
+  replace(poll,'      setTimeout(resolve, PROCESS_EXIT_POLL_MS);');replace(poll,'      setTimeout(resolve, PROCESS_EXIT_POLL_MS);');
+ }
  return text;
 }
 export const xiaokPlatformAdaptation={name:'kteam-xiaok-platform-seams',setup(build){build.onLoad({filter:/\/vendor\/xiaok-runtime\/.*\.ts$/},args=>({contents:adaptPlatformSource(args.path,readFileSync(args.path,'utf8')),loader:'ts'}));}};

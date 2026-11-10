@@ -37,10 +37,15 @@ jobs:
           ref: ${{ steps.pins.outputs.mydocs }}
           path: mydocs
           sparse-checkout: kteam
+          token: ${{ secrets.SIBLING_READ_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
+        working-directory: kteam
+      - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
+        if: runner.os == 'macOS'
+        run: node node_modules/electron/install.js
         working-directory: kteam
       - run: npm run check
         working-directory: kteam
