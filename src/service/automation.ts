@@ -97,7 +97,7 @@ export class TeamAutomation {
   if(job.trigger==='followup'||!profile(bot).followup)throw new KTeamError('followup_not_enabled',403);
   const delay=Number(input.delayMinutes),reason=String(input.reason??'').trim();if(!Number.isInteger(delay)||delay<1||delay>10080||!reason||reason.length>512)throw new KTeamError('followup_invalid');
   const key='followup:'+digest([team.roomId,job.originId,bot.id].join(':')),prior=this.store.operation(key);if(prior)return {scheduled:prior.status==='pending',dueAt:prior.dueAt,reused:true};
-  const pending=this.store.operationsWithPrefix('followup:').filter(r=>r.botId===bot.id&&r.status==='pending');if(pending.length>=5)throw new KTeamError('followup_limit');
+  const pending=this.store.operationsWithPrefix('followup:').filter(r=>r.botId===bot.id&&['pending','paused'].includes(r.status));if(pending.length>=5)throw new KTeamError('followup_limit');
   const binding=this.store.binding(bot.id);if(!binding)throw new KTeamError('model_binding_changed',409);const dueAt=Date.now()+delay*60000;this.store.saveOperation({id:key,status:'pending',botId:bot.id,roomId:team.roomId,originId:job.originId,settingsRevision:team.revision,profileRevision:profile(bot).revision,bindingRevision:binding.revision,bindingModelId:binding.modelId,bindingFingerprint:binding.fingerprint,dueAt,reason},0);return {scheduled:true,dueAt};
  }
  private async wakeFollowups(){
@@ -108,7 +108,9 @@ export class TeamAutomation {
     const today=new Date().toISOString().slice(0,10),used=this.store.operationsWithPrefix('followup:').filter(r=>r.botId===item.botId&&r.status==='queued'&&r.wakeDay===today).length;
     if(used>=2){this.store.saveOperation({...item,status:'cancelled',reason:'daily_followup_limit'},item.revision);continue;}
     // Durable receipt before enqueue; stable job id recovers a crash without replaying a turn.
-    this.store.enqueueFollowup({id:'job-'+item.id,roomId:item.roomId,originId:item.originId,trigger:'followup',followupBotId:item.botId,followupReason:item.reason,settingsRevision:item.settingsRevision,profileRevision:item.profileRevision,bindingRevision:item.bindingRevision,bindingModelId:item.bindingModelId,bindingFingerprint:item.bindingFingerprint});this.store.saveOperation({...item,status:'queued',wakeDay:today},item.revision);
+    this.store.transaction(()=>{const current=this.store.operation(item.id);if(current?.status!=='pending'||current.revision!==item.revision)return;
+     this.store.enqueueFollowup({id:'job-'+item.id,roomId:item.roomId,originId:item.originId,trigger:'followup',followupBotId:item.botId,followupReason:item.reason,settingsRevision:item.settingsRevision,profileRevision:item.profileRevision,bindingRevision:item.bindingRevision,bindingModelId:item.bindingModelId,bindingFingerprint:item.bindingFingerprint});this.store.saveOperation({...current,status:'queued',wakeDay:today},current.revision);
+    });
    }catch{/* Temporary reads do not create work or move the due receipt. */}
   }
  }

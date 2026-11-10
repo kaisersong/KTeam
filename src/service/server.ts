@@ -1,6 +1,7 @@
 import {ensureSharedServices} from '../runtime/services.js';
 import {WorkRecovery} from './work-recovery.js';
 import {TeamRoles} from './team-roles.js';
+import {ScheduledWork} from './scheduled-work.js';
 import {loadConfig} from './config.js';
 import {transcribeAudio} from './voice.js';
 import {IntegrationSettings} from './integration-settings.js';
@@ -76,6 +77,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
+  const scheduledWork = new ScheduledWork(upstream,teamStore,coordinator);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
@@ -199,10 +201,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
       const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
       if(rolesRoute){const roomId=decodeURIComponent(rolesRoute[1]!);if(req.method==='GET')return send(res,200,await teamRoles.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);const input=record(await body(req));if(input.action==='ensure'){fields(input,['action','force']);if(input.force!==undefined&&typeof input.force!=='boolean')throw new KTeamError('invalid_input');return send(res,202,await teamRoles.start(roomId,input.force===true));}if(input.action==='assign'){delete input.action;return send(res,200,await teamRoles.assign(roomId,input));}throw new KTeamError('invalid_input');}}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar|scheduled-work)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         const membership=await upstream.membership(roomId);
+        if(action==='scheduled-work'){if(req.method==='GET')return send(res,200,await scheduledWork.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);return send(res,200,await scheduledWork.change(roomId,await body(req)));}}
         if(req.method==='POST'&&action==='sidebar'){const input=record(await body(req));fields(input,['pinned']);if(typeof input.pinned!=='boolean')throw new KTeamError('sidebar_input_invalid');if(!teamStore.settings(roomId)||teamStore.settings(roomId)?.kind==='peer'||!(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('sidebar_conversation_forbidden',403);const prior=teamStore.state<any>('sidebar:'+roomId),value={pinnedAt:input.pinned?(prior?.pinnedAt??new Date().toISOString()):null};teamStore.setState('sidebar:'+roomId,value);return send(res,200,{ok:true,...value});}
         if(req.method==='POST'&&action==='edit')return send(res,200,await coordinator.editGroup({...record(await body(req)),roomId}));
         if(req.method==='GET'&&action==='shared')return send(res,200,await conversations.data(roomId));
