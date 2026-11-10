@@ -3,6 +3,7 @@ export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:str
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
+ openComputerPermissionSettings(input:{permission:'accessibility'|'screen-recording'|'automation'}):Promise<any>;
  mailConnectors():Promise<any>;controlMailConnector(input:any):Promise<any>;
  enterpriseConnectors():Promise<any>;controlEnterpriseConnector(input:any):Promise<any>;
  controlCua(input:any):Promise<any>;saveModelProvider(input:any):Promise<any>;
@@ -52,6 +53,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ computer_permission_invalid:'请选择辅助功能、屏幕录制或自动化权限设置',
  connector_changed:'连接状态已变化，请刷新后重试',connector_not_found:'连接器不可用，请刷新',connector_action_invalid:'此连接器暂不支持该操作',
  cua_install_failed:'驱动安装或更新失败，请检查网络后重试',
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',
