@@ -28,7 +28,7 @@ import type { ConversationActivityOwnerClient } from '../../src/runtime/conversa
  *
  * Manages the kswarm server as a child process from Electron's main process.
  * - Spawns `node <kswarm>/src/server/index.js` on app ready
- * - Health checks via GET http://localhost:4400/health
+ * - Health checks via GET /health on the port recorded in KTeam's discovery file
  * - Auto-restart on crash (with backoff)
  * - Graceful shutdown on app quit
  */
@@ -82,17 +82,6 @@ function originalBusinessPromise(raw:unknown):raw is Promise<unknown>{
  return !!ctor&&Object.hasOwn(ctor,'value')&&ctor.value===businessPromise&&!!species&&!!businessSpecies&&!Object.hasOwn(species,'value')&&species.get===businessSpecies.get&&species.set===businessSpecies.set;
 }
 
-const KSWARM_PORT = 4400;
-const BROKER_PORT = 4318;
-export const KSWARM_REQUEST_BASE_URLS = uniqueServiceUrls([
-  `http://127.0.0.1:${KSWARM_PORT}`,
-  `http://localhost:${KSWARM_PORT}`,
-]);
-const KSWARM_HEALTH_URLS = uniqueServiceUrls(KSWARM_REQUEST_BASE_URLS.map(url => `${url}/health`));
-const BROKER_HEALTH_URLS = uniqueServiceUrls([
-  `http://127.0.0.1:${BROKER_PORT}/health`,
-  `http://localhost:${BROKER_PORT}/health`,
-]);
 const HEALTH_INTERVAL_MS = 10_000;
 const HEALTH_CHECK_TIMEOUT_MS = 2_000;
 const HEALTH_FAILURE_RESTART_THRESHOLD = 3;
@@ -409,7 +398,7 @@ export function buildKSwarmHealthDiagnosticInput(options: {
     expectedSourceHash: options.expectedSourceHash ?? null,
     spawnEntryExists: Boolean(options.expectedEntryPath),
     managerRunning: options.status.running,
-    ...(options.status.port !== 4400 ? { servicePort: options.status.port } : {}),
+    ...(options.status.port ? { servicePort: options.status.port } : {}),
     port: {
       listening,
       pid: options.status.pid,
@@ -629,9 +618,9 @@ function formatServiceIdentityWarning(check: KSwarmServiceIdentityCheck): string
   ].join(' ');
 }
 
-function formatServiceIdentityBlock(check: KSwarmServiceIdentityCheck): string {
+function formatServiceIdentityBlock(check: KSwarmServiceIdentityCheck, port: number): string {
   return [
-    `existing kswarm service on port ${KSWARM_PORT} is not the bundled service`,
+    `existing kswarm service on port ${port} is not the bundled service`,
     `reason=${check.reason ?? 'unknown'}`,
     `expectedEntryPath=${check.expectedEntryPath ?? 'unknown'}`,
     `actualEntryPath=${check.actualEntryPath ?? 'unknown'}`,
@@ -1066,7 +1055,8 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
   const projectScopeEnv=Object.freeze({KSWARM_DESKTOP_PROFILE_ID:scope?.profileId ?? '',KSWARM_DESKTOP_WORKSPACE_ID:scope?.workspaceId ?? ''});
   assertRoomWorkspaceStartupProtocol();
   const discoveryFile = desktopServiceDiscoveryFile();
-  let BROKER_PORT = 4318, KSWARM_PORT = 4400;
+  // Real ports come from preparePorts() (OS-picked or KTEAM_* overrides) before any request.
+  let BROKER_PORT = 0, KSWARM_PORT = 0;
   let discoveredLiveOwner = false;
   let KSWARM_REQUEST_BASE_URLS = [`http://127.0.0.1:${KSWARM_PORT}`, `http://localhost:${KSWARM_PORT}`];
   let KSWARM_HEALTH_URLS = KSWARM_REQUEST_BASE_URLS.map(url => `${url}/health`);
@@ -1079,8 +1069,8 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
         ? await activeOwnerServicePorts(options.activityOwnerDataRoot ?? getConfigDir('desktop')) : undefined;
       if (live) {
         discoveredLiveOwner = true;
-        if ((process.env.KTEAM_DESKTOP_PORT !== undefined || process.env.INTENT_BROKER_PORT !== undefined) && live.broker !== requested.broker
-          || process.env.KSWARM_PORT !== undefined && live.kswarm !== requested.kswarm) throw new Error('Configured ports differ from the active Desktop profile; stop that profile before changing ports');
+        if (requested.broker && live.broker !== requested.broker
+          || requested.kswarm && live.kswarm !== requested.kswarm) throw new Error('Configured ports differ from the active Desktop profile; stop that profile before changing ports');
         writeDesktopServicePorts(discoveryFile, live);
       } else await prepareDesktopServicePorts(discoveryFile);
     })().then(() => {
@@ -1549,7 +1539,7 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
       const run=(async()=>{
         if(stopping||permanentlySealed)throw Error('BROKER_ORIGINAL_SERVICE_CLOSED');
         const ticket=preparationFreeze(businessCreate(null)) as object;
-        const environment=createOriginalBrokerServiceEnvironment(desktopRoomToken,kswarmRoomToken);
+        const environment=createOriginalBrokerServiceEnvironment(desktopRoomToken,kswarmRoomToken,BROKER_PORT);
         businessApply(preparationWeakSet,protectedBrokerStartups,[ticket,preparationFreeze({service,environment})]);
         const owned=await createOriginalProtectedBrokerServiceChild(service,ticket);
         brokerChild=owned;ownedChildren.track(owned,3_000);
@@ -1754,7 +1744,7 @@ export function createKSwarmService(options: CreateKSwarmServiceOptions = {}): K
       logKSwarmServiceLine('server', 'lifecycle', warning);
     }
     if (existingHealthy && serverPath && !serviceIdentityMatches && !child) {
-      const reason = formatServiceIdentityBlock(serviceIdentity);
+      const reason = formatServiceIdentityBlock(serviceIdentity, KSWARM_PORT);
       console.warn(`[kswarm-service] ${reason}`);
       logKSwarmServiceLine('server', 'lifecycle', `replacing stale service: ${reason}`);
       const killed = await replaceStalePortOwner();

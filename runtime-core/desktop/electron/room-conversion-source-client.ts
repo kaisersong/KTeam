@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {readRoomConversionJson} from './room-conversion-bounded-json.js';
+import {desktopServiceUrl} from './desktop-service-discovery.js';
 const reference=z.string().min(1).max(256).refine(value=>value.trim()===value&&!value.includes('\0'));
 const revision=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 export const ROOM_CONVERSION_SOURCE_SNAPSHOT=z.object({ok:z.literal(true),protocol:z.literal('room_conversion_source_v1'),realmId:z.string().uuid(),actorUserId:reference,
@@ -15,7 +16,7 @@ export function createRoomConversionSourceReader(options:{token:string;fetchImpl
  return async(roomId:string,messageId:string,signal:AbortSignal,assertNativeCurrent:()=>void=()=>{}):Promise<RoomConversionSourceSnapshot>=>{
   signal.throwIfAborted();if(!reference.safeParse(roomId).success||!reference.safeParse(messageId).success)throw Error('room_conversion_input_invalid');
   if(!token)throw Error('room_conversion_source_unavailable');
-  const response=await fetchImpl(`http://127.0.0.1:4318/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/conversion-source`,{
+  const response=await fetchImpl(`${desktopServiceUrl('broker')}/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/conversion-source`,{
    method:'GET',signal,redirect:'error',cache:'no-store',headers:{'x-intent-broker-room-token':token},
   });
   try{

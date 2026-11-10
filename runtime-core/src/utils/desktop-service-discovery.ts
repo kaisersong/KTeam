@@ -1,23 +1,25 @@
 import { createServer } from 'node:net';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
 export interface DesktopServicePorts { broker: number; kswarm: number }
 
-/** Per Desktop process: concurrent installations must never overwrite each other's endpoint. */
+/** KTeam's own service discovery file (0600, under KTeam's data dir). The desktop writes the ports it
+ * actually bound; CLI and clients read them. Never a fixed port shared with another product. */
 export function desktopServiceDiscoveryFile(): string {
-  return process.env.KTEAM_DESKTOP_DISCOVERY_FILE ?? join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), `desktop-services-${process.pid}.json`);
+  return process.env.KTEAM_DESKTOP_DISCOVERY_FILE ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'service-endpoints.json');
 }
-function configuredPort(value: string | undefined, fallback: number, name: string): number {
-  if (value === undefined) return fallback;
+function configuredPort(value: string | undefined, name: string): number {
+  if (value === undefined) return 0;
   const port = Number(value);
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error(`${name} must be a port between 1 and 65535`);
   return port;
 }
+/** Explicit KTeam overrides only; 0 means "let the OS pick a free loopback port". */
 export function configuredDesktopServicePorts(env: NodeJS.ProcessEnv = process.env): DesktopServicePorts {
-  return { broker: configuredPort(env.KTEAM_DESKTOP_PORT ?? env.INTENT_BROKER_PORT, 4318, 'KTEAM_DESKTOP_PORT'),
-    kswarm: configuredPort(env.KSWARM_PORT, 4400, 'KSWARM_PORT') };
+  return { broker: configuredPort(env.KTEAM_DESKTOP_PORT, 'KTEAM_DESKTOP_PORT'),
+    kswarm: configuredPort(env.KTEAM_KSWARM_PORT, 'KTEAM_KSWARM_PORT') };
 }
 async function bindPort(port: number) {
   const server = createServer();
@@ -39,7 +41,8 @@ export async function prepareDesktopServicePorts(file = desktopServiceDiscoveryF
     const selected = {} as DesktopServicePorts;
     for (const name of ['broker', 'kswarm'] as const) {
       let server;
-      try { server = await bindPort(requested[name]); }
+      if (!requested[name]) server = await bindPort(0);
+      else try { server = await bindPort(requested[name]); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
         server = await bindPort(0);
@@ -56,22 +59,32 @@ export async function prepareDesktopServicePorts(file = desktopServiceDiscoveryF
   }
 }
 export function writeDesktopServicePorts(file: string, ports: DesktopServicePorts): void {
-  mkdirSync(dirname(file), { recursive: true });
+  validPorts(ports, 'ports');
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   const temporary = `${file}.${process.pid}.tmp`;
-  writeFileSync(temporary, JSON.stringify(ports), { mode: 0o600 });
+  writeFileSync(temporary, JSON.stringify({ broker: ports.broker, kswarm: ports.kswarm }), { mode: 0o600 });
+  chmodSync(temporary, 0o600);
   renameSync(temporary, file);
 }
-export function readDesktopServicePorts(file = desktopServiceDiscoveryFile()): DesktopServicePorts {
-  const value = JSON.parse(readFileSync(file, 'utf8')) as DesktopServicePorts;
+function validPorts(value: DesktopServicePorts, label: string): DesktopServicePorts {
   for (const name of ['broker', 'kswarm'] as const) {
-    if (typeof value?.[name] !== 'number') throw new Error(`discovery.${name} must be a number`);
-    configuredPort(String(value[name]), 0, `discovery.${name}`);
+    if (typeof value?.[name] !== 'number') throw new Error(`${label}.${name} must be a number`);
+    if (!configuredPort(String(value[name]), `${label}.${name}`)) throw new Error(`${label}.${name} must be a port between 1 and 65535`);
   }
-  if (value.broker === value.kswarm) throw new Error('discovery ports must be distinct');
+  if (value.broker === value.kswarm) throw new Error(`${label} ports must be distinct`);
   return { broker: Number(value.broker), kswarm: Number(value.kswarm) };
 }
+export function readDesktopServicePorts(file = desktopServiceDiscoveryFile()): DesktopServicePorts {
+  const fact = lstatSync(file);
+  if (!fact.isFile() || fact.isSymbolicLink() || (process.platform !== 'win32' && (fact.mode & 0o077) !== 0)) throw new Error('discovery file must be a private regular file');
+  return validPorts(JSON.parse(readFileSync(file, 'utf8')) as DesktopServicePorts, 'discovery');
+}
 export function desktopServiceUrl(name: keyof DesktopServicePorts, file = desktopServiceDiscoveryFile()): string {
-  // Before main's bootstrap (and for standalone callers), preserve configured defaults.
-  const ports = existsSync(file) ? readDesktopServicePorts(file) : configuredDesktopServicePorts();
-  return `http://127.0.0.1:${ports[name]}`;
+  // Explicit KTeam overrides win; otherwise only the ports KTeam's desktop actually bound.
+  const override = name === 'broker' ? process.env.KTEAM_BROKER_URL : process.env.KTEAM_KSWARM_URL;
+  if (override) return override.replace(/\/$/, '');
+  const configured = configuredDesktopServicePorts()[name];
+  if (configured) return `http://127.0.0.1:${configured}`;
+  if (!existsSync(file)) throw new Error('desktop_service_discovery_missing');
+  return `http://127.0.0.1:${readDesktopServicePorts(file)[name]}`;
 }

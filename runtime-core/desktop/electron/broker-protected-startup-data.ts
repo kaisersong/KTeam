@@ -5,12 +5,13 @@ import {types} from 'node:util';
 import {getConfigDir} from '../../src/utils/config.js';
 const descriptor=Object.getOwnPropertyDescriptor,keys=Reflect.ownKeys,own=Object.hasOwn,freeze=Object.freeze;
 function denied():never{throw Error('BROKER_ORIGINAL_STARTUP_REQUIRED');}
-export function createOriginalBrokerServiceEnvironment(desktopToken:string,kswarmToken:string):Readonly<Record<string,string>>{
+export function createOriginalBrokerServiceEnvironment(desktopToken:string,kswarmToken:string,port:number):Readonly<Record<string,string>>{
+ if(!Number.isSafeInteger(port)||port<1||port>65535)denied();
  for(const token of [desktopToken,kswarmToken])if(typeof token!=='string'||!token.length||token.length>4096||token.includes('\0'))denied();if(desktopToken===kswarmToken)denied();
  const directory=mkdtempSync(join(realpathSync(getConfigDir()),'broker-main-')),fact=lstatSync(directory);
  if(realpathSync(directory)!==directory)denied();
  if(fact.isSymbolicLink()||!fact.isDirectory()||(fact.mode&0o777)!==0o700||typeof process.getuid!=='function'||fact.uid!==process.getuid())denied();
- return freeze({KTEAM_CONFIG_DIR:directory,PORT:'4318',INTENT_BROKER_DB:join(directory,'broker.sqlite'),INTENT_BROKER_SOCKET_PATH:'',INTENT_BROKER_DESKTOP_TOKEN:desktopToken,INTENT_BROKER_KSWARM_TOKEN:kswarmToken});
+ return freeze({KTEAM_CONFIG_DIR:directory,PORT:String(port),INTENT_BROKER_DB:join(directory,'broker.sqlite'),INTENT_BROKER_SOCKET_PATH:'',INTENT_BROKER_DESKTOP_TOKEN:desktopToken,INTENT_BROKER_KSWARM_TOKEN:kswarmToken});
 }
 export function readOriginalBrokerReadyMessage(raw:unknown):Readonly<{port:number;pid:number}>|null{
  if(!raw||typeof raw!=='object'||types.isProxy(raw))denied();

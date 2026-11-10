@@ -41,7 +41,6 @@ export function readOriginalRoomHistoryPage(client:object,context:RoomTurnCustod
  const value=githubReadRecord(captureGithubReadData(input)),fields=['roomId','claimToken'];for(const key of ['afterSequence','beforeSequence','limit'])if(roomResponseOwn(value,key))Object.defineProperty(fields,fields.length,{__proto__:null,value:key,enumerable:true,configurable:true,writable:true} as PropertyDescriptor);githubReadFields(value,fields);return read.history(value,context);
 }
 import {createRoomConversionSourceReader} from './room-conversion-source-client.js';
-const BROKER_BASE_URLS = ['http://127.0.0.1:4318', 'http://localhost:4318'];
 const ROOM_TOKEN_HEADER = 'x-intent-broker-room-token';
 
 export function createCollaborationRoomBrokerClient(options: {
@@ -58,7 +57,7 @@ export function createCollaborationRoomBrokerClient(options: {
       const sourceInit={...init,headers:{[ROOM_TOKEN_HEADER]:originalToken,...(init.body===undefined?{}:{'content-type':'application/json'}),...(init.headers??{})},redirect:'error' as const,cache:'no-store' as const};
       let acquired:Response|undefined,bodyEntered=false;
       try{
-        const response=await context.sdk<Response>(fetchImpl,undefined,[`${BROKER_BASE_URLS[0]}${path}`,sourceInit],{
+        const response=await context.sdk<Response>(fetchImpl,undefined,[`${desktopServiceUrl('broker', options.discoveryFile)}${path}`,sourceInit],{
           accept(value){if(!value||typeof value!=='object'||roomResponseTypes.isProxy(value))return false;const names=roomResponseKeys(value);for(let i=0;i<names.length;i++){const row=roomResponseDescriptor(value,names[i]!);if(!row||!roomResponseOwn(row,'value'))return false;}if(typeof roomClientApply(roomResponseOk,value,[])!=='boolean')return false;acquired=value as Response;return true;},consumer:roomResponseJson,
         });
         const ok=await context.consumeResource<boolean>(roomResponseOk,response,[]);
@@ -157,7 +156,7 @@ export function createCollaborationRoomBrokerClient(options: {
   roomClientApply(roomClientSet,admissionClients,[originalClient,{assert:assertAdmission,async perform(source:unknown,proof:unknown){
     const frame=readOriginalMainDshBrokerFrame(source,proof);assertAdmission(frame.service);
     const stock=frame.stock,body={protocol:'broker_dsh_control_v1',challenge:frame.challenge,requestDigest:brokerAdmissionDigest(frame.input),input:frame.input};
-    const expectedBody=roomStringify(body),destination=`${BROKER_BASE_URLS[0]}/rooms/admission-control/${frame.action}`;
+    const expectedBody=roomStringify(body),destination=`${desktopServiceUrl('broker', options.discoveryFile)}/rooms/admission-control/${frame.action}`;
     const engine=createBrokerAdmissionLoopbackFetch({action:frame.action,expectedBody,signal:frame.signal});
     // These fixed narrowing hooks cannot mint authority. The shared engine
     // owns the actual Node resources and repeats local checks next to send.

@@ -1,5 +1,6 @@
 import {createIntrinsicSet} from '../verification/intrinsic-async-collection.js';
 import {createRoomTurnCustody} from '../verification/original-sdk-custody.js';
+import {desktopServiceUrl} from '../../utils/desktop-service-discovery.js';
 import { request as httpsRequest, type RequestOptions } from 'node:https';
 import { ClientRequest, IncomingMessage, request as httpRequest } from 'node:http';
 import { EventEmitter } from 'node:events';
@@ -106,7 +107,8 @@ export interface BrokerAdmissionLoopbackOptions {
   signal: AbortSignal;
 }
 const signalAborted = descriptor(AbortSignal.prototype, 'aborted')!.get!;
-const brokerOrigin = 'http://127.0.0.1:4318/rooms/admission-control/';
+/** KTeam's own broker, at the port its desktop recorded (never a port shared with another product). */
+const brokerOrigin = () => `${desktopServiceUrl('broker')}/rooms/admission-control/`;
 const brokerTokenHeader = 'x-intent-broker-room-token';
 
 /** Fixed local control transport only. This factory does not authenticate a
@@ -129,7 +131,7 @@ export function createBrokerAdmissionLoopbackFetch(options: BrokerAdmissionLoopb
   // Native brand check only, without invoking caller properties.
   apply(signalAborted, values.signal, []);
   const fixed: SingleRequestHttpsOptions = createPhysical(null);
-  data(fixed, 'destination', brokerOrigin + values.action);
+  data(fixed, 'destination', brokerOrigin() + values.action);
   data(fixed, 'expectedBody', values.expectedBody);
   data(fixed, 'method', 'POST');
   data(fixed, 'signal', values.signal);
