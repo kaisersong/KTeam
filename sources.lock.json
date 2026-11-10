@@ -2195,7 +2195,7 @@
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "fb2bf29687691e719b737f773af2cad312adca3145b2f581e14e3d29eb01dc13"
+          "sha256": "2427b2b08f056949b5f00b4cfc3a7d07d7685b392c6064aebc93516d53a3b0bc"
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",

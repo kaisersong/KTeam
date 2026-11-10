@@ -155,7 +155,8 @@
     "loadSettingsMcpServers"
   ],
   "src/ai/permissions/policy-engine.ts": [
-    "requiresAlwaysCommandConfirmation"
+    "requiresAlwaysCommandConfirmation",
+    "parseCommandSegments"
   ],
   "src/ai/permissions/sensitive-paths.ts": [
     "isSensitiveToolInvocation"

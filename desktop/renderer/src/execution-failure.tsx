@@ -8,5 +8,5 @@ export function ExecutionFailureDetails({job,bots}:{job:any;bots:Bot[]}){
  {failure.evidence!=='captured'?<p>旧版本没有保存原始异常，无法确定具体中断原因。</p>:failure.code==='execution_admission_unverified'?<p>与协作服务通信未能及时确认有效执行资格。已停止后续执行，请先检查服务连接。</p>:failure.code==='execution_lease_lost'?<p>协作服务已拒绝本轮继续执行，可能是任务、成员绑定或权限范围发生变化。</p>:null}
  {events.length>0&&<details><summary>最近的执行记录</summary><ol>{events.map((e:any)=><li key={e.id}><time>{new Date(e.startedAt).toLocaleTimeString()}</time><span>{e.type==='model_request_started'?'请求模型':e.type==='run_aborted'?'运行中断':e.type==='run_failed'?'运行失败':e.name+' · '+(e.type==='tool_started'?'开始':'返回')}</span></li>)}</ol></details>}
  {(failure.message||failure.causeCode||failure.exception)&&<details><summary>技术信息</summary>{failure.message&&<pre>{failure.message}</pre>}<p>{failure.exception}{failure.causeCode?' · '+failure.causeCode:''}</p></details>}
- <p>核对工具记录和未交付草稿后，再决定是否重新发起。</p></section>;
+ <p>核对已完成内容和未交付草稿后，再决定是否继续。</p></section>;
 }
