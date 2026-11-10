@@ -3,10 +3,17 @@ on: [push, pull_request, workflow_dispatch]
 jobs:
   core:
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-2022]
         node: ['22.22.0', '24.16.0']
     runs-on: ${{ matrix.os }}
+    # 0.3 Windows port in progress: Windows results are visible but not yet blocking.
+    # Remove this line once the Windows port lands and Windows is green.
+    continue-on-error: ${{ matrix.os == 'windows-2022' }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
