@@ -191,8 +191,12 @@ jobs:
           # osx-sign discovers provisioning profiles by stat-ing cwd entries.
           # Signing must not traverse an unrelated workspace symlink.
           mkdir -p .artifacts/signing-cwd
+          root="$PWD"
           cd .artifacts/signing-cwd
-          node ../../node_modules/electron-builder/out/cli/cli.js --projectDir ../.. --config electron-builder.yml --mac dir --arm64 --publish never -c.mac.forceCodeSigning=true -c.mac.notarize=false
+          # codesign runs from this cwd, so entitlements must be absolute paths.
+          node "$root/node_modules/electron-builder/out/cli/cli.js" --projectDir "$root" --config electron-builder.yml --mac dir --arm64 --publish never -c.mac.forceCodeSigning=true -c.mac.notarize=false \
+            -c.mac.entitlements="$root/desktop/assets/entitlements.mac.plist" \
+            -c.mac.entitlementsInherit="$root/desktop/assets/entitlements.mac.inherit.plist"
       - name: Notarize macOS app
         timeout-minutes: 135
         env:
