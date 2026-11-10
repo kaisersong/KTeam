@@ -8,7 +8,7 @@ import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 
 async function fixture(){
- process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  const root=realpathSync(mkdtempSync('/tmp/kteam-platform-')),config=join(root,'config'),cwd=join(root,'project');mkdirSync(config);mkdirSync(cwd);
  const before={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.XIAOK_DISABLE_GLOBAL_PLUGINS};process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.XIAOK_DISABLE_GLOBAL_PLUGINS='1';
  const core=await sharedRuntime();

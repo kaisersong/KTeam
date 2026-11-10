@@ -2,12 +2,6 @@
   "formatVersion": 1,
   "sources": [
     {
-      "name": "xiaok-cli",
-      "repository": "https://github.com/kaisersong/xiaok-cli",
-      "revision": "e385c26508fb942670b8816a92d0044c7bf4ebfc",
-      "usage": "vendored contracts, semantic service adapter"
-    },
-    {
       "name": "kswarm",
       "repository": "https://github.com/kaisersong/kswarm",
       "revision": "5c64da71305e69cbec72ec68debfad14cd59b099",
@@ -21,20 +15,6 @@
     }
   ],
   "vendoredFiles": [
-    {
-      "file": "src/vendor/xiaok/room-workspace-protocol.ts",
-      "source": "xiaok-cli",
-      "upstreamPath": "desktop/electron/room-workspace-protocol.ts",
-      "sha256": "cac616758a2fb168178459e1961e350d1475c40f2e4b819a34cb302a07011a1e",
-      "modified": false
-    },
-    {
-      "file": "src/vendor/xiaok/room-external-discussion.ts",
-      "source": "xiaok-cli",
-      "upstreamPath": "desktop/shared/room-external-discussion.ts",
-      "sha256": "4f6e36af95856ab95668b360e779a375e09ca914f982141f01fcaf0b5162f83d",
-      "modified": false
-    },
     {
       "file": "src/vendor/kswarm/runtime-capabilities.js",
       "source": "kswarm",
@@ -59,6 +39,10 @@
   ],
   "references": [
     {
+      "file": "tests/fixtures/aimp-v3.1-test-vectors.json",
+      "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
+    },
+    {
       "file": "docs/reference/aimp-design-spec-v3.1.md",
       "sha256": "95ef720884deef2ff0d26dba3ebb08713b2d12357ece0647c24c1ce8e22778d0"
     },
@@ -74,47 +58,13 @@
   "productBaseline": {
     "version": "v5",
     "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
-    "file": "docs/design/baseline-v5/产品设计.md"
+    "file": "docs/design/baseline-v5/\u4ea7\u54c1\u8bbe\u8ba1.md"
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
     "revision": "f3ea797fa0c9f40d6f541860591cda9d02b41dd2",
     "directory": "kteam",
     "link": "../mydocs/kteam"
-  },
-  "runtime": {
-    "repository": "https://github.com/kaisersong/xiaok-cli",
-    "revision": "f8728a346ccbed625c5918ffe7f8f8305ebdf7df",
-    "directory": "vendor/xiaok-runtime",
-    "modified": true,
-    "usage": "One-time copy of xiaok-cli at this revision, owned and maintained by KTeam; former build-time seams are baked into the source. No syncing."
-  },
-  "ui": {
-    "repository": "https://github.com/kaisersong/xiaok-cli",
-    "revision": "8f36042e209e0a6fc0c5ffe4b95f4bd9e8eb8056",
-    "modified": false,
-    "files": [
-      {
-        "file": "desktop/xiaok/renderer/src/components/a2ui/A2uiArtifactRenderer.tsx",
-        "upstreamPath": "desktop/renderer/src/components/a2ui/A2uiArtifactRenderer.tsx",
-        "sha256": "841e73a0c39e815e26f543334564f2963b31ff7414e324356eaaaab0830592c5"
-      },
-      {
-        "file": "desktop/xiaok/renderer/src/components/a2ui/A2uiSurfaceRenderer.tsx",
-        "upstreamPath": "desktop/renderer/src/components/a2ui/A2uiSurfaceRenderer.tsx",
-        "sha256": "4dda23f6aca8b382c9c4f958204d56a4840b7e35bea0e93c3cd05090b4dcd309"
-      },
-      {
-        "file": "desktop/xiaok/renderer/src/components/a2ui/analysis-table.tsx",
-        "upstreamPath": "desktop/renderer/src/components/a2ui/analysis-table.tsx",
-        "sha256": "d6bc7e200aa8044b0b610f946db9b55f838265710e4e360555bcdd5ff2d509ae"
-      },
-      {
-        "file": "desktop/xiaok/renderer/src/components/a2ui/analysis-chart.tsx",
-        "upstreamPath": "desktop/renderer/src/components/a2ui/analysis-chart.tsx",
-        "sha256": "89db9edf00de56b199c344dd1e8a46c713cb982bc5638c482e814adb3fc9577f"
-      }
-    ]
   },
   "designReferences": [
     {
