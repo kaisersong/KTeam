@@ -11,7 +11,7 @@ export class ScheduledWork{
   const settings=this.store.settings(roomId),snapshot=await this.upstream.membership(roomId),active=(snapshot.members as any[]).filter(m=>m.status==='active');
   if(!settings||(snapshot.room as any)?.status!=='active'||!active.some(m=>m.subject?.userId==='user.local'))throw new KTeamError('scheduled_work_forbidden',403);
   await this.coordinator.guardConversation(roomId,snapshot);
-  return {group:settings.kind==='group',botIds:active.flatMap(m=>m.subject?.logicalAgentId?[m.subject.logicalAgentId]:[])};
+  return {group:!['assistant','direct'].includes(settings.kind??'group'),botIds:active.flatMap(m=>m.subject?.logicalAgentId?[m.subject.logicalAgentId]:[])};
  }
  private belongs(item:any,roomId:string,context:{group:boolean;botIds:string[]}){return context.group?item.roomId===roomId&&context.botIds.includes(item.botId):context.botIds.includes(item.botId);}
  private async source(item:any){
