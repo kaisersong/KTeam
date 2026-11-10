@@ -8,6 +8,7 @@ import {nativeActions} from './native-actions.js';
 import {dataRoot,initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
+import {hostConnection} from './host-connection.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
@@ -49,7 +50,8 @@ if(locked){
  app.whenReady().then(async()=>{
   try{await ensureHost();}catch(error){console.error('KTeam host unavailable:',(error as {code?:string}).code??'startup_failed');}
   let buildInfo={version:app.getVersion()};try{buildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
-  const api=createDesktopAPI(async(route,value)=>{let result;try{result=await hostRequest(root,'kteam-main',route,value);}catch(error){if(value!==undefined||!['ENOENT','ECONNREFUSED','ECONNRESET'].includes((error as NodeJS.ErrnoException).code??''))throw error;await ensureHost();result=await hostRequest(root,'kteam-main',route);} return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:nativeActions(root,()=>window),agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  const connectedRequest=hostConnection({request:(route,value)=>hostRequest(root,'kteam-main',route,value),ensureHost});
+  const api=createDesktopAPI(async(route,value)=>{const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:nativeActions(root,()=>window),agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}

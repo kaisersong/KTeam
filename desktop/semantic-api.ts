@@ -38,6 +38,7 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  messages:(input:any)=>{const after=input.after??0,limit=input.limit??100,before=input.before;if(!Number.isSafeInteger(after)||after<0||!Number.isInteger(limit)||limit<1||limit>100||(before!==undefined&&(!Number.isSafeInteger(before)||before<1)))throw Error('invalid_pagination');return call(`/v1/teams/${room(input.roomId)}/messages?after=${after}&limit=${limit}${before!==undefined?'&before='+before:''}${input.tail===true?'&tail=true':''}`);},
  settings:(id:unknown)=>call(`/v1/teams/${room(id)}/settings`),work:(id:unknown)=>call(`/v1/teams/${room(id)}/work`),
  reconcile:(id:unknown)=>call(`/v1/teams/${room(id)}/reconcile`,{}),
+ recoverWork:(input:any)=>call(`/v1/teams/${room(input.roomId)}/recover`,{jobId:text(input.jobId),requestId:text(input.requestId)}),
  pause:(id:unknown)=>call(`/v1/teams/${room(id)}/pause`,{}),resume:(id:unknown)=>call(`/v1/teams/${room(id)}/resume`,{}),
  seen:(input:any)=>call(`/v1/teams/${room(input.roomId)}/seen`,{sequences:input.sequences}),review:(input:any)=>call(`/v1/teams/${room(input.roomId)}/review`,{taskRef:input.taskRef,decision:input.decision}),
 };}

@@ -1,4 +1,5 @@
 import {ensureSharedServices} from '../runtime/services.js';
+import {WorkRecovery} from './work-recovery.js';
 import {loadConfig} from './config.js';
 import {transcribeAudio} from './voice.js';
 import {IntegrationSettings} from './integration-settings.js';
@@ -74,6 +75,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment});
+  const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
+  let ensuringServices: Promise<void> | undefined;
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
@@ -164,7 +167,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/proposals/accept'&&req.method==='POST'){const input=record(await body(req));if(typeof input.roomId!=='string'||typeof input.proposalId!=='string'||typeof input.expectedHash!=='string')throw new KTeamError('invalid_input');const result=await coordinator.accept(input as any,{requestSource:'user'});void automation.tick();return send(res,200,{ok:true,...result});}
       if(url.pathname==='/v1/model-settings'&&req.method==='GET')return send(res,200,await modelSettings.view());
       if(req.method==='POST'&&url.pathname.startsWith('/v1/model-settings/')){const action=url.pathname.slice('/v1/model-settings/'.length),input=await body(req,2*1024*1024);if(action==='model')return send(res,200,await modelSettings.save(input));if(action==='storage')return send(res,200,await modelSettings.storage(input));if(action==='decision')return send(res,200,await modelSettings.decision(input));if(action==='import-provider')return send(res,200,await modelSettings.importProvider(input));if(action==='import-xiaok')return send(res,200,await modelSettings.importXiaok(input));throw new KTeamError('route_not_found',404);}
-      if(url.pathname==='/v1/services/ensure'&&req.method==='POST'){await ensureSharedServices(loadConfig(options.root),options.root);return send(res,200,{ok:true,upstream:await upstream.probe()});}
+      if(url.pathname==='/v1/services/ensure'&&req.method==='POST'){await (ensuringServices??=(ensureSharedServices(loadConfig(options.root),options.root).finally(()=>{ensuringServices=undefined;})));return send(res,200,{ok:true,upstream:await upstream.probe()});}
       if (url.pathname === '/v1/models' && req.method === 'GET') return send(res,200,{ok:true,...await modelCatalog()});
       if (url.pathname === '/v1/bot-create' && req.method === 'POST') {
         return send(res,201,await coordinator.createMember(await body(req),{requestSource:'user'}));
@@ -192,7 +195,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         const membership=await upstream.membership(roomId);
@@ -212,8 +215,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='regenerate'){const result=await conversations.regenerate(roomId,await body(req));void automation.tick();return send(res,202,result);}
         if(req.method==='GET'&&action==='proposals')return send(res,200,{ok:true,proposals:coordinator.proposals(roomId)});
         if(req.method==='GET'&&action==='settings')return send(res,200,{ok:true,settings:teamStore.settings(roomId),seen:teamStore.seen(roomId),members:membership.members});
-        if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions(roomId)??[],approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
-        if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
+        if(req.method==='GET'&&action==='work'){const snapshot=await upstream.aimp(roomId,'tasks');return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions(roomId)??[],approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),recovery:workRecovery.view(roomId,snapshot.tasks as any[]),pendingSubmissions:teamStore.pendingSubmissions(roomId),...snapshot});}
+        if(req.method==='POST'&&action==='recover'){if(client.id!=='kteam-main')throw new KTeamError('recovery_forbidden',403);const result=await workRecovery.continue(roomId,await body(req));void automation.tick();return send(res,202,result);}
+        if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);await automation.retirePriorClaims(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
         if(req.method==='POST'&&action==='pause')return send(res,200,await automation.pause(roomId));
         if(req.method==='POST'&&action==='resume'){
           return send(res,200,{ok:true,settings:teamStore.resume(roomId)});
