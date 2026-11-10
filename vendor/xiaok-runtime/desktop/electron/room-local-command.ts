@@ -1,4 +1,4 @@
-import {spawn} from 'node:child_process';
+import {spawn} from '../../../../src/runtime/harness-child-process.js';
 import {homedir} from 'node:os';
 import {delimiter,join} from 'node:path';
 import {bashTool} from '../../src/ai/tools/bash.js';

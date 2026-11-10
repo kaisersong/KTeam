@@ -16,7 +16,7 @@ const minLevel = resolveLevel();
 
 // Log file: ~/.xiaok/logs/xiaok.log
 function logFilePath(): string {
-  const xiaokDir = process.env.XIAOK_CONFIG_DIR ?? join(homedir(), '.xiaok');
+  const xiaokDir = (process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime'));
   const logsDir = join(xiaokDir, 'logs');
   if (!existsSync(logsDir)) {
     try { mkdirSync(logsDir, { recursive: true }); } catch {}

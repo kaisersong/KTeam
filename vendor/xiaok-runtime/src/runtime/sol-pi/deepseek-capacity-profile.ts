@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, realpathSync, statSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from '../../../../../src/runtime/harness-child-process.js';
 import { createTransportAuthorizationError } from './transport-lease.js';
 
 export interface FrozenDeepSeekCounter { readonly opaqueFrozenDeepSeekCounter: never }

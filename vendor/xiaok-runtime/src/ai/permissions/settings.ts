@@ -6,7 +6,7 @@ import { homedir } from 'os';
 import type { PermissionSettings } from '../../types.js';
 
 function getGlobalSettingsPath(): string {
-  const dir = process.env.XIAOK_CONFIG_DIR ?? join(homedir(), '.xiaok');
+  const dir = (process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime'));
   return join(dir, 'settings.json');
 }
 

@@ -2,7 +2,7 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from '../../../../../src/runtime/harness-child-process.js';
 import { machine } from 'node:os';
 type WindowsInstallationObservation = 'ordinary' | 'installed' | 'unavailable';
 /** Fixed client-bundled read-only helper. This is not a protected Windows

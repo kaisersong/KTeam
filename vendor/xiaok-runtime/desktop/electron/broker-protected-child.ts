@@ -2,7 +2,7 @@
  * it grants no business work, cost refund, old-FD or namespace completeness. */
 import {data,method,setField} from './kswarm-protected-child-data.js';
 import {createProtectedChildCallbackCustody} from './protected-child-callback-custody.js';
-import type {ChildProcess} from 'node:child_process';
+import type {ChildProcess} from '../../../../src/runtime/harness-child-process.js';
 import {createRequire} from 'node:module';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';

@@ -3,7 +3,7 @@ import {getSearchScope} from './search-scope-context.js';
 import {permitsSearchPath,type SearchScope} from './search-scope.mjs';
 import {statSync} from 'node:fs';
 import {isNativeReadonlyExecutionContext} from './native-readonly-context.js';
-import { spawnSync } from 'child_process';
+import { spawnSync } from '../../../../../src/runtime/harness-child-process.js';
 import { runBoundedGlob, runBoundedGrep, formatSearchPath, type GrepTruncation } from './bounded-glob.js';
 import {getSandboxSearchGuard,type SearchPathGuard} from '../../platform/sandbox/search-scope.js';
 import { resolve } from 'path';

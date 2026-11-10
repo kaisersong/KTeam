@@ -1,11 +1,11 @@
 import { assertBeforeEffects } from '../../src/runtime/verification/before-effects.js';
-import { spawn } from 'node:child_process';
+import { spawn } from '../../../../src/runtime/harness-child-process.js';
 import { createHash, Hash } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { fileURLToPath, URL as NativeURL } from 'node:url';
 import { types } from 'node:util';
-import type { SpawnOptions } from 'node:child_process';
+import type { SpawnOptions } from '../../../../src/runtime/harness-child-process.js';
 import { hasOriginalMainSdkBridgeInstallation } from '../../src/runtime/verification/original-main-sdk-bridge.js';
 import {
   captureOriginalMaterialExecutionParent,

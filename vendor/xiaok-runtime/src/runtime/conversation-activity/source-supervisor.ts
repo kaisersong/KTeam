@@ -1,6 +1,6 @@
 import { chmodPrivateActivityFile } from './storage-permissions.js';
 import { ACTIVITY_STORAGE_NAMES } from './storage-permissions.js';
-import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from '../../../../../src/runtime/harness-child-process.js';
 import { createHash,randomBytes } from 'node:crypto';
 import {types} from 'node:util';
 import {fileURLToPath} from 'node:url';

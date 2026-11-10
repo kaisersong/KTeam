@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG, isValidLegacyProvider } from '../types.js';
 import { normalizeConfig } from '../ai/providers/normalize.js';
 
 export function getConfigDir(subdir?: string): string {
-  const base = process.env.XIAOK_CONFIG_DIR ?? join(homedir(), '.xiaok');
+  const base = (process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime'));
   return subdir ? join(base, subdir) : base;
 }
 
@@ -63,7 +63,7 @@ function backupAndRemove(path: string): void {
 
 /** 深拷贝 DEFAULT_CONFIG，避免浅拷贝导致 models 引用共享 */
 function cloneDefaultConfig(): Config {
-  return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config;
+  return {...JSON.parse(JSON.stringify(DEFAULT_CONFIG)),providers:{},models:{},defaultProvider:'',defaultModelId:''} as Config;
 }
 
 export async function loadConfig(): Promise<Config> {

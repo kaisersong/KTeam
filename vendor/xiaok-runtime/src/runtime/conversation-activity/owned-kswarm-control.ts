@@ -2,7 +2,7 @@ import {createIntrinsicSet,settleIntrinsicOperations,appendIntrinsic,aggregateIn
 import {assertStandardIpcPromise} from '../verification/native-ipc-promise.js';
 import {randomBytes} from 'node:crypto';
 import {types} from 'node:util';
-import type {ChildProcess} from 'node:child_process';
+import type {ChildProcess} from '../../../../../src/runtime/harness-child-process.js';
 import {hasOwnedKSwarmBusinessSibling} from './owned-kswarm-business.js';
 import {dispatchBusinessProtocolTag} from './dispatch-business-data.js';
 const NativePromise=Promise,NativeSet=Set,NativeMap=Map,nativeThen=NativePromise.prototype.then,apply=Reflect.apply;

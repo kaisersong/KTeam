@@ -7,7 +7,7 @@ export interface DesktopServicePorts { broker: number; kswarm: number }
 
 /** Per Desktop process: concurrent installations must never overwrite each other's endpoint. */
 export function desktopServiceDiscoveryFile(): string {
-  return process.env.XIAOK_DESKTOP_DISCOVERY_FILE ?? join(process.env.XIAOK_CONFIG_DIR ?? join(homedir(), '.xiaok'), `desktop-services-${process.pid}.json`);
+  return process.env.XIAOK_DESKTOP_DISCOVERY_FILE ?? join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), `desktop-services-${process.pid}.json`);
 }
 function configuredPort(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;

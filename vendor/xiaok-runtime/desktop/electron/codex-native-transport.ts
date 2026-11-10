@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from '../../../../src/runtime/harness-child-process.js';
 import { types } from 'node:util';
 import { hasOriginalMainSdkBridgeInstallation } from '../../src/runtime/verification/original-main-sdk-bridge.js';
 import { createOriginalCodexProcessSourceTicket } from './codex-process-source.js';

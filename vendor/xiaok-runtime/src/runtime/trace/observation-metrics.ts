@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import childProcess from 'node:child_process';
+import childProcess from '../../../../../src/runtime/harness-child-process.js';
 import { dirname, join } from 'node:path';
 import type { Message, StreamChunk } from '../../types.js';
 

@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from '../../../../src/runtime/harness-child-process.js';
 import { request as httpRequest } from 'http';
 import { request as httpsRequest } from 'https';
 import { win32 } from 'node:path';
@@ -704,6 +704,7 @@ export function createHooksRunner(config: HooksRunnerConfig = {}): HooksRunner {
     }
 
     for (const hook of allHooks) {
+      try { await config.assertCurrent?.(); } catch { return {ok:false,message:'harness_scope_revoked'}; }
       if (signal.aborted) return { ok: false, message: String(signal.reason) };
       if (!shouldMatch(hook, eventName, payload)) continue;
 

@@ -276,7 +276,7 @@ export class ConnectorRegistry {
       return createJinaFetchProvider({ apiKey: config.fetch.jinaApiKey, fetchFn });
     case 'firecrawl':
       return createFirecrawlFetchProvider({
-        apiKey: config.fetch.firecrawlApiKey?.trim() || undefined,
+        apiKey: config.fetch.firecrawlApiKey?.trim() || undefined,endpoint:config.fetch.firecrawlBaseUrl ? config.fetch.firecrawlBaseUrl.replace(/\/$/,'')+'/v2/scrape' : undefined,
         fetchFn,
       });
     case 'deepseek': {

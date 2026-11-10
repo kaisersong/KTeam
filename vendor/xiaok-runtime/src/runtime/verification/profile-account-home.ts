@@ -55,7 +55,7 @@ function validateBase(base:string,display=base){
 }
 /** Config overrides name the .xiaok directory itself. UID remains an OS fact. */
 export function resolveProfileAccountHome(){
- const config=process.env.XIAOK_CONFIG_DIR;
+ const config=process.env.KTEAM_MODEL_CONFIG_DIR??join(process.env.KTEAM_DATA_DIR??join(userInfo().homedir,'.kteam'),'runtime');
  if(config){if(!isAbsolute(config)||config.includes('\0'))throw Error('profile_source_registry_identity');const base=validateBase(config);return {home:dirname(base),base};}
  const candidate=process.env.HOME,selected=candidate&&isAbsolute(candidate)?candidate:userInfo().homedir;
  const home=validateBase(selected),base=validateBase(join(home,'.xiaok'),join(selected,'.xiaok'));return {home,base};

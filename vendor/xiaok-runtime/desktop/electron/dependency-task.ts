@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from '../../../../src/runtime/harness-child-process.js';
 import { randomUUID } from 'node:crypto';
 
 export interface DependencyProcessResult { success: boolean; output?: string; error?: string }

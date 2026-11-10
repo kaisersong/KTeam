@@ -1,3 +1,4 @@
+import {extractPdfText} from '../../../desktop/electron/pdf-text.js';
 import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, realpathSync, constants } from 'fs';
 import { extname, resolve } from 'path';
 import type { Tool } from '../../types.js';
@@ -169,18 +170,15 @@ export function createReadTool(options: WorkspaceToolOptions = {}): Tool {
           context.emitToolImage(image);
           return `图片已作为视觉输入返回（${mediaType}，${dimensions.width}×${dimensions.height}）。请依据图像内容分析，而非文件大小。`;
         }
-        if (kind === 'pdf') {
-          return 'Error: 无法以文本方式读取 PDF。请把它作为附件交给 Desktop 的 read_material，或先转换为文本。';
-        }
         if (kind === 'binary') {
           return `Error: 这是二进制文件，无法以文本方式读取: ${resolvedPath}`;
         }
 
         let content: string;
-        if (kind === 'ooxml') {
+        if (kind === 'ooxml' || kind === 'pdf') {
           const extraction = await extractMaterialText({
             workspacePath: resolvedPath,
-            mimeType: '',
+            mimeType: kind === 'pdf' ? 'application/pdf' : '', pdfToText:extractPdfText,
             maxChars: OFFICE_EXTRACTION_CAP,
           });
           if (extraction.parseStatus !== 'parsed' || !extraction.text) {

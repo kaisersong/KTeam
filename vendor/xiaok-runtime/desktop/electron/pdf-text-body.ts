@@ -1,3 +1,4 @@
+import {createRequire as pdfRequire} from 'node:module';import {dirname as pdfDirname,join as pdfJoin} from 'node:path';
 import { types } from 'node:util';
 import { isMainThread } from 'node:worker_threads';
 import { assertBeforeEffects } from '../../src/runtime/verification/before-effects.js';
@@ -220,7 +221,7 @@ export async function extractOriginalPdfTextBody(
       // graph inventory can reject delivery. A rejected resource still closes.
       const acquired = await custody.sdk<LoadingTaskRecord>(
         () => {
-          const value = apply(shell.fn, namespace, [{ data: bytes }]);
+          const pdfRoot=pdfDirname(pdfRequire(import.meta.url).resolve('pdfjs-dist/package.json')); const value = apply(shell.fn, namespace, [{data:bytes,isEvalSupported:false,standardFontDataUrl:pdfJoin(pdfRoot,'standard_fonts')+'/',cMapUrl:pdfJoin(pdfRoot,'cmaps')+'/',cMapPacked:true,wasmUrl:pdfJoin(pdfRoot,'wasm')+'/'}]);
           if (!value || typeof value !== 'object' || isProxy(value))
             throw Error('PDF_TASK_UNCONFIRMED');
           let fn: Function;

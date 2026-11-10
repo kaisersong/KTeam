@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from '../../../../../src/runtime/harness-child-process.js';
 import { decodeLspFrames, encodeLspMessage, type LspEnvelope, type LspTransport } from './client.js';
 
 export interface LspServerProcess {

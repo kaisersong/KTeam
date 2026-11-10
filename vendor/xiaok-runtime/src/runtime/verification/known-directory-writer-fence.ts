@@ -26,7 +26,7 @@ function canonical(path:string):string{
 /** No directory or registry creation on the ordinary admission read path. */
 function location(){
  const account=userInfo(),uid=process.getuid?.();if(uid===undefined||!Number.isSafeInteger(uid)||uid<0||uid!==process.geteuid?.()||account.uid!==uid)fail('user');
- const home=account.homedir,base=join(home,'.xiaok');chain(home);const original=directory(home,uid),paths=[base,join(base,'profile-sources'),join(base,'profile-sources','writer-fences')];
+ const home=account.homedir,base=resolve(process.env.KTEAM_MODEL_CONFIG_DIR??resolve(process.env.KTEAM_DATA_DIR??resolve(home,'.kteam'),'runtime'));chain(home);const original=directory(home,uid),paths=[base,join(base,'profile-sources'),join(base,'profile-sources','writer-fences')];
  const observed:Array<{path:string;identity:string;mode:number}>=[];
  let absent=false;
  for(let i=0;i<paths.length;i++){try{const stat=directory(paths[i]!,uid,i===2?0o700:undefined);observed.push({path:paths[i]!,identity:identity(stat),mode:stat.mode});}catch(error){if(!missing(error))throw error;absent=true;break;}}

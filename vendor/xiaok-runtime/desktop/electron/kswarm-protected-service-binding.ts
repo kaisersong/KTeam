@@ -1,4 +1,4 @@
-import type {ChildProcess} from 'node:child_process';
+import type {ChildProcess} from '../../../../src/runtime/harness-child-process.js';
 import {types} from 'node:util';
 import {createRoomTurnCustody} from './original-room-turn-custody.js';
 import {appendIntrinsic,createIntrinsicSet} from '../../src/runtime/verification/intrinsic-async-collection.js';

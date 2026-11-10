@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { OriginalHostWorkerRequest } from '../task-host/original-host-worker-types.js';
 import { readOptionalOriginalTaskHostDeliveryWorkerRequest } from '../task-host/task-runtime-host.js';
 import { readOptionalOriginalTaskStoreProtectionWorkerRequest } from '../task-host/snapshot-store.js';
-import { spawn, spawnSync, ChildProcess, type SpawnOptions, type SpawnSyncOptions } from 'node:child_process';
+import { spawn, spawnSync, ChildProcess, type SpawnOptions, type SpawnSyncOptions } from '../../../../../src/runtime/harness-child-process.js';
 import { Worker, type WorkerOptions } from 'node:worker_threads';
 import { EventEmitter } from 'node:events';
 import { Readable, Writable } from 'node:stream';

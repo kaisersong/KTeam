@@ -125,7 +125,8 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
         state.installed.delete(name);
       }
     }
-    for (const tool of orderedTools) {
+    for (let tool of orderedTools) {
+      tool = options.bindTool?.(tool, state.cwd) ?? tool;
       const name = tool.definition.name;
       const current = registry.getRegisteredTool(name);
       if (current && current !== state.installed.get(name)) {
@@ -173,7 +174,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
     async ({ agent, prompt, cwd, parentDepth, signal }) => runNamedSubAgent(agent, prompt, cwd, parentDepth, signal),
     options.notifyBackgroundJob,
   );
-  const reminders = options.source === 'chat'
+  const reminders = !options.disableReminders && options.source === 'chat'
     ? options.platform.createReminderApi(options.sessionId, options.sessionId)
     : undefined;
   if (reminders) {
@@ -227,7 +228,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
           timezone: options.platform.reminderDefaultTimeZone,
         })
         : []),
-      ...createTeamTools(options.platform.teamService),
+      ...(options.teamTools ?? createTeamTools(options.platform.teamService)),
       ...(options.memoryStore ? createNotebookTools(options.memoryStore) : []),
       createLspTool({ getLspClient: () => options.platform.lspClient, cwd }),
       createSubAgentTool({
@@ -292,7 +293,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
         ))
       : orderedTools;
 
-    const hooksRunner = createHooksRunner({
+    const hooksRunner = createHooksRunner({assertCurrent:options.assertCurrent,promptExecutor:options.promptExecutor,
         hooks: options.platform.pluginRuntime.hookConfigs,
         context: {
           session_id: options.sessionId,
@@ -302,22 +303,24 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
     });
     hooksOwners.add(hooksRunner);
 
+    const boundTools = filteredTools.map(tool => options.bindTool?.(tool, cwd) ?? tool);
+    const boundDescriptions = new Map(); filteredTools.forEach((tool, index) => { const metadata = wrappedDescriptions.get(tool); if(metadata)boundDescriptions.set(boundTools[index],metadata); });
     const registry = new ToolRegistry({
       capabilityRegistry: options.platform.capabilityRegistry,
       capabilitySearch: agentId === 'main',
-      permissionManager: options.permissionManager,
+      permissionManager: options.permissionManagerForCwd?.(cwd) ?? options.permissionManager,
       dryRun: options.dryRun,
       hooksRunner,
-      onPrompt: options.onPrompt,
+      onPrompt: options.onPromptForCwd ? (name, args, meta) => options.onPromptForCwd(cwd, name, args, meta) : options.onPrompt,
       agentId,
       onToolObserved: options.onToolObserved,
-    }, filteredTools,wrappedDescriptions);
+    }, boundTools,boundDescriptions);
     registries.add(registry);
     const platformMcpInstances = new Set(sandboxedMcpTools);
     const baseNames = new Set(sandboxedTools.map((tool) => tool.definition.name));
     baseNames.add('tool_search');
     registryMcpState.set(registry, {
-      installed: new Map(filteredTools.filter((tool) => platformMcpInstances.has(tool)).map((tool) => [tool.definition.name, tool])),
+      cwd, installed: new Map(filteredTools.flatMap((tool,index) => platformMcpInstances.has(tool) ? [[boundTools[index].definition.name, boundTools[index]]] : [])),
       baseNames,
       allowed: allowedToolIds,
     });
@@ -326,6 +329,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
 
   return {
     createRegistry: createRegistryForCwd,
+    listChildren: () => multiAgentCoordinator?.listAgents({requestSource:'agent',callerId:'main'}) ?? [],
     getReminderApi() {
       return reminders;
     },

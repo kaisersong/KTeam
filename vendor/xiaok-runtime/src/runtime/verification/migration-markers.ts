@@ -3,7 +3,7 @@ import {readWindowsInstallationAbsence} from './windows-installation-absence.js'
 import {createHash} from 'node:crypto';
 import {constants,closeSync,fstatSync,lstatSync,openSync,readFileSync,type Stats} from 'node:fs';
 import {dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from '../../../../../src/runtime/harness-child-process.js';
 import {canonicalVerificationJson} from './protocol.js';
 import {parseInstalledDeploymentManifest} from './deployment-manifest.js';
 import {parsePublicProfileIndex} from './profile-index-publication.js';

@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import { readFile, stat } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
+import { execFile } from '../../../../../src/runtime/harness-child-process.js';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { ACTIVITY_STORAGE_NAMES } from './storage-permissions.js';

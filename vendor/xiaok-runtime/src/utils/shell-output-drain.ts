@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess } from '../../../../src/runtime/harness-child-process.js';
 
 export const INHERITED_SHELL_OUTPUT_NOTICE = '（命令进程已退出；后代仍持有输出管道，已停止等待输出。应用或网页是否打开需另行观察。）';
 

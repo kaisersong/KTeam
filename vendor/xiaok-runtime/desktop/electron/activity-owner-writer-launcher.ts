@@ -2,7 +2,7 @@ import type {DesktopPreparationCompositionLaunch} from './default-dispatch-prepa
 import {createOwnedCanonicalBusiness,prepareOwnedCanonicalBusinessHello,assertOwnedCanonicalBusinessHelloCurrent,readOwnedCanonicalBusinessRetirement,observeOwnedCanonicalBusinessClose,readOwnedCanonicalPreparationFacet,readOwnedCanonicalPreparationWorkBinding,type CanonicalPreparationFacet,type CanonicalPreparationSource,type CanonicalPreparationAdmission,type CanonicalBusinessAdmission} from '../../src/runtime/conversation-activity/owned-canonical-business.js';
 import {dispatchBusinessProtocolTag} from '../../src/runtime/conversation-activity/dispatch-business-data.js';
 import type {DesktopDispatchLaunch} from './default-dispatch-native-bootstrap.js';
-import {spawn,type ChildProcess} from 'node:child_process';
+import {spawn,type ChildProcess} from '../../../../src/runtime/harness-child-process.js';
 import {createConnection} from 'node:net';
 import {openSync,closeSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';

@@ -1,4 +1,4 @@
-import type {ChildProcess} from 'node:child_process';
+import type {ChildProcess} from '../../../../../src/runtime/harness-child-process.js';
 import {randomBytes} from 'node:crypto';
 import {types} from 'node:util';
 import {createIntrinsicSet,appendIntrinsic,aggregateIntrinsicErrors} from '../verification/intrinsic-async-collection.js';

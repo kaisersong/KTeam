@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile } from '../../../../../src/runtime/harness-child-process.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { Tool, ToolExecutionContext } from '../../types.js';
@@ -113,14 +113,14 @@ export async function createPlatformRuntimeContext(
   const pluginRuntime = await loadPlatformPluginRuntime(options.cwd, options.builtinCommands);
   const activityConnections = new Set<McpClientConnection>();
   let activityHooks: Parameters<PlatformRuntimeContext['setMcpActivityHooks']>[0] | undefined;
-  const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs);
+  const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs); await options.assertCurrent?.();
   const lspManager = createLspManager();
   const capabilityRegistry = new CapabilityRegistry();
   const capabilityHealth: PlatformCapabilityHealth[] = [];
   const disposables: Array<{ dispose(): void }> = [];
-  const stateRootDir = join(options.cwd, '.xiaok', 'state');
+  const stateRootDir = options.stateRootDir ?? join(options.cwd, '.xiaok', 'state');
   const healthStore = new FileCapabilityHealthStore(join(stateRootDir, 'capability-health.json'));
-  const teamService = createTeamService({ store: new FileTeamStore(join(stateRootDir, 'teams.json')) });
+  const teamService = options.teamService ?? createTeamService({ store: new FileTeamStore(join(stateRootDir, 'teams.json')) });
   const reminderDefaultTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
   const reminderApis: ReminderApi[] = [];
   const createReminderApi = (sessionId: string, creatorUserId: string): ReminderApi => {
@@ -139,7 +139,7 @@ export async function createPlatformRuntimeContext(
     reminderApis.push(api);
     return api;
   };
-  const sandboxPolicy = createSandboxPolicy({
+  const sandboxPolicy = createSandboxPolicy({pathDenylist:options.privateStateRoots,
     pathAllowlist: [options.cwd, join(options.cwd, '.xiaok'), join(options.cwd, '.worktrees')],
     network: 'allow',
   });
@@ -159,8 +159,8 @@ export async function createPlatformRuntimeContext(
       }),
   });
   // 加载 MCP server 配置（settings.json + plugin manifests）
-  const settingsMcpServers = loadSettingsMcpServers();
-  const pluginMcpServers = loadPluginMcpServers(pluginRuntime);
+  const settingsMcpServers = options.kteamMcpServers ?? loadSettingsMcpServers();
+  const pluginMcpServers = [...loadPluginMcpServers(pluginRuntime),...(options.kteamCuaServer ? [{...options.kteamCuaServer,name:'cua-driver',source:{origin:'plugin',pluginName:'cua-computer-use'},requiresUserActivation:true}] : [])];
   const { servers: mergedMcpServers, conflicts: mcpConflicts } = mergeMcpServerConfigs(
     settingsMcpServers,
     pluginMcpServers,
@@ -185,7 +185,7 @@ export async function createPlatformRuntimeContext(
       description: agent.model ? `subagent:${agent.model}` : 'subagent',
     });
   }
-  const lspClient = await connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables);
+  const lspClient = await connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables, options.assertCurrent);
   const health = createPlatformRuntimeHealth(capabilityHealth);
   healthStore.set(options.cwd, health.snapshot());
 
@@ -234,6 +234,7 @@ export async function createPlatformRuntimeContext(
         activityHooks?.connected(connection);
       },
       observer: (context, connection) => activityHooks?.observer(context, connection) ?? Promise.resolve(undefined) },
+    options.assertCurrent,
   ).then((tools) => {
     publishMcpTools(tools);
     healthStore.set(options.cwd, health.snapshot());
@@ -278,14 +279,8 @@ export async function createPlatformRuntimeContext(
         await reminderApi.dispose();
       }
       await mcpReady.catch(() => undefined);
-      for (const disposable of disposables.splice(0).reverse()) {
-        try {
-          disposable.dispose();
-        } catch {
-          continue;
-        }
-      }
-      const shutdownErrors = backgroundShutdowns.filter((result) => result.status === 'rejected').map((result) => result.reason);
+      const resourceShutdowns = await Promise.allSettled(disposables.splice(0).reverse().map(disposable => Promise.resolve().then(() => typeof disposable.close === 'function' ? disposable.close() : disposable.dispose())));
+      const shutdownErrors = [...backgroundShutdowns,...resourceShutdowns].filter(result => result.status === 'rejected').map(result => result.reason);
       if (shutdownErrors.length) throw new AggregateError(shutdownErrors, 'background runner shutdown failed');
     },
     listBackgroundJobs(sessionId: string) {
@@ -342,6 +337,7 @@ async function connectWorkspaceLspServers(
   cwd: string,
   capabilityHealth: PlatformCapabilityHealth[],
   disposables: Array<{ dispose(): void }>,
+  assertCurrent?: () => Promise<void>,
 ): Promise<LspClientLike | undefined> {
   const rootUri = pathToFileUri(cwd);
   const openableDocuments = collectLspSeedDocuments(cwd);
@@ -349,6 +345,7 @@ async function connectWorkspaceLspServers(
 
   for (const declaration of pluginRuntime.lspServers) {
     try {
+      await assertCurrent?.();
       const connection = await connectDeclaredLspServer(declaration, lspManager, rootUri);
       for (const document of openableDocuments) {
         await connection.didOpenDocument(document);
@@ -383,6 +380,7 @@ async function connectWorkspaceMcpServers(
   platform: NodeJS.Platform = process.platform,
   onToolsChanged?: (tools: Tool[]) => void,
   activity?: Parameters<PlatformRuntimeContext['setMcpActivityHooks']>[0],
+  assertCurrent?: () => Promise<void>,
 ): Promise<Tool[]> {
   const tools: Tool[] = [];
   const globalCatalogTimeoutMs = resolveMcpCatalogTimeoutMs();
@@ -414,6 +412,7 @@ async function connectWorkspaceMcpServers(
       const { CuaConnectionManager } = await import('../mcp/cua-connection-manager.js');
       const { createMacosCuaConnection, macosCuaCatalog } = await import('../computer-use/macos-cua-connection.js');
       const cuaManager = new CuaConnectionManager(async () => {
+        await assertCurrent?.();
         const conn = await createMcpClientConnection(server.name, frozenSnapshot);
         registerDisposable(conn);
         const callToolTimeoutMs = frozenSnapshot.timeout?.call ?? globalCallToolTimeoutMs;
@@ -438,7 +437,7 @@ async function connectWorkspaceMcpServers(
       tools.push(createComputerUseTool({
         callToolResult: (name, input, options) => cuaManager.callToolResult(name, input, options),
       }));
-      registerDisposable({ dispose: () => { cuaManager.dispose(); } });
+      registerDisposable({ dispose: () => cuaManager.dispose() });
       capabilityHealth.push({
         kind: 'mcp',
         name: server.name,
@@ -451,6 +450,7 @@ async function connectWorkspaceMcpServers(
     let connection: Awaited<ReturnType<typeof createMcpClientConnection>> | undefined;
     try {
       const launchServer = await resolveBuiltinSlideRendererConfig(server, { platform });
+      await assertCurrent?.();
       const connectResult = await tryConnect(server.name, launchServer);
       if (connectResult.status === 'disabled') {
         capabilityHealth.push({

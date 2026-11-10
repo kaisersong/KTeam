@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync, cpSync } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'path';
-import { execSync } from 'child_process';
+import { execFile } from '../../../../../src/runtime/harness-child-process.js';
 import type { Tool } from '../../types.js';
 import type { CapabilityRegistry } from '../../platform/runtime/capability-registry.js';
 import { getConfigDir } from '../../utils/config.js';
@@ -194,7 +194,7 @@ function resolveInstallTarget(
 /**
  * 克隆 GitHub 仓库作为复合技能
  */
-function cloneSkillRepo(repoUrl: string, targetDir: string): { success: boolean; message: string; skillName: string } {
+async function cloneSkillRepo(repoUrl: string, targetDir: string): { success: boolean; message: string; skillName: string } {
   try {
     // 提取仓库名作为技能名
     const repoName = basename(repoUrl, '.git');
@@ -209,10 +209,7 @@ function cloneSkillRepo(repoUrl: string, targetDir: string): { success: boolean;
     mkdirSync(targetDir, { recursive: true });
 
     // 克隆仓库（浅克隆）
-    execSync(`git clone --single-branch --depth 1 "${repoUrl}" "${skillDir}"`, {
-      stdio: 'pipe',
-      timeout: 60000, // 60秒超时
-    });
+    await new Promise((resolve,reject)=>execFile('git',['clone','--single-branch','--depth','1',repoUrl,skillDir],{timeout:60000},error=>error?reject(error):resolve()));
 
     // 检查是否有 setup 脚本
     const setupSh = join(skillDir, 'setup');
@@ -276,7 +273,7 @@ export function createInstallSkillTool(options: InstallSkillToolOptions = {}): T
         const target = resolveInstallTarget(targetScope, cwd, configDir);
         const skillDir = target.skillDir;
 
-        const result = cloneSkillRepo(resolvedSource.location, skillDir);
+        const result = await cloneSkillRepo(resolvedSource.location, skillDir);
 
         if (!result.success) {
           return `Error: ${result.message}`;

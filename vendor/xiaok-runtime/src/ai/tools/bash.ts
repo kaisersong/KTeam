@@ -1,5 +1,5 @@
 import { measureCollector, observationMetricsEnabled } from '../../runtime/trace/observation-metrics.js';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, type ChildProcess } from '../../../../../src/runtime/harness-child-process.js';
 import type { Tool, ToolExecutionContext } from '../../types.js';
 import { BASH_TIMEOUT_MAX, BASH_OUTPUT_MIN, BASH_OUTPUT_MAX, validateBashLimits } from './bash-limits.js';
 import { BoundedShellOutput, WindowsElevationDetector, renderShellOutput } from './bash-output.js';

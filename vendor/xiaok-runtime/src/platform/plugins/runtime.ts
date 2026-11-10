@@ -48,7 +48,7 @@ export async function loadPlatformPluginRuntime(
 ): Promise<PlatformPluginRuntimeState> {
   const disableGlobalPlugins = process.env.XIAOK_DISABLE_GLOBAL_PLUGINS === '1';
   const pluginDirs = [
-    ...(disableGlobalPlugins ? [] : [join(homedir(), '.xiaok', 'plugins')]),
+    ...(disableGlobalPlugins ? [] : [join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), 'plugins')]),
     join(cwd, '.xiaok', 'plugins'),
   ];
   const plugins = await loadPlugins(pluginDirs, { builtinCommands });
@@ -132,5 +132,6 @@ export async function connectDeclaredLspServer(
     documentSymbols: (uri: string) =>
       client.documentSymbols(uri),
     dispose: () => client.dispose(),
+    close: async () => { client.dispose(); processHandle.dispose(); const child = processHandle.child; if(child.exitCode !== null || child.signalCode !== null)return; await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('lsp_shutdown_unconfirmed'));},3000);child.once('exit',()=>{clearTimeout(timer);resolve();});}); },
   };
 }

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from '../../../../../src/runtime/harness-child-process.js';
 import { createConnection } from 'node:net';
 
 export async function spawnXiaokDaemonDetached(socketPath: string): Promise<void> {

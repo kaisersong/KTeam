@@ -1,6 +1,6 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from '../../../../../src/runtime/harness-child-process.js';
 
 function assertNoAdditionalAcl(path: string): void {
   if (process.platform !== 'darwin') return;

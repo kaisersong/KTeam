@@ -188,7 +188,7 @@ export class EmbeddingClient {
     }
 
     const resp = await fetch(`${this.config.apiUrl}/embeddings`, {
-      method: 'POST',
+      method: 'POST',signal:AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: this.config.model,

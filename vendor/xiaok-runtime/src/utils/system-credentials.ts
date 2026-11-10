@@ -7,7 +7,7 @@ export interface CredentialBackend {get(id:string):string|null;put(id:string,val
 function keychainCredentialBackend():CredentialBackend {
   const entry=(id:string)=>{
     if((process as NodeJS.Process & {type?:string}).type==='browser')throw Error('credential_worker_required');
-    try {const Entry=loadFixedKeyringEntry();return new Entry('com.xiaok.credentials.v1',id,{linux:{store:'secret-service'}});}
+    try {const Entry=loadFixedKeyringEntry();return new Entry('com.kteam.credentials.v1',id,{linux:{store:'secret-service'}});}
     catch {throw Error('credential_store_unavailable');}
   };
   return {get(id){try{return entry(id).getPassword();}catch{throw Error('credential_store_unavailable');}},put(id,value){try{entry(id).setPassword(value);}catch{throw Error('credential_store_unavailable');}}};
@@ -15,7 +15,7 @@ function keychainCredentialBackend():CredentialBackend {
 
 function store():CredentialStore{
   if((process as NodeJS.Process&{type?:string}).type==='browser')throw Error('credential_worker_required');
-  return new CredentialStore(process.env.XIAOK_CONFIG_DIR??join(homedir(),'.xiaok'),keychainCredentialBackend());
+  return new CredentialStore((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')),keychainCredentialBackend());
 }
 /** CLI/credential worker: default file, optionally keychain. */
 export function systemCredentialBackend():CredentialBackend{

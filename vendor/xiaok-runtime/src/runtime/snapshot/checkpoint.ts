@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile } from '../../../../../src/runtime/harness-child-process.js';
 import { createHash } from 'node:crypto';
 import {
   copyFileSync,

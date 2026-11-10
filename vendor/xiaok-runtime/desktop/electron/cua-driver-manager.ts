@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { posix as posixPath } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from '../../../../src/runtime/harness-child-process.js';
 
 import type { McpToolSchema } from '../../src/ai/mcp/client.js';
 import type { McpRuntimeToolImage, McpRuntimeToolResult } from '../../src/ai/mcp/runtime/client.js';

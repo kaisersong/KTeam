@@ -10,7 +10,7 @@ import {ARCHIVE_METHODS,type AuthenticatedArchiveTransport} from './archive-tran
 import { createHash, createPublicKey, randomBytes, verify, type KeyObject } from 'node:crypto';
 import { readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync } from '../../../../../src/runtime/harness-child-process.js';
 import { canonicalVerificationJson } from './protocol.js';
 import { callControllerIpc } from './controller-ipc.js';
 import { assertRootProtectedFile, assertRootProtectedExecutable } from './installed-identity.js';

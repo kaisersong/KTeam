@@ -1,7 +1,7 @@
 import { chmodPrivateActivityFile } from './storage-permissions.js';
 import { ACTIVITY_STORAGE_NAMES } from './storage-permissions.js';
 import './owner-entry.js';
-import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from '../../../../../src/runtime/harness-child-process.js';
 import { writeFileSync, renameSync, openSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';

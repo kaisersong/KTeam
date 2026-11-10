@@ -111,6 +111,8 @@ export class AgentRuntime {
   private promptSnapshot?: PromptSnapshot;
   private compactRunner: CompactRunner;
   private readonly memoryStore?: MemoryStore;
+  private readonly checkpoint?: () => Promise<void>;
+  private readonly spillDir?: string;
   private readonly taskId?: string;
   private readonly executionScope?: ArtifactWorkspaceExecutionScope;
   private readonly providerSurfaceKind:
@@ -143,7 +145,7 @@ export class AgentRuntime {
     this.supportsPromptCaching = false;
     this.refreshModelPolicy();
     this.compactRunner = new CompactRunner(this.adapter);
-    this.memoryStore = options.memoryStore;
+    this.memoryStore = options.memoryStore; this.checkpoint=options.checkpoint;this.spillDir=options.spillDir;
     this.taskId = options.taskId;
     this.executionScope = options.executionScope;
     this.providerSurfaceKind = options.providerSurfaceKind ?? 'cli-chat-task';
@@ -373,6 +375,7 @@ export class AgentRuntime {
           : streamCliChatTaskProviderConversation;
         let recoveryAttempt = 0;
         let toolProviderInvocationId: string | undefined;
+        await this.checkpoint?.();
         onEvent({ type: 'model_request_started', runId: run.runId });
         for await (const chunk of recoverModelStream({
           physicalRun,
@@ -481,6 +484,7 @@ export class AgentRuntime {
         this.session.appendAssistantBlocks(currentAssistantBlocks);
         assistantBlocksCommitted = true;
 
+        await this.checkpoint?.();
         const toolCalls = currentAssistantBlocks.filter((block): block is ToolCall => block.type === 'tool_use');
         if (toolCalls.length === 0) {
           // A message may arrive while the final response is streaming. Handle it in
@@ -570,7 +574,7 @@ export class AgentRuntime {
           const truncated = truncateToolResult(result, MODEL_OUTPUT_CAP + MODEL_OUTPUT_TRUNCATION_MARKER.length, {
             sessionId: sessionSnapshot.sessionId,
             toolCallId: toolCall.id,
-            spillDir: join(sessionSnapshot.cwd, '.xiaok', 'spill'),
+            spillDir: this.spillDir ?? join(sessionSnapshot.cwd, '.xiaok', 'spill'),
           });
           // Exact final history bytes; failure only makes this observation ineligible for P1-B.
           try { this.observationOwner?.finalizeToolResult(toolCall.id, truncated.content); } catch { /* provenance is optional; never replay a completed tool */ }
@@ -601,6 +605,7 @@ export class AgentRuntime {
 
         this.session.appendUserToolResults(toolResults);
         toolResults = [];
+        await this.checkpoint?.();
         await this.registry.publishCompoundHistory?.();
         executedToolIds = new Set<string>();
         await this.observationOwner?.publishCurrentHistory?.({ strictPrivateProtocol: strictK3Run });

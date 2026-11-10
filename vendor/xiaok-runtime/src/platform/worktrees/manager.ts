@@ -7,7 +7,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, execFile } from '../../../../../src/runtime/harness-child-process.js';
 import { join, relative, resolve, sep } from 'node:path';
 import { writeFileAtomicallySync } from '../../utils/atomic-file.js';
 
@@ -694,24 +694,12 @@ async function defaultInspectPathUsage(path: string): Promise<PathUsage> {
   if (process.platform !== 'darwin' && process.platform !== 'linux') {
     return 'unknown';
   }
-  const result = spawnSync('lsof', ['+D', path], {
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
-  if (result.error) {
-    return 'unknown';
-  }
-  if (result.status === 0) {
-    return result.stdout.trim() ? 'used' : 'unknown';
-  }
-  if (
-    result.status === 1
-    && !result.stdout.trim()
-    && !result.stderr.trim()
-  ) {
-    return 'free';
-  }
-  return 'unknown';
+  return await new Promise(resolve => execFile(process.platform === 'darwin' ? '/usr/sbin/lsof' : '/usr/bin/lsof', ['+D', path], {encoding:'utf8',timeout:10000,maxBuffer:1024*1024}, (error,stdout,stderr) => {
+    if(!error)return resolve(stdout.trim() ? 'used' : 'unknown');
+    // Linux containers can expose an unreadable nsfs mount, which cannot contain worktree files.
+    const diagnostics = stderr.replace(/lsof: WARNING: can't stat\(\) nsfs file system [^\n]+\n      Output information may be incomplete\.\n/g, '');
+    resolve(error.code === 1 && !stdout.trim() && !diagnostics.trim() ? 'free' : 'unknown');
+  }));
 }
 
 function readProcessStartToken(pid: number): string | null {
@@ -739,7 +727,7 @@ function readProcessStartToken(pid: number): string | null {
   }
   try {
     return execFileSync(
-      'ps',
+      '/bin/ps',
       ['-p', String(pid), '-o', 'lstart='],
       {
         encoding: 'utf8',

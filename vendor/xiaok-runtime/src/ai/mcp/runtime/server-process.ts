@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from '../../../../../../src/runtime/harness-child-process.js';
 import type { McpRuntimeRequest, McpRuntimeResponse, McpRuntimeTransport } from './client.js';
 
 export interface McpServerProcess {

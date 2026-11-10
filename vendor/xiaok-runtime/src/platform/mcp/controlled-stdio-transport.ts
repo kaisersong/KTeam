@@ -26,7 +26,7 @@
  *    transport (design v56/v58: `detectProbeTransportKind`).
  */
 
-import { type ChildProcess } from 'node:child_process';
+import { type ChildProcess } from '../../../../../src/runtime/harness-child-process.js';
 import spawn from 'cross-spawn';
 import type { Transport } from '@modelcontextprotocol/client';
 

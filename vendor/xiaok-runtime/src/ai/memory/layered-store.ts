@@ -138,6 +138,9 @@ export class LayeredMemoryStore implements MemoryStore {
       model: config.embedding?.model ?? 'all-MiniLM-L6-v2',
       dimensions: config.embedding?.dimensions ?? 384,
     };
+    this.db.exec('CREATE TABLE IF NOT EXISTS kteam_embedding_profile(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)');
+    const embeddingProfile=JSON.stringify(embeddingConfig);
+    if(this.db.prepare('SELECT value FROM kteam_embedding_profile WHERE id=1').get()?.value!==embeddingProfile)this.db.transaction(()=>{this.db.exec('DELETE FROM memory_embeddings');this.db.prepare('INSERT OR REPLACE INTO kteam_embedding_profile VALUES(1,?)').run(embeddingProfile);})();
     this.embeddingClient = new EmbeddingClient(this.db, embeddingConfig);
     this.compactionConfig = {
       l0MinMessages: config.compaction?.l0MinMessages ?? 5,

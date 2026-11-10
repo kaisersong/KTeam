@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile } from '../../../../../src/runtime/harness-child-process.js';
 import type { ConversationActivity } from './types.js';
 
 /** Content never contains source text, paths, prompts or credentials. The

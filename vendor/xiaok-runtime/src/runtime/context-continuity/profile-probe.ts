@@ -1,4 +1,4 @@
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from '../../../../../src/runtime/harness-child-process.js';
 import {lstatSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';

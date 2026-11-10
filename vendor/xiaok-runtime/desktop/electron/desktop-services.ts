@@ -113,7 +113,7 @@ import { join, extname, basename, dirname, resolve, relative, isAbsolute, sep } 
 import { writeFile as writeFileAsync, readFile as readFileAsync, mkdir as mkdirAsync, mkdtemp, rm as rmAsync } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { buildDesktopSystemPrompt, VISUAL_PDF_EXPORT_GUIDANCE } from './desktop-system-prompt.js';
-import { spawnSync, execFile } from 'node:child_process';
+import { spawnSync, execFile } from '../../../../src/runtime/harness-child-process.js';
 import { createHash, Hash, randomUUID } from 'node:crypto';
 import { parseGoalRequestId, type GoalAttachmentRequest } from '../shared/goal-attachment.js';
 import { bumpSkillCatalogVersion, getSkillCatalogVersion } from './skill-catalog-invalidation.js';
@@ -2658,7 +2658,7 @@ function createDesktopServicesBody(options: DesktopServicesOptions,dshLease:Orig
       options.dataRoot,
       process.cwd(),
       join(homedir(), '.kswarm', 'projects'),
-      join(homedir(), '.xiaok', 'tasks'),
+      join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), 'tasks'),
     ],
     featureFlags: {
       artifactWorkspaceRevisionUi:

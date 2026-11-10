@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from '../../../../../../src/runtime/harness-child-process.js';
 import { createHash } from 'node:crypto';
 import {
   copyFileSync,
@@ -46,7 +46,7 @@ export function resolveInstallPaths(pluginsDir: string): InstallPaths {
 
 export function resolveDefaultPluginsDir(env: NodeJS.ProcessEnv = process.env): string {
   const home = env.HOME || env.USERPROFILE || homedir();
-  return resolve(home, '.xiaok', 'plugins');
+  return resolve(process.env.KTEAM_MODEL_CONFIG_DIR??resolve(process.env.KTEAM_DATA_DIR??resolve(home,'.kteam'),'runtime'),'plugins');
 }
 
 export const RESERVED_PLUGIN_DIR_NAMES = ['.managed', '.active', '.locks', '.runtimes'];

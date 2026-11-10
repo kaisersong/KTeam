@@ -162,7 +162,7 @@ function getPricingData(): ModelPricing[] {
 function pricingCandidates(): string[] {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   return [
-    join(homedir(), '.xiaok', 'pricing.json'),
+    join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), 'pricing.json'),
     join(moduleDir, '..', '..', '..', 'data', 'pricing.json'),
     join(process.cwd(), 'data', 'pricing.json'),
   ];

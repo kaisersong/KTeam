@@ -35,7 +35,7 @@ import type { ConversationActivityOwnerClient } from '../../src/runtime/conversa
 
 import { createLocalSourceWriterLifetime } from '../../src/runtime/verification/local-source-writer-lifetime.js';
 import { createOwnedServiceChildCloseTracker } from './owned-service-child-close.js';
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from '../../../../src/runtime/harness-child-process.js';
 import { assertRoomWorkspaceSidecarProtocol, assertRoomWorkspaceStartupProtocol } from './room-workspace-protocol.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';

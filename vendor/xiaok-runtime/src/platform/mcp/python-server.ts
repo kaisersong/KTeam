@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile } from '../../../../../src/runtime/harness-child-process.js';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';

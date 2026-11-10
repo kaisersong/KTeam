@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile } from '../../../../src/runtime/harness-child-process.js';
 import { promisify } from 'node:util';
 import { buildManagedPythonChildEnv } from '../../src/platform/mcp/python-server.js';
 

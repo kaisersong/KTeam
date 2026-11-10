@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile } from '../../../../src/runtime/harness-child-process.js';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);

@@ -1,6 +1,6 @@
 import {assertStandardIpcPromise} from './ipc-native-promise.js';
 import {createIntrinsicSet,settleIntrinsicOperations,appendIntrinsic,aggregateIntrinsicErrors} from '../../src/runtime/verification/intrinsic-async-collection.js';
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess } from '../../../../src/runtime/harness-child-process.js';
 const NativePromise=Promise,NativeWeakSet=WeakSet,apply=Reflect.apply,then=Promise.prototype.then;
 const resolveNative=Promise.resolve.bind(Promise),weakHas=WeakSet.prototype.has,weakAdd=WeakSet.prototype.add;
 

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile } from '../../../../src/runtime/harness-child-process.js';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';

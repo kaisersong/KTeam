@@ -1,7 +1,7 @@
 import {constants,existsSync,lstatSync,realpathSync,mkdirSync,openSync,closeSync,fstatSync,fchmodSync,readFileSync,writeFileSync,renameSync,rmSync,fsyncSync,type Stats} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import {spawnSync} from '../../../../src/runtime/harness-child-process.js';
 import type {CredentialBackend} from './system-credentials.js';
 
 export type CredentialStoreKind='file'|'keychain';
@@ -71,7 +71,7 @@ export class CredentialStore implements CredentialBackend{
     let raw:unknown;try{raw=JSON.parse(text);}catch{fail('config_corrupt');}
     if(!object(raw)||Object.keys(raw).sort().join(',')!=='backend,entries,version'||raw.version!==1||!['file','keychain'].includes(String(raw.backend))||!object(raw.entries))fail('config_corrupt');
     for(const [id,value] of Object.entries(raw.entries))if(!UUID.test(id)||typeof value!=='string')fail('config_corrupt');
-    if(raw.backend==='keychain'&&Object.keys(raw.entries).length)fail('config_corrupt');
+    if(raw.backend==='keychain'&&Object.values(raw.entries).some(value=>value!==''))fail('config_corrupt');
     return raw as State;
   }
   private write(root:string,state:State,guard:()=>void):void{
@@ -129,17 +129,12 @@ export class CredentialStore implements CredentialBackend{
     if(!UUID.test(id))fail('invalid_input');const state=this.read();
     if(state.backend==='keychain')return this.nativeGet(id);
     if(Object.hasOwn(state.entries,id))return state.entries[id]!;
-    return this.locked((current,root,guard)=>{
-      if(current.backend==='keychain')return this.nativeGet(id);
-      if(Object.hasOwn(current.entries,id))return current.entries[id]!;
-      const legacy=this.nativeGet(id);if(legacy===null)return null;
-      current.entries[id]=legacy;this.write(root,current,guard);return legacy;
-    });
+    return null;
   }
   put(id:string,value:string):void{
     if(!UUID.test(id)||typeof value!=='string')fail('invalid_input');
     this.locked((state,root,guard)=>{
-      if(state.backend==='keychain'){this.nativePut(id,value);guard();return;}
+      if(state.backend==='keychain'){this.nativePut(id,value);state.entries[id]='';this.write(root,state,guard);return;}
       state.entries[id]=value;this.write(root,state,guard);
     });
   }
@@ -148,7 +143,8 @@ export class CredentialStore implements CredentialBackend{
     this.locked((state,root,guard)=>{
       if(state.backend===kind)return;
       if(kind==='keychain')for(const [id,value] of Object.entries(state.entries))this.nativePut(id,value);
-      this.write(root,{version:1,backend:kind,entries:{}},guard);
+      const entries:Record<string,string>={};if(kind==='keychain'){for(const id of Object.keys(state.entries))entries[id]='';}else{for(const id of Object.keys(state.entries)){const value=this.nativeGet(id);if(value===null)fail('missing');entries[id]=value;}}
+      this.write(root,{version:1,backend:kind,entries},guard);
     });
   }
   private nativeGet(id:string):string|null{try{return this.keychain.get(id);}catch{fail('store_unavailable');}}
