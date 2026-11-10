@@ -105,8 +105,7 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
           fi
           gh release upload "$RELEASE_TAG" release/KTeam-*-mac-arm64.zip release/KTeam-*-mac-arm64-build.json release/SHA256SUMS --clobber
-          if [[ "$RELEASE_TAG" == *-* ]]; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
-          else
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
-          fi
+          # Stay a draft: QA verifies the uploaded files against the CI artifact (hashes + install smoke)
+          # and the release owner publishes manually after the written pass:
+          #   gh release edit <tag> --draft=false [--prerelease | --latest] --notes-file <final notes>
+          echo "Draft $RELEASE_TAG uploaded; waiting for QA written pass before publishing."
