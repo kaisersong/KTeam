@@ -4,47 +4,91 @@
 
 # KTeam
 
-**组建你的 AI 团队，让工作主动向前。**
+> Build your AI team and keep work moving. KTeam is a local multi-Bot collaboration desktop app: several AI members discuss, split up and deliver work in a group chat, while you make the calls and accept the results.
 
-KTeam 是独立的多 Bot 协作桌面应用，按[产品设计](docs/design/product-design-v5.md)分阶段实现。
+KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. This is KTeam's main technical difference from other multi-agent tools: chat text is not authorization, and a discussion reply is not proof that the work was done.
 
-当前 **0.1.0-preview.15** 可验证：按名字创建长期成员、独立配置模型（也可显式导入小K配置）、建立群聊并持续更新共享共识、自然语言自动选择相关成员（包括不回应）、后台完成多成员讨论、会话内答复、组队方案卡片和单成员私聊、用户验收、暂停/继续、历史分页与崩溃核对。窗口关闭后后台工作继续，未安装开机启动项。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-KTeam 内置 Agent 使用自带平台注册工厂、连续 Session、分层记忆、MCP/插件/Hooks、子 Agent 与 Worktree，并保留文件、终端（含 SSH）、网络和 Skill 工具。工具记录随回复展示；精确审批转到对应 Bot 私聊。小 K 可读取所有可访问团队的真实消息、共享纪要和工作状态，按重要变化主动提醒；群成员可私聊本人澄清，也可调用另一名群成员实际协作。消息内支持原 A2UI 表格和图表卡片。
+**Current version: 0.3.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). 0.3 is the first build signed and notarized by Apple. It supports macOS on Apple silicon (arm64) only and includes auto-update. See [Version History](#version-history) for changes.
 
-**完整 v5 与全部 harness 等量迁移尚未交付**。完整 PTY/安全终端、通用循环提醒、严格 Skill fork/验收工作流、完整观察资格协议等差异列在 [迁移清单](docs/design/desktop/harness-parity.md)。密码不通过聊天收集，原生 CLI 使用其自己的本机权限与登录。未宣称完整 AIMP Core-L2 认证，也不把讨论答复或投递回执说成业务已执行。
+---
 
-## 下载
+## Why AIMP
 
-**[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)
+Most multi-agent tools treat collaboration as a chain of function calls or as free-form chat. The first is too rigid for people to follow; the second leaves it unclear whether anything said actually counts. AIMP takes a different approach:
 
-下载 ZIP、解压后将 `KTeam.app` 拖入“应用程序”。当前为 macOS arm64 预览版，使用本机 ad-hoc 签名，尚未做 Apple 公证；首次打开若被系统阻止，请在“系统设置 → 隐私与安全性”核对来源后允许打开。Intel Mac、Windows 和 Linux 安装包尚未提供。
+- **IM conversations at the top.** Contacts, group chats, threads, @mentions, quoted replies and approval cards map directly onto the protocol's rooms, threads and event chain, so people and agents negotiate, delegate, deliver and accept work in the same conversation.
+- **Human-readable first, structure added progressively.** With the structured parts removed, a person can still read what happened. Casual chat can be plain language; the riskier and less reversible an action, the more structure it requires.
+- **State comes only from the structured event chain.** Collaboration state is derived from ordered, signed structured events. Natural-language text is evidence only and never takes protocol effect by itself.
+- **Commitments are explicit, and humans have the final say.** Accepting, delivering and approving work need explicit events. Human messages outrank agents for priority, interruption and veto. Execution rights come only from capability tokens that can expire and be revoked.
+- **No new transport.** AIMP is a collaboration layer that complements MCP (tools) and A2A (calls) and runs on existing messaging channels.
 
-本版将收件箱缩为左上“＋”左侧的图标。群聊和单聊均可通过右键或“…”置顶到顶部，未置顶会话保留在普通列表；群头像包含本人和最多三位 Bot。角色头像有不同朝向，工作时眨眼、点头和转头，后台、离屏与减少动态效果时停止动画。小K助理日常保持正面，只在工作时轻微转头。Bot 间协作默认显示消息条数与成员名，点击任一成员查看原始往来，关闭后回到原滚动位置。无需安装 xiaok。模型在 KTeam 设置中配置，默认使用本机私有文件存储；只有主动选择 Mac 钥匙串才使用 KTeam 自己的钥匙串。已有用户可显式导入小K模型；导入不改写原配置。
+Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spec-v3.1.md)** (Chinese), with its [JSON Schemas](spec/aimp/aimp-v3.1-schemas.json) and [signature test vectors](spec/aimp/aimp-v3.1-test-vectors.json).
 
-## 桌面验证
+### What KTeam implements today
 
-macOS arm64，应用包为 `release/mac-arm64/KTeam.app`。直接打开 KTeam，内置固定版本的 KSwarm 与 intent-broker，无需先安装小K：
+- The envelope wire version is `aimp: "1.0"`, corresponding to spec 3.1 ([`src/protocol/aimp.ts`](src/protocol/aimp.ts)).
+- Passes the spec's official test vectors for all four signature domains: canonical bytes, hashes and Ed25519 signatures ([`tests/protocol.test.ts`](tests/protocol.test.ts); vector copy in [`tests/fixtures/aimp-v3.1-test-vectors.json`](tests/fixtures/aimp-v3.1-test-vectors.json)).
+- The canonical JSON subset rejects duplicate keys, invalid Unicode, unsafe numbers and excessive nesting.
+- The L0 preview never treats text such as "accept", "approve" or a tool call as authorization.
+- The experimental discussion lifecycle in intent-broker is wired up.
 
-1. 首次打开配置模型并创建 Bot，或接入本机已有 Agent。进入助理会话后，例如“帮我组一个经营复盘团队，CEO 和 CTO 一起列出本周资料缺口”。
-2. 检查方案里的讨论起点和成员，点击“创建团队”，进入真实群聊，直接交流；共识随讨论更新到共享纪要。
-3. 左上“＋”也可只填名字创建成员并直接开聊，或邀请已有成员建群；模型选择折叠在更多设置里。
-4. 点击会话标题查看成员、共享、资料、电脑、运行记录与验收；左上“＋”左侧的收件箱图标保留待确认方案、创建恢复和工作问题。
-5. 暂停会停止当前工作并保留未开工消息；继续只释放未开工消息。停止或结果未知的回合不自动重放。
+**KTeam does not yet claim full AIMP v3.1 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. 0.4 will check the implementation against the v3.1 spec item by item.
 
-新安装由 KTeam 启动内置服务，数据与模型保存在自己的 `~/.kteam/` 目录。旧安装保留原共享服务的连接凭据、数据库和成员目录；需要恢复服务时使用内置固定版本源码，不另建空历史库，也不依赖小K程序。已有模型通过设置中的显式导入复制到 KTeam，未导入时仍能查看原历史。配套 broker 版本见 [sources.lock.json](sources.lock.json)，旧服务需要配套升级。模型身份变化会使原绑定失效；不静默换模型。共享服务暂不可用时会显示连接错误。
+---
 
-## 来源与状态所有权
+## What's in 0.3
 
-- `runtime-core/` 是 KTeam 自己维护的运行时代码（AgentRuntime、模型适配器、ToolRegistry、凭据加载链及活动 owner 客户端），最初从 xiaok-cli `f8728a34` 一次性复制而来，之后不再同步；原构建期补丁已直接写进源码。构建和测试不读取 xiaok-cli 或 mydocs。来源说明见 [NOTICE](NOTICE)。
-- KSwarm 是 Agent/项目唯一 owner；intent-broker 是 Room/成员/群消息唯一 owner。KTeam 保存执行绑定、设置、工作队列、预算、稀疏已读、发送 outbox，以及冻结提案/创建阶段和收据；不复制原服务名册或群消息。
-- broker 持有实验性讨论任务链、签名定序、准入 epoch/lease、交付字节验证；自然语言不能授予权限。人工验收在独立字节核验之后。
-- host 使用私有 Unix socket、独立客户端 token、API/schema 握手与 SQLite OS 锁。未知 POST 只核对事实，不自动重发或重新调用模型。调用预算按会话设置执行，路由及 SDK 重试都计入。
-- renderer 只使用白名单语义 IPC，不能读取凭据或调用任意文件/命令/HTTP。Markdown 不执行 HTML，也不把文件路径或图片变成权限。
+- **Fully decoupled from xiaoK.** KTeam has its own app name, bundle ID (`com.kteam.desktop`) and data directory `~/.kteam/`. Its built-in services use ports assigned by the system and recorded in `~/.kteam/service-endpoints.json`, so they never clash with xiaoK. Credentials are stored by default in KTeam's own private file; if you switch to the Mac keychain, KTeam uses only its own entries. Startup and background work never read any xiaoK file.
+- **Import models from xiaoK.** If you already set up models in xiaoK, click "从小K导入" (Import from xiaoK) in model settings. Only when you click it does KTeam read xiaoK's config and keychain, once, and copy them into KTeam's own credentials; it never writes to xiaoK. macOS asks for permission the first time xiaoK's keychain is read. If you choose "Deny", the import stops and tells you to enter the key manually or try again; it doesn't prompt repeatedly or leave a half-finished import.
+- **Mac auto-update.** Updates come only from [KTeam's GitHub Releases](https://github.com/kaisersong/KTeam/releases) (official releases only, no pre-releases, no downgrades). They download in the background, and KTeam asks whether to restart when ready; choose "Later" to install on next quit. You can also check manually from KTeam ▸ 检查更新… (Check for Updates).
+- **0.2 upgrade notice.** Service data that 0.2 shared with xiaoK is not carried over to 0.3. If KTeam finds that old setting, it shows a one-time notice at the top with a "去设置" (Go to Settings) button; once closed, it doesn't come back.
+- **Signed and notarized.** The 0.3 macOS build is signed and notarized by Apple.
 
-## 构建和检查
+## Features
 
-需要 Node >=22.22.0，桌面打包当前验证 macOS arm64。同级放置 `kswarm` 和 `intent-broker`，版本由 sources.lock 锁定；`mydocs` 只用于文档，可不放，构建与测试不依赖它。
+- Create long-lived Bot members by name, each with its own role, initiative and model.
+- Start group chats where several members discuss; KTeam picks the members relevant to the topic (or none), and the agreed points are kept in shared notes.
+- One-to-one chats with a member, team proposal cards, pause / resume and user acceptance. Background work continues after the window is closed.
+- Connect agents already on your Mac: KTeam detects installed xiaok CLI, Codex, Kimi and ZCode and uses their own config and sign-in.
+
+---
+
+## Install
+
+### Download
+
+1. Open [KTeam Releases](https://github.com/kaisersong/KTeam/releases/latest) and download the 0.3.0 macOS arm64 `.dmg` from Assets.
+2. Open the dmg and drag `KTeam.app` into Applications.
+3. The first time you open it, macOS says it was downloaded from the internet; click "Open".
+
+Only Apple silicon (M-series) Macs are supported; Intel Macs are not supported yet. There is no official Windows build in 0.3; Windows is planned for 0.4.
+
+Optional check: put the release's `SHA256SUMS` in the same folder as the installer and run `shasum -a 256 -c SHA256SUMS`.
+
+### Upgrading from 0.2
+
+0.2 has no auto-update, so **download and install 0.3 manually once**, replacing your existing KTeam. Later versions update automatically.
+
+After upgrading, service data that 0.2 shared with xiaoK is not carried over; follow the notice to set up the service again in Settings. To bring over models you configured in xiaoK, click "从小K导入".
+
+---
+
+## Architecture
+
+| Part | Responsibility |
+|---|---|
+| KTeam desktop app | UI, settings, work queue, budgets, execution bindings; data lives in `~/.kteam/` |
+| `runtime-core/` | KTeam's own agent runtime, a one-time copy of [xiaok-cli](https://github.com/kaisersong/xiaok-cli) `f8728a34`, no longer synced; see [NOTICE](NOTICE) |
+| [KSwarm](https://github.com/kaisersong/kswarm) | Sole owner of agents and projects |
+| [intent-broker](https://github.com/kaisersong/intent-broker) | Sole owner of rooms, members and group messages; carries the AIMP discussion lifecycle |
+
+KSwarm and intent-broker ship inside the app at fixed versions pinned in [sources.lock.json](sources.lock.json); you don't install them separately. The UI process can only use allow-listed semantic IPC; it cannot read credentials or call arbitrary files, commands or network requests.
+
+## Build and Check
+
+Requires Node >= 22.22.0. Place `kswarm` and `intent-broker` next to the KTeam checkout.
 
 ```sh
 npm ci --ignore-scripts
@@ -52,11 +96,7 @@ npm run check
 npm run pack:desktop
 ```
 
-集成测试使用真实隔离服务、专属临时数据库与随机 loopback 端口，并回收记录的 PID；控制器异常测试明确使用推理 fixture，另有真实模型与正式安装包验证。不会用 mock 代替本地 Agent 资格探针。Electron 下载由校验和验证后解压，本地包使用 ad-hoc 签名并验证，未做 Apple notarization。
-
-文档实体位于同级 `mydocs/kteam/`，项目 `docs -> ../mydocs/kteam`，不建立第二份实体目录。链接存在时 `verify:sources` 会核对文档摘要；不存在时跳过，测试所需的 AIMP 向量在 `tests/fixtures/`。
-
-发布预览版时，先更新 `package.json` / lockfile 版本并通过本机完整检查，再推送同版本 `v*` 标签。`KTeam desktop release` 工作流会在 macOS arm64 构建、校验签名并发布 ZIP、构建信息与 `SHA256SUMS`；标签、应用版本和源码必须一致。完整协议/文档检查需要已授权的私有 mydocs 访问；桌面发布流程使用仓库内固定运行时源码独立构建。
+`pack:desktop` produces a locally ad-hoc-signed development build. Official signing, notarization and publishing are done by the GitHub Actions release workflow.
 
 ## CLI
 
@@ -67,16 +107,28 @@ node dist/src/cli.js bots
 node dist/src/cli.js teams
 ```
 
-也可显式设置 `KTEAM_DATA_DIR`、`KTEAM_BROKER_TOKEN_FILE`、`KTEAM_KSWARM_TOKEN_FILE` 后 `init` / `start`；不要把凭据放入命令参数或 Git。
+Never put credentials in command arguments or commit them to Git.
 
-## AIMP
+---
 
-[规范 3.1](docs/reference/aimp-design-spec-v3.1.md)的信封仍为 `aimp: "1.0"`。已验证官方四域签名向量、安全整数 JCS 子集、重复键/非法 Unicode 拒绝，并接通 broker 实验性讨论生命周期。
+## Version History
 
-**不声明完整 AIMP/Core-L2 兼容**。生产身份根、收据激活、完整规范状态迁移、执行副作用等首发门槛仍需完成。见[实施计划](docs/design/implementation-plan.md)。
+### v0.3.0
 
-## Bot 创建与原 Agent 接入
+- Fully decoupled from xiaoK: separate data directory, ports and credentials.
+- "Import from xiaoK" kept, reading once and only when the user clicks.
+- Mac auto-update from KTeam's own Releases only.
+- One-time upgrade notice for 0.2 users of the shared service.
+- macOS build signed and notarized by Apple.
 
-首次打开会引导创建具名 Bot，并自动发现本机 xiaok / Codex / Kimi / ZCode。已支持的 Agent 直接验证调用并沿用自身配置与登录，无需复制指令或邀请码。Bot 设置分为“属性与主动性”和“Agent”：可配置职责、背景、相关时参与或仅点名、授权资料目录、一次性跟进，以及内置模型或本机 Agent。暂不认识的 Agent 才使用手动邀请、核对确认码的降级接入；仅凭邀请编号不能收发消息。
+### v0.2.0
 
-群名直接使用团队名称，方向和目标在群里讨论，并随共识变化记录到共享纪要。KTeam 内置 Agent 使用完整平台工具与权限规则，本机 Agent 使用原生会话与批准方式。允许跟进后可对未完成事项安排一次有界检查；没有新发现不发言，暂停或来源/目标变化会停止旧计划。详情及验证见 [首次引导设计](docs/design/desktop/onboarding-agent-link.md) 和 [界面 QA](design-qa.md)。
+First official release (macOS arm64, ad-hoc signed, not notarized). See the [v0.2.0 release](https://github.com/kaisersong/KTeam/releases/tag/v0.2.0).
+
+## Feedback
+
+Report problems in [Issues](https://github.com/kaisersong/KTeam/issues) with your macOS version and screenshots.
+
+## License
+
+[Apache-2.0](LICENSE). Third-party sources are listed in [NOTICE](NOTICE).
