@@ -89,6 +89,20 @@
     {
       "file": "docs/design/desktop/work-notifications-20261111.md",
       "sha256": "a0ca76b696dde4042b2910ebb62f4a4cdd6a2ee77f093fd8edf9800be8e2e3e5"
+    },
+    {
+      "file": "docs/design/desktop/openmausbot-source-audit-20261110.md",
+      "sha256": "0592d3a7f9a518bc3cf6d09ea95e30ae31c0a69b03cf38efb15c2abc8cd0e0c6",
+      "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
+      "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
+      "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
+    },
+    {
+      "file": "docs/design/desktop/openmausbot-source-audit-20261110.sources.json",
+      "sha256": "a99f287b5ec3527cf7077eeb7da87662500b52b9de59ed80f58590a0357eb7ca",
+      "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
+      "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
+      "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
     }
   ],
   "productBaseline": {
