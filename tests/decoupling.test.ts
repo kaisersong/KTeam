@@ -15,11 +15,10 @@ const read=(file:string)=>readFileSync(join(root,file),'utf8');
 const code=(file:string)=>/\.(?:[cm]?[jt]sx?|json|ya?ml)$/.test(file);
 
 // External-agent interop only: KTeam can launch an independently installed xiaok CLI like Codex or Kimi
-// (forwarding its own XIAOK_HOME, fingerprinting its config) and offers a user-triggered, read-only model import.
+// (forwarding its own XIAOK_HOME, fingerprinting its config). KTeam never imports xiaok's models or credentials.
 const INTEROP:Record<string,RegExp[]>={
  'src/runtime/local-agents.ts':[/'XIAOK_HOME'/g,/join\(home,'\.xiaok\/config\.json'\)/g,/join\(home,'\.config\/xiaok\/config\.json'\)/g],
  'desktop/main.ts':[/'XIAOK_HOME'/g],
- 'src/service/model-settings.ts':[/join\(homedir\(\),'\.xiaok'(?:,'config\.json')?\)/g,/'com\.xiaok\.credentials\.v1'/g],
 };
 // Persisted format identifiers inside KTeam's own files (config meta key, secret references, A2UI catalog).
 const FORMAT_IDS=/\$xiaokCredentials|xiaok-secret:v1:|xiaok-safe(?:\/1\.0)?/g;
@@ -70,6 +69,22 @@ test('runtime code has no xiaok default path, env var or keychain service outsid
  for(const [file,patterns] of Object.entries(INTEROP))for(const p of patterns)assert.match(read(file),new RegExp(p.source),file+' '+p);
  // runtime-core mentions xiaok only through the persisted format identifiers.
  for(const file of tracked('runtime-core','desktop/core-ui'))assert.doesNotMatch(read(file).replace(FORMAT_IDS,''),/xiaok/i,file);
+});
+
+test('KTeam source never reads xiaok model config or the xiaok keychain',()=>{
+ const XIAOK_CONFIG=/\.xiaok['"\x60]?\s*(?:,\s*['"\x60]|[/\\])config\.json/g,XIAOK_KEYCHAIN=/com\.xiaok\.credentials/g;
+ // The only allowed mention: the xiaok-cli local agent's config fingerprint (hashed to detect setup changes, never parsed).
+ const FINGERPRINT='src/runtime/local-agents.ts';
+ const hits:string[]=[];
+ for(const file of tracked('src','desktop','runtime-core','scripts','electron-builder.yml','package.json').filter(f=>!f.startsWith('tests/'))){
+  const text=read(file);
+  for(const m of text.matchAll(XIAOK_KEYCHAIN))hits.push(file+': '+m[0]);
+  const config=[...text.matchAll(XIAOK_CONFIG)];
+  if(file===FINGERPRINT){assert.equal(config.length,1,FINGERPRINT+' fingerprint path');assert.match(text,/:\[join\(home,'\.xiaok\/config\.json'\),join\(home,'\.config\/xiaok\/config\.json'\)\];/);}
+  else for(const m of config)hits.push(file+': '+m[0]);
+ }
+ assert.deepEqual(hits,[]);
+ for(const file of ['src/service/model-settings.ts','src/service/server.ts','desktop/semantic-api.ts','desktop/semantic-methods.ts','desktop/renderer/src/api.ts','desktop/renderer/src/model-settings.tsx'])assert.doesNotMatch(read(file),/importXiaok|import-xiaok|importAvailable|小K导入/,file);
 });
 
 test('default data, runtime config and keychain locations belong to KTeam',async()=>{

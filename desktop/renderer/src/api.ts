@@ -5,7 +5,7 @@ export interface KTeamAPI {
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
  integrationSettings():Promise<any>;saveIntegrationSettings(input:any):Promise<any>;testIntegration(input:any):Promise<any>;importProviderModels(input:any):Promise<any>;voiceOptions():Promise<any>;previewVoice():Promise<any>;transcribeAudio(input:any):Promise<any>;
  appPreferences():Promise<any>;saveAppPreferences(input:any):Promise<any>;appResources():Promise<any>;openSettingsLocation(input:any):Promise<any>;
- reconnectServices():Promise<any>;modelSettings():Promise<any>;saveModel(input:any):Promise<any>;setCredentialStorage(input:any):Promise<any>;saveDecisionModels(input:any):Promise<any>;importXiaokModels(input:any):Promise<any>;
+ reconnectServices():Promise<any>;modelSettings():Promise<any>;saveModel(input:any):Promise<any>;setCredentialStorage(input:any):Promise<any>;saveDecisionModels(input:any):Promise<any>;
  pinConversation(input:{roomId:string;pinned:boolean}):Promise<{ok:boolean;pinnedAt:string|null}>;
  peerExchanges(input:{roomId:string;originIds:string[]}):Promise<{exchanges:import('../../../src/service/peer-exchanges').PeerExchange[]}>;peerExchangeMessages(input:{roomId:string;exchangeId:string}):Promise<any>;
  decisionModels():Promise<any>;assistantState():Promise<any>;setAssistantProactivity(input:{enabled:boolean}):Promise<any>;
