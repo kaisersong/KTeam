@@ -34,7 +34,7 @@ export function activityRecords(jobs:unknown[],roomId:string):ActivityRecord[]{
 }
 export const activityStateLabels:Record<string,string>={queued:'等待执行',routing:'正在选择成员',running:'正在执行',stopping:'正在停止',waiting:'等待结果',needs_review:'交付中有未完成项，需核对',delivered:'已提交答复',blocked:'需要处理',unknown:'结果待核对',stopped:'已停止',noop:'检查已结束',held:'会话已暂停',cancelled:'已取消'};
 export const eventStateLabels:Record<string,string>={waiting:'已保存，等待结果',running:'执行中',completed:'已返回',failed:'失败',unreported:'未报告状态'};
-const toolLabels:Record<string,string>={read:'查阅资料',glob:'定位文件',grep:'检索资料',bash:'执行命令',web_fetch:'读取网页',web_search:'检索公开来源',contact_bot:'联络成员',delegate_work:'交接子工作',ask_user:'向你提问',read_material:'读取会话资料',update_shared_context:'更新共享纪要',skill:'使用技能',skillFetchAssets:'读取技能资源',tool_search:'查找可用工具',render_ui:'生成交互内容',render_report:'生成报告',render_slide:'生成演示文稿',schedule_follow_up:'安排跟进',model_request_started:'请求模型'};
+const toolLabels:Record<string,string>={read:'查阅资料',glob:'定位文件',grep:'检索资料',bash:'执行命令',web_fetch:'读取网页',web_search:'检索公开来源',contact_bot:'联络成员',delegate_work:'交接子工作',wait_for_condition:'等待工作条件',ask_user:'向你提问',read_material:'读取会话资料',update_shared_context:'更新共享纪要',skill:'使用技能',skillFetchAssets:'读取技能资源',tool_search:'查找可用工具',render_ui:'生成交互内容',render_report:'生成报告',render_slide:'生成演示文稿',schedule_follow_up:'安排跟进',model_request_started:'请求模型'};
 export function activityEventLabel(event:ActivityEvent){if(event.type==='run_aborted')return event.state==='waiting'?'保存原工作':'运行已中止';return toolLabels[event.name]??toolLabels[event.type??'']??event.name;}
 
 /** The wrapped calls are the tool facts. Keep lifecycle/usage telemetry in Events/Raw. */

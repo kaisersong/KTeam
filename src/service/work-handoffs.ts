@@ -1,3 +1,4 @@
+import {WorkConditions} from './work-conditions.js';
 import {createHash} from 'node:crypto';
 import {KTeamError,fields,record,text} from '../errors.js';
 import type {Upstreams} from '../adapters/upstream.js';
@@ -14,7 +15,8 @@ const humanTail=(messages:any[])=>messages.filter(message=>message.sender?.kind=
 /** Durable references to the existing peer jobs and AIMP task, never a second task owner. */
 export class WorkHandoffs {
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private chats:PrivateConversations,
-  private assertRoutine:(job:any)=>Promise<void>,private invalidateChildren:(rootId:string)=>void,private now=Date.now){}
+  private assertRoutine:(job:any)=>Promise<void>,private invalidateChildren:(rootId:string)=>void,private now=Date.now){this.conditions=new WorkConditions(upstream,store);}
+ private conditions:WorkConditions;
  private async capture(job:any,botId:string,targetIds:string[]){
   await this.coordinator.guardConversation(job.roomId);
   const snapshot=await this.upstream.getTeam(job.roomId),bots=((await this.upstream.listBots()).agents as any[]),members=snapshot.members as any[];
@@ -25,11 +27,22 @@ export class WorkHandoffs {
  async guard(job:any){
   if(!job?.currentHandoffId)return;
   const op=this.store.operation(job.currentHandoffId);if(!op||['failed','unknown','cancelled'].includes(op.status))throw new KTeamError('handoff_scope_changed',409);
-  try{await this.assertRoutine(job);const current=await this.capture(job,op.botId,op.requests.map((request:any)=>request.botId));if(hash(current)!==hash(op.captured))throw new KTeamError('handoff_scope_changed',409);for(const child of op.children??[])await this.coordinator.guardConversation(child.roomId);}
+  try{if(['waiting','parking','parked','resuming'].includes(op.status)&&this.now()>op.deadline)throw new KTeamError(op.condition?'condition_wait_expired':'handoff_wait_expired',409);await this.conditions.assertScope(op);await this.assertRoutine(job);const current=await this.capture(job,op.botId,op.requests.map((request:any)=>request.botId));if(hash(current)!==hash(op.captured))throw new KTeamError('handoff_scope_changed',409);for(const child of op.children??[])await this.coordinator.guardConversation(child.roomId);}
   catch(error){if(error instanceof KTeamError&&([403,404].includes(error.status)||['conversation_identity_changed','conversation_contract_changed','routine_scope_changed','bot_profile_changed','model_binding_changed'].includes(error.code)))throw new KTeamError('handoff_scope_changed',409);throw error;}
  }
  wantsPause(job:any){const op=job.currentHandoffId?this.store.operation(job.currentHandoffId):null;return !!op&&['waiting','parking'].includes(op.status);}
- tools(scope:BotContactScope,job:any){return [{permission:'safe',definition:{name:'delegate_work',description:'把独立子工作交给当前群内至多三位成员，可并行完成。当前工作会保存并挂起，释放执行槽；全部结果或失败返回后，重新校验原范围并自动接续原工作。不把送达当完成，不授予新权限。不使用本工具重复结果未知的旧操作。',inputSchema:{type:'object',additionalProperties:false,required:['requests','doneWhen'],properties:{requests:{type:'array',minItems:1,maxItems:3,items:{type:'object',additionalProperties:false,required:['botId','message'],properties:{botId:{type:'string'},message:{type:'string',minLength:1,maxLength:6000}}}},doneWhen:{type:'string',minLength:1,maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:(input:unknown)=>this.delegate(scope,job,input)}];}
+ tools(scope:BotContactScope,job:any){return [this.conditionTool(scope,job),{permission:'safe',definition:{name:'delegate_work',description:'把独立子工作交给当前群内至多三位成员，可并行完成。当前工作会保存并挂起，释放执行槽；全部结果或失败返回后，重新校验原范围并自动接续原工作。不把送达当完成，不授予新权限。不使用本工具重复结果未知的旧操作。',inputSchema:{type:'object',additionalProperties:false,required:['requests','doneWhen'],properties:{requests:{type:'array',minItems:1,maxItems:3,items:{type:'object',additionalProperties:false,required:['botId','message'],properties:{botId:{type:'string'},message:{type:'string',minLength:1,maxLength:6000}}}},doneWhen:{type:'string',minLength:1,maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:(input:unknown)=>this.delegate(scope,job,input)}];}
+ private conditionTool(scope:BotContactScope,job:any){return {permission:'safe',definition:{name:'wait_for_condition',description:'保存当前工作并释放执行槽，等待工作目录内文件到位、文件内容变化或同会话已有工作返回结果。未变化不调用模型。只读观察不扩大权限，不重新执行旧操作。文件内容变化最多检查1MiB；必须填写期限，最多60分钟且不超过原任务期限。',inputSchema:{type:'object',additionalProperties:false,required:['condition','reason','timeoutMinutes'],properties:{condition:{type:'object',additionalProperties:false,required:['kind'],properties:{kind:{type:'string',enum:['file_exists','file_changed','work_result']},path:{type:'string'},jobId:{type:'string'}}},reason:{type:'string',maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:async(value:unknown)=>{
+  const input=record(value);fields(input,['condition','reason','timeoutMinutes']);const reason=text(input.reason,'condition_reason',512),minutes=input.timeoutMinutes;
+  if(!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60||(job.handoffVersion??0)>=2||this.store.waitingJobs().length>=100)throw new KTeamError('condition_input_invalid');
+  await scope.assertCurrent();const condition=await this.conditions.capture(job,scope.botId,input.condition),captured=await this.capture(job,scope.botId,[]);await scope.assertCurrent();
+  const id='work-handoff:'+hash([job.id,scope.botId,input]),existing=this.store.operation(id);if(existing)throw new KTeamError('condition_already_recorded',409);
+  const version=(job.handoffVersion??0)+1,deadline=Math.min(this.now()+Number(minutes)*60000,Date.parse(job.task?.terms?.deadline)||this.now()+3600000);
+  this.store.saveOperation({id,jobId:job.id,roomId:job.roomId,botId:scope.botId,requests:[],children:[],condition,doneWhen:reason,deadline,captured,version,status:'waiting'},0);
+  job.currentHandoffId=id;job.handoffVersion=version;job.handoffWait={operationId:id,doneWhen:reason,deadline,condition:{kind:condition.kind,label:condition.kind==='work_result'?'已有工作返回结果':condition.kind==='file_exists'?'文件到位':'文件内容变化'},children:[]};this.store.save(job);
+  return JSON.stringify({waiting:true,completed:false,operationId:id,condition:job.handoffWait.condition,next:'原工作将保存，条件满足后接续，不进行模型轮询。'});
+ }};}
+
  async delegate(scope:BotContactScope,job:any,value:unknown){
   const input=record(value);fields(input,['requests','doneWhen','timeoutMinutes']);const doneWhen=text(input.doneWhen,'handoff_done_when',512),minutes=input.timeoutMinutes??30;
   if(!Array.isArray(input.requests)||!input.requests.length||input.requests.length>3||!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60)throw new KTeamError('handoff_input_invalid');
@@ -56,7 +69,7 @@ export class WorkHandoffs {
   const reason='waiting_members:'+op.id,parkId=eventId(op.id+':park');let current=this.store.saveOperation({...op,status:'parking',taskRef:task.taskRef,reason,parkId},op.revision);
   job.state='waiting';delete job.handoffResume;this.store.save(job);
   let blocked:any;
-  try{blocked=(await this.upstream.aimp(job.roomId,'agent-event',{logicalAgentId:op.botId,id:parkId,roomId:job.roomId,threadId:task.threadId,taskRef:task.taskRef,act:'escalate',body:'已交给相关成员，结果返回后接续本项工作。',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.escalate@1',must_understand:true,reason_code:reason,evidence:{handoffId:op.id,childJobIds:op.children.map((child:any)=>child.jobId)},mandatory:false}})).task;}
+  try{blocked=(await this.upstream.aimp(job.roomId,'agent-event',{logicalAgentId:op.botId,id:parkId,roomId:job.roomId,threadId:task.threadId,taskRef:task.taskRef,act:'escalate',body:op.condition?'已保存工作，条件满足后接续。':'已交给相关成员，结果返回后接续本项工作。',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.escalate@1',must_understand:true,reason_code:reason,evidence:{handoffId:op.id,childJobIds:op.children.map((child:any)=>child.jobId)},mandatory:false}})).task;}
   catch(error){if(!(error instanceof KTeamError)||error.code!=='upstream_operation_unknown')throw error;blocked=((await this.upstream.aimp(job.roomId,'tasks')).tasks as any[]).find(candidate=>candidate.taskRef===task.taskRef);if(blocked?.state!=='blocked'||blocked.headId!==parkId)throw error;}
   current=this.store.saveOperation({...current,status:'parked'},current.revision);const aborted=[...(job.toolTrace??[])].reverse().find(event=>event.type==='run_aborted'&&!job.handoffPauseEventIds?.includes(event.id));if(aborted)job.handoffPauseEventIds=[...(job.handoffPauseEventIds??[]),aborted.id].slice(-8);job.task=blocked;job.state='waiting';this.store.save(job);
  }
@@ -67,7 +80,7 @@ export class WorkHandoffs {
   if(job.task){const task=((await this.upstream.aimp(job.roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===job.task.taskRef);if(task&&['committed','working','blocked'].includes(task.state))await this.upstream.aimp(job.roomId,'event',{id:eventId(job.currentHandoffId+':stop'),roomId:job.roomId,threadId:task.threadId,taskRef:task.taskRef,act:'stop',body:'交接的原范围已失效或已超时，等待核对后继续。',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.stop@1',must_understand:true,reason:code}});}
  }
  private queueResume(job:any,op:any,task:any){
-  this.store.transaction(()=>{const latest=this.store.job(job.id),operation=this.store.operation(op.id);if(latest?.state!=='waiting'||latest.currentHandoffId!==op.id||operation.status!=='resuming')throw new KTeamError('handoff_scope_changed',409);this.store.saveOperation({...operation,status:'returned'},operation.revision);latest.task=task;latest.handoffResume={operationId:op.id,botId:op.botId,version:op.version,readonly:operation.results.some((result:any)=>result.state!=='delivered'),results:operation.results,doneWhen:op.doneWhen};latest.state='queued';latest.handoffWait=undefined;this.store.save(latest);});
+  this.store.transaction(()=>{const latest=this.store.job(job.id),operation=this.store.operation(op.id);if(latest?.state!=='waiting'||latest.currentHandoffId!==op.id||operation.status!=='resuming')throw new KTeamError('handoff_scope_changed',409);this.store.saveOperation({...operation,status:'returned'},operation.revision);latest.task=task;latest.handoffResume={operationId:op.id,botId:op.botId,version:op.version,condition:operation.condition?{kind:operation.condition.kind,label:latest.handoffWait?.condition?.label}:undefined,readonly:operation.results.some((result:any)=>result.state!=='delivered'),results:operation.results,doneWhen:op.doneWhen};latest.state='queued';latest.handoffWait=undefined;this.store.save(latest);});
  }
  async wake(){
   const candidates=this.store.waitingJobs().map(job=>({job,op:this.store.operation(job.currentHandoffId)})).filter(entry=>entry.op&&['parked','parking','resuming'].includes(entry.op.status)&&(!entry.op.retryAt||entry.op.retryAt<=this.now())).sort((a,b)=>(a.op.lastCheckedAt??0)-(b.op.lastCheckedAt??0)).slice(0,20);
@@ -82,13 +95,15 @@ export class WorkHandoffs {
      if(op.status==='parking'&&task?.state==='blocked'&&task.headId===op.parkId){op=this.store.saveOperation({...op,status:'parked'},op.revision);job.task=task;this.store.save(job);}
      else {await this.fail(job,'handoff_result_unknown');const latest=this.store.job(job.id);latest.state='unknown';this.store.save(latest);continue;}
     }
-    if(this.now()>op.deadline){await this.fail(job,'handoff_wait_expired');continue;}
+    if(this.now()>op.deadline){await this.fail(job,op.condition?'condition_wait_expired':'handoff_wait_expired');continue;}
+    if(op.condition&&op.pollAt&&op.pollAt>this.now())continue;
     const children=op.children.map((child:any)=>({...child,job:this.store.job(child.jobId)}));
     const questions=this.chats.questions();const states=children.map((child:any)=>{const question=questions.find(question=>question.jobId===child.jobId);return {botId:child.botId,jobId:child.jobId,roomId:child.roomId,state:question?'waiting_user':child.job?.state??'unknown',questionRoomId:question?.roomId};});
     if(hash(job.handoffWait?.children)!==hash(states)){job.handoffWait={...job.handoffWait,children:states};this.store.save(job);}
     if(children.some((child:any)=>child.job&&!terminal.has(child.job.state))){const current=this.store.operation(op.id);if(current?.status==='parked')this.store.saveOperation({...current,lastCheckedAt:this.now(),retryAt:null},current.revision);continue;}
     await this.guard(job);
     const results:any[]=[];
+    if(op.condition){const observed=await this.conditions.observe(job,op);if(!observed.ready){const current=this.store.operation(op.id);this.store.saveOperation({...current,lastCheckedAt:this.now(),pollAt:this.now()+5000,retryAt:null,readFailures:0,lastError:null},current.revision);if(job.handoffWait?.lastError){delete job.handoffWait.lastError;this.store.save(job);}continue;}results.push(...observed.results!);}
     for(const child of children){
      if(child.job?.state!=='delivered'){results.push({botId:child.botId,state:child.job?.state??'unknown',reason:child.job?.reason??'child_result_missing'});continue;}
      await this.chats.validatePeer(child.job);await this.coordinator.guardConversation(child.roomId);const receipt=child.job.results?.find((result:any)=>result.botId===child.botId);if(!receipt)throw new KTeamError('handoff_result_invalid',409);
@@ -107,8 +122,8 @@ export class WorkHandoffs {
     await this.guard(job);
     this.queueResume(job,op,resumed);
    }catch(error){const current=this.store.job(snapshot.id);if(current?.state!=='waiting')continue;
-    if(error instanceof KTeamError&&([403,404].includes(error.status)||['handoff_scope_changed','handoff_result_invalid','handoff_resume_blocked','conversation_identity_changed','conversation_contract_changed'].includes(error.code))){try{await this.fail(current,error.code);}catch{current.stopResultUnknown=true;this.store.save(current);}}
-    else {const operation=this.store.operation(op.id);if(operation?.status==='resuming'){current.state='unknown';current.reason='handoff_result_unknown';this.store.save(current);this.store.saveOperation({...operation,status:'unknown'},operation.revision);}else if(operation){this.store.saveOperation({...operation,retryAt:this.now()+5000,lastCheckedAt:this.now(),lastError:'handoff_source_unavailable'},operation.revision);current.handoffWait={...current.handoffWait,lastError:'handoff_source_unavailable'};this.store.save(current);}}
+    if(error instanceof KTeamError&&([403,404].includes(error.status)||['condition_wait_expired','handoff_wait_expired','condition_scope_changed','condition_file_invalid','condition_file_too_large','condition_result_invalid','handoff_scope_changed','handoff_result_invalid','handoff_resume_blocked','conversation_identity_changed','conversation_contract_changed'].includes(error.code))){try{await this.fail(current,error.code);}catch{current.stopResultUnknown=true;this.store.save(current);}}
+    else {const operation=this.store.operation(op.id);if(operation?.status==='resuming'){current.state='unknown';current.reason='handoff_result_unknown';this.store.save(current);this.store.saveOperation({...operation,status:'unknown'},operation.revision);}else if(operation){this.store.saveOperation({...operation,retryAt:this.now()+Math.min(300000,5000*2**Math.min(operation.readFailures??0,6)),readFailures:(operation.readFailures??0)+1,lastCheckedAt:this.now(),lastError:'handoff_source_unavailable'},operation.revision);current.handoffWait={...current.handoffWait,lastError:'handoff_source_unavailable'};this.store.save(current);}}
    }
   }
  }
