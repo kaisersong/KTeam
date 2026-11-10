@@ -271,6 +271,44 @@ jobs:
           grep "TeamIdentifier=${APPLE_TEAM_ID}" "$RUNNER_TEMP/kteam-dmg-codesign.txt"
           xcrun stapler validate "$dmg"
           spctl -a -vv -t install "$dmg"
+      - name: Refresh latest-mac.yml after stapling
+        # electron-builder writes latest-mac.yml before the dmg is signed and
+        # stapled, so the dmg entry's sha512/size are stale. Recompute every
+        # entry from the final files and drop the now-stale dmg blockmap.
+        run: |
+          set -euo pipefail
+          rm -f release/KTeam-*-arm64-mac.dmg.blockmap
+          node - <<'JS'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const crypto = require("node:crypto");
+          const yaml = require("js-yaml");
+          const ymlPath = path.join("release", "latest-mac.yml");
+          const doc = yaml.load(fs.readFileSync(ymlPath, "utf8"));
+          const digest = (file) => crypto.createHash("sha512").update(fs.readFileSync(file)).digest("base64");
+          if (!Array.isArray(doc.files) || doc.files.length === 0) throw new Error("latest-mac.yml has no files");
+          for (const entry of doc.files) {
+            const file = path.join("release", entry.url);
+            if (!fs.existsSync(file)) throw new Error(`latest-mac.yml references missing file ${entry.url}`);
+            const sha512 = digest(file);
+            const size = fs.statSync(file).size;
+            if (entry.sha512 === sha512 && entry.size === size) continue;
+            if (!entry.url.endsWith(".dmg")) {
+              // The zip and its blockmap drive auto-update; they must already match.
+              throw new Error(`${entry.url} changed after latest-mac.yml was written`);
+            }
+            console.log(`refresh ${entry.url}: size ${entry.size} -> ${size}`);
+            entry.sha512 = sha512;
+            entry.size = size;
+            delete entry.blockMapSize;
+          }
+          const primary = doc.files.find((entry) => entry.url === doc.path);
+          if (!primary) throw new Error(`latest-mac.yml path ${doc.path} is not in files`);
+          if (!doc.path.endsWith(".zip")) throw new Error(`latest-mac.yml path must be the zip, got ${doc.path}`);
+          doc.sha512 = primary.sha512;
+          fs.writeFileSync(ymlPath, yaml.dump(doc, { lineWidth: -1 }));
+          JS
+          cat release/latest-mac.yml
       - name: Upload macOS artifacts to draft release
         env:
           GH_REPO: ${{ github.repository }}
