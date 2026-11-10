@@ -7,6 +7,7 @@ import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
 import './settings.css';
 import {ModelSettingsPanel,DecisionModelSettings} from './model-settings';
 import {WebToolsSettings,MemorySettings,MCPSettings,CUASettings,MailSettings,VoiceSettings} from './integration-settings';
+import {ConnectorsSettings} from './connector-settings';
 import {ProfileSettings} from './profile-settings';
 
 function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'appResources'|'localAgents'|'assistantState'){
@@ -27,7 +28,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='general'&&<><ProfileSettings preferences={preferences} onSaved={onPreferences}/><PreferencesPanel kind="general" preferences={preferences} onSaved={onPreferences}/><Services/><Section title="你的 AI 团队" description="创建成员后，在 Bot 设置中选择模型、职责与工作目录。"><button className="secondary" onClick={onCreate}>创建 Bot / 接入 Agent<ArrowRight size={15}/></button></Section></>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved}/>}
  {page==='decision'&&<DecisionPanel/>}
- {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/></>}
+ {page==='connectors'&&<ConnectorsSettings agents={<AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/>}/>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='tools'&&<WebToolsSettings/>}
  {page==='mcp'&&<MCPSettings/>}{page==='cua'&&<CUASettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
