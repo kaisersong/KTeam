@@ -50,7 +50,21 @@ export function adaptPlatformSource(path,source){
   replace('dispose: () => client.dispose(),', `dispose: () => client.dispose(),
     close: async () => { client.dispose(); processHandle.dispose(); const child = processHandle.child; if(child.exitCode !== null || child.signalCode !== null)return; await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('lsp_shutdown_unconfirmed'));},3000);child.once('exit',()=>{clearTimeout(timer);resolve();});}); },`);
  }
+ if(path.endsWith('/memory/layered-store.ts')){
+  replace('this.embeddingClient = new EmbeddingClient(this.db, embeddingConfig);', `this.db.exec('CREATE TABLE IF NOT EXISTS kteam_embedding_profile(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)');
+    const embeddingProfile=JSON.stringify(embeddingConfig);
+    if(this.db.prepare('SELECT value FROM kteam_embedding_profile WHERE id=1').get()?.value!==embeddingProfile)this.db.transaction(()=>{this.db.exec('DELETE FROM memory_embeddings');this.db.prepare('INSERT OR REPLACE INTO kteam_embedding_profile VALUES(1,?)').run(embeddingProfile);})();
+    this.embeddingClient = new EmbeddingClient(this.db, embeddingConfig);`);
+ }
+ if(path.endsWith('/memory/embedding.ts')){
+  replace("method: 'POST',", "method: 'POST',signal:AbortSignal.timeout(15000),");
+ }
+ if(path.endsWith('/connectors/registry.ts')){
+  replace("apiKey: config.fetch.firecrawlApiKey?.trim() || undefined,", "apiKey: config.fetch.firecrawlApiKey?.trim() || undefined,endpoint:config.fetch.firecrawlBaseUrl ? config.fetch.firecrawlBaseUrl.replace(/\\/$/,'')+'/v2/scrape' : undefined,");
+ }
  if(path.endsWith('/runtime/context.ts')){
+  replace('const settingsMcpServers = loadSettingsMcpServers();','const settingsMcpServers = options.kteamMcpServers ?? loadSettingsMcpServers();');
+  replace('const pluginMcpServers = loadPluginMcpServers(pluginRuntime);',"const pluginMcpServers = [...loadPluginMcpServers(pluginRuntime),...(options.kteamCuaServer ? [{...options.kteamCuaServer,name:'cua-driver',source:{origin:'plugin',pluginName:'cua-computer-use'},requiresUserActivation:true}] : [])];");
   replace('const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs);', 'const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs); await options.assertCurrent?.();');
   replace('connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables)', 'connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables, options.assertCurrent)');
   replace('disposables: Array<{ dispose(): void }>,\n): Promise<LspClientLike', 'disposables: Array<{ dispose(): void }>,\n  assertCurrent?: () => Promise<void>,\n): Promise<LspClientLike');

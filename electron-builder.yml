@@ -32,5 +32,7 @@ mac:
     - dir
   identity: "-"
   hardenedRuntime: false
+  extendInfo:
+    NSMicrophoneUsageDescription: KTeam 在你点击语音输入后使用麦克风，将录音转为文字。
 win:
   icon: desktop/assets/icon.ico
