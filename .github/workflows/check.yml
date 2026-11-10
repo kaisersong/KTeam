@@ -24,7 +24,8 @@ jobs:
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
-          for(const source of [...lock.sources, {name:'mydocs', revision:lock.documentation.revision}]) {
+          // KTeam owns its runtime copy; only the pinned kswarm/intent-broker services are fetched.
+          for(const source of lock.sources) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-','_')+'='+source.revision+String.fromCharCode(10));
           }
           JS
@@ -38,13 +39,6 @@ jobs:
           repository: kaisersong/intent-broker
           ref: ${{ steps.pins.outputs.intent_broker }}
           path: intent-broker
-      - uses: actions/checkout@v4
-        with:
-          repository: kaisersong/mydocs
-          ref: ${{ steps.pins.outputs.mydocs }}
-          path: mydocs
-          sparse-checkout: kteam
-          token: ${{ secrets.SIBLING_READ_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
