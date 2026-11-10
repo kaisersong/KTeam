@@ -59,3 +59,7 @@
 .work-recovery{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;line-height:1.5}.work-recovery p{margin:0}.work-recovery small{color:var(--text-secondary);max-width:60ch}.conversation-note:has(.work-recovery){align-items:flex-start;flex-wrap:wrap}.work-recovery .secondary{flex-shrink:0;white-space:normal}
 
 .composer-column>.conversation-note{margin:0 0 12px}.composer-column>.conversation-note>.work-recovery{flex:1}
+
+.bot-capability-panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0}.bot-capability-panel .settings-resource p{overflow-wrap:anywhere}.bot-followup{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}.bot-followup>div{min-width:0}.bot-followup strong{font-size:13px;overflow-wrap:anywhere}.bot-followup p,.bot-followup small{font-size:12px;line-height:1.7;color:var(--text-secondary)}.bot-followup button{flex-shrink:0}.bot-tabs{flex-wrap:wrap}
+.bot-capability-panel>.settings-list{max-height:min(45vh,420px);overflow-y:auto;overscroll-behavior:contain}.bot-capability-panel .settings-switch{justify-content:flex-start}
+.followup-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}

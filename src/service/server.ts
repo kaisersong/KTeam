@@ -1,3 +1,5 @@
+import {BotCapabilities} from './bot-capabilities.js';
+import {Followups} from './followups.js';
 import {ensureSharedServices} from '../runtime/services.js';
 import {WorkRecovery} from './work-recovery.js';
 import {loadConfig} from './config.js';
@@ -159,6 +161,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/assistant/state'&&req.method==='GET')return send(res,200,{ok:true,...automation.assistant.state()});
       if(url.pathname==='/v1/assistant/proactivity'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='enabled')||typeof input.enabled!=='boolean')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...automation.assistant.setEnabled(input.enabled)});}
       if(url.pathname==='/v1/bot-questions/answer'&&req.method==='POST')return send(res,200,await automation.privateChats!.answer(await body(req)));
+      if(url.pathname==='/v1/bot-capabilities'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new BotCapabilities(upstream,teamStore).view(url.searchParams.get('botId')??''));}
+      if(url.pathname==='/v1/bot-skills'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new BotCapabilities(upstream,teamStore).save(await body(req)));}
+      if(url.pathname==='/v1/bot-followups'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).list(url.searchParams.get('botId')??''));}
+      if(url.pathname==='/v1/bot-followups/cancel'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).cancel(await body(req)));}
       if(url.pathname==='/v1/bot-questions'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions()??[]});
       if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
       if(url.pathname==='/v1/creations/resume'&&req.method==='POST'){const result=await coordinator.resumeCreation(await body(req),{requestSource:'user'});return send(res,200,{...result,roomId:result.roomId??result.room?.roomId});}
