@@ -7,6 +7,7 @@ export function adaptKTeamConfig(path,source){
  text=text.replaceAll("resolve(home, '.xiaok', 'plugins')", "resolve(process.env.KTEAM_MODEL_CONFIG_DIR??resolve(process.env.KTEAM_DATA_DIR??resolve(home,'.kteam'),'runtime'),'plugins')");
  if(path.endsWith('/runtime/verification/profile-account-home.ts'))replace('const config=process.env.XIAOK_CONFIG_DIR;',"const config=process.env.KTEAM_MODEL_CONFIG_DIR??join(process.env.KTEAM_DATA_DIR??join(userInfo().homedir,'.kteam'),'runtime');");
  if(path.endsWith('/runtime/verification/known-directory-writer-fence.ts'))replace("base=join(home,'.xiaok')","base=resolve(process.env.KTEAM_MODEL_CONFIG_DIR??resolve(process.env.KTEAM_DATA_DIR??resolve(home,'.kteam'),'runtime'))");
+ if(path.endsWith('/shared/credential-fields.ts'))replace("secretKey.test(path.at(-1)??'')","(path.at(-2)==='env'||path.at(-2)==='headers'||secretKey.test(path.at(-1)??''))");
  if(path.endsWith('/utils/config.ts'))replace('return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config;',"return {...JSON.parse(JSON.stringify(DEFAULT_CONFIG)),providers:{},models:{},defaultProvider:'',defaultModelId:''} as Config;");
  if(path.endsWith('/utils/system-credentials.ts')){
   replace("'com.xiaok.credentials.v1'","'com.kteam.credentials.v1'");

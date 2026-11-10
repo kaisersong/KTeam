@@ -1,5 +1,7 @@
 import {ensureSharedServices} from '../runtime/services.js';
 import {loadConfig} from './config.js';
+import {transcribeAudio} from './voice.js';
+import {IntegrationSettings} from './integration-settings.js';
 import {ModelSettings} from './model-settings.js';
 import {attentionSource} from './attention.js';
 import {systemOneChoice,kimJudgment,decisionModels} from '../runtime/decision.js';
@@ -66,7 +68,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const teamStore = new TeamStore(options.root);
   const localAgents=new LocalAgents(options.root,teamStore,upstream);
   const builtinAgent=new BuiltinAgent(teamStore);
-  const modelSettings=new ModelSettings();
+  const modelSettings=new ModelSettings(),integrationSettings=new IntegrationSettings();
   const conversations=new ConversationService(options.root,upstream,teamStore);
   const approvals=new ToolApprovals(teamStore);
   const peerExchanges=new PeerExchanges(upstream,teamStore);
@@ -120,6 +122,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
         }
+        if(url.pathname==='/v1/app/voice/transcribe'&&req.method==='POST')return send(res,200,await transcribeAudio(await body(req,12*1024*1024)));
+        if(url.pathname==='/v1/app/integrations'&&req.method==='GET')return send(res,200,await integrationSettings.view());
+        if(url.pathname==='/v1/app/integrations'&&req.method==='POST')return send(res,200,await integrationSettings.save(await body(req)));
+        if(url.pathname==='/v1/app/integrations/test'&&req.method==='POST')return send(res,200,await integrationSettings.test(await body(req)));
         if(url.pathname==='/v1/app/resources'&&req.method==='GET')return send(res,200,{ok:true,...await appResources()});
         throw new KTeamError('app_settings_operation_forbidden',403);
       }
@@ -155,7 +161,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
       if(url.pathname==='/v1/proposals/accept'&&req.method==='POST'){const input=record(await body(req));if(typeof input.roomId!=='string'||typeof input.proposalId!=='string'||typeof input.expectedHash!=='string')throw new KTeamError('invalid_input');const result=await coordinator.accept(input as any,{requestSource:'user'});void automation.tick();return send(res,200,{ok:true,...result});}
       if(url.pathname==='/v1/model-settings'&&req.method==='GET')return send(res,200,await modelSettings.view());
-      if(req.method==='POST'&&url.pathname.startsWith('/v1/model-settings/')){const action=url.pathname.slice('/v1/model-settings/'.length),input=await body(req);if(action==='model')return send(res,200,await modelSettings.save(input));if(action==='storage')return send(res,200,await modelSettings.storage(input));if(action==='decision')return send(res,200,await modelSettings.decision(input));if(action==='import-xiaok')return send(res,200,await modelSettings.importXiaok(input));throw new KTeamError('route_not_found',404);}
+      if(req.method==='POST'&&url.pathname.startsWith('/v1/model-settings/')){const action=url.pathname.slice('/v1/model-settings/'.length),input=await body(req,2*1024*1024);if(action==='model')return send(res,200,await modelSettings.save(input));if(action==='storage')return send(res,200,await modelSettings.storage(input));if(action==='decision')return send(res,200,await modelSettings.decision(input));if(action==='import-provider')return send(res,200,await modelSettings.importProvider(input));if(action==='import-xiaok')return send(res,200,await modelSettings.importXiaok(input));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/services/ensure'&&req.method==='POST'){await ensureSharedServices(loadConfig(options.root),options.root);return send(res,200,{ok:true,upstream:await upstream.probe()});}
       if (url.pathname === '/v1/models' && req.method === 'GET') return send(res,200,{ok:true,...await modelCatalog()});
       if (url.pathname === '/v1/bot-create' && req.method === 'POST') {

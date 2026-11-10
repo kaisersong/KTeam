@@ -74,11 +74,11 @@
   "productBaseline": {
     "version": "v5",
     "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
-    "file": "docs/design/baseline-v5/\u4ea7\u54c1\u8bbe\u8ba1.md"
+    "file": "docs/design/baseline-v5/产品设计.md"
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "8c9c5d5c5e7ea2ceed2a37a598c5f10db00bed48",
+    "revision": "1e6d874ca61d5e4b1b346f132d8b09744904475a",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -2195,11 +2195,11 @@
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "97149b2826f3ab8067621fe5d4ed8f7f28ff129d4092f0f2cc50b5de430b2b3c"
+          "sha256": "9e90de8247439cfb6a16b8de15785d8bb7d99da3773067f542fde4ab7fc8757a"
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "72a6ff3b4220ac2b935220e7cfee0f00feed3a0d0483e955bcbe70661cf76ef3"
+          "sha256": "ee6ac56829d71c9524e63e76a555d7bb8bd313969128d6fd760fcd8e024fadfa"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",
@@ -2207,7 +2207,7 @@
         },
         {
           "file": "scripts/kteam-config-adaptation.mjs",
-          "sha256": "cbb9e0ad470cd6de8f2c4241e8005ea1afc855d5fe91f5cf453293a55786bf44"
+          "sha256": "fb3faf2d8e261bca6bd0b2e7f1e183c0f13e983686709bd1ec9b3253d904df93"
         }
       ]
     }

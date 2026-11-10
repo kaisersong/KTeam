@@ -42,11 +42,13 @@ test('real host binds settings to KTeam client and semantic API; model failure l
  try{
   const api=createDesktopAPI((route,value)=>hostRequest(root,'kteam-main',route,value));const initial:any=await dispatchDesktop(api,'appPreferences',[]);assert.equal(initial.preferences.revision,0);
   const saved:any=await dispatchDesktop(api,'saveAppPreferences',[{expectedRevision:0,fontSize:16}]);assert.equal(saved.preferences.fontSize,16);
+  const profile=await api.saveAppPreferences({expectedRevision:1,displayName:'测试伙伴',avatarDataUrl:''});assert.equal(profile.preferences.displayName,'测试伙伴');
   await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/preferences',{expectedRevision:1,theme:'dark'}),/app_settings_forbidden/);
   await assert.rejects(hostRequest(root,'kteam-main','/v1/app/preferences',{expectedRevision:1,requestSource:'agent'}),/unknown_field/);
   const previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=join(root,'broken-models');
   try{mkdirSync(process.env.KTEAM_MODEL_CONFIG_DIR);writeFileSync(join(process.env.KTEAM_MODEL_CONFIG_DIR,'config.json'),'{invalid');await assert.rejects(api.modelSettings());assert.equal((await api.appPreferences()).preferences.fontSize,16);}finally{if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;}
-  assert.equal((await api.appPreferences()).preferences.revision,1);
+  assert.equal((await api.appPreferences()).preferences.revision,2);
+  await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/integrations'),/app_settings_forbidden/);
   await assert.rejects(dispatchDesktop(api,'setConfig',[{apiKey:'forged'}]),/desktop_method_forbidden/);
  }finally{await host.close();rmSync(root,{recursive:true,force:true});}
 });
