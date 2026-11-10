@@ -136,6 +136,14 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/app/resources'&&req.method==='GET')return send(res,200,{ok:true,...await appResources()});
         throw new KTeamError('app_settings_operation_forbidden',403);
       }
+      if(url.pathname==='/v1/routines'||url.pathname==='/v1/routines/remove'||url.pathname==='/v1/routines/pause'){
+        if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);
+        if(url.pathname==='/v1/routines'&&req.method==='GET')return send(res,200,await automation.routines.list(url.searchParams.get('roomId')??''));
+        if(url.pathname==='/v1/routines'&&req.method==='POST')return send(res,200,await automation.routines.save(await body(req)));
+        if(url.pathname==='/v1/routines/pause'&&req.method==='POST')return send(res,200,await automation.routines.pause(await body(req)));
+        if(url.pathname==='/v1/routines/remove'&&req.method==='POST')return send(res,200,await automation.routines.remove(await body(req)));
+        throw new KTeamError('route_not_found',404);
+      }
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
       if(url.pathname==='/v1/builtin-agent'&&req.method==='GET')return send(res,200,{ok:true,agent:await builtinAgent.status(url.searchParams.get('modelId')??undefined)});
       if(url.pathname==='/v1/builtin-agent/probe'&&req.method==='POST')return send(res,202,{ok:true,agent:await builtinAgent.start(await body(req))});

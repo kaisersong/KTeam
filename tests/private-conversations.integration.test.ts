@@ -68,7 +68,7 @@ test('peer consultation receives the original group request but never another pr
   const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'请核实 Claude Duet，不要替换为 Claude Code',wait:false}));
   await f.upstream.sendMessage(f.b.roomId,{text:'PRIVATE_NOT_SOURCE_CONTEXT_55',kind:'text',threadId:'private',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});
   const job=f.store.jobs(receipt.roomId)[0],context=await chats.sourceContext(job);
-  assert.equal(context?.roomId,f.roomId);assert.equal(context?.title,'产品团队');assert.equal(context?.userMessage.text,'查看KTeam源码并与团队协作');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_NOT_SOURCE_CONTEXT_55/);
+  assert.equal(context?.roomId,f.roomId);assert.equal(context?.title,'产品团队');assert.equal(context?.userMessage?.text,'查看KTeam源码并与团队协作');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_NOT_SOURCE_CONTEXT_55/);
   f.store.pause(f.roomId);await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
  }finally{chats.close();await f.close();}
 });
