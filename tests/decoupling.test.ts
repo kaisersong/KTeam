@@ -32,7 +32,12 @@ test('build and test inputs never reference xiaok-cli or the mydocs checkout',()
  for(const [name,script] of Object.entries(pkg.scripts as Record<string,string>))assert.doesNotMatch(script,/xiaok|mydocs/i,name);
  const lock=JSON.parse(read('sources.lock.json'));
  assert.deepEqual(lock.sources.map((s:any)=>s.name).sort(),['intent-broker','kswarm']);
- assert.doesNotMatch(read('sources.lock.json'),/xiaok/i);
+ // Report/slide assets are an explicitly authorized, fixed plugin source; they do not supply the runtime.
+ assert.equal(lock.creatorPlugins.repository,'https://github.com/kaisersong/kai-xiaok-plugins');
+ assert.equal(lock.creatorPlugins.revision,'828c4c11122fcbbb50837c34aaac3b98a9f79404');
+ assert.deepEqual(lock.creatorPlugins.names,['kai-report-creator','kai-slide-creator']);
+ const {creatorPlugins:pluginProvenance,...runtimeSources}=lock;
+ assert.doesNotMatch(JSON.stringify(runtimeSources),/xiaok/i);
  assert.equal(lock.runtime,undefined);assert.equal(lock.ui,undefined);
  const build=[...tracked('scripts','electron-builder.yml','tsconfig.json','desktop/tsconfig.json','desktop/vite.config.ts')].filter(code);
  assert.ok(build.includes('scripts/build-runtime.mjs'));

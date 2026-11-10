@@ -1,9 +1,11 @@
+import {execFileSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {ownedChildProcess} from './owned-child-process.mjs';
 import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {resolve,join} from 'node:path';
+execFileSync(process.execPath,['scripts/build-creator-plugins.mjs'],{stdio:'inherit'});
 const root=fileURLToPath(new URL('../',import.meta.url));
 const source=join(root,'runtime-core');
 const modules=JSON.parse(readFileSync(join(root,'scripts/runtime-exports.json'),'utf8'));

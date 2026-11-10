@@ -2,7 +2,7 @@ import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A
 import {Markdown} from './Markdown';
 import React,{useState}from'react';
 import{Terminal,Check,ShieldCheck,X}from'lucide-react';
-import{explain,type Bot}from'./api';
+import{api,explain,type Bot}from'./api';
 export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'deny')=>Promise<void>}){
  const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision);}catch(e){setError(explain(e));}finally{setBusy(false);}};
  return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认"><h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3><p>调用 {approval.toolName}</p><pre>{approval.display}</pre>{approval.canAlways&&<small>授权范围：此成员 · {approval.cwd} · {approval.toolName}</small>}{error&&<p className="flow-error" role="alert">{error}</p>}<div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className="secondary" disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>允许本次</button>{approval.canAlways&&<button className="primary" disabled={busy} onClick={()=>void decide('allow_always')}>始终允许</button>}</div></section>;
@@ -14,7 +14,8 @@ export function toolActivity(events:any[],bots:Bot[]){
  if(event.name==='contact_bot'){try{const input=typeof event.input==='string'?JSON.parse(event.input):event.input;const name=bots.find(b=>b.id===input.botId)?.name;return name?'正在与'+name+'核对，等待对方答复':'正在与另一位成员核对';}catch{return '正在与另一位成员核对';}}
  return descriptions[event.name];
 }
-export function ToolTrace({events}:{events:any[]}){if(!events.length)return null;return <details className="tool-trace"><summary><Terminal size={13}/>工具记录 · {[...new Set(events.map(e=>e.name))].join('、')} · {events.length} 条记录</summary>{events.map(e=><div key={e.id}><strong>{e.name}<small>{e.state==='completed'?'已返回':e.state==='running'?'执行中':'未完成'}</small></strong>{e.input&&<pre>{typeof e.input==='string'?e.input:JSON.stringify(e.input,null,2)}</pre>}{e.result&&<pre>{typeof e.result==='string'?e.result:JSON.stringify(e.result,null,2)}</pre>}{e.code&&<p>{explain(e.code)}</p>}</div>)}</details>;}
+function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);setError('');void api.openGeneratedFile({roomId:event.file.roomId,toolCallId:event.id}).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
+export function ToolTrace({events}:{events:any[]}){if(!events.length)return null;return <><div className="generated-files">{events.filter(e=>e.state==='completed'&&e.file).map(e=><GeneratedFileButton key={e.id} event={e}/>)}</div><details className="tool-trace"><summary><Terminal size={13}/>工具记录 · {[...new Set(events.map(e=>e.name))].join('、')} · {events.length} 条记录</summary>{events.map(e=><div key={e.id}><strong>{e.name}<small>{e.state==='completed'?'已返回':e.state==='running'?'执行中':'未完成'}</small></strong>{e.input&&<pre>{typeof e.input==='string'?e.input:JSON.stringify(e.input,null,2)}</pre>}{e.result&&<pre>{typeof e.result==='string'?e.result:JSON.stringify(e.result,null,2)}</pre>}{e.code&&<p>{explain(e.code)}</p>}</div>)}</details></>;}
 
 export function RuntimeMessageContent({text,cards=[]}:{text:string;cards?:any[]}){
  const parts:React.ReactNode[]=[];let start=0;

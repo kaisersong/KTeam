@@ -127,5 +127,14 @@
       "manifest": "desktop/assets/brand/provenance.json",
       "usage": "Original V3 Bot hairstyles, lively SVGs, forest native app icon and optically adjusted web glyph; verified original bytes, no regenerated assets"
     }
-  ]
+  ],
+  "creatorPlugins": {
+    "repository": "https://github.com/kaisersong/kai-xiaok-plugins",
+    "revision": "828c4c11122fcbbb50837c34aaac3b98a9f79404",
+    "names": [
+      "kai-report-creator",
+      "kai-slide-creator"
+    ],
+    "adaptation": "Only build assets are copied from the pinned git archive. KTeam binds host Node and bundled Python, removes xiaok installation hooks, exposes skill references, and guards output paths. Original renderer and planner bytes stay unchanged."
+  }
 }

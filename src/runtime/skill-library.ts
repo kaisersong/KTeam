@@ -1,3 +1,4 @@
+import {creatorSkillRoots} from './creator-plugins.js';
 import {createHash} from 'node:crypto';
 import {existsSync,realpathSync,statSync,openSync,closeSync,fstatSync,readSync,constants} from 'node:fs';
 import {join,resolve,relative,isAbsolute,dirname} from 'node:path';
@@ -6,7 +7,7 @@ import {KTeamError} from '../errors.js';
 export interface SkillScope {root:string;botId:string;roomId:string}
 export interface SkillPin {roomId:string;name:string;version:string}
 export const skillBindingRoot=(scope:SkillScope)=>join(scope.root,'harness-assets',createHash('sha256').update(scope.botId+'\n'+scope.roomId).digest('hex'));
-export function skillRoots(scope?:SkillScope){return [...(scope?[join(skillBindingRoot(scope),'skills')]:[]),process.env.KTEAM_SKILLS_ROOT,resolve(process.cwd(),'desktop/skills')].filter((path):path is string=>typeof path==='string'&&existsSync(path));}
+export function skillRoots(scope?:SkillScope){return [...(scope?[join(skillBindingRoot(scope),'skills')]:[]),...creatorSkillRoots(),process.env.KTEAM_SKILLS_ROOT,resolve(process.cwd(),'desktop/skills')].filter((path):path is string=>typeof path==='string'&&existsSync(path));}
 export function scopedCatalog(core:any,cwd:string,scope?:SkillScope,onIssue?:(issue:any)=>void){
  const original=core.createSkillCatalog(core.getConfigDir(),cwd,{extraRoots:skillRoots(scope),onDiscoveryIssue:onIssue}),reported=new Set<string>();
  const allowed=(skill:any)=>{if(!scope)return true;try{const paths=[skill.path,...[...(skill.referencesManifest??[]),...(skill.scriptsManifest??[]),...(skill.assetsManifest??[])].map(file=>file.absolutePath)],valid=paths.every(path=>{const actual=realpathSync(path),stat=statSync(actual);return stat.isFile()&&stat.nlink===1&&(!within(resolve(scope.root),actual)||within(join(skillBindingRoot(scope),'skills'),actual)||within(join(core.getConfigDir(),'skills'),actual));});if(valid)return true;}catch{}if(!reported.has(skill.path)){reported.add(skill.path);onIssue?.({kind:'skill_read_unavailable',path:skill.path});}return false;};

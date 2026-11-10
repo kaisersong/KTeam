@@ -11,6 +11,8 @@ jobs:
     # 0.3 Windows port in progress: Windows results are visible but not yet blocking.
     # Remove this line once the Windows port lands and Windows is green.
     continue-on-error: ${{ matrix.os == 'windows-2022' }}
+    env:
+      KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
     defaults:
       run:
         shell: bash
@@ -24,8 +26,8 @@ jobs:
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
-          // KTeam owns its runtime copy; only the pinned kswarm/intent-broker services are fetched.
-          for(const source of lock.sources) {
+          // KTeam owns its runtime copy; fetch only pinned services and report/slide plugin assets.
+          for(const source of [...lock.sources,{name:'creator-plugins',revision:lock.creatorPlugins.revision}]) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-','_')+'='+source.revision+String.fromCharCode(10));
           }
           JS
@@ -39,6 +41,12 @@ jobs:
           repository: kaisersong/intent-broker
           ref: ${{ steps.pins.outputs.intent_broker }}
           path: intent-broker
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kai-xiaok-plugins
+          ref: ${{ steps.pins.outputs.creator_plugins }}
+          path: creator-plugins
+          token: ${{ secrets.SIBLING_READ_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}

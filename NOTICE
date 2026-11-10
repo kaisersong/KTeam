@@ -29,3 +29,8 @@ AIMP 3.1 and the product design baseline were supplied by the project owner.
 Their original text, test-vector provenance and review limitations are retained.
 
 KTeam direct local Agent integration reuses source-pinned KSwarm runtime-capabilities.js, kimi-cli-harness.js and pi-cli-harness.js (Apache-2.0), and the existing Intent Broker participant registration protocol. Native CLI programs remain separately installed and retain their own licenses and configuration.
+
+KTeam bundles kai-report-creator and kai-slide-creator from kai-xiaok-plugins
+(https://github.com/kaisersong/kai-xiaok-plugins), Apache-2.0. The pinned revision
+and host adaptations are recorded in sources.lock.json under creatorPlugins.
+Their Python interpreter and dependency licenses ship inside build/plugins.
