@@ -43,7 +43,9 @@ export function adaptPlatformSource(path,source){
   if(start<0||end<0)throw Error('xiaok_worktree_gc_basis_changed');
   text=text.slice(0,start)+`  return await new Promise(resolve => execFile(process.platform === 'darwin' ? '/usr/sbin/lsof' : '/usr/bin/lsof', ['+D', path], {encoding:'utf8',timeout:10000,maxBuffer:1024*1024}, (error,stdout,stderr) => {
     if(!error)return resolve(stdout.trim() ? 'used' : 'unknown');
-    resolve(error.code === 1 && !stdout.trim() && !stderr.trim() ? 'free' : 'unknown');
+    // Linux containers can expose an unreadable nsfs mount, which cannot contain worktree files.
+    const diagnostics = stderr.replace(/lsof: WARNING: can't stat\\(\\) nsfs file system [^\\n]+\\n      Output information may be incomplete\\.\\n/g, '');
+    resolve(error.code === 1 && !stdout.trim() && !diagnostics.trim() ? 'free' : 'unknown');
   }));`+text.slice(end);
  }
  if(path.endsWith('/plugins/runtime.ts')){
