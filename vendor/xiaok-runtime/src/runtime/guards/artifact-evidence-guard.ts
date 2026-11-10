@@ -1,0 +1,114 @@
+import { guardEvent, type GuardDecision } from './policy.js';
+import { validateCompletionEvidenceAsync, assertEvidenceActive, type EvidenceIoOptions } from './completion-evidence-async.js';
+import {
+  validateCompletionEvidence,
+  type CompletionEvidenceRecord,
+  type CompletionExpectation,
+} from './completion-evidence.js';
+
+const EMPTY_ARTIFACT_REASON = 'Task is being completed without artifact evidence.';
+const EMPTY_ARTIFACT_ACTION = 'Attach or generate at least one artifact before marking the task complete, or provide a human override.';
+
+export function evaluateArtifactEvidenceGuard(input: {
+  taskId: string;
+  status: string;
+  artifacts?: unknown[];
+  expectation?: CompletionExpectation;
+  evidence?: CompletionEvidenceRecord[];
+}): GuardDecision {
+  const terminal = input.status === 'success' || input.status === 'done' || input.status === 'submitted' || input.status === 'completed';
+  if (!terminal) {
+    return pass(input.taskId);
+  }
+
+  {
+    const validation = validateCompletionEvidence({
+      ownerKind: 'task',
+      ownerId: input.taskId,
+      targetStatus: input.status,
+      expectation: input.expectation,
+      evidence: input.evidence,
+    });
+    return decideValidation(input, validation);
+  }
+
+}
+
+export async function evaluateArtifactEvidenceGuardAsync(
+  input: Parameters<typeof evaluateArtifactEvidenceGuard>[0], options: EvidenceIoOptions,
+): Promise<GuardDecision> {
+  assertEvidenceActive(options);
+  if (!['success', 'done', 'submitted', 'completed'].includes(input.status)) return pass(input.taskId);
+  const validation = await validateCompletionEvidenceAsync({ ownerKind: 'task', ownerId: input.taskId,
+    targetStatus: input.status, expectation: input.expectation, evidence: input.evidence }, options);
+  assertEvidenceActive(options);
+  return decideValidation(input, validation);
+}
+
+function decideValidation(input: Parameters<typeof evaluateArtifactEvidenceGuard>[0], validation: ReturnType<typeof validateCompletionEvidence>): GuardDecision {
+  if(validation.failureKind==='verification_unavailable'||validation.failureKind==='verification_required')return {...block(input.taskId,validation.message??'Protected verification required.'),allowOverride:false,action:'Complete protected verification and publication through the controller.'};
+  if (validation.ok || (input.expectation === undefined && input.evidence === undefined)) return pass(input.taskId);
+  // A text answer is always sufficient evidence — even when the prompt classifier
+  // guessed file_artifact / project_update / log_diagnostic etc. Users iterate via
+  // chat; missing artifacts are fixed by follow-up turns, not by blocking the
+  // entire task as failed.
+  if (
+    input.expectation
+    && !input.expectation.expectedKinds.includes('answer')
+    && hasAnyAnswerEvidence(input.taskId, input.evidence)
+  ) {
+    return pass(input.taskId);
+  }
+  return block(input.taskId, reasonForValidationFailure(input.expectation, validation));
+}
+
+function pass(taskId: string): GuardDecision {
+  return {
+    ok: true,
+    mode: 'pass',
+    events: [guardEvent({ guardId: 'artifact-evidence', mode: 'passed', taskId, category: 'artifact_evidence' })],
+  };
+}
+
+function block(taskId: string, reason: string): Extract<GuardDecision,{ok:false}> {
+  return {
+    ok: false,
+    mode: 'block',
+    reason,
+    action: EMPTY_ARTIFACT_ACTION,
+    allowOverride: true,
+    events: [guardEvent({
+      guardId: 'artifact-evidence',
+      mode: 'blocked',
+      taskId,
+      category: 'empty_artifact',
+      reason,
+    })],
+  };
+}
+
+function reasonForValidationFailure(
+  expectation: CompletionExpectation | undefined,
+  validation: ReturnType<typeof validateCompletionEvidence>,
+): string {
+  if (expectation?.expectedKinds.includes('file_artifact')
+    && (validation.failureKind === 'evidence_missing' || validation.failureKind === 'evidence_kind_mismatch')
+  ) {
+    return EMPTY_ARTIFACT_REASON;
+  }
+  return validation.message ?? EMPTY_ARTIFACT_REASON;
+}
+
+function hasAnyAnswerEvidence(
+  taskId: string,
+  evidence: CompletionEvidenceRecord[] | undefined,
+): boolean {
+  if (!evidence || evidence.length === 0) return false;
+  return evidence.some(record =>
+    record.ownerKind === 'task'
+    && record.ownerId === taskId
+    && record.kind === 'answer'
+    && typeof record.summary === 'string'
+    && record.summary.trim().length > 0,
+  );
+}

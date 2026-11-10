@@ -1,0 +1,902 @@
+import {assertKbSQLiteBirthReady,createKbSQLiteTransactions} from './kb-sqlite-transactions.js';
+/**
+ * Knowledge Base — SQLite Store Implementation
+ *
+ * Implements KbStore interface backed by knowledge.db (independent from memory.db).
+ */
+
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { requireKbRequestSource, captureKbMutationInput, assertKbPendingSourceOwner, assertKbAuthorityMetadataUnchanged } from './kb-mutation-authority.js';
+import { KB_CREATE_COLLECTION_SCHEMA, KB_STORE_ADD_SOURCE_SCHEMA, KB_PARSE_RESULT_INPUT_SCHEMA, KB_CHUNK_INPUT_SCHEMA, KB_CREATE_MEETING_INPUT_SCHEMA, KB_UPDATE_MEETING_INPUT_SCHEMA } from '../shared/knowledge-ipc-contract.js';
+import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import type {
+  Collection,
+  CollectionState,
+  Chunk,
+  CreateCollectionInput,
+  CreateMeetingInput,
+  GetSourceOutput,
+  MeetingRecord,
+  Source,
+  AddSourceInput,
+  SourceEmbeddingProgress,
+  ChunkEmbeddingStatus,
+  SourceParseStatus,
+  RequestSource,
+  UpdateMeetingInput,
+  UpdateSourceParseResultInput,
+} from './kb-types.js';
+import { computeKbSourceContentDigest, type KbStore } from './kb-store.js';
+import {canonicalVerificationJson as canonicalJson} from '../../src/runtime/verification/protocol.js';
+import {captureExecutionValue} from './loop-verification-execution.js';
+import {createChunker} from './kb-chunker.js';
+import {
+  computeKnowledgeContentHash,
+  reconstructKnowledgeSourceText,
+} from './kb-source-identity.js';
+const kbOriginGet = WeakMap.prototype.get,
+  kbOriginSet = WeakMap.prototype.set,
+  kbOriginApply = Reflect.apply,
+  kbOriginFreeze = Object.freeze,
+  kbOriginKeys = Object.keys;
+const originalKbStores = new WeakMap<
+  object,
+  { path: string; read(receipt: unknown): OriginalKnowledgeSourceReceipt }
+>();
+export interface OriginalKnowledgeSourceReceipt {
+  readonly requestSource: RequestSource;
+  readonly source: Readonly<Source>;
+  assertCurrent(): void;
+  assertLocal(): void;
+}
+/** Actual addSource return membership; a row DTO/sourceId is not a receipt. */
+export function readOriginalKnowledgeSourceReceipt(
+  store: unknown,
+  receipt: unknown,
+  expectedPath: string,
+): OriginalKnowledgeSourceReceipt {
+  const birth = kbOriginApply(kbOriginGet, originalKbStores, [store]) as
+    | { path: string; read(receipt: unknown): OriginalKnowledgeSourceReceipt }
+    | undefined;
+  if (!birth || birth.path !== resolve(expectedPath))
+    throw Error('MAIN_MATERIAL_KNOWLEDGE_STORE_REQUIRED');
+  return birth.read(receipt);
+}
+function freezeKbOrigin<T>(value: T): T {
+  if (value && typeof value === 'object') {
+    const names = kbOriginKeys(value);
+    for (let i = 0; i < names.length; i++)
+      freezeKbOrigin((value as Record<string, unknown>)[names[i]!]);
+    kbOriginFreeze(value);
+  }
+  return value;
+}
+const SCHEMA_SQL = `
+  PRAGMA journal_mode = WAL;
+  PRAGMA busy_timeout = 5000;
+
+  CREATE TABLE IF NOT EXISTS collections (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT 'global',
+    cwd TEXT NOT NULL DEFAULT '',
+    embedding_model_id TEXT NOT NULL,
+    embedding_dim INTEGER NOT NULL,
+    chunk_count_cached INTEGER NOT NULL DEFAULT 0,
+    auto_accept_web_persist INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sources (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    uri TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    sha256 TEXT NOT NULL DEFAULT '',
+    byte_size INTEGER NOT NULL DEFAULT 0,
+    raw_path TEXT NOT NULL DEFAULT '',
+    extracted_text_path TEXT NOT NULL DEFAULT '',
+    parse_status TEXT NOT NULL DEFAULT 'pending',
+    parse_error TEXT NOT NULL DEFAULT '',
+    parse_attempts INTEGER NOT NULL DEFAULT 0,
+    chunk_count INTEGER NOT NULL DEFAULT 0,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS chunks (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    segmented_text TEXT,
+    char_start INTEGER NOT NULL DEFAULT 0,
+    char_end INTEGER NOT NULL DEFAULT 0,
+    page_index INTEGER,
+    slide_index INTEGER,
+    sheet_name TEXT,
+    cell_range TEXT,
+    embedding_status TEXT NOT NULL DEFAULT 'pending',
+    embedding_error TEXT NOT NULL DEFAULT '',
+    embedding_attempts INTEGER NOT NULL DEFAULT 0,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    UNIQUE(source_id, idx)
+  );
+
+  CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    chunk_id TEXT PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
+    collection_id TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    embedding_dim INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS meetings (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    audio_file_path TEXT NOT NULL DEFAULT '',
+    audio_retention TEXT NOT NULL DEFAULT 'kept',
+    summary_provider TEXT NOT NULL DEFAULT 'local-only',
+    summary_provider_hash TEXT NOT NULL DEFAULT '',
+    failure_reason TEXT NOT NULL DEFAULT '',
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sources_collection ON sources(collection_id);
+  CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id, idx);
+  CREATE INDEX IF NOT EXISTS idx_chunks_collection ON chunks(collection_id);
+  CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_collection ON chunk_embeddings(collection_id);
+  CREATE INDEX IF NOT EXISTS idx_meetings_status ON meetings(status);
+
+  CREATE TRIGGER IF NOT EXISTS chunks_count_inc AFTER INSERT ON chunks BEGIN
+    UPDATE collections SET chunk_count_cached = chunk_count_cached + 1, updated_at = NEW.created_at WHERE id = NEW.collection_id;
+    UPDATE sources SET chunk_count = chunk_count + 1, updated_at = NEW.created_at WHERE id = NEW.source_id;
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS chunks_count_dec AFTER DELETE ON chunks BEGIN
+    UPDATE collections SET chunk_count_cached = chunk_count_cached - 1 WHERE id = OLD.collection_id;
+    UPDATE sources SET chunk_count = chunk_count - 1 WHERE id = OLD.source_id;
+  END;
+`;
+
+export function createKbStoreSqlite(dbPath: string): KbStore {
+  assertKbSQLiteBirthReady();
+  let originClosed=false;
+  const sourceOrigins=new WeakMap<object,OriginalKnowledgeSourceReceipt>();
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  const transactions=createKbSQLiteTransactions(db);
+  db.exec(SCHEMA_SQL);
+  db.exec('PRAGMA foreign_keys = ON');
+  backfillCanonicalSourceHashes(db);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sources_collection_content_hash
+    ON sources(collection_id, sha256)
+    WHERE sha256 <> ''
+  `);
+
+  const now = () => Date.now();
+  function sourceReceipt(source: Source, requestSource: RequestSource): Source {
+    const snapshot = freezeKbOrigin(captureExecutionValue(source) as Source),
+      encoded = canonicalJson(snapshot);
+    let invalid = false;
+    const local = () => {
+      if (originClosed || invalid)
+        throw Error('MAIN_MATERIAL_KNOWLEDGE_SOURCE_RETIRED');
+      transactions.ready();
+    };
+    const current = () => {
+      local();
+      const actual = getSource(snapshot.id);
+      if (!actual || canonicalJson(actual) !== encoded) {
+        invalid = true;
+        throw Error('MAIN_MATERIAL_KNOWLEDGE_SOURCE_RETIRED');
+      }
+      local();
+    };
+    kbOriginApply(kbOriginSet, sourceOrigins, [
+      source,
+      kbOriginFreeze({
+        requestSource,
+        source: snapshot,
+        assertCurrent: current,
+        assertLocal: local,
+      }),
+    ]);
+    return source;
+  }
+  function createCollection(input: CreateCollectionInput, requestSource?: RequestSource): Collection {
+    requireKbRequestSource(requestSource, ['user', 'agent']);
+    input = captureKbMutationInput(input, KB_CREATE_COLLECTION_SCHEMA);
+    const id = randomUUID();
+    const ts = now();
+    db.prepare(`
+      INSERT INTO collections (id, name, description, color, scope, cwd, embedding_model_id, embedding_dim, chunk_count_cached, auto_accept_web_persist, created_at, updated_at)
+      VALUES (@id, @name, @description, @color, @scope, @cwd, @embeddingModelId, @embeddingDim, 0, 0, @ts, @ts)
+    `).run({ id, name: input.name, description: input.description ?? '', color: input.color ?? '', scope: input.scope ?? 'global', cwd: input.cwd ?? '', embeddingModelId: input.embeddingModelId, embeddingDim: input.embeddingDim, ts });
+    return getCollection(id)!;
+  }
+
+  function getCollection(id: string): Collection | undefined {
+    const row = db.prepare('SELECT * FROM collections WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    return row ? mapCollection(row) : undefined;
+  }
+
+  function listCollections(): Collection[] {
+    return (db.prepare('SELECT * FROM collections ORDER BY created_at ASC').all() as Record<string, unknown>[]).map(mapCollection);
+  }
+
+  function renameCollection(id: string, name: string, description?: string, requestSource?: RequestSource): Collection | undefined {
+    requireKbRequestSource(requestSource, ['user']);
+    [id, name, description] = captureKbMutationInput<[string, string, string | undefined]>([id, name, description], z.tuple([z.string(), z.string(), z.string().optional()]));
+    const ts = now();
+    if (description !== undefined) {
+      db.prepare('UPDATE collections SET name = @name, description = @desc, updated_at = @ts WHERE id = @id').run({ id, name, desc: description, ts });
+    } else {
+      db.prepare('UPDATE collections SET name = @name, updated_at = @ts WHERE id = @id').run({ id, name, ts });
+    }
+    return getCollection(id);
+  }
+
+  function deleteCollection(id: string, requestSource?: RequestSource): void {
+    requireKbRequestSource(requestSource, ['user']);
+    id = captureKbMutationInput(id, z.string());
+    db.prepare('DELETE FROM collections WHERE id = ?').run(id);
+  }
+
+  function addSource(input: AddSourceInput, requestSource: RequestSource): Source {
+    if (requestSource !== 'user' && requestSource !== 'agent' && requestSource !== 'scheduler') {
+      throw new Error('A valid request source is required to add a Knowledge source');
+    }
+    requireKbRequestSource(requestSource, ['user', 'agent']);
+    input = captureKbMutationInput(input, KB_STORE_ADD_SOURCE_SCHEMA);
+    if (requestSource === 'agent' && input.kind === 'meeting') throw Error('knowledge_agent_meeting_forbidden');
+    if (requestSource === 'agent' && input.parseStatus && input.parseStatus !== 'pending') {
+      throw new Error('Agent-created Knowledge sources must start in the pending state');
+    }
+    const hasStableIdentity = input.sourceId !== undefined || input.clientRequestKey !== undefined;
+    if (hasStableIdentity && (!input.sourceId || !input.clientRequestKey)) {
+      throw new Error('kb_stable_source_identity_incomplete');
+    }
+    if (hasStableIdentity && requestSource !== 'user') {
+      throw new Error('kb_stable_source_user_only');
+    }
+    if (!hasStableIdentity && input.metadata && ['clientRequestKey', 'assistantContentDigest'].some(key => Object.hasOwn(input.metadata!, key))) {
+      throw new Error('kb_stable_source_identity_metadata_forbidden');
+    }
+    const assistantContentDigest = hasStableIdentity ? computeKbSourceContentDigest(input) : undefined;
+    if (hasStableIdentity) {
+      const existingById = getSource(input.sourceId!);
+      if (existingById) {
+        assertStableSourceMatches(existingById, input, assistantContentDigest!);
+        return sourceReceipt(existingById,requestSource);
+      }
+      const existingByRequestKey = findSourceByClientRequestKey(input.clientRequestKey!);
+      if (existingByRequestKey) throw new Error('kb_client_request_key_conflict');
+    }
+    const id = input.sourceId ?? randomUUID();
+    const ts = now();
+    const rawPath = input.rawPath ?? input.filePath ?? '';
+    const metadataJson = JSON.stringify({
+      ...input.metadata,
+      createdBy: requestSource,
+      ...(hasStableIdentity ? {
+        clientRequestKey: input.clientRequestKey,
+        assistantContentDigest,
+      } : {}),
+    });
+    db.prepare(`
+      INSERT INTO sources (id, collection_id, kind, title, uri, mime_type, sha256, byte_size, raw_path, extracted_text_path, parse_status, parse_error, parse_attempts, chunk_count, metadata_json, created_at, updated_at)
+      VALUES (@id, @collectionId, @kind, @title, @uri, @mimeType, '', @byteSize, @rawPath, '', @parseStatus, '', 0, 0, @metadataJson, @ts, @ts)
+    `).run({
+      id,
+      collectionId: input.collectionId,
+      kind: input.kind,
+      title: input.title,
+      uri: input.uri ?? '',
+      mimeType: input.mimeType ?? '',
+      byteSize: input.byteSize ?? 0,
+      rawPath,
+      parseStatus: input.parseStatus ?? 'pending',
+      metadataJson,
+      ts,
+    });
+    return sourceReceipt(getSource(id)!,requestSource);
+  }
+
+  function ensureAssistantSource(raw: AddSourceInput, requestSource: RequestSource): Source {
+    if (requestSource !== 'user') throw Error('assistant_knowledge_user_only');
+    const input = captureExecutionValue(raw);
+    const fields = ['sourceId','clientRequestKey','collectionId','kind','title','text','parseStatus','metadata'];
+    const meta = input?.metadata;
+    if (!input || Object.keys(input).sort().join(',') !== fields.sort().join(',')
+      || !meta || Object.keys(meta).sort().join(',') !== 'assistantCandidateId,assistantEvidenceRefs,assistantRunId'
+      || typeof meta.assistantCandidateId !== 'string' || !meta.assistantCandidateId
+      || typeof meta.assistantRunId !== 'string' || !meta.assistantRunId
+      || input.sourceId !== `assistant-source:${meta.assistantCandidateId}`
+      || input.clientRequestKey !== `assistant-candidate:${meta.assistantCandidateId}`
+      || input.kind !== 'paste' || input.parseStatus !== 'pending'
+      || typeof input.collectionId !== 'string' || !input.collectionId
+      || typeof input.title !== 'string' || !input.title.trim()
+      || typeof input.text !== 'string' || !input.text.trim()
+      || !Array.isArray(meta.assistantEvidenceRefs) || !meta.assistantEvidenceRefs.length
+      || meta.assistantEvidenceRefs.some(ref => !ref || typeof ref !== 'object' || Object.keys(ref).sort().join(',') !== 'id,kind'
+        || typeof ref.kind !== 'string' || !ref.kind || typeof ref.id !== 'string' || !ref.id)
+      || Buffer.byteLength(canonicalJson(input)) > 65536) throw Error('assistant_knowledge_input');
+    const content = input.text, digest = computeKbSourceContentDigest(input), hash = computeKnowledgeContentHash(content);
+    let cursor = 0;
+    // Reuse the product chunker; remove only its leading overlap so the existing
+    // KB content reader can concatenate these chunks into the exact original.
+    const chunks = createChunker().chunk({text:content,mimeType:'text/plain'}).flatMap(chunk => {
+      const start = Math.max(cursor,chunk.charStart);cursor = Math.max(cursor,chunk.charEnd);
+      return start < chunk.charEnd ? [{idx:0,text:content.slice(start,chunk.charEnd),charStart:start,charEnd:chunk.charEnd}] : [];
+    }).map((chunk,idx)=>({...chunk,idx}));
+    const layout = (values: Array<{idx:number;text:string;charStart:number;charEnd:number}>) => values.map(({idx,text,charStart,charEnd})=>({idx,text,charStart,charEnd}));
+    const matches = (source:Source) => {
+      assertStableSourceMatches(source,input,digest);
+      if (source.kind !== 'paste' || source.title !== input.title || source.metadata.createdBy !== 'user') throw Error('assistant_knowledge_target_conflict');
+    };
+    const durable = () => {
+      const source = getSource(input.sourceId!);if (!source) throw Error('assistant_knowledge_write_not_durable');matches(source);
+      const actual = listChunks(source.id);
+      if (actual.some(chunk=>chunk.collectionId!==input.collectionId||chunk.sourceId!==source.id)
+        || source.parseStatus !== 'parsed' || source.sha256 !== hash || source.chunkCount !== chunks.length
+        || source.byteSize !== Buffer.byteLength(content)
+        || canonicalJson(layout(actual)) !== canonicalJson(chunks)
+        || actual.map(chunk=>chunk.text).join('') !== content) throw Error('assistant_knowledge_body_conflict');
+      return source;
+    };
+    return transactions.exclusive(() => {
+      if (!getCollection(input.collectionId)) throw Error('assistant_candidate_collection_not_found');
+      const source = addSource(input,'user');matches(source);
+      if (source.parseStatus !== 'parsed') {
+        if (source.parseStatus !== 'pending' || source.chunkCount !== 0 || listChunks(source.id).length !== 0 || source.sha256) throw Error('assistant_knowledge_target_conflict');
+        if (db.prepare('UPDATE sources SET sha256=?,byte_size=? WHERE id=?').run(hash,Buffer.byteLength(content),source.id).changes !== 1) throw Error('assistant_knowledge_write_not_durable');
+        insertChunks(source.id,chunks,'user');
+        updateSourceParseResult(source.id,{parseStatus:'parsed',metadata:{engine:'builtin-text'}},'user');
+      }
+      return durable();
+    });
+  }
+
+  function findSourceByClientRequestKey(clientRequestKey: string): Source | undefined {
+    const rows = db.prepare('SELECT * FROM sources').all() as Record<string, unknown>[];
+    const row = rows.find(candidate => {
+      const metadata = JSON.parse(String(candidate.metadata_json ?? '{}')) as Record<string, unknown>;
+      return metadata.clientRequestKey === clientRequestKey;
+    });
+    return row ? mapSource(row) : undefined;
+  }
+
+  function assertStableSourceMatches(source: Source, input: AddSourceInput, contentDigest: string): void {
+    const metadata = source.metadata;
+    const matches = source.collectionId === input.collectionId
+      && metadata.clientRequestKey === input.clientRequestKey
+      && metadata.assistantCandidateId === input.metadata?.assistantCandidateId
+      && metadata.assistantRunId === input.metadata?.assistantRunId
+      && canonicalJson(metadata.assistantEvidenceRefs ?? []) === canonicalJson(input.metadata?.assistantEvidenceRefs ?? [])
+      && metadata.assistantContentDigest === contentDigest;
+    if (!matches) throw new Error('kb_stable_source_conflict');
+  }
+
+  function getSource(id: string): Source | undefined {
+    const row = db.prepare('SELECT * FROM sources WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    return row ? mapSource(row) : undefined;
+  }
+
+  function claimSourceContentHash(
+    sourceId: string,
+    sha256: string,
+    requestSource: RequestSource,
+  ): { source: Source; created: boolean } {
+    requireKbRequestSource(requestSource);
+    [sourceId, sha256] = captureKbMutationInput([sourceId, sha256], z.tuple([z.string(), z.string()]));
+    return withMutationTransaction(() => {
+    if (!/^[a-f0-9]{64}$/.test(sha256)) {
+      throw new Error('A valid content hash is required to claim a Knowledge source');
+    }
+    const source = getSource(sourceId);
+    if (!source) throw new Error(`Source not found: ${sourceId}`);
+    if (source.kind === 'meeting') {
+      throw new Error('Meeting sources do not use content-hash claims');
+    }
+    if (source.parseStatus !== 'pending' && source.parseStatus !== 'parsing') {
+      throw new Error(`Source state does not allow content hash claim: ${source.parseStatus}`);
+    }
+    if (requestSource !== 'scheduler' && source.metadata.createdBy !== requestSource) {
+      throw new Error(`Request source ${requestSource} is not allowed to claim this source`);
+    }
+
+    const findCanonical = () => {
+      const row = db.prepare(`
+        SELECT * FROM sources
+        WHERE collection_id = ? AND sha256 = ? AND id <> ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+      `).get(source.collectionId, sha256, sourceId) as Record<string, unknown> | undefined;
+      return row ? mapSource(row) : undefined;
+    };
+    const removeProvisionalSource = () => {
+      const current = getSource(sourceId);
+      if (!current || current.chunkCount !== 0 || (current.parseStatus !== 'pending' && current.parseStatus !== 'parsing')
+        || !Object.is(current.metadata.createdBy, source.metadata.createdBy)
+        || requestSource !== 'scheduler' && current.metadata.createdBy !== requestSource) {
+        throw new Error('Only an empty pending source can be removed after a duplicate claim');
+      }
+      db.prepare('DELETE FROM sources WHERE id = ?').run(sourceId);
+    };
+
+    const existing = findCanonical();
+    if (existing) {
+      removeProvisionalSource();
+      return { source: existing, created: false };
+    }
+
+    try {
+      db.prepare('UPDATE sources SET sha256 = @sha256, updated_at = @updatedAt WHERE id = @id')
+        .run({ id: sourceId, sha256, updatedAt: now() });
+      return { source: getSource(sourceId)!, created: true };
+    } catch (error) {
+      const concurrent = findCanonical();
+      if (!concurrent) throw error;
+      removeProvisionalSource();
+      return { source: concurrent, created: false };
+    }
+    });
+  }
+
+  function listSources(collectionId: string): Source[] {
+    return (db.prepare('SELECT * FROM sources WHERE collection_id = ? ORDER BY created_at ASC').all(collectionId) as Record<string, unknown>[]).map(mapSource);
+  }
+
+  function deleteSource(id: string, requestSource?: RequestSource): void {
+    requireKbRequestSource(requestSource, ['user']);
+    id = captureKbMutationInput(id, z.string());
+    db.prepare('DELETE FROM sources WHERE id = ?').run(id);
+  }
+
+  function retrySource(id: string, requestSource?: RequestSource): Source | undefined {
+    requireKbRequestSource(requestSource, ['user']);
+    id = captureKbMutationInput(id, z.string());
+    const ts = now();
+    db.prepare("UPDATE sources SET parse_status = 'pending', parse_error = '', parse_attempts = 0, updated_at = @ts WHERE id = @id").run({ id, ts });
+    return getSource(id);
+  }
+
+  function updateSourceParseResult(
+    id: string,
+    input: UpdateSourceParseResultInput,
+    requestSource: RequestSource,
+  ): Source {
+    requireKbRequestSource(requestSource);
+    id = captureKbMutationInput(id, z.string());
+    return withMutationTransaction(() => {
+    const source = getSource(id);
+    if (!source) throw new Error(`Source not found: ${id}`);
+    if (source.parseStatus !== 'pending' && source.parseStatus !== 'parsing') {
+      throw new Error(`Source state does not allow parse update: ${source.parseStatus}`);
+    }
+    const createdBy = source.metadata.createdBy;
+    if (requestSource !== 'scheduler' && createdBy !== requestSource) {
+      throw new Error(`Request source ${requestSource} is not allowed to update this source`);
+    }
+    input = captureKbMutationInput(input, KB_PARSE_RESULT_INPUT_SCHEMA);
+    assertKbAuthorityMetadataUnchanged(source, input.metadata);
+    if (input.parseStatus === 'parsed' && source.kind !== 'meeting' && !source.sha256) {
+      throw new Error('A content hash is required before a Knowledge source can become parsed');
+    }
+    const metadata = {
+      ...source.metadata,
+      ...input.metadata,
+      ...(input.errorCode ? { errorCode: input.errorCode } : {}),
+    };
+    const ts = now();
+    db.prepare(`
+      UPDATE sources
+      SET parse_status = @parseStatus,
+          parse_error = @parseError,
+          parse_attempts = parse_attempts + 1,
+          metadata_json = @metadataJson,
+          updated_at = @ts
+      WHERE id = @id
+    `).run({
+      id,
+      parseStatus: input.parseStatus,
+      parseError: input.errorMessage ?? '',
+      metadataJson: JSON.stringify(metadata),
+      ts,
+    });
+    return getSource(id)!;
+    });
+  }
+
+  function getSourceEmbeddingProgress(sourceId: string): SourceEmbeddingProgress {
+    const row = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN embedding_status = 'embedded' THEN 1 ELSE 0 END), 0) AS embedded,
+        COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN embedding_status = 'failed' THEN 1 ELSE 0 END), 0) AS failed
+      FROM chunks WHERE source_id = ?
+    `).get(sourceId) as { embedded: number; total: number; failed: number } | undefined;
+    return row ?? { embedded: 0, total: 0, failed: 0 };
+  }
+
+  function insertChunks(sourceId: string, inputs: Array<{ idx: number; text: string; charStart: number; charEnd: number; pageIndex?: number; slideIndex?: number; sheetName?: string; cellRange?: string; metadata?: Record<string, unknown> }>, requestSource?: RequestSource): Chunk[] {
+    const actor = requireKbRequestSource(requestSource);
+    sourceId = captureKbMutationInput(sourceId, z.string());
+    return withMutationTransaction(() => {
+    const src = getSource(sourceId);
+    if (!src) throw new Error('Source not found');
+    if (actor !== 'user') {
+      assertKbPendingSourceOwner(src, actor);
+      if (actor === 'agent' && src.kind === 'meeting') throw Error('knowledge_agent_meeting_forbidden');
+    }
+    inputs = captureKbMutationInput(inputs, z.array(KB_CHUNK_INPUT_SCHEMA));
+    const ts = now();
+    const stmt = db.prepare(`
+      INSERT INTO chunks (id, source_id, collection_id, idx, text, segmented_text, char_start, char_end, page_index, slide_index, sheet_name, cell_range, embedding_status, embedding_error, embedding_attempts, metadata_json, created_at)
+      VALUES (@id, @sourceId, @collectionId, @idx, @text, NULL, @charStart, @charEnd, @pageIndex, @slideIndex, @sheetName, @cellRange, 'pending', '', 0, @metadataJson, @ts)
+    `);
+    const ids: string[] = [];
+    for (const c of inputs) {
+      const id = randomUUID();
+      ids.push(id);
+      stmt.run({
+        id,
+        sourceId,
+        collectionId: src.collectionId,
+        idx: c.idx,
+        text: c.text,
+        charStart: c.charStart,
+        charEnd: c.charEnd,
+        pageIndex: c.pageIndex ?? null,
+        slideIndex: c.slideIndex ?? null,
+        sheetName: c.sheetName ?? null,
+        cellRange: c.cellRange ?? null,
+        metadataJson: JSON.stringify(c.metadata ?? {}),
+        ts,
+      });
+    }
+    return ids.map(id => getChunk(id)!);
+    });
+  }
+
+  function getChunk(id: string): Chunk | undefined {
+    const row = db.prepare('SELECT * FROM chunks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    return row ? mapChunk(row) : undefined;
+  }
+
+  function listChunks(sourceId: string): Chunk[] {
+    return (db.prepare('SELECT * FROM chunks WHERE source_id = ? ORDER BY idx ASC').all(sourceId) as Record<string, unknown>[]).map(mapChunk);
+  }
+
+  function markChunkEmbedded(chunkId: string, requestSource?: RequestSource): void {
+    const actor = requireKbRequestSource(requestSource, ['user', 'scheduler']);
+    chunkId = captureKbMutationInput(chunkId, z.string());
+    withMutationTransaction(() => {
+    assertSchedulerChunkState(chunkId, actor);
+    db.prepare("UPDATE chunks SET embedding_status = 'embedded', embedding_error = '' WHERE id = ?").run(chunkId);
+    });
+  }
+
+  function markChunkFailed(chunkId: string, error: string, requestSource?: RequestSource): void {
+    const actor = requireKbRequestSource(requestSource, ['user', 'scheduler']);
+    [chunkId, error] = captureKbMutationInput([chunkId, error], z.tuple([z.string(), z.string()]));
+    withMutationTransaction(() => {
+    assertSchedulerChunkState(chunkId, actor);
+    db.prepare("UPDATE chunks SET embedding_status = 'failed', embedding_error = @error, embedding_attempts = embedding_attempts + 1 WHERE id = @id").run({ id: chunkId, error });
+    });
+  }
+
+  function getCollectionState(collectionId: string): CollectionState | undefined {
+    const col = getCollection(collectionId);
+    if (!col) return undefined;
+    const sources = listSources(collectionId).map(s => ({
+      id: s.id,
+      title: s.title,
+      parseStatus: s.parseStatus,
+      embeddingProgress: getSourceEmbeddingProgress(s.id),
+    }));
+    return { collection: col, sources };
+  }
+
+  function getSourceWithContent(sourceId: string, offset = 0, limit = 32_000): GetSourceOutput | undefined {
+    const src = getSource(sourceId);
+    if (!src) return undefined;
+    const chunks = listChunks(sourceId);
+    const fullText = chunks.map(c => c.text).join('');
+    const totalChars = fullText.length;
+    const sliced = fullText.slice(offset, offset + limit);
+    const hasMore = offset + limit < totalChars;
+    const outline = deriveOutline(chunks);
+    return {
+      source: src,
+      outline,
+      text: sliced,
+      hasMore,
+      nextOffset: hasMore ? offset + limit : undefined,
+      totalChars,
+    };
+  }
+
+  function deriveOutline(chunks: Chunk[]): GetSourceOutput['outline'] {
+    const seen = new Set<string>();
+    const outline: GetSourceOutput['outline'] = [];
+    for (const c of chunks) {
+      if (c.pageIndex != null) {
+        const key = `page:${c.pageIndex}`;
+        if (!seen.has(key)) { seen.add(key); outline.push({ kind: 'page', index: c.pageIndex, charStart: c.charStart, charEnd: c.charEnd }); }
+      } else if (c.slideIndex != null) {
+        const key = `slide:${c.slideIndex}`;
+        if (!seen.has(key)) { seen.add(key); outline.push({ kind: 'slide', index: c.slideIndex, charStart: c.charStart, charEnd: c.charEnd }); }
+      } else if (c.sheetName != null) {
+        const key = `sheet:${c.sheetName}`;
+        if (!seen.has(key)) { seen.add(key); outline.push({ kind: 'sheet', index: outline.length, title: c.sheetName, charStart: c.charStart, charEnd: c.charEnd }); }
+      }
+    }
+    return outline;
+  }
+
+  function createMeeting(input: CreateMeetingInput, requestSource?: RequestSource): MeetingRecord {
+    requireKbRequestSource(requestSource, ['user']);
+    input = captureKbMutationInput(input, KB_CREATE_MEETING_INPUT_SCHEMA);
+    const id = input.id ?? randomUUID();
+    const ts = now();
+    db.prepare(`
+      INSERT INTO meetings (
+        id, source_id, status, title, audio_file_path, audio_retention,
+        summary_provider, summary_provider_hash, failure_reason,
+        started_at, ended_at, updated_at
+      )
+      VALUES (
+        @id, @sourceId, @status, @title, @audioFilePath, @audioRetention,
+        @summaryProvider, @summaryProviderHash, @failureReason,
+        @startedAt, @endedAt, @updatedAt
+      )
+    `).run({
+      id,
+      sourceId: input.sourceId ?? '',
+      status: input.status,
+      title: input.title ?? '',
+      audioFilePath: input.audioFilePath ?? '',
+      audioRetention: input.audioRetention ?? 'kept',
+      summaryProvider: input.summaryProvider ?? 'local-only',
+      summaryProviderHash: input.summaryProviderHash ?? '',
+      failureReason: input.failureReason ?? '',
+      startedAt: input.startedAt,
+      endedAt: input.endedAt ?? null,
+      updatedAt: ts,
+    });
+    return getMeeting(id)!;
+  }
+
+  function getMeeting(id: string): MeetingRecord | undefined {
+    const row = db.prepare('SELECT * FROM meetings WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    return row ? mapMeeting(row) : undefined;
+  }
+
+  function listMeetings(): MeetingRecord[] {
+    return (db.prepare('SELECT * FROM meetings ORDER BY started_at ASC').all() as Record<string, unknown>[]).map(mapMeeting);
+  }
+
+  function updateMeeting(id: string, input: UpdateMeetingInput, requestSource?: RequestSource): MeetingRecord | undefined {
+    const actor = requireKbRequestSource(requestSource, ['user', 'scheduler']);
+    id = captureKbMutationInput(id, z.string());
+    return withMutationTransaction(() => {
+    const current = getMeeting(id);
+    if (!current) return undefined;
+    input = captureKbMutationInput(input, KB_UPDATE_MEETING_INPUT_SCHEMA);
+    if (actor === 'scheduler') {
+      const allowed = ['recording', 'paused', 'stopping'].includes(current.status) ? ['interrupted']
+        : current.status === 'summarizing' ? ['transcribed']
+          : current.status === 'transcribing' ? ['interrupted', 'failed'] : [];
+      if (Object.keys(input).some(key => key !== 'status' && key !== 'failureReason') || !input.status || !allowed.includes(input.status)) throw Error('knowledge_meeting_recovery_forbidden');
+    }
+    const ts = now();
+    db.prepare(`
+      UPDATE meetings SET
+        source_id = @sourceId,
+        status = @status,
+        title = @title,
+        audio_file_path = @audioFilePath,
+        audio_retention = @audioRetention,
+        summary_provider = @summaryProvider,
+        summary_provider_hash = @summaryProviderHash,
+        failure_reason = @failureReason,
+        ended_at = @endedAt,
+        updated_at = @updatedAt
+      WHERE id = @id
+    `).run({
+      id,
+      sourceId: input.sourceId ?? current.sourceId,
+      status: input.status ?? current.status,
+      title: input.title ?? current.title,
+      audioFilePath: input.audioFilePath ?? current.audioFilePath,
+      audioRetention: input.audioRetention ?? current.audioRetention,
+      summaryProvider: input.summaryProvider ?? current.summaryProvider,
+      summaryProviderHash: input.summaryProviderHash ?? current.summaryProviderHash,
+      failureReason: input.failureReason ?? current.failureReason,
+      endedAt: input.endedAt === undefined ? current.endedAt : input.endedAt,
+      updatedAt: ts,
+    });
+    return getMeeting(id);
+    });
+  }
+
+  function withMutationTransaction<T>(run: () => T): T {
+    return transactions.run(run);
+  }
+
+  function assertSchedulerChunkState(chunkId: string, requestSource: RequestSource): void {
+    if (requestSource !== 'scheduler') return;
+    const chunk = getChunk(chunkId);
+    if (!chunk || !['pending', 'embedding', 'failed'].includes(chunk.embeddingStatus)) throw Error('knowledge_chunk_scheduler_forbidden');
+  }
+
+  function close(): void {
+    transactions.close();
+    originClosed=true;
+  }
+
+  function positive<T extends (...args: never[]) => unknown>(fn:T):T {
+    return ((...args:Parameters<T>)=>{transactions.ready();return fn(...args);}) as T;
+  }
+  const originalStore:KbStore = {
+    _db: db,
+    createCollection: positive(createCollection), getCollection: positive(getCollection), listCollections: positive(listCollections), renameCollection: positive(renameCollection), deleteCollection: positive(deleteCollection),
+    addSource: positive(addSource), ensureAssistantSource: positive(ensureAssistantSource), claimSourceContentHash: positive(claimSourceContentHash), getSource: positive(getSource), listSources: positive(listSources), deleteSource: positive(deleteSource), retrySource: positive(retrySource), updateSourceParseResult: positive(updateSourceParseResult), getSourceEmbeddingProgress: positive(getSourceEmbeddingProgress),
+    insertChunks: positive(insertChunks), listChunks: positive(listChunks), markChunkEmbedded: positive(markChunkEmbedded), markChunkFailed: positive(markChunkFailed),
+    createMeeting: positive(createMeeting), getMeeting: positive(getMeeting), listMeetings: positive(listMeetings), updateMeeting: positive(updateMeeting),
+    getCollectionState: positive(getCollectionState), getSourceWithContent: positive(getSourceWithContent), close,
+  };
+  kbOriginApply(kbOriginSet, originalKbStores, [
+    originalStore,
+    {
+      path: resolve(dbPath),
+      read(receipt: unknown) {
+        const row = kbOriginApply(kbOriginGet, sourceOrigins, [receipt]) as
+          | OriginalKnowledgeSourceReceipt
+          | undefined;
+        if (!row) throw Error('MAIN_MATERIAL_KNOWLEDGE_SOURCE_REQUIRED');
+        row.assertCurrent();
+        return row;
+      },
+    },
+  ]);
+  return originalStore;
+}
+
+function backfillCanonicalSourceHashes(db: DatabaseSync): void {
+  const claimed = new Set(
+    (db.prepare("SELECT collection_id, sha256 FROM sources WHERE sha256 <> ''").all() as Array<Record<string, unknown>>)
+      .map(row => `${row.collection_id as string}:${row.sha256 as string}`),
+  );
+  const sources = db.prepare(`
+    SELECT id, collection_id
+    FROM sources
+    WHERE parse_status = 'parsed' AND sha256 = '' AND kind <> 'meeting'
+    ORDER BY created_at ASC, id ASC
+  `).all() as Array<{ id: string; collection_id: string }>;
+  const chunksStatement = db.prepare(`
+    SELECT text, char_start, char_end
+    FROM chunks
+    WHERE source_id = ?
+    ORDER BY idx ASC
+  `);
+  const updateStatement = db.prepare('UPDATE sources SET sha256 = ? WHERE id = ? AND sha256 = ?');
+
+  for (const source of sources) {
+    const chunks = chunksStatement.all(source.id) as Array<{
+      text: string;
+      char_start: number;
+      char_end: number;
+    }>;
+    if (chunks.length === 0) continue;
+    const text = reconstructKnowledgeSourceText(chunks.map(chunk => ({
+      text: chunk.text,
+      charStart: chunk.char_start,
+      charEnd: chunk.char_end,
+    })));
+    if (!text) continue;
+    const sha256 = computeKnowledgeContentHash(text);
+    const key = `${source.collection_id}:${sha256}`;
+    if (claimed.has(key)) continue;
+    try {
+      updateStatement.run(sha256, source.id, '');
+      claimed.add(key);
+    } catch {
+      claimed.add(key);
+    }
+  }
+}
+
+function mapCollection(row: Record<string, unknown>): Collection {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: row.description as string,
+    color: row.color as string,
+    scope: row.scope as Collection['scope'],
+    cwd: row.cwd as string,
+    embeddingModelId: row.embedding_model_id as string,
+    embeddingDim: row.embedding_dim as number,
+    chunkCountCached: row.chunk_count_cached as number,
+    autoAcceptWebPersist: (row.auto_accept_web_persist as number) === 1,
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  };
+}
+
+function mapSource(row: Record<string, unknown>): Source {
+  return {
+    id: row.id as string,
+    collectionId: row.collection_id as string,
+    kind: row.kind as Source['kind'],
+    title: row.title as string,
+    uri: row.uri as string,
+    mimeType: row.mime_type as string,
+    sha256: row.sha256 as string,
+    byteSize: row.byte_size as number,
+    rawPath: row.raw_path as string,
+    extractedTextPath: row.extracted_text_path as string,
+    parseStatus: row.parse_status as SourceParseStatus,
+    parseError: row.parse_error as string,
+    parseAttempts: row.parse_attempts as number,
+    chunkCount: row.chunk_count as number,
+    metadata: JSON.parse((row.metadata_json as string) || '{}'),
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  };
+}
+
+function mapChunk(row: Record<string, unknown>): Chunk {
+  return {
+    id: row.id as string,
+    sourceId: row.source_id as string,
+    collectionId: row.collection_id as string,
+    idx: row.idx as number,
+    text: row.text as string,
+    charStart: row.char_start as number,
+    charEnd: row.char_end as number,
+    pageIndex: row.page_index as number | null,
+    slideIndex: row.slide_index as number | null,
+    sheetName: row.sheet_name as string | null,
+    cellRange: row.cell_range as string | null,
+    embeddingStatus: row.embedding_status as ChunkEmbeddingStatus,
+    embeddingError: row.embedding_error as string,
+    metadata: JSON.parse((row.metadata_json as string) || '{}'),
+    createdAt: row.created_at as number,
+  };
+}
+
+function mapMeeting(row: Record<string, unknown>): MeetingRecord {
+  return {
+    id: row.id as string,
+    sourceId: row.source_id as string,
+    status: row.status as MeetingRecord['status'],
+    title: row.title as string,
+    audioFilePath: row.audio_file_path as string,
+    audioRetention: row.audio_retention as MeetingRecord['audioRetention'],
+    summaryProvider: row.summary_provider as string,
+    summaryProviderHash: row.summary_provider_hash as string,
+    failureReason: row.failure_reason as string,
+    startedAt: row.started_at as number,
+    endedAt: row.ended_at as number | null,
+    updatedAt: row.updated_at as number,
+  };
+}

@@ -1,4 +1,5 @@
 import type {AdapterCredentialResolver} from '../providers/model-harness-profile.js';
+import {createOriginalModelSdkAttemptTransport,finishOriginalModelSdkAttempt} from '../runtime/original-model-sdk-attempt.js';
 import { resolveObservationProviderDisclosure } from '../../runtime/sol-pi/observation-execution-scope.js';
 import { createProviderDisclosureFetch, getProviderDisclosureSignal, assertProviderDisclosureActive, disposeProviderDisclosureContext } from '../../runtime/sol-pi/provider-disclosure.js';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -6,6 +7,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { ModelAdapter, Message, ToolDefinition, StreamChunk } from '../../types.js';
 import { isAbortError } from '../runtime/abort-utils.js';
 import type { CachedToolDefinition, ModelCapabilities, StreamOptions, SystemPromptBlock } from '../runtime/model-capabilities.js';
+import { CompactionResponseError } from '../runtime/compaction-response.js';
 import { resolveClonedCapabilityOverrides, type AdapterCatalogIdentity } from './catalog-identity.js';
 
 const MAX_RETRIES = 3;
@@ -239,22 +241,34 @@ export class ClaudeAdapter implements ModelAdapter {
       cache_control: (t as CachedToolDefinition).cache_control,
     }));
 
+    const modelPhysical=createOriginalModelSdkAttemptTransport(signal,options?.providerDisclosure);let originalFailure:{raw:unknown}|undefined;
+    try {
     const sharedClient = await this.getClient();
-    const client = options?.providerDisclosure
-      ? sharedClient.withOptions({ fetch: createProviderDisclosureFetch(options.providerDisclosure, globalThis.fetch.bind(globalThis)) })
+    const physicalFetch=modelPhysical?.fetch??globalThis.fetch.bind(globalThis);
+    const client = options?.providerDisclosure||modelPhysical
+      ? sharedClient.withOptions({ fetch: options?.providerDisclosure?createProviderDisclosureFetch(options.providerDisclosure, physicalFetch):physicalFetch,...(modelPhysical?{maxRetries:0}:{}) })
       : sharedClient;
-    const stream = client.messages.stream({
+    const parameters={
       model: this.model,
       max_tokens: options?.maxOutputTokens ?? CLAUDE_REQUEST_MAX_OUTPUT_TOKENS,
       system: (options?.promptCache?.systemPrompt ?? systemPrompt) as string | SystemPromptBlock[],
       messages: anthropicMessages,
       tools: anthropicTools.length > 0 ? anthropicTools : undefined,
-    }, { signal });
+    };
+    // The high-level MessageStream uses this exact low-level SDK entry. This
+    // consumer needs raw events, not its additional lazy-input accumulator.
+    const stream=modelPhysical
+      ? await modelPhysical.createAnthropic(client,{...parameters,stream:true}) as AsyncIterable<Anthropic.RawMessageStreamEvent>
+      : client.messages.stream(parameters,{signal});
 
+    let terminal = false;
+    let incompleteSummary = false;
+    let stopReason: string | undefined;
     // Buffer for tool_use arguments
     const toolBuffers = new Map<number, { id: string; name: string; jsonBuffer: string }>();
 
     for await (const event of stream) {
+      if (options?.requireCompleteResponse && terminal && event.type !== 'message_delta') incompleteSummary = true;
       if (event.type === 'message_start') {
         // 输出 usage 信息
         const usage = event.message.usage;
@@ -270,6 +284,7 @@ export class ClaudeAdapter implements ModelAdapter {
           };
         }
       } else if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        if (options?.requireCompleteResponse) incompleteSummary = true;
         toolBuffers.set(event.index, {
           id: event.content_block.id,
           name: event.content_block.name,
@@ -302,6 +317,10 @@ export class ClaudeAdapter implements ModelAdapter {
           toolBuffers.delete(event.index);
         }
       } else if (event.type === 'message_delta') {
+        if (event.delta.stop_reason != null) {
+          if (terminal) incompleteSummary = true;
+          stopReason = String(event.delta.stop_reason);
+        }
         // 更新 usage 信息
         const usage = event.usage;
         if (usage) {
@@ -313,10 +332,16 @@ export class ClaudeAdapter implements ModelAdapter {
             },
           };
         }
-        if (options?.maxOutputTokens !== undefined && ['max_tokens', 'model_context_window_exceeded'].includes(String(event.delta.stop_reason))) throw new Error('memory_output_incomplete');
+        if (!options?.requireCompleteResponse && options?.maxOutputTokens !== undefined && ['max_tokens', 'model_context_window_exceeded'].includes(String(event.delta.stop_reason))) throw new Error('memory_output_incomplete');
       } else if (event.type === 'message_stop') {
-        yield { type: 'done' };
+        terminal = true;
+        if (!options?.requireCompleteResponse) yield { type: 'done' };
       }
     }
+    if (options?.requireCompleteResponse) {
+      if (!terminal || incompleteSummary || toolBuffers.size > 0 || !['end_turn', 'stop_sequence'].includes(stopReason ?? '')) throw new CompactionResponseError('provider_incomplete');
+      yield { type: 'done' };
+    }
+    }catch(raw){originalFailure={raw};throw raw;}finally{await finishOriginalModelSdkAttempt(modelPhysical,originalFailure);}
   }
 }

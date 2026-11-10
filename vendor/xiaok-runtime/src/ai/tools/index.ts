@@ -1,4 +1,6 @@
 import {retainCommandResult,commandResultVerdict} from './command-result.js';
+import {AsyncLocalStorage as ProcessAuthorizationStorage} from 'node:async_hooks';
+import {withOriginalToolWorkerResource} from '../../runtime/task-host/task-runtime-host.js';
 import { captureDirectHookSlot, assertDirectHookReturn } from './direct-hook-promise-boundary.js';
 import { AcceptedHookCalls } from './accepted-hook-calls.js';
 import {assertNativeRegistryCheckpointCurrent} from '../../runtime/task-host/workflow-restriction-checkpoint.js';
@@ -7,7 +9,7 @@ import {captureToolDescriptionMetadata,BUILTIN_READ_DESCRIPTION,type ToolDescrip
 import { isIntentProducerTool } from './intent-delegation.js';
 import { isObservationDelegationTool } from '../../runtime/sol-pi/delegation-tool-brand.js';
 import {registerBuiltinToolIdentity,inheritBuiltinToolIdentity,getBuiltinToolIdentity,isNativeReadonlyExecutionEligible} from './native-tool-identity.js';
-import {getCompoundSandboxPreparation,inheritCompoundSandboxPreparation} from '../../platform/sandbox/tool-wrappers.js';
+import {getCompoundSandboxPreparation,inheritCompoundSandboxPreparation,isScopedSandboxReadonlyTool} from '../../platform/sandbox/tool-wrappers.js';
 import { IntersectedPermissionManager } from '../permissions/intersection.js';
 import { measureToolResult, observationMetricsEnabled } from '../../runtime/trace/observation-metrics.js';
 import { isDeepStrictEqual } from 'node:util';
@@ -36,6 +38,7 @@ import { uninstallSkillTool } from './uninstall-skill.js';
 import { validateSkillTool } from './validate-skill.js';
 import { createRenderUiTool } from './render-ui.js';
 import {createKimJudgeTool} from './kim-judge.js';
+import {createKimStatusTool} from './kim-status.js';
 import { sanitizeToolOutput } from '../../shared/stream-safety/redact.js';
 import {
   buildCapabilityToolDefinition,
@@ -48,6 +51,34 @@ import {
   type ToolSearchEntry,
 } from './tool-identity.js';
 
+const processAuthorizationFreeze=Object.freeze,processAuthorizationCreate=Object.create,ProcessAuthorizationError=Error;
+const processAuthorizationScopeGet=ProcessAuthorizationStorage.prototype.getStore,processAuthorizationScopeRun=ProcessAuthorizationStorage.prototype.run;
+const originalProcessAuthorizationScope=new ProcessAuthorizationStorage<object>();
+interface OriginalProcessAuthorization {active:boolean;failed:boolean;failure:unknown;current():void}
+const originalProcessAuthorizations=new WeakMap<object,OriginalProcessAuthorization>();
+const processAuthorizationGet=WeakMap.prototype.get,processAuthorizationSet=WeakMap.prototype.set,processAuthorizationApply=Reflect.apply;
+/** Read-only identity of the actual prepared Registry invocation. Fields on
+ * ToolExecutionContext never mint this token or a permission guard. */
+export function readCurrentOriginalToolProcessAuthorization():object|null {
+  const token=processAuthorizationApply(processAuthorizationScopeGet,originalProcessAuthorizationScope,[]) as object|undefined;
+  if(!token)return null;
+  const row=processAuthorizationApply(processAuthorizationGet,originalProcessAuthorizations,[token]) as {active:boolean}|undefined;
+  if(!row||!row.active)throw new ProcessAuthorizationError('TOOL_PROCESS_AUTHORIZATION_CLOSED');return token;
+}
+export function assertOriginalToolProcessAuthorizationCurrent(token:unknown):void {
+  const row=processAuthorizationApply(processAuthorizationGet,originalProcessAuthorizations,[token]) as OriginalProcessAuthorization|undefined;
+  if(!row||!row.active)throw new ProcessAuthorizationError('TOOL_PROCESS_ORIGINAL_AUTHORIZATION_REQUIRED');
+  if(row.failed)throw row.failure;
+  try{row.current();}catch(error){row.failed=true;row.failure=error;throw error;}
+  if(!row.active)throw new ProcessAuthorizationError('TOOL_PROCESS_AUTHORIZATION_CLOSED');
+}
+/** Final local membership cut only. The immediately preceding full current
+ * check remains required; this does not consult public context callbacks. */
+export function assertOriginalToolProcessAuthorizationLocal(token:unknown):void {
+ const row=processAuthorizationApply(processAuthorizationGet,originalProcessAuthorizations,[token]) as OriginalProcessAuthorization|undefined;
+ if(!row||!row.active)throw new ProcessAuthorizationError('TOOL_PROCESS_ORIGINAL_AUTHORIZATION_REQUIRED');
+ if(row.failed)throw row.failure;
+}
 // Capture singleton implementations at module initialization; a later factory call
 // cannot re-brand an in-place replacement as an audited native implementation.
 registerBuiltinToolIdentity(bashTool,'command');
@@ -76,6 +107,7 @@ export function buildToolList(
     validateSkillTool,
     createRenderUiTool(workspace),
     createKimJudgeTool(),
+    createKimStatusTool(),
     ...extraTools,
   ];
   // These positions are constructed above by first-party native factories, before
@@ -104,8 +136,15 @@ export interface CompoundRegistryExecutionPort {
 }
 
 export interface RegistryOptions {
+  /** Main-only restrictions. Undefined results grant no permission by themselves. */
+  /** Exact fixed Main local executors only; never a Native/role permission. */
+  settledLocalExecutors?:ReadonlyMap<Tool,Tool['execute']>;
+  assertContextAdmission?:()=>void;
+  recordUnprovenEffect?:(toolName:string)=>void;
   /** Host-only review role; native object identity is the sole admission authority. */
   nativeReadonlyOnly?: boolean;
+  /** Host-only readonly model boundary: every admitted tool needs path scope. */
+  requireSandboxScope?: boolean;
   compoundExecution?: CompoundRegistryExecutionPort;
   toolIdleTimeoutMs?: number;
   capabilityRegistry?: CapabilityRegistry;
@@ -161,14 +200,18 @@ export type ToolPreparationResult = {readonly kind:'prepared';readonly invocatio
 
 const observationPermissionAuthorities = new WeakMap<object, object>();
 
+const scopedNativeReadonlyRegistries=new WeakSet<object>();
+export function isScopedNativeReadonlyRegistry(registry:unknown):boolean {return typeof registry==='object'&&registry!==null&&scopedNativeReadonlyRegistries.has(registry);}
 export class ToolRegistry {
   #nativeReadonlyOnly: boolean;
+  #requireSandboxScope: boolean;
   get isNativeReadonlyOnly(): boolean { return this.#nativeReadonlyOnly; }
 
   private admitsNativeReadonly(tool: Tool | undefined): boolean {
     if (!this.#nativeReadonlyOnly) return Boolean(tool);
     if (!tool) return false;
-    try { return getBuiltinToolIdentity(tool) === 'readonly' && isNativeReadonlyExecutionEligible(tool); } catch { return false; }
+    try { return getBuiltinToolIdentity(tool) === 'readonly' && isNativeReadonlyExecutionEligible(tool)
+      && (!this.#requireSandboxScope||isScopedSandboxReadonlyTool(tool)); } catch { return false; }
   }
 
   private assertNativeReadonlyTree(tool: Tool, seen = new Set<Tool>()): void {
@@ -202,9 +245,11 @@ export class ToolRegistry {
 
   constructor(options: ToolRegistryOptions, tools?: Tool[],metadata?:ReadonlyMap<Tool,ToolDescriptionMetadata>) {
     this.#nativeReadonlyOnly = options.nativeReadonlyOnly === true;
+    this.#requireSandboxScope=this.#nativeReadonlyOnly&&options.requireSandboxScope===true;
+    if(this.#requireSandboxScope)scopedNativeReadonlyRegistries.add(this);
     Object.defineProperty(this, 'isNativeReadonlyOnly', { get: () => this.#nativeReadonlyOnly, configurable: false });
     if (this.#nativeReadonlyOnly) {
-      if (options.compoundExecution || options.onToolObserved || options.protectedOutputGuard || options.onPrompt) throw Error('native_readonly_external_callback_denied');
+      if (options.compoundExecution || options.onToolObserved || options.protectedOutputGuard || options.onPrompt || options.assertContextAdmission || options.recordUnprovenEffect || options.settledLocalExecutors) throw Error('native_readonly_external_callback_denied');
       if (options.hooksRunner && (options.hookInputMode === 'direct-callback' || !isEmptyConfiguredHooksRunner(options.hooksRunner))) throw Error('native_readonly_external_callback_denied');
       options = { ...options, hooksRunner: undefined };
       // Validate the complete constructor population before publishing any binding.
@@ -528,7 +573,7 @@ export class ToolRegistry {
     const record = this.preparedInvocations.get(prepared);
     if (!record) throw new Error('prepared_tool_invocation_invalid_or_consumed');
     this.preparedInvocations.delete(prepared);
-    const result = await record.execute(projectResult);
+    const result = await withOriginalToolWorkerResource(()=>record.execute(projectResult));
     record.context?.signal?.throwIfAborted();
     measureToolResult('registry_return', record.context?.toolInvocationId, record.name, result);
     return result;
@@ -925,6 +970,8 @@ export class ToolRegistry {
       let commandFact: ToolExecutionFact | undefined;
       const assertInvocationCurrent = () => {
         context?.signal?.throwIfAborted();
+        if(this.options.assertContextAdmission)assertSynchronousGrantResult(this.options.assertContextAdmission());
+        if(context?.assertContextAdmission)assertSynchronousGrantResult(context.assertContextAdmission());
         context?.assertPermissionApproval?.();
         if (permissionGrant) assertSynchronousGrantResult(permissionGrant.assertCurrent());
         context?.signal?.throwIfAborted();
@@ -973,10 +1020,21 @@ export class ToolRegistry {
           await assertNativeRegistryCheckpointCurrent(this);
           ctx?.signal?.throwIfAborted();
           assertInvocationCurrent();
-          return execute.call(tool, input, this.#nativeReadonlyOnly ? createNativeReadonlyExecutionContext(ctx) : ctx);
+          const processToken=processAuthorizationFreeze(processAuthorizationCreate(null));
+          const processRow:OriginalProcessAuthorization={active:true,failed:false,failure:undefined,current(){
+            if(!processRow.active)throw new ProcessAuthorizationError('TOOL_PROCESS_AUTHORIZATION_CLOSED');
+            ctx?.signal?.throwIfAborted();assertInvocationCurrent();ctx?.signal?.throwIfAborted();
+          }};
+          processAuthorizationApply(processAuthorizationSet,originalProcessAuthorizations,[processToken,processRow]);
+          try{
+            if(this.options.recordUnprovenEffect&&!(tool.permission==='safe'&&this.options.settledLocalExecutors?.get(tool)===execute&&!this.options.hooksRunner&&!this.options.onToolObserved&&!this.options.protectedOutputGuard))assertSynchronousGrantResult(this.options.recordUnprovenEffect(tool.definition.name));
+            if(ctx?.recordUnprovenEffect&&!(tool.permission==='safe'&&this.options.settledLocalExecutors?.get(tool)===execute&&!this.options.hooksRunner&&!this.options.onToolObserved&&!this.options.protectedOutputGuard))assertSynchronousGrantResult(ctx.recordUnprovenEffect(tool.definition.name));
+            return await processAuthorizationApply(processAuthorizationScopeRun,originalProcessAuthorizationScope,[processToken,()=>execute.call(tool,input,this.#nativeReadonlyOnly?createNativeReadonlyExecutionContext(ctx):ctx)]) as Promise<string>;
+          }
+          finally{processRow.active=false;}
         },
       });
-      context?.signal?.throwIfAborted();
+      assertInvocationCurrent();
       const project = projectResult ?? context?.projectObservationResult;
       if (project) {
         rawResult = await project(rawResult);

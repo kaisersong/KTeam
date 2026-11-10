@@ -84,7 +84,7 @@
   },
   "runtime": {
     "repository": "https://github.com/kaisersong/xiaok-cli",
-    "revision": "8f36042e209e0a6fc0c5ffe4b95f4bd9e8eb8056",
+    "revision": "f8728a346ccbed625c5918ffe7f8f8305ebdf7df",
     "directory": "vendor/xiaok-runtime",
     "modified": false,
     "usage": "Original AgentRuntime, model/config/credential loader, native tool factories, permission engine/settings and Skill catalog; unchanged pinned tools/skills; KTeam binds cwd, authenticated task scope, approval UI, tool trace and owned command lifecycle",
@@ -160,14 +160,74 @@
         "sha256": "86cfe706a8f6020007a8f66e9e4199a063a811c515c6687717ced3f2e62696bc"
       },
       {
+        "file": "vendor/xiaok-runtime/desktop/electron/active-owner-service-ports.ts",
+        "upstreamPath": "desktop/electron/active-owner-service-ports.ts",
+        "sha256": "c354f2c06383ba7eecdfb0c055e6cd8d72798b7dc88731483ac99f8ebdb8759e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/activity-owner-writer-launcher.ts",
+        "upstreamPath": "desktop/electron/activity-owner-writer-launcher.ts",
+        "sha256": "04ea846c86e81e9b2f6345a31887c634b77e8d9b479ba416f64caf02aecbc971"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/artifact-workspace-files.ts",
+        "upstreamPath": "desktop/electron/artifact-workspace-files.ts",
+        "sha256": "f624f889548f9705be284e5df734a673edbe7a587eb115963d549d49b8ae4b48"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/artifact-workspace-service.ts",
+        "upstreamPath": "desktop/electron/artifact-workspace-service.ts",
+        "sha256": "23e169b20c7ad212da2cfe440c454b4d7b679dc0745a9b6c2359193684f53a8f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/artifact-workspace-store.ts",
+        "upstreamPath": "desktop/electron/artifact-workspace-store.ts",
+        "sha256": "6a678a0ec43f3bc6dbe75bee1fb875cf58b46271c05f2323fc7461f49efbf785"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/artifact-workspace-tools.ts",
+        "upstreamPath": "desktop/electron/artifact-workspace-tools.ts",
+        "sha256": "ad38a9a8c96900ac2f31285fe92192f98bd69a4b759cb9a94b9f5b62615a89d7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/assistant-desktop-admission.ts",
+        "upstreamPath": "desktop/electron/assistant-desktop-admission.ts",
+        "sha256": "28f51a4495207b857cefcd6addec5e4c7f7f2613690434ee3c9002d7dec0cf37"
+      },
+      {
         "file": "vendor/xiaok-runtime/desktop/electron/assistant-inbox-service.ts",
         "upstreamPath": "desktop/electron/assistant-inbox-service.ts",
-        "sha256": "1fdfab5dd6a4250baa3e9cc7c7b9debdd54f9243aff68736e1a1ef0c6740b085"
+        "sha256": "0e2cc7e961b76e2541ccf5dc8f279c04beafa479b9f1e73a07a54ba17b819c89"
       },
       {
         "file": "vendor/xiaok-runtime/desktop/electron/assistant-inbox-store.ts",
         "upstreamPath": "desktop/electron/assistant-inbox-store.ts",
-        "sha256": "b1bc9c079ac279179e70ec888f0b842cb345ff24456c618759c4ee68dd276cef"
+        "sha256": "76542918c59755d39fc865987b7be1da1f9eccbfa9a9c9c037f58355846ba2af"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/assistant-launch-thread-target.ts",
+        "upstreamPath": "desktop/electron/assistant-launch-thread-target.ts",
+        "sha256": "03fae10aac3a8632f27b11ac675999935377ae8c2e92b04435189bed636ee90a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/assistant-question-tool.ts",
+        "upstreamPath": "desktop/electron/assistant-question-tool.ts",
+        "sha256": "22d024da8ac4ae56d07a5c6d431cc4099a0a64ce4e4ad77a17203c62c52710a4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/assistant-skill.ts",
+        "upstreamPath": "desktop/electron/assistant-skill.ts",
+        "sha256": "053e9c5207edde5078dd821725c691bbc9be96b9ea0e42d802ec8429df98e2b8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/assistant-task-source.ts",
+        "upstreamPath": "desktop/electron/assistant-task-source.ts",
+        "sha256": "c4129d2d4f37361c13f4df86cb2a48925e9aa835b907ebe1137d51e9a5f80d0a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/assistant-tool-policy.ts",
+        "upstreamPath": "desktop/electron/assistant-tool-policy.ts",
+        "sha256": "fe878d0412ffb2065b989663460adaa10a75f5033e3798e47b2f68585568fb4e"
       },
       {
         "file": "vendor/xiaok-runtime/desktop/electron/assistant-triage.ts",
@@ -175,19 +235,1564 @@
         "sha256": "a1783cc04b58ca159f3d6f5cae8394cfa8c334e75a89b0c1f2f9b4f347e4b362"
       },
       {
+        "file": "vendor/xiaok-runtime/desktop/electron/background-task-identity.ts",
+        "upstreamPath": "desktop/electron/background-task-identity.ts",
+        "sha256": "0dfc070459b93a18db75442ea390a53a4caa62a2643a20b2b0c3dab2d5ca454d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-dsh-control-data.ts",
+        "upstreamPath": "desktop/electron/broker-dsh-control-data.ts",
+        "sha256": "08db50c44f457860a9cce2421b1050810fe6ef707b0bec9857d318f0ac636c0f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-node-runtime.ts",
+        "upstreamPath": "desktop/electron/broker-node-runtime.ts",
+        "sha256": "e36cea03fd3fc32bb6aed5c27723ac8160620fb4aae0cba889c2078e310a58a2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-protected-child.ts",
+        "upstreamPath": "desktop/electron/broker-protected-child.ts",
+        "sha256": "b0ab1fb1b442902f0e4d90b62ebeb0055ba318858eda6e4b86c146e192401a68"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-protected-service-binding.ts",
+        "upstreamPath": "desktop/electron/broker-protected-service-binding.ts",
+        "sha256": "aa2e4f7f43d545e84a91d1ffd285555397812b5506d8df4553325bd045bc2651"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-protected-startup-data.ts",
+        "upstreamPath": "desktop/electron/broker-protected-startup-data.ts",
+        "sha256": "3d66dbfed1c690f7e2934b612861475bcbbad61f97062a80955c01d2567b17b8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-runtime-file.cjs",
+        "upstreamPath": "desktop/electron/broker-runtime-file.cjs",
+        "sha256": "3cc337047f193a8716b7dea1bef92158f11727deef5da70b6c3fa5059d9fba7c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/broker-runtime-package.cjs",
+        "upstreamPath": "desktop/electron/broker-runtime-package.cjs",
+        "sha256": "be9bbe7a0de89668de67616fc88d798ea3ebaee504b1b52f1bbeb593ddad1049"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/channel-mcp-mutation-owner.ts",
+        "upstreamPath": "desktop/electron/channel-mcp-mutation-owner.ts",
+        "sha256": "32eab0bed2b5d6b5ee665dd686d597dfbe5539713477c4644d0e3302fcee0c34"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/channel-mcp-readonly-data.ts",
+        "upstreamPath": "desktop/electron/channel-mcp-readonly-data.ts",
+        "sha256": "cd23169de157ec364555db1e28cd06741ec3e9ba5e1df4c7f80d51199288bcd3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-native-lifecycle.ts",
+        "upstreamPath": "desktop/electron/codex-native-lifecycle.ts",
+        "sha256": "caa474c79c234bfa13ce315c56c5ce92aa39440f7dde391f00d7644deaab2c5d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-native-service.ts",
+        "upstreamPath": "desktop/electron/codex-native-service.ts",
+        "sha256": "13d350a2a7749e6f653b708f8acc5922527121b19848b6ba0e57695ba55303c9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-native-support.ts",
+        "upstreamPath": "desktop/electron/codex-native-support.ts",
+        "sha256": "06b1bbbed88db8628c4c8ae32256aa08ca47e138626e9961e99312e419c53559"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-native-transport.ts",
+        "upstreamPath": "desktop/electron/codex-native-transport.ts",
+        "sha256": "fb5ab0815306940b18c00ced8ef6eef4ea50d5f6295d146fca795bd3f1014587"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-ordinary-writer.ts",
+        "upstreamPath": "desktop/electron/codex-ordinary-writer.ts",
+        "sha256": "5048119506c10584b7046348eca8f6e530be00d257d01e3bb8365d6fa2e36156"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-process-source.ts",
+        "upstreamPath": "desktop/electron/codex-process-source.ts",
+        "sha256": "47fff38e5c6cf17a644f429beecf230662ae4a36e879d484e4d375553b8816cc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-task-bridge.ts",
+        "upstreamPath": "desktop/electron/codex-task-bridge.ts",
+        "sha256": "274b7240de9e5bb5cf283bfa627991a2994478f3293c3b89e6a30f63ebd47902"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-task-observation.ts",
+        "upstreamPath": "desktop/electron/codex-task-observation.ts",
+        "sha256": "07a0e2d8b6e621e2dfa1ffa101613f0c61bf68263caad4d708156ff45b19d4b9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/codex-task-operations.ts",
+        "upstreamPath": "desktop/electron/codex-task-operations.ts",
+        "sha256": "d7eec39d1f2792179d9d487b9f0c0f49a0a3b97aa39ab0a0d475749a25f7ea7b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/collaboration-room-broker-client.ts",
+        "upstreamPath": "desktop/electron/collaboration-room-broker-client.ts",
+        "sha256": "431c76ba7f665e772c1794175909bbb313b70e2ff5bba247c9fb5a0bb3b99b04"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/collaboration-room-wake-dispatcher.ts",
+        "upstreamPath": "desktop/electron/collaboration-room-wake-dispatcher.ts",
+        "sha256": "c68ff71cf08279ca2af43a17776f238f5781df3444cc1530e603d9fd06a3317a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/computer-use-capability-service.ts",
+        "upstreamPath": "desktop/electron/computer-use-capability-service.ts",
+        "sha256": "adf639d1d5123eacb12e78ea8161bd4ec99b16d7f9e683c4449514f2b645ecaa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/connectors-authority.ts",
+        "upstreamPath": "desktop/electron/connectors-authority.ts",
+        "sha256": "5b0e25737562da79cf6c105f5a71a74037fa7d5415cfef4c2175f8db354c5ff0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/connectors-service.ts",
+        "upstreamPath": "desktop/electron/connectors-service.ts",
+        "sha256": "e40ac515120f56ccaffb20b232381e26131a4898504565d51c06a74b995ec004"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/connectors-store.ts",
+        "upstreamPath": "desktop/electron/connectors-store.ts",
+        "sha256": "105dd2cc130d0e0d219202f38d8732ab093fb1a161877ddf02ec36625366665f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/canonical-service-source.ts",
+        "upstreamPath": "desktop/electron/context-continuity/canonical-service-source.ts",
+        "sha256": "210a7205087f6d6a90e9a69650a70d706d1151d71856fb950f328c71c7a017a8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/cli-archive.ts",
+        "upstreamPath": "desktop/electron/context-continuity/cli-archive.ts",
+        "sha256": "ffbe06249c59b9299c3a677f0d3813791325eda9756c4ca41d7236fb501c16c7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/database-owner.ts",
+        "upstreamPath": "desktop/electron/context-continuity/database-owner.ts",
+        "sha256": "0bb63660dbadb9a6c270324e93401e6c7e247d37e896ba9ddc4b0e7474ca7e02"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/dependencies.ts",
+        "upstreamPath": "desktop/electron/context-continuity/dependencies.ts",
+        "sha256": "ee33b57e14d8c6cfa149e40d0860a5c67689b5294038601f97cc9e584d4eb4e0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/external-readers.ts",
+        "upstreamPath": "desktop/electron/context-continuity/external-readers.ts",
+        "sha256": "2624bc8e772535afeef0c2623950663335d7415a6d22d78dc927f7b545782c20"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/goal-disclosure.ts",
+        "upstreamPath": "desktop/electron/context-continuity/goal-disclosure.ts",
+        "sha256": "7540d51fbdcbb5bd0f77f59af8ff8da9e8f601f107779c88e73e8005f061df2f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/goal-egress.ts",
+        "upstreamPath": "desktop/electron/context-continuity/goal-egress.ts",
+        "sha256": "5654a8f59ad9e1705944ebbb32305c7c814e567fdb1d912034b5babeb4bb999a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/history-port.ts",
+        "upstreamPath": "desktop/electron/context-continuity/history-port.ts",
+        "sha256": "daf3cdbba1a1ac6c579d1379e16090622cd1457c4c26bde7cb9551b4bbb9df3f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/history-search.ts",
+        "upstreamPath": "desktop/electron/context-continuity/history-search.ts",
+        "sha256": "c434c958098aca5b0dbce07a65268769bf45f8f795aa52440f4d382617563cae"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/history.ts",
+        "upstreamPath": "desktop/electron/context-continuity/history.ts",
+        "sha256": "ed56b429c2a2bc9110fc31b08d4d1d48880a9ee6c07d598895bd63fa66a03969"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/input-journal.ts",
+        "upstreamPath": "desktop/electron/context-continuity/input-journal.ts",
+        "sha256": "4859d293e3203571b7367b19b2441b38ae1136436862bb516c2eeaf839b9901c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/input-queue.ts",
+        "upstreamPath": "desktop/electron/context-continuity/input-queue.ts",
+        "sha256": "8bcb9dbc3323e9c5730f84152ac0f2b24bdf441a337382ee2ed7d73f2b7dcf5a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/legacy.ts",
+        "upstreamPath": "desktop/electron/context-continuity/legacy.ts",
+        "sha256": "64153099e673995bb0fef250c1970c7040406cadccd695d1ad2f52ae686f4199"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/main-binding.ts",
+        "upstreamPath": "desktop/electron/context-continuity/main-binding.ts",
+        "sha256": "416e2610aa60a7002a331c6935ce1996f6d08404b6756b0484911f578fbcb6a8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/mcp-control.ts",
+        "upstreamPath": "desktop/electron/context-continuity/mcp-control.ts",
+        "sha256": "24fb41d4c7992f311210b7b8513da309bfc319ae59f5a34e3689d16a0fe226c8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/mcp.ts",
+        "upstreamPath": "desktop/electron/context-continuity/mcp.ts",
+        "sha256": "01d573f2906cb871de00ba4404f572c60fa6c57a7dbd426b3750a19de58dffda"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/native-policy.ts",
+        "upstreamPath": "desktop/electron/context-continuity/native-policy.ts",
+        "sha256": "77f1a84feb137ef70f47be6e7be92415837f72da40055df736dbadd55b0b9990"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/profile.ts",
+        "upstreamPath": "desktop/electron/context-continuity/profile.ts",
+        "sha256": "6379a04b676ca4070f1b2e3e47b61e760d36e5e9c4881064fd2be3669190cd81"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/references.ts",
+        "upstreamPath": "desktop/electron/context-continuity/references.ts",
+        "sha256": "9fa18a32d66c19dd65aa7be99fc23fc164cc570f9381e49084661677cdf4dc03"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/runtime.ts",
+        "upstreamPath": "desktop/electron/context-continuity/runtime.ts",
+        "sha256": "13e994512e595f4984ff02e4c4422591c6425d2f74f50b91d16ac4b1fadc17f4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sdk-custody.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sdk-custody.ts",
+        "sha256": "dca7b8d3de0975dd8e432e80d939f310d56e4023cc80c3618c73c3ec122a0076"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/service.ts",
+        "upstreamPath": "desktop/electron/context-continuity/service.ts",
+        "sha256": "fe805e0c4b43d64bd8193ec04110d6830c311709165895c90ee744a0b7538d34"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/store.ts",
+        "upstreamPath": "desktop/electron/context-continuity/store.ts",
+        "sha256": "7ebb7d29c82d6577f831c1f28039fdb29478be480890bd18bef57739644c0fb5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-canonical-codec.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-canonical-codec.ts",
+        "sha256": "1da212f25ca69dd6eae485cb9524b3818b515139a70279ce0b09561bce2257eb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-canonical-export-data.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-canonical-export-data.ts",
+        "sha256": "b93f141a723378dcf9c58cbdddf85a2e3d840033754d457b7f2abb0215d54a40"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-canonical-export-freeze.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-canonical-export-freeze.ts",
+        "sha256": "ab6f7f8e68c2d50aff2069f6e75b57f1f7c193ca4e23215689daa9054108192e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-canonical-source-friend.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-canonical-source-friend.ts",
+        "sha256": "bb0cdaba6663be076ddadaf6f102f45931223fcfc07f42d5b2c077321c0b9891"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-canonical-state.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-canonical-state.ts",
+        "sha256": "ef0af134714fc5dccb829c93e2965fc0625184157b3963f1d79aff05ee331815"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-canonical-store-owner.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-canonical-store-owner.ts",
+        "sha256": "0640fb74eb0cf9016184c966316fb0fe6d43f11c33ce06170535cc03d769f8f8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/sync-device-runtime.ts",
+        "upstreamPath": "desktop/electron/context-continuity/sync-device-runtime.ts",
+        "sha256": "ddd744b5102b2a70f079e8f36a7aa108533ff72420af4a15d16cc555b27ba29c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/task-presentation.ts",
+        "upstreamPath": "desktop/electron/context-continuity/task-presentation.ts",
+        "sha256": "cb49029baa1355ec55a8119e65272c47d5932ab4211e2f72331a09d2cb11cffb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/task-source.ts",
+        "upstreamPath": "desktop/electron/context-continuity/task-source.ts",
+        "sha256": "af448ba01aed9d9b4bd154b4954299710e4bea80a79a44e08cd4a78524435d71"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/context-continuity/tool.ts",
+        "upstreamPath": "desktop/electron/context-continuity/tool.ts",
+        "sha256": "a12d0a634a368b08810155e471908db6cf6534e1f9cd9f5f5d2a1b47c0fd0b86"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/conversation-activity-ipc.ts",
+        "upstreamPath": "desktop/electron/conversation-activity-ipc.ts",
+        "sha256": "3bf10c2a54eef9513d479d8c1361a9b2f441102f1d0c2295ea72a1eb7791fc2b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/conversation-project-service.ts",
+        "upstreamPath": "desktop/electron/conversation-project-service.ts",
+        "sha256": "6e0eb4466ccdcadd3d22b7d72d3b34ead1d68b291082729c618411be1f4c8fc2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/conversation-room-service.ts",
+        "upstreamPath": "desktop/electron/conversation-room-service.ts",
+        "sha256": "e443737e3ac5f8564dfe7d566f9d992f43e604582b832a0f2a555c8300a23531"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/credential-input-service.ts",
+        "upstreamPath": "desktop/electron/credential-input-service.ts",
+        "sha256": "462ebcf8f55d80348901df0f0848adb21bad15ad7dfa7caff4f799baeeb05b94"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/cua-driver-manager.ts",
+        "upstreamPath": "desktop/electron/cua-driver-manager.ts",
+        "sha256": "150429e2a6739c802028fdfd4ab79254b79e1287e3e18caef4a13ec915c88873"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/cua-release-install.ts",
+        "upstreamPath": "desktop/electron/cua-release-install.ts",
+        "sha256": "14db1e290ae394d87e2b5eb346201441a6457aa077ebf50425ccf5f38430f081"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-business-controller.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-business-controller.ts",
+        "sha256": "31f9615d0571f6b2e9a7d079f5006d21fb62cd58e86aafb8b46b3ba6b66b961c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-native-bootstrap.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-native-bootstrap.ts",
+        "sha256": "97c044b49ad0d7ff439462f5c82137133cae25a2f5486dc4ce579378cfa98188"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-observation-input.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-observation-input.ts",
+        "sha256": "c7ba358090b2c46244ad76e8f13fcc13dfd095b40ebcd942d2f90f77d7c5f6e5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-preparation-composition-bootstrap.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-preparation-composition-bootstrap.ts",
+        "sha256": "24562468ec9799cb01bd0b8b8e67c1f66b9fd4b20c6400962e7db442a4d3d663"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-preparation-native-source.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-preparation-native-source.ts",
+        "sha256": "e87752535e2e9ab01d6cf07c10adac03dfc8ad075fd09383aa07c7a3f2c360e5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-preparation-owner.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-preparation-owner.ts",
+        "sha256": "3b5b960a5498eb91dd803b514f8a937003ef9f99756cd954454607d1b8c862a0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/default-dispatch-user-source.ts",
+        "upstreamPath": "desktop/electron/default-dispatch-user-source.ts",
+        "sha256": "f40c84a31c3c593f82342b6208d5fb4aff5a446564d315b8ea9d32e156342a60"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dependency-task.ts",
+        "upstreamPath": "desktop/electron/dependency-task.ts",
+        "sha256": "ce03d040f6033ac29b6b1222994f3b6e39a30a35295c48ea0116ffd9946373da"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-activity-disclosure-owner.ts",
+        "upstreamPath": "desktop/electron/desktop-activity-disclosure-owner.ts",
+        "sha256": "e8f672731ea6e520c15bbd20f7f78e024713a7afde2d05d85c64eb6e892f8b4d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-application-window-owner.ts",
+        "upstreamPath": "desktop/electron/desktop-application-window-owner.ts",
+        "sha256": "018f36fe243008e0295bacbb4d0971ad42d1ce9cca9956a5dc0275fd552cd772"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-delegation-policy.ts",
+        "upstreamPath": "desktop/electron/desktop-delegation-policy.ts",
+        "sha256": "87bf890549f86873ac49fadcd197f0366fd49ce7783de7a61d79b47f0ecc66f0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-execution-coordinator.ts",
+        "upstreamPath": "desktop/electron/desktop-execution-coordinator.ts",
+        "sha256": "590f0f6c7fd4f405785d9dae779c0ff8bde56b82a1363f8a691f165131a9baae"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-goal-coordinator.ts",
+        "upstreamPath": "desktop/electron/desktop-goal-coordinator.ts",
+        "sha256": "3a6691697ca022b58a2cda214b0980da22bb59dd3cdade564343d03fbc084600"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-goal-shutdown-owner.ts",
+        "upstreamPath": "desktop/electron/desktop-goal-shutdown-owner.ts",
+        "sha256": "1c578987e9cf0d38f8c2f526b42d783de2605fda21fccc62eb6be6a1dd35a431"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-host-delivery-projection.ts",
+        "upstreamPath": "desktop/electron/desktop-host-delivery-projection.ts",
+        "sha256": "9ea93e6f2b4ae6c4d98a66f7205cc8b33953732c704ca2621365f93df1c6bab3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-managed-agent-fork.ts",
+        "upstreamPath": "desktop/electron/desktop-managed-agent-fork.ts",
+        "sha256": "524385f4d71d304b207e231be2c7faf90260c42f76d97c2022fe6e74c7b1598e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-managed-agent-session.ts",
+        "upstreamPath": "desktop/electron/desktop-managed-agent-session.ts",
+        "sha256": "b1852dda223a34b018374445e7a3e53ab78ce28abab235d385a181cf87329c1b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-mcp-catalog-registration.ts",
+        "upstreamPath": "desktop/electron/desktop-mcp-catalog-registration.ts",
+        "sha256": "f04529b01bdcd8b2353281c2f71f3104ae5d5f5ddb3ed6e2748a1a4e96953369"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-model-usage-admission.ts",
+        "upstreamPath": "desktop/electron/desktop-model-usage-admission.ts",
+        "sha256": "189d50c224ac3bd03530f809d953ba1ea618538af04bf401edbdf080be5b1c4e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-approval-transport.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-approval-transport.ts",
+        "sha256": "1da06ddf00666961ede0965dadefd9269396fba712b26fffec8fa57b6988788a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-capabilities.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-capabilities.ts",
+        "sha256": "94977e53aa66d5e6d5145b8a71d03c95d3e08e355c1c69a349dcf0c7732ae826"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-catalog-bridge.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-catalog-bridge.ts",
+        "sha256": "3a6255ea2cdae5cf30908960b177ee05d60aea0cf63c11b20044a475bf2eb38f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-mailbox.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-mailbox.ts",
+        "sha256": "6368a37b2d75c81231de611df311788b948e7223b7b5adf42ae79562785e471a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-runtime.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-runtime.ts",
+        "sha256": "cf191979fe0a6f149dcd4d2aabc6d1a445d2b1c5a3ff650fd188c481f1cb3434"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-service.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-service.ts",
+        "sha256": "ac3a20acc3c534cdef52af8fa45e437dd449ab98bf7c08ab7e5d234c29f006e8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-store.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-store.ts",
+        "sha256": "d87cba76c1677bc528e3ae48dfc90ba30ec6fe1b40c2a1f349c95ecefe7f97fb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-tools.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-tools.ts",
+        "sha256": "8d175024d497675e1429d11fea0aa4fc5a99212d8e238d6747985c94bb4aae6c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-multi-agent-worktrees.ts",
+        "upstreamPath": "desktop/electron/desktop-multi-agent-worktrees.ts",
+        "sha256": "474c1bb940ef87b13a05a4a6c602af375c3a621dece65fbe96aa840ffab30121"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-native-catalog-provenance.ts",
+        "upstreamPath": "desktop/electron/desktop-native-catalog-provenance.ts",
+        "sha256": "d9b812d27881d191db1c97a7bdba7c118316769098e9897a6204e4a7b06bb061"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-observation-approval.ts",
+        "upstreamPath": "desktop/electron/desktop-observation-approval.ts",
+        "sha256": "255183e08cfe903a974cc66a7c68c4fc0ccd249101777b9bee29d71942abf57d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-observation-group-lifetime.ts",
+        "upstreamPath": "desktop/electron/desktop-observation-group-lifetime.ts",
+        "sha256": "91b09ab50fca125ba680693aa6171c15e5d8acfa6834fc61ef55c1b9517e4037"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-observation-group.ts",
+        "upstreamPath": "desktop/electron/desktop-observation-group.ts",
+        "sha256": "1a9615f61ea3f370e25be32d4f90e8a04008a25bbbaacc938c2bdb212803e763"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-observation-lifecycle.ts",
+        "upstreamPath": "desktop/electron/desktop-observation-lifecycle.ts",
+        "sha256": "3438d5bba4630e2680c3e30d73d0a01f8f94b7f540a3e5d0af5a96ede5aa7130"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-observation-owner.ts",
+        "upstreamPath": "desktop/electron/desktop-observation-owner.ts",
+        "sha256": "7586df141d86d5a9c8b8363165ee3f6330b3bab6c7d3fe891da3d2aeb0381fea"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-service-discovery.ts",
+        "upstreamPath": "desktop/electron/desktop-service-discovery.ts",
+        "sha256": "06f2716748b8c08cd0f582b7c43b431101296760fd992412af4f3488e0d15aa7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-service-scope.ts",
+        "upstreamPath": "desktop/electron/desktop-service-scope.ts",
+        "sha256": "c06630e88c81b70f5099da82f3623feca5c0ca69c360427d06ad8fd3431fa8ff"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-services.ts",
+        "upstreamPath": "desktop/electron/desktop-services.ts",
+        "sha256": "c590ab9ea0fd2e8621c30b998e75eca0ec414331c02633c355b31a92b2f82ab8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-skill-mutation.ts",
+        "upstreamPath": "desktop/electron/desktop-skill-mutation.ts",
+        "sha256": "c7cb605a2989d10df7d89171c3d66dc7b583b047c9996b2099ff14419c02b66b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-subagent-presentation.ts",
+        "upstreamPath": "desktop/electron/desktop-subagent-presentation.ts",
+        "sha256": "d2ee2581528c0f1915b2be936b8a7ff3edbece415a2af38a946ade42cfbf338c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-system-prompt.ts",
+        "upstreamPath": "desktop/electron/desktop-system-prompt.ts",
+        "sha256": "6d0bf5243546d64f21905b0f691691966c564ffc097ec248290f3967bf483566"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-task-shutdown-owner.ts",
+        "upstreamPath": "desktop/electron/desktop-task-shutdown-owner.ts",
+        "sha256": "9ffdaa4232f87265b4ed377280423ff321b5cbf8abcb7c29307a4ad8d5513c69"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-task-stream.ts",
+        "upstreamPath": "desktop/electron/desktop-task-stream.ts",
+        "sha256": "96bdf1b323d21e44f908d2fc0756035f28a0a9baa93ba51c87e7e209779f9ca8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/desktop-tool-result.ts",
+        "upstreamPath": "desktop/electron/desktop-tool-result.ts",
+        "sha256": "744e5e3537d844eb72f418f4fcf5372a842ec3cadb66cc4d5494d4b4ac259bc8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/diagnostic-isolation.ts",
+        "upstreamPath": "desktop/electron/diagnostic-isolation.ts",
+        "sha256": "a5ec68f27f2cd3806cd9b83a7b3b47978456e2d1020bb639841a124d991f6e24"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-desktop-controller.ts",
+        "upstreamPath": "desktop/electron/dsh-desktop-controller.ts",
+        "sha256": "36b39118e19e3e3d7b0c689b218d6c85f1bbb16a111964f6fc65c2ca45b3acdc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-draft-root-source.ts",
+        "upstreamPath": "desktop/electron/dsh-draft-root-source.ts",
+        "sha256": "f1132f40e2c31e5fda6ca14fb14f5c0cba5910c2c37c52f56436e8ce6467942a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-github-read-data.ts",
+        "upstreamPath": "desktop/electron/dsh-github-read-data.ts",
+        "sha256": "eb3f58e867f1c59b5af34e30bc065f8c4fd0528a0436c09a58661bbadee238a2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-github-read-plan.ts",
+        "upstreamPath": "desktop/electron/dsh-github-read-plan.ts",
+        "sha256": "70d7b08173289b05b52222395916809a3c7f6fc31c077121e49205d746aa5f5b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-github-source-scan.ts",
+        "upstreamPath": "desktop/electron/dsh-github-source-scan.ts",
+        "sha256": "a94621aca1d6440731f514f6a0d7a04f54d12f0a6605266bb0734d35ebbc3219"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-github-source-session.ts",
+        "upstreamPath": "desktop/electron/dsh-github-source-session.ts",
+        "sha256": "7653494ad8306a6976865411e61b38fac7599f3ac06d45dd0e16b7c6e169e3bb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-github-source-storage.ts",
+        "upstreamPath": "desktop/electron/dsh-github-source-storage.ts",
+        "sha256": "55a4d196e6dd6fb98a2af16093d1ce2160e47b513279610fad9fae3bad357c8c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/dsh-source-object-head.ts",
+        "upstreamPath": "desktop/electron/dsh-source-object-head.ts",
+        "sha256": "d67bb98ed3dd2afa975a94aa12769ea28526a04f7d327ce8824aec44d7e2bf58"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/file-ipc-schemas.ts",
+        "upstreamPath": "desktop/electron/file-ipc-schemas.ts",
+        "sha256": "10a2f00e66a026c94961e519dc8fc94c0ca44c820b4fba80a2aa624a1c014740"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/goal-store-sqlite.ts",
+        "upstreamPath": "desktop/electron/goal-store-sqlite.ts",
+        "sha256": "7d5657b021d114512306aa6fbc30d6bc1c99e315318b0d4e603fba8fe861489f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-budget-source-lifecycle.ts",
+        "upstreamPath": "desktop/electron/harness-budget-source-lifecycle.ts",
+        "sha256": "93405a167fa7ec95c2bbda66235ab43a7df7804a2523e4b9c8de2433add3b042"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-dsh-budget-data.mjs",
+        "upstreamPath": "desktop/electron/harness-dsh-budget-data.mjs",
+        "sha256": "85a4ae718d90363608b399f98e15027aaf1ee4011daa222ea3dae377b64f0587"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-dsh-budget-private-data.ts",
+        "upstreamPath": "desktop/electron/harness-dsh-budget-private-data.ts",
+        "sha256": "390579b05e5105fb0b5e884fe4586df1dffab2f54e3ff446e153349dd886a2e3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-dsh-source-read-budget.mjs",
+        "upstreamPath": "desktop/electron/harness-dsh-source-read-budget.mjs",
+        "sha256": "4f4bcf3c30212d086688b618de5634a28de4bb1fa160168717d1af2e98b8e43d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-optimization-config.ts",
+        "upstreamPath": "desktop/electron/harness-optimization-config.ts",
+        "sha256": "0a7ebf64029381245904ad1fd7a1ed9a96fe6737dca32d64de20e4366ed525f2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-optimization-lifecycle.ts",
+        "upstreamPath": "desktop/electron/harness-optimization-lifecycle.ts",
+        "sha256": "07a919a567b4c3edb911a1ee8a8a54f474db008880982965e8283172e4627cfb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-optimization-owner-lock.ts",
+        "upstreamPath": "desktop/electron/harness-optimization-owner-lock.ts",
+        "sha256": "c17047edb87446d9e76c8f4af23be46e5d1f44ec0520dcbff66aafb67c7f4099"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-optimization-service.ts",
+        "upstreamPath": "desktop/electron/harness-optimization-service.ts",
+        "sha256": "e91b1b826e8b05ea646ee45c222bfb5ccfc1f21c3472fb205fd613226a7c5497"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-optimization-store.ts",
+        "upstreamPath": "desktop/electron/harness-optimization-store.ts",
+        "sha256": "a9156541a75024c33c488fb59891ffa0d45edee7b29005e8995c039a89c8206c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-protected-budget-worker.ts",
+        "upstreamPath": "desktop/electron/harness-protected-budget-worker.ts",
+        "sha256": "5a052430174c0289bb0c6b9e86dacd54307c3279f0f3428ab417fb1cff8078cb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/harness-research-controller.ts",
+        "upstreamPath": "desktop/electron/harness-research-controller.ts",
+        "sha256": "ba5a7e11cdd829aebf0c82b3fe6f0ead1a78265928b1032dc40be9be3f1b8b75"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/ipc-data-snapshot.ts",
+        "upstreamPath": "desktop/electron/ipc-data-snapshot.ts",
+        "sha256": "740f28e8ff4e7df51ae9b663d5ae6aaefe3815752b097ead52c285cac98a31e5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/ipc-native-promise.ts",
+        "upstreamPath": "desktop/electron/ipc-native-promise.ts",
+        "sha256": "3fa2d249c23746805959fd1c0be464aa9dc7eab12d8d3eaedf2b71583d19e86d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/ipc-runtime.ts",
+        "upstreamPath": "desktop/electron/ipc-runtime.ts",
+        "sha256": "f499a9997f650c2004685040752bd193a4a9c884fa1c02acd1ed6a01e6e8964b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-chunker.ts",
+        "upstreamPath": "desktop/electron/kb-chunker.ts",
+        "sha256": "03628cd934d93dd5a830526e8a5c7cdca93960be0f51926103947cb684cba758"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-mutation-authority.ts",
+        "upstreamPath": "desktop/electron/kb-mutation-authority.ts",
+        "sha256": "85fb3b9fd35862f2981f0ea887f50c349b6da15d652f6b8cd56a85921561bd45"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-query-terms.ts",
+        "upstreamPath": "desktop/electron/kb-query-terms.ts",
+        "sha256": "0637a850fbe11b3df7077404ed1e68f60e52bcddbdb7678fa82b31cc3b3cd49b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-retrieval.ts",
+        "upstreamPath": "desktop/electron/kb-retrieval.ts",
+        "sha256": "dc0cf23fe2d92a321b3cbdc4e4b5da6c1f54412fb65c54fcdb5b50f6941543bc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-source-extractor.ts",
+        "upstreamPath": "desktop/electron/kb-source-extractor.ts",
+        "sha256": "8926a3e82836f312ad03a3a3ea409874f544c50e4c103e8fd62ce76809757aa9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-source-identity.ts",
+        "upstreamPath": "desktop/electron/kb-source-identity.ts",
+        "sha256": "d3cf2fbaa228c7bd510f6b839e19f61d96b5c03abdd710a9b758a2fb23e40692"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-sqlite-transactions.ts",
+        "upstreamPath": "desktop/electron/kb-sqlite-transactions.ts",
+        "sha256": "bf7c6e7f0b295f076944cfb849981c58a6c39f9d7e75e313894bd0b2f374677f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-store-sqlite.ts",
+        "upstreamPath": "desktop/electron/kb-store-sqlite.ts",
+        "sha256": "22a6856ccf36824bf435a1f3205debd8a2296dcad39e38a323caffb241e02fed"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-store.ts",
+        "upstreamPath": "desktop/electron/kb-store.ts",
+        "sha256": "a437070ac5e8f19f13b0d0bc01abc84b592fee4dcc4e6f1b0773752dd16a8b4d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kb-tools.ts",
+        "upstreamPath": "desktop/electron/kb-tools.ts",
+        "sha256": "5d4a8780f191cbb0f020b0d141810bc8403fddfa04d15c84f8dbbb569add9083"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-composite-journal-data.ts",
+        "upstreamPath": "desktop/electron/kswarm-composite-journal-data.ts",
+        "sha256": "09a9ea09c5854d47bb5175cab9250c2d753130ab19e46981dabe06cc4a774d10"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-dynamic-workflow-script-tool.ts",
+        "upstreamPath": "desktop/electron/kswarm-dynamic-workflow-script-tool.ts",
+        "sha256": "e759af24831b4ca1e24e242d0f06f875cab1f25138a44b20bc3eea1ba93b8240"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-execution-clock.ts",
+        "upstreamPath": "desktop/electron/kswarm-execution-clock.ts",
+        "sha256": "9cf9860b4b699ed31b9d0ced84b2f8127f4d62289c065a2b98b7717a35ba832d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-execution-start-guard.ts",
+        "upstreamPath": "desktop/electron/kswarm-execution-start-guard.ts",
+        "sha256": "cb8948dc92d603fc294765d414b3b6e659692a10326ebdebc9e80438be643e09"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-initial-plan-bootstrap.ts",
+        "upstreamPath": "desktop/electron/kswarm-initial-plan-bootstrap.ts",
+        "sha256": "23bbc6f264f9f3607a0a7183f318aed0144eb6a71eefd9cedda08d0f719e09aa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-initial-plan-owner-client.ts",
+        "upstreamPath": "desktop/electron/kswarm-initial-plan-owner-client.ts",
+        "sha256": "f1e44609ed5b325e8f4bbba161578a63a16b777cf52cedbdffa9833c5990c30d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-owned-control.ts",
+        "upstreamPath": "desktop/electron/kswarm-owned-control.ts",
+        "sha256": "03c33446c9bc7a149ef678181ed97aeebd915901bbdb19c08c245468a8622b1c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-owned-initial-plan.ts",
+        "upstreamPath": "desktop/electron/kswarm-owned-initial-plan.ts",
+        "sha256": "f138965ae843915ac7cc353e23307787bab6547336040bbe80a2adb9b83697af"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-project-tool.ts",
+        "upstreamPath": "desktop/electron/kswarm-project-tool.ts",
+        "sha256": "0cfa07cd310ccf03be219d6a2943de02b31cc62dff2cd1b0fa79c1da016b8196"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-protected-child-data.ts",
+        "upstreamPath": "desktop/electron/kswarm-protected-child-data.ts",
+        "sha256": "20a3eb236c7c7a7156f0a137e423bbce55c20a648cb2e65550a672bd62c1dc0b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-protected-child.ts",
+        "upstreamPath": "desktop/electron/kswarm-protected-child.ts",
+        "sha256": "ea60d7282ae2d09be4ccfd8858300abdd67d205008faf4eca7a4e13b06eb382b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-protected-service-binding.ts",
+        "upstreamPath": "desktop/electron/kswarm-protected-service-binding.ts",
+        "sha256": "4a1afd34ac8c415ee862cd1d5006fb55f0ff90b0991c33afc74bfd518ded17b2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-review-files.ts",
+        "upstreamPath": "desktop/electron/kswarm-review-files.ts",
+        "sha256": "b1d82effd388166cbc3280b52bfeff753c649decdf5f3c32a3c3f3df8e23b0ed"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-runtime-bridge.ts",
+        "upstreamPath": "desktop/electron/kswarm-runtime-bridge.ts",
+        "sha256": "fbcac95f1008c091aab55748e23acda94a3cae8f4ed936a48bd8a1da272e8859"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-service-paths.ts",
+        "upstreamPath": "desktop/electron/kswarm-service-paths.ts",
+        "sha256": "50a113c682483d9a943c462e086f0dd3931f3349568de40f06c4a538676aa630"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-service.ts",
+        "upstreamPath": "desktop/electron/kswarm-service.ts",
+        "sha256": "c1b4c90a289a104c820df96fea4465820309e3f70d804d7b98c0e48ca9cf5c9f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-task-composite-observation.ts",
+        "upstreamPath": "desktop/electron/kswarm-task-composite-observation.ts",
+        "sha256": "ff7698b7aafad2c40b1528ea22ffee8adbcfabe2428487eab4c8619695a1b8ac"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-task-input.ts",
+        "upstreamPath": "desktop/electron/kswarm-task-input.ts",
+        "sha256": "754268f3f662f9ca914d471e0a212afea813641136fe90378720f9af9841aae5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-task-planning-action.ts",
+        "upstreamPath": "desktop/electron/kswarm-task-planning-action.ts",
+        "sha256": "0bb25bd26c1ef6b4e80e655d2a27328bdcfc9745555f60a9b51f4dceaaf3e878"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-task-review-prompt.ts",
+        "upstreamPath": "desktop/electron/kswarm-task-review-prompt.ts",
+        "sha256": "802d0758d0806deb06dd9d19657c2a24df5226e92c6165a0216d8248bce8e452"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-workflow-deadline.ts",
+        "upstreamPath": "desktop/electron/kswarm-workflow-deadline.ts",
+        "sha256": "3716799fadb6f8045ddad700f137fbeac15ff7af76c5e7e0fe9d5aabf00a984b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-writer-control-native-bootstrap.ts",
+        "upstreamPath": "desktop/electron/kswarm-writer-control-native-bootstrap.ts",
+        "sha256": "f600ca9e617f588a1ef08571a33cb91ef15b0de5b18d5d9df3f70cf73b1e2e52"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/kswarm-writer-control-source.ts",
+        "upstreamPath": "desktop/electron/kswarm-writer-control-source.ts",
+        "sha256": "3df22c093e68eecb1ea13672cab11080467ba08f079a5be8ee5c31a8010cf9f0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/legacy-task-history.ts",
+        "upstreamPath": "desktop/electron/legacy-task-history.ts",
+        "sha256": "08be9289dc18ce3bf963401073e9e5cfab3bbf726527032b00e86406d69f9b7d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/loop-run-context.ts",
+        "upstreamPath": "desktop/electron/loop-run-context.ts",
+        "sha256": "6f5b5abf8fb2c1bbef274dbac0ba3affbce6cd062a1a666f48ac5af38f1529ac"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/loop-scan-publication-body.ts",
+        "upstreamPath": "desktop/electron/loop-scan-publication-body.ts",
+        "sha256": "42b3a4c6a013fb986c33b3b383ac66b6919a8bc8415e1c80245b40ee00b4c2c2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/loop-verification-execution.ts",
+        "upstreamPath": "desktop/electron/loop-verification-execution.ts",
+        "sha256": "9b0f5e88da04fd82e53433d74791cf203169a4c0f004ba3c13150271b34ba3ab"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-account-store.ts",
+        "upstreamPath": "desktop/electron/mail-account-store.ts",
+        "sha256": "72a09aa2b8c0b6298ca05cb272b15022b734608676b905434c34b6bcc8ecb506"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-connector-service.ts",
+        "upstreamPath": "desktop/electron/mail-connector-service.ts",
+        "sha256": "796360f0281296f6bcbeb39d2a022b6a98e05e907561c002c66bb91a02617b22"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-imap-reader.ts",
+        "upstreamPath": "desktop/electron/mail-imap-reader.ts",
+        "sha256": "4e140726407d52bfcf257f4ab86f7845536fc5c2121c14541616816172d8dff2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-oauth-flow.ts",
+        "upstreamPath": "desktop/electron/mail-oauth-flow.ts",
+        "sha256": "601363e0cf20e20217376cc7446172b8428a1d0988aeed392401744b121e4aa4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-oauth-reader.ts",
+        "upstreamPath": "desktop/electron/mail-oauth-reader.ts",
+        "sha256": "4c8f0a899515b9ff191786b128df02b585bbe85999ced66ff68e2453e1f0ad57"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-send-errors.ts",
+        "upstreamPath": "desktop/electron/mail-send-errors.ts",
+        "sha256": "83a933ef04b4b21df24800161ec70505e596c6f1bacb0f85438180e8ce4fe038"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-smtp-sender.ts",
+        "upstreamPath": "desktop/electron/mail-smtp-sender.ts",
+        "sha256": "6a282694695cf8256c4ebc6cff8bd091192d2e7c2119db54861cf72fd34a698d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mail-tools.ts",
+        "upstreamPath": "desktop/electron/mail-tools.ts",
+        "sha256": "128cae6e8ec44041e8a1ee3288009d3bd934f783451a821961b8a3279bde72d3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-accepted-root-binding.ts",
+        "upstreamPath": "desktop/electron/main-accepted-root-binding.ts",
+        "sha256": "fcd73e34e758cce5a11061b0858c900e26a268c240a42c6747872bdc8ca7c712"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-admission-coordinator.ts",
+        "upstreamPath": "desktop/electron/main-dsh-admission-coordinator.ts",
+        "sha256": "601a61a6433b7abf9b8a94de410898216a8827778af192446922064294f761cb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-bootstrap-authority.ts",
+        "upstreamPath": "desktop/electron/main-dsh-bootstrap-authority.ts",
+        "sha256": "34290f648ef2d590b222902aa09d083182e21bd5adacf3198df8a13e1e0d327d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-bootstrap-clock.ts",
+        "upstreamPath": "desktop/electron/main-dsh-bootstrap-clock.ts",
+        "sha256": "07a19de69a533f9ea73f852136431aae83712d0df2e92c15e32600cc7c590c03"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-bootstrap-data.ts",
+        "upstreamPath": "desktop/electron/main-dsh-bootstrap-data.ts",
+        "sha256": "019f133fb5fcee722fff067e66e7d7c34e9e197896316d73deb446fbe6002320"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-broker-control-source.ts",
+        "upstreamPath": "desktop/electron/main-dsh-broker-control-source.ts",
+        "sha256": "bf40a099f19f0623ee4dfe790041b135308c185c80cf7d4bcf5696f344377a8a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-broker-services-loader.ts",
+        "upstreamPath": "desktop/electron/main-dsh-broker-services-loader.ts",
+        "sha256": "a5a4079d97def8711e51ccfb4d7b17c63c92b5d97988315b783d13a69bdf7504"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-broker-services-reader.ts",
+        "upstreamPath": "desktop/electron/main-dsh-broker-services-reader.ts",
+        "sha256": "64c511965b0cd863bfa7d2a51ec559980626659cfbf1aee2f556ed6ccdb90468"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-budget-authority-source.ts",
+        "upstreamPath": "desktop/electron/main-dsh-budget-authority-source.ts",
+        "sha256": "47f1ca86459a715c37604e995da474aa197d0b458bcc217dce4534a5228afc9d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-business-source.ts",
+        "upstreamPath": "desktop/electron/main-dsh-business-source.ts",
+        "sha256": "e4429b3331783d043f9168fb6d7da842a31718f882d584576f7ed87ab51923ff"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-component-custody.ts",
+        "upstreamPath": "desktop/electron/main-dsh-component-custody.ts",
+        "sha256": "c25a503c4928eade6286d4d0ac9e078fe0a6f577401b4c1f6b1d641573fe611d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-control-source.ts",
+        "upstreamPath": "desktop/electron/main-dsh-control-source.ts",
+        "sha256": "452d832fbfe7725f45be6825b9a56cabbcb933ee50e661944162077ca9db157d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-accessors.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-accessors.ts",
+        "sha256": "327d9deef46df70c36dbeac322102df8106eb548a80f6afe9d940653107b1b98"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-broker-cleanup.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-broker-cleanup.ts",
+        "sha256": "40a514325d80c2e6204b4d34b246e25daae969961fefe9a96db25b1d040afeb6"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-broker.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-broker.ts",
+        "sha256": "9ab369e25eb74760c675de2c4ec9af5cd328993664916022f54974d1dcfeb1e0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-child-custody.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-child-custody.ts",
+        "sha256": "3d7221a90c4f58c1d1dd31617c40a856d460e87be51d7e5e929c5e40f3cd2aaa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-child-functions.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-child-functions.ts",
+        "sha256": "2db594eca7add009a54a6b317aa0776283c84eee46c10d095418ad8db008653d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-kswarm-cleanup.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-kswarm-cleanup.ts",
+        "sha256": "bbd0b6fe454231c2cae0529dba0f9c79cb722108cbe551efd4dceea3ea2e5d37"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-core-kswarm.ts",
+        "upstreamPath": "desktop/electron/main-dsh-core-kswarm.ts",
+        "sha256": "4bcd4d1d4afab79265b65fd0639ee7ac45cc0fef7e29681c70ba9d9fe6b9d4bd"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-draft-model-source.ts",
+        "upstreamPath": "desktop/electron/main-dsh-draft-model-source.ts",
+        "sha256": "275a96e18da0a469f69164fd3603828c140b800e648cbb1cae46dd59ca3836a9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-kswarm-service-ports-loader.ts",
+        "upstreamPath": "desktop/electron/main-dsh-kswarm-service-ports-loader.ts",
+        "sha256": "17d830fb7e04c0b59ef0c639f28de331e6055ec6c2bd92100b3bd3c66163db18"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-kswarm-service-ports.ts",
+        "upstreamPath": "desktop/electron/main-dsh-kswarm-service-ports.ts",
+        "sha256": "24a8aff5527aca4221efcbb60bee172505d20775137fac9ad6613ce48b75ad4e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-model-source.ts",
+        "upstreamPath": "desktop/electron/main-dsh-model-source.ts",
+        "sha256": "a4c434f037a299c2a235925c89f67bdaaabc6cbae462e40099380f5c9a2914d5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-physical-composition.ts",
+        "upstreamPath": "desktop/electron/main-dsh-physical-composition.ts",
+        "sha256": "89b136eb4afbcec3f12af2060313895b8b083a50a563ffeabdb0d2053900ff65"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-runtime-composition.ts",
+        "upstreamPath": "desktop/electron/main-dsh-runtime-composition.ts",
+        "sha256": "9c3490bad95ebddbc039f001c19bcac7c6a7bd794e486e7881b7c3c455ae5e75"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-runtime-lifecycle-loader.ts",
+        "upstreamPath": "desktop/electron/main-dsh-runtime-lifecycle-loader.ts",
+        "sha256": "63df0fa9f5f932e16184b138715bd2037ec24b251b3353a06337c4e83ef8c789"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-runtime-lifecycle.ts",
+        "upstreamPath": "desktop/electron/main-dsh-runtime-lifecycle.ts",
+        "sha256": "94db3b5ffe5d86af8fcc0aef9bab0437952117dfffd221d79dc46dfd1daf772a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-service-role.ts",
+        "upstreamPath": "desktop/electron/main-dsh-service-role.ts",
+        "sha256": "b7fa5f83fe631857dd1398ec1f5f7180378e21c51fd1ccc91dbf597c1cda18c2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-service-sources.ts",
+        "upstreamPath": "desktop/electron/main-dsh-service-sources.ts",
+        "sha256": "55935eebd291f8bbdc4b23fea54e82c42fc7ac33fb99b2ca0fd62967a204814f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-services-startup-state.ts",
+        "upstreamPath": "desktop/electron/main-dsh-services-startup-state.ts",
+        "sha256": "6255059c2a6fda10053da86813d4e243b3d57b0de5d3e4a0d8a8bac974182df3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-dsh-source-component.ts",
+        "upstreamPath": "desktop/electron/main-dsh-source-component.ts",
+        "sha256": "8cc667b45ac5d343ef54eae288df944acad99597cfca5878e381cb434f003257"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-material-source.ts",
+        "upstreamPath": "desktop/electron/main-material-source.ts",
+        "sha256": "c7f4140a28c934b1fa2146c30b5b8f36da4e3f9ea245a0092da83e04c1a37c4a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-model-probe-source-loader.ts",
+        "upstreamPath": "desktop/electron/main-model-probe-source-loader.ts",
+        "sha256": "8eca7a29dbac6cd35d699284e566944350bfc01c82f0c911b7e1a92f3555909e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-model-probe-source.ts",
+        "upstreamPath": "desktop/electron/main-model-probe-source.ts",
+        "sha256": "06c1f62430d5676f37fc742eeaf31f142b7410076ace6c65f0d38789d22df720"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-room-conversion-owner.ts",
+        "upstreamPath": "desktop/electron/main-room-conversion-owner.ts",
+        "sha256": "4fa16c7c58f3c5ea0de2b1c7bcf6722d911b3d8e7bd3a933d5793835c9428d3f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-room-discussion-binding.ts",
+        "upstreamPath": "desktop/electron/main-room-discussion-binding.ts",
+        "sha256": "a41af265702159ecbc795640eb7dd820ebca56f4e81dd1445e27761776029760"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-room-discussion-port-loader.ts",
+        "upstreamPath": "desktop/electron/main-room-discussion-port-loader.ts",
+        "sha256": "2e5f9da1ea40bbf81428ca411d9b49624dad02a43b9d580af64792d2c8ea6e61"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-room-discussion-port-reader.ts",
+        "upstreamPath": "desktop/electron/main-room-discussion-port-reader.ts",
+        "sha256": "8a8084c742c8e413bcdb8766079c409b5b5bb789009684fe836c108efc12bd0a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-room-root-admission.ts",
+        "upstreamPath": "desktop/electron/main-room-root-admission.ts",
+        "sha256": "52cd033ac407f2acd121de80ad476f9fce8797bfe80926c3f6c4c131de693ea5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-user-submission.ts",
+        "upstreamPath": "desktop/electron/main-user-submission.ts",
+        "sha256": "a357cef5a70d6735f5cbce2e1411bb01f5da49099458543cc4526437b41e287f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/main-workflow-root-binding.ts",
+        "upstreamPath": "desktop/electron/main-workflow-root-binding.ts",
+        "sha256": "b39563e00eb523d6946a6aa6633dc3512d6f68a23c6e371b29f9dc77cc8e92ab"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/managed-xiaok-agent.ts",
+        "upstreamPath": "desktop/electron/managed-xiaok-agent.ts",
+        "sha256": "e37a415cc13ad1d5b4c84ff45260637b8401f6634eed2c3a8d14fcf17fb15670"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/material-access-data.ts",
+        "upstreamPath": "desktop/electron/material-access-data.ts",
+        "sha256": "b7e75972a8ec38c3af6766abf42f6a68e937affbc68c8c548577644c8ed703f7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/material-access-ipc-contract.ts",
+        "upstreamPath": "desktop/electron/material-access-ipc-contract.ts",
+        "sha256": "2b7f3ab8a76f5bdc149cc1403c8c62ae8d50a8988a6d25004507548ff2b65ca4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/material-selection.ts",
+        "upstreamPath": "desktop/electron/material-selection.ts",
+        "sha256": "f0bb35098cdf44a9ba169ec73271b3ef7f8604523d0caf2b052ebfdff9ea7828"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mcp-error-classifier.ts",
+        "upstreamPath": "desktop/electron/mcp-error-classifier.ts",
+        "sha256": "9cd60b5bd6b8ecbd9dce1e4743d8c8c91a6a12fb8bd818b2c4e0e8558b9da219"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/memory-distillation.ts",
+        "upstreamPath": "desktop/electron/memory-distillation.ts",
+        "sha256": "57af6e65e60fb5f4618bf7e1d9bb4ba99870439d3e0deecd1f493c79437a22e5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/mobile-disclosure.ts",
+        "upstreamPath": "desktop/electron/mobile-disclosure.ts",
+        "sha256": "2d8544294effa96f04019677a1dfcd11667d209aea1c289a1e049a3c4521da24"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/model-provider-typed-ipc.ts",
+        "upstreamPath": "desktop/electron/model-provider-typed-ipc.ts",
+        "sha256": "54e570775d2429ee31ba5793017204d04f5a57b4efc695d1c14f507e5fd292d7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/native-activity-attention.ts",
+        "upstreamPath": "desktop/electron/native-activity-attention.ts",
+        "sha256": "776a6ea3250872e8ed55afe4116ed2691a04e12f1a9f3dd53711eaa2bf8be566"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/office-document-parser.ts",
+        "upstreamPath": "desktop/electron/office-document-parser.ts",
+        "sha256": "aab0f6b49c34d052d6aab39cb1adb77a49d1714c7e664217540b196853431a23"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/office-parser-protocol.ts",
+        "upstreamPath": "desktop/electron/office-parser-protocol.ts",
+        "sha256": "cb511dd06156233d7d389f9753b6ebff8bab49d6d1334131b4882dd1a712ce50"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/ordinary-followup-context-client.ts",
+        "upstreamPath": "desktop/electron/ordinary-followup-context-client.ts",
+        "sha256": "09567655e467e6084eb9752839b8f5268e02aebab9a524281456a4f50adcc9ba"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/original-room-turn-custody.ts",
+        "upstreamPath": "desktop/electron/original-room-turn-custody.ts",
+        "sha256": "16c6ccc7b0849b3bbe517265aaa98ced19ead77acca40261ceefdbf72ea2e763"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/original-room-turn-source.ts",
+        "upstreamPath": "desktop/electron/original-room-turn-source.ts",
+        "sha256": "19208714551254fb5422e1ae1aac9e5d747259aa6e04a7c6a28cba0aa69186ba"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/original-workflow-root-source.ts",
+        "upstreamPath": "desktop/electron/original-workflow-root-source.ts",
+        "sha256": "8286337274a6baf8f454a9c62d557493ee5c3bdaa4d7b8f9ad071af43504a611"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/owned-service-child-close.ts",
+        "upstreamPath": "desktop/electron/owned-service-child-close.ts",
+        "sha256": "452abdf979cd671fee0627b6fb64b612dcaeacdabb6e94806549c4571f7c2eb4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/pdf-text-body.ts",
+        "upstreamPath": "desktop/electron/pdf-text-body.ts",
+        "sha256": "e1fa7be6db6dc5e4fba0f19c9cb95763867d52d7b6350dccea3f2414ca3ea4d0"
+      },
+      {
         "file": "vendor/xiaok-runtime/desktop/electron/pdf-text.ts",
         "upstreamPath": "desktop/electron/pdf-text.ts",
-        "sha256": "71bf84402cc4214da33d569bee7f36970c928340e6254d9433cd7fbe5fc86a79"
+        "sha256": "2dd6762321e9d385c42c5d4d708776e26ec44b542edb0a0240127dd8d379ffb3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/plugin-action-service.ts",
+        "upstreamPath": "desktop/electron/plugin-action-service.ts",
+        "sha256": "43ec8e9bda3dd6500799660b2936b7e18f26267afe2b66f07350df4292c77322"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/plugin-dependency-service.ts",
+        "upstreamPath": "desktop/electron/plugin-dependency-service.ts",
+        "sha256": "7eba95d664328cfd7eeabcce65819328a593d016b6809f652bcdb176693c2e6d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/project-agent-model.ts",
+        "upstreamPath": "desktop/electron/project-agent-model.ts",
+        "sha256": "51846d5043f9c72e42264aa30085934195001425711a1551032dd7dc0d150aa7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/project-creation-user-intent.ts",
+        "upstreamPath": "desktop/electron/project-creation-user-intent.ts",
+        "sha256": "7ce1b1c8c7ae22db44a37d19c7bc2397e4f7c37ade47cf5674a4ba86fc1918e8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/project-planning-service.ts",
+        "upstreamPath": "desktop/electron/project-planning-service.ts",
+        "sha256": "43434cf004915ede44e0fb033d36496cc45e303b7c2e96fd7549a79d021970c1"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/project-planning-typed-ipc.ts",
+        "upstreamPath": "desktop/electron/project-planning-typed-ipc.ts",
+        "sha256": "b7cc0f8f7f33796bd9602f5a71666edb7f6c8d97c66281ed5e5caba30711bfbc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/protected-child-callback-custody.ts",
+        "upstreamPath": "desktop/electron/protected-child-callback-custody.ts",
+        "sha256": "109b71590a0a51676d0dbeb9e6483285449108c2643d01adcce0907602f9e419"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/provider-gateways/create-host-gateways.ts",
+        "upstreamPath": "desktop/electron/provider-gateways/create-host-gateways.ts",
+        "sha256": "5803b45c3b4c892241afaeedd7b77e3f8d65e9773b9e13b01818224393892ff5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/provider-gateways/host-gateway-contracts.ts",
+        "upstreamPath": "desktop/electron/provider-gateways/host-gateway-contracts.ts",
+        "sha256": "58ac0964b07aebcaca753b1ebcdcaff0f40612cdeca195988e58617ec28f58fe"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/provider-gateways/reserved-provider-specs.ts",
+        "upstreamPath": "desktop/electron/provider-gateways/reserved-provider-specs.ts",
+        "sha256": "7ce4be238418c4ea7c4bba52463573b8200e0f37d0a694326f6062512e2c56aa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/python-runtime.ts",
+        "upstreamPath": "desktop/electron/python-runtime.ts",
+        "sha256": "2657aebff6426fee662d879e653050f3061bf97b703b0ea408f30d172d15f10c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-conversion-bounded-json.ts",
+        "upstreamPath": "desktop/electron/room-conversion-bounded-json.ts",
+        "sha256": "bd26e3448505dc7fe0ea9d14736e01709441c479a6447f5733deb660986219ba"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-conversion-source-client.ts",
+        "upstreamPath": "desktop/electron/room-conversion-source-client.ts",
+        "sha256": "4ad29361de2670252d45f08df6ec137f36c753414f605653adf758d1de692dac"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-external-discussion-context.ts",
+        "upstreamPath": "desktop/electron/room-external-discussion-context.ts",
+        "sha256": "cc1cac841b34b658590994c064ac85c996cc4717bf3f541df3a3fa7a0d2a24e5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-history-capability-registry.ts",
+        "upstreamPath": "desktop/electron/room-history-capability-registry.ts",
+        "sha256": "c09891bdd849c8553146c39958d6a21a8ccfb65627ffbe3523b96dbde0ad9837"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-history-page-tool.ts",
+        "upstreamPath": "desktop/electron/room-history-page-tool.ts",
+        "sha256": "417856fa77de18f8bb627e441ffe1f31db78b8246090695035e75f94ef55a591"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-local-command.ts",
+        "upstreamPath": "desktop/electron/room-local-command.ts",
+        "sha256": "9935ec6d40c89df2ddbb6a78d8d1f17e051c80ff3c831a7fd591f0bad2f2a8c4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-project-scope-guard.ts",
+        "upstreamPath": "desktop/electron/room-project-scope-guard.ts",
+        "sha256": "e077db8103739285ab08dc53d9d00ee644fea07e072fa88bf1fe63af42d01d41"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-workspace-broker-client.ts",
+        "upstreamPath": "desktop/electron/room-workspace-broker-client.ts",
+        "sha256": "4496b76ec6c303a072a1912e36a27ac3ff8a7fff0e70299fd580caa2275f87e3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-workspace-context.ts",
+        "upstreamPath": "desktop/electron/room-workspace-context.ts",
+        "sha256": "1d9242d88934bc16f46255e47fae849ae6e00a971cf94b54bc4c903f40444885"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-workspace-executor.ts",
+        "upstreamPath": "desktop/electron/room-workspace-executor.ts",
+        "sha256": "3132c7673de7ae87c68d84468642d1c9147a44d689975fcfe06de3d1b8576106"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-workspace-local.ts",
+        "upstreamPath": "desktop/electron/room-workspace-local.ts",
+        "sha256": "6e3a6fba6fd2406575693976678a485374b00e345da8428a37f00cca1ec673ee"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-workspace-protocol.ts",
+        "upstreamPath": "desktop/electron/room-workspace-protocol.ts",
+        "sha256": "cac616758a2fb168178459e1961e350d1475c40f2e4b819a34cb302a07011a1e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/room-workspace-runtime.ts",
+        "upstreamPath": "desktop/electron/room-workspace-runtime.ts",
+        "sha256": "a732b7220de9e9c5b21e5e232d6c2de912875e98f2089412e4fad638a94824a2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/root-resource-production-qualification.ts",
+        "upstreamPath": "desktop/electron/root-resource-production-qualification.ts",
+        "sha256": "2dbeaf6c2e4fe8d9e7181a890cf96a0a89e0ca4bfa1f3e6edbb340fa43dbd468"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/scheduled-mutation-authority.ts",
+        "upstreamPath": "desktop/electron/scheduled-mutation-authority.ts",
+        "sha256": "c5404e41bccc8e6525b8dcc7b0ef4fc467623657977c29c58bd5c9f315b09cc5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/sidecar-env.ts",
+        "upstreamPath": "desktop/electron/sidecar-env.ts",
+        "sha256": "b047a9fea5d0aafa09c4a9877307cba97c66fa81b4a3c8ddccb459eec73b4bce"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/skill-catalog-invalidation.ts",
+        "upstreamPath": "desktop/electron/skill-catalog-invalidation.ts",
+        "sha256": "baa16f70df863d42d89f7effbb08526a32b85223eaeda2c4f2aefa3aa1bfa317"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/skill-readonly-data.ts",
+        "upstreamPath": "desktop/electron/skill-readonly-data.ts",
+        "sha256": "3f30bbac25929d758e9f7f4aea674c7d5c28017ed5212d4f07056fdb8901df91"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/skill-runtime.ts",
+        "upstreamPath": "desktop/electron/skill-runtime.ts",
+        "sha256": "17581afaea2873bb2da66e1b64ab7b45bc50babbe614f9aa9581ad8c8290ca92"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/tool-image-channel.ts",
+        "upstreamPath": "desktop/electron/tool-image-channel.ts",
+        "sha256": "7531885591d6e6ff1deb1965ed10aaeb197f341614505f686370c7e9d8c5aa48"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/tool-loop-budget.ts",
+        "upstreamPath": "desktop/electron/tool-loop-budget.ts",
+        "sha256": "1bdad6e9863d152b6bb4895c382f001507853c4b9cde4dcdb91b8a26af49f9d4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/user-memory.ts",
+        "upstreamPath": "desktop/electron/user-memory.ts",
+        "sha256": "b5ef4c1906ec280a3d6c9bc17e0afc72f0736e4c9002d02836db7acb556581f8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/windows-cua-host.ts",
+        "upstreamPath": "desktop/electron/windows-cua-host.ts",
+        "sha256": "1e287648b16aedbe5a40726b72b1339667b7dd2e52e711d71a137a686df0aa1d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/windows-cua-runtime.ts",
+        "upstreamPath": "desktop/electron/windows-cua-runtime.ts",
+        "sha256": "0962dfaad1d18bc977b53e26550d0d0d523fbeccf28a00dda49981c1ad5140dd"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-controller-io-contract.ts",
+        "upstreamPath": "desktop/electron/workflow-controller-io-contract.ts",
+        "sha256": "41aec97831f2658d838f3eca2211fdbf32e001448e90c9a3b52555d18b97a525"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-script-contract.ts",
+        "upstreamPath": "desktop/electron/workflow-script-contract.ts",
+        "sha256": "626daf0ee14db27ea2f8aadfa35dabfde5fa65a2ca58160b700690e32a12bb3f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-script-kswarm-controller.ts",
+        "upstreamPath": "desktop/electron/workflow-script-kswarm-controller.ts",
+        "sha256": "5bd045f57e79b4e627f36cb64a7ce2c0337e7deb5788d985a262b91785c14f98"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-script-runtime.ts",
+        "upstreamPath": "desktop/electron/workflow-script-runtime.ts",
+        "sha256": "6059e64e2c343225cdba70406650004e6735e59baa492684c1cd576b3875ae4d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-script-vm-boundary.ts",
+        "upstreamPath": "desktop/electron/workflow-script-vm-boundary.ts",
+        "sha256": "b8b397e7edc81b7edfa9f8bf76146bde3a86a28e0116f4e8e6938340489f3ba2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-script-worker-origin.ts",
+        "upstreamPath": "desktop/electron/workflow-script-worker-origin.ts",
+        "sha256": "8d8a76acf81ae1918fefd823cf26221da0e432461af53ab953abf9294f8136fa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/electron/workflow-script-worker.ts",
+        "upstreamPath": "desktop/electron/workflow-script-worker.ts",
+        "sha256": "b9d5ed9415f0587eb983f6987e77b334f298748ec78d79130a453b1ced1ddb1c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/resources/broker-runtime-lock.json",
+        "upstreamPath": "desktop/resources/broker-runtime-lock.json",
+        "sha256": "544cddcfdac8a80c4a8de27aa0b1fd577617aa407c00b86ebc1d683b837de9a8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/artifact-workspace-types.ts",
+        "upstreamPath": "desktop/shared/artifact-workspace-types.ts",
+        "sha256": "ec14679d2502ded23c8f3c3f3cc0657169df3eb88f584711a22fd45b905b14b4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/assistant-calendar-contract.ts",
+        "upstreamPath": "desktop/shared/assistant-calendar-contract.ts",
+        "sha256": "717bfa151b27ef7f5e14f2457d00818725fd1d609fe830010e6c2e34f9705f10"
       },
       {
         "file": "vendor/xiaok-runtime/desktop/shared/assistant-inbox-contract.ts",
         "upstreamPath": "desktop/shared/assistant-inbox-contract.ts",
-        "sha256": "7377c8f62701db0671954bd20bcd464d4e11157810c37de10324476e9308c708"
+        "sha256": "9d88270a15e3ee89137866c7396452a44b0b9a4662beec3271fb172fa0df8fd4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/assistant-launch-contract.ts",
+        "upstreamPath": "desktop/shared/assistant-launch-contract.ts",
+        "sha256": "e34b9e63803b598e95eae10c2eed7b563b86dda35e56781eaa9bf746d510bb17"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/assistant-narration.ts",
+        "upstreamPath": "desktop/shared/assistant-narration.ts",
+        "sha256": "34baa86c8e5dfc51dcb981b7ab95854121ab58e295e1bff9d3484a8bf0b32be9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/channel-mcp-mutation-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/channel-mcp-mutation-ipc-contract.ts",
+        "sha256": "c9a8cbbd7dc22a8b84266c01a26441d5cb2e208c25fea13aee1952a996b7408e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/channel-mcp-readonly-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/channel-mcp-readonly-ipc-contract.ts",
+        "sha256": "da317b4d8be18e6b36086d1d52444fedcd70bb88c1bd101ced7bb435c78b5891"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/connectors-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/connectors-ipc-contract.ts",
+        "sha256": "a619e1aab0cecac4b85655595b37c3832382baff878d6c751e8f56bc8af3c355"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/context-continuity-projection.ts",
+        "upstreamPath": "desktop/shared/context-continuity-projection.ts",
+        "sha256": "96ee4f32d0149868c3369c4671f7efddda19ebc3277b19c9fe0c4e5098d28aa9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/credential-input-contract.ts",
+        "upstreamPath": "desktop/shared/credential-input-contract.ts",
+        "sha256": "a71b6ef047743450493bef530fcbb03b1acad4161753c163776b222938f920fe"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/default-dispatch-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/default-dispatch-ipc-contract.ts",
+        "sha256": "d5ef1f2caab0e9df1e990e0cddcc80efa5717a9e91449fb39d16e74868a8d4e0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/desktop-small-config-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/desktop-small-config-ipc-contract.ts",
+        "sha256": "95ef506458325ef95c2e3cd0be1b036d5a4cf11cc6ecea0ecd2d5b04d688a652"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/goal-attachment.ts",
+        "upstreamPath": "desktop/shared/goal-attachment.ts",
+        "sha256": "b1d289a5dcac90e66152f15107c4096796d42609af284bd1edcfbdde0170134f"
       },
       {
         "file": "vendor/xiaok-runtime/desktop/shared/kim-decision-ipc-contract.ts",
         "upstreamPath": "desktop/shared/kim-decision-ipc-contract.ts",
         "sha256": "dec2f05c13cb2600fed53af2fdcb9daadf617056083cee5dfeb86fae0caeca09"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/knowledge-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/knowledge-ipc-contract.ts",
+        "sha256": "06eeb1b0b6e0ca28635114bd5a9a9811504ccba3700ef7f38f960e11fa81a5f7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/kswarm-health-contract.ts",
+        "upstreamPath": "desktop/shared/kswarm-health-contract.ts",
+        "sha256": "db87c4a10898aa59f33f67959b4b01fcd8071da5f866f634c588b8953617ed40"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/kswarm-project-agent-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/kswarm-project-agent-ipc-contract.ts",
+        "sha256": "90ef3f740f24985529f41854ed21810defd7b2868d67bc08ea97ae65c2ef6685"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/kswarm-seed-contract.ts",
+        "upstreamPath": "desktop/shared/kswarm-seed-contract.ts",
+        "sha256": "3d4efdc9d8ce28baefb37498f7436719ae08c7f85186b3087fc8dfabdefbae6d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/mail-connectors-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/mail-connectors-ipc-contract.ts",
+        "sha256": "f4d40a3d306878ab1aac46f473397328432378bc01aa519037c8559e8aa5b078"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/model-provider-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/model-provider-ipc-contract.ts",
+        "sha256": "cb29a042b82d2b49f73559a1e60490b885b8119eefef9439f73af8ab0c972221"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/native-activity-question-contract.ts",
+        "upstreamPath": "desktop/shared/native-activity-question-contract.ts",
+        "sha256": "1b67611fe60d9de795163fdae4136f557fed575087bedaec5cf9a4454606d298"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/plugin-action-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/plugin-action-ipc-contract.ts",
+        "sha256": "504d2db025ddfc7dc22a68ad2ca87dd278a9bb4aae9d57231b191f8ff62c1043"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/plugin-catalog-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/plugin-catalog-ipc-contract.ts",
+        "sha256": "42e846deeff299b01b3a2f936518806f3e951abf0daca4b31a390d39611eec99"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/project-planning-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/project-planning-ipc-contract.ts",
+        "sha256": "ef95121c21c83fb9ba639b0a0731e67ed722ba9f8cb95c02ca624c4acdb4aade"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/room-conversion-input-contract.ts",
+        "upstreamPath": "desktop/shared/room-conversion-input-contract.ts",
+        "sha256": "1dda5620ce650092181c0413771a72a76c58f1253358489ac00a10010a9d405b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/scheduled-task-due-event.ts",
+        "upstreamPath": "desktop/shared/scheduled-task-due-event.ts",
+        "sha256": "665b7bf86e0ea7e0eb49a4464f410aa9a981bd281a7200929b0b83a58b76732d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/scheduled-timed-action-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/scheduled-timed-action-ipc-contract.ts",
+        "sha256": "fbb0e04d66ac875de3beff49bd2b9ef984e093cf397b3b084903815d522b41ba"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/skill-list-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/skill-list-ipc-contract.ts",
+        "sha256": "d569ec11cc6ba4ebe90c326d6d6ded51e9bbee3cfcb48f8bff8513da42ff5287"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/skill-mutation-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/skill-mutation-ipc-contract.ts",
+        "sha256": "b42d7468283b298bcd679e1649891468bb888c9d047d7c45f903d6114d81c355"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/subagent-presentation.ts",
+        "upstreamPath": "desktop/shared/subagent-presentation.ts",
+        "sha256": "b48595ef9be95265686d25078f8698a28fe8d7a681192e554df2884abd88557c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/task-composite-planning-contract.ts",
+        "upstreamPath": "desktop/shared/task-composite-planning-contract.ts",
+        "sha256": "facd32b4d7a271f60cf21cc91881c78d29d5e8f4c02ce0b2fb2e1c24fca4eed4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/task7-ipc-contract.ts",
+        "upstreamPath": "desktop/shared/task7-ipc-contract.ts",
+        "sha256": "cc8f335b6d4e5f83aeff56acac8651f3ec896705f2a395b225022a00c17eef0d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/desktop/shared/user-task-submission-contract.ts",
+        "upstreamPath": "desktop/shared/user-task-submission-contract.ts",
+        "sha256": "770383400b6be7266f7ca07451e4c0fb846507ecfa586e755c05364a2e740298"
       },
       {
         "file": "vendor/xiaok-runtime/src/a2ui/catalog-schema.ts",
@@ -220,6 +1825,11 @@
         "sha256": "af980900bd82eb4f413cdcbf2dfe49ff1891113db2a8ebf5906debb96cd38785"
       },
       {
+        "file": "vendor/xiaok-runtime/src/a2ui/preview-stream.ts",
+        "upstreamPath": "src/a2ui/preview-stream.ts",
+        "sha256": "bc36c093d8b44e148b759f74181e0c34ab1789da45973d3c7f46d112cced2236"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/a2ui/protocol.ts",
         "upstreamPath": "src/a2ui/protocol.ts",
         "sha256": "b5fd2fecd79f89a92ef56c1ab8ec177a0a8d2e63486f1df7d7a7e3eafdd7d671"
@@ -242,27 +1852,32 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/adapters/claude.ts",
         "upstreamPath": "src/ai/adapters/claude.ts",
-        "sha256": "655ea099c7c34da1e69fa7c9885c970abc0aee625089f22b63374ac2733f4a90"
+        "sha256": "ef883c0edaf1bc5bd721c82c5ae3399c2d4ffddc78fc74c3293dfbea41db384c"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/adapters/openai-responses.ts",
         "upstreamPath": "src/ai/adapters/openai-responses.ts",
-        "sha256": "675497260fc51a82c17bf295c43226ee5d202cdf6d4dc83d05c724278effbf75"
+        "sha256": "e4863cc17d73971d36a302b61747314bacb586cb6f87dbb614a015f2b831a0d9"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/adapters/openai.ts",
         "upstreamPath": "src/ai/adapters/openai.ts",
-        "sha256": "d3dc7b9fbe2b72942491520e418f1a17b1fbe4803e4a35ae013a27515325d066"
+        "sha256": "4f73d5f28287f18a0b9b4d4b80ca16f9e0661220ad19c033f7dd384fdfe45450"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/adapters/system-one.ts",
         "upstreamPath": "src/ai/adapters/system-one.ts",
-        "sha256": "8266a646ee8c41a9b5bbc30c1e159447525212b2ff9582e557f84292450ef2dd"
+        "sha256": "bc94fe627d7b48307ad47df38b717032867cf58c4ae901359a5f95d52580908a"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/agent.ts",
         "upstreamPath": "src/ai/agent.ts",
         "sha256": "73d0f2aa55327b161619379c88018df814f82e9c6a2c5786f082bf672ffbd316"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/agents/completed-fork-messages.ts",
+        "upstreamPath": "src/ai/agents/completed-fork-messages.ts",
+        "sha256": "7aa4f7e7ece35386c4e2091d022a43b24150349ef2ebe82a0cc20147976d5b0c"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/agents/loader.ts",
@@ -277,7 +1892,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/agents/subagent-executor.ts",
         "upstreamPath": "src/ai/agents/subagent-executor.ts",
-        "sha256": "274bb87130b765576720856463bca273bdb4ea99558ad5c51dbae41068cba757"
+        "sha256": "0a195b88449b82739ea8a5e0cfaca77ebbabf70992758e9df001e5078db02505"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/agents/subagent-presentation.ts",
@@ -352,17 +1967,27 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/compaction.ts",
         "upstreamPath": "src/ai/memory/compaction.ts",
-        "sha256": "3ed1f0161c9a8c1362070467db84b22e89fa5530c5e26d7889ed7d383f73ad74"
+        "sha256": "f926b3caba45c65e9a62706d16d6fc98090509798f9209509f7ca17207779f01"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/memory/configuration.ts",
+        "upstreamPath": "src/ai/memory/configuration.ts",
+        "sha256": "801397e55aea48825e096fae0c6ef349c58fbe82fb277087a85aa9532c40c0d8"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/embedding.ts",
         "upstreamPath": "src/ai/memory/embedding.ts",
-        "sha256": "0ef38cb1be2835f1c1ff3cc83eff2ae0b5aa9986766a9c424aca8c79c68082f0"
+        "sha256": "c2d24660aaf81269bce2b9354db4aa063206e06bc0ff46b494c1bfd27f8de739"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/layered-store.ts",
         "upstreamPath": "src/ai/memory/layered-store.ts",
-        "sha256": "4666ebf5e34353765db4c467ba56162e30ab31c6a30fd3fcc4fc45c829d76b6f"
+        "sha256": "01029f4b4bbd6b3e8157a2842b44f1e1b65af27ccd9ef61faebe0d7c2e1b8ffa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/memory/legacy-json-migration.ts",
+        "upstreamPath": "src/ai/memory/legacy-json-migration.ts",
+        "sha256": "f25237f00902f8b9cf7c8bd444cab4eed2aa33f030f37ed13a971fca5a6e435c"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/migrations.ts",
@@ -372,27 +1997,32 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/model-registry.ts",
         "upstreamPath": "src/ai/memory/model-registry.ts",
-        "sha256": "ff12d6142d1757502e8ae3fe81b782e2d8a24f0ee8bcea00c967c4735430cbbb"
+        "sha256": "2ced3c0fbdb564a88fafa73370b0c1cf5d79032fbb0d72063e34d2d534935fe2"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/onnx-engine.ts",
         "upstreamPath": "src/ai/memory/onnx-engine.ts",
-        "sha256": "c743743c4edcb460337f2e6ba2a5bc573b194bbfe0e0fbc2f0de46c2f015d277"
+        "sha256": "ddd165d1249936b0d37731f8ea09f6fbc9a0ecea817c4c38ade8b9f552531aa0"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/retrieval.ts",
         "upstreamPath": "src/ai/memory/retrieval.ts",
-        "sha256": "357786f0904638eca4aff4b5ea7c677efddfecf297cf2148afbe155c9d979c78"
+        "sha256": "88b183792752bdebf2043eaef70ec9fc7c0b0a7d24686b099bfe376e8082e4ea"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/memory/segment-worker-source.ts",
+        "upstreamPath": "src/ai/memory/segment-worker-source.ts",
+        "sha256": "01e95291f341a939cb2bacc30b1ee0ba6c58d1cf309b775ceeec0b9abb3f287a"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/segment.ts",
         "upstreamPath": "src/ai/memory/segment.ts",
-        "sha256": "b54f3d005c9779aa7d902da7e015af825a25ea1306ba5c35a1f45040babca9f8"
+        "sha256": "a143b71c1b0cbf7aac2bd651c2af481df8c40cab5d23bdaa41168441a6cc5a75"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/memory/store.ts",
         "upstreamPath": "src/ai/memory/store.ts",
-        "sha256": "f0c3472c1de32fa2db718965391900e6fc5a70d174eb36cf345daa0e2d86184e"
+        "sha256": "d7a32a3938f6fca2a41d35c3ef58e8b2ae4061da5e49f935f4501ce78abe6e34"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/models.ts",
@@ -572,7 +2202,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/providers/registry.ts",
         "upstreamPath": "src/ai/providers/registry.ts",
-        "sha256": "e976dfaa0f9296288e3d799d1e8ef05e59b3bfadd123b155e7018c4d8e58fb22"
+        "sha256": "8b6a23f88fe410ec6265b461534671c70d21855bb85451a9af4524b7b34ee551"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/providers/system-one-config.ts",
@@ -587,7 +2217,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/agent-runtime.ts",
         "upstreamPath": "src/ai/runtime/agent-runtime.ts",
-        "sha256": "fa504b495d6bba0ecc3ead80ae469c2ac9dfddb43ceb2e346c7812745d47f645"
+        "sha256": "a287f74e1dbfd6f98a904969f7a0de8893ba2594c07f91726cef239a297294ed"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/canonical-json.ts",
@@ -597,7 +2227,12 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/compact-runner.ts",
         "upstreamPath": "src/ai/runtime/compact-runner.ts",
-        "sha256": "677922223ee1fa09af8118ef6df4561755e991c55f0a7df39a714e5a16128641"
+        "sha256": "523c5b7762507acf16dd1ae3127880875f11f1a949c83233f28b7a01d9ec5a1e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/runtime/compaction-response.ts",
+        "upstreamPath": "src/ai/runtime/compaction-response.ts",
+        "sha256": "9b10e74c5a65138cf64e15dc08f7e50106db2de8c651900c001d7ea12ef198bf"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/context-budget.ts",
@@ -617,7 +2252,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/events.ts",
         "upstreamPath": "src/ai/runtime/events.ts",
-        "sha256": "13b12ba06cd7ddb9b6473b1cd6f0f4acf676056d56e33ba9e9a5dfa414289a12"
+        "sha256": "7542af8a2190acb87c28977244c6054ecefba223c1c5dcd6ace1938188d133cb"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/kimi-reasoning-admission.ts",
@@ -637,7 +2272,12 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/model-capabilities.ts",
         "upstreamPath": "src/ai/runtime/model-capabilities.ts",
-        "sha256": "dac331d6656d17054cd5145425efddf84afd7a5ab7ebe0ce0a8d99f3bd517753"
+        "sha256": "f8e8c5023efbe684b743461dfd3748122e763f88cd8ad16ce970af0d0f4f6508"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/runtime/model-failure.ts",
+        "upstreamPath": "src/ai/runtime/model-failure.ts",
+        "sha256": "1a29b28a90b26a77848145bba5b83a5064189b3ade42f688aa37ea08354ad27e"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/model-harness-identity.ts",
@@ -647,17 +2287,17 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/model-stream-physical-owner.ts",
         "upstreamPath": "src/ai/runtime/model-stream-physical-owner.ts",
-        "sha256": "9c03bdae8849ac56d1f6b804e32a15fda7da88915f981ee66e9581b4088edc0e"
+        "sha256": "95ccda8a7867aef00a198bccfcde7c2ea9bbfb15ebf54080151b9b8c54aafc25"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/model-stream-recovery.ts",
         "upstreamPath": "src/ai/runtime/model-stream-recovery.ts",
-        "sha256": "b30fbc70478731b035033284a2703998c21f456c9a9b129d3bee5c20deeff160"
+        "sha256": "e82c835c37f54ad2fe96bb44479fcf676e58c7a072f17dacd31fb4c3f73f78d9"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/model-text-repetition.ts",
         "upstreamPath": "src/ai/runtime/model-text-repetition.ts",
-        "sha256": "b3465d48772d6b0bd42daa2ebba98728beab5c88ef2b6627debb4daaf3aba415"
+        "sha256": "41f9285b992ca7a9b041b0979befb987b9d5082ec0d660ce51d6c5e27de62a86"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/openai-stream-error.ts",
@@ -665,9 +2305,19 @@
         "sha256": "6a170021dccb1f3ea4d9bc0671bcc766356b8b79d4a60508998e5caf5df32918"
       },
       {
+        "file": "vendor/xiaok-runtime/src/ai/runtime/original-model-sdk-attempt.ts",
+        "upstreamPath": "src/ai/runtime/original-model-sdk-attempt.ts",
+        "sha256": "eaa51234e9d8e8081dd49c0c29d335be67aceee663ab9846f4d3d189201f97b7"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/ai/runtime/portable-compaction-executor.ts",
         "upstreamPath": "src/ai/runtime/portable-compaction-executor.ts",
         "sha256": "209bc96a8a89cb6d88bf2c16f823579acd82cfb69ffa1a26d6de796c89c56d50"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/runtime/prompt-cache-affinity.ts",
+        "upstreamPath": "src/ai/runtime/prompt-cache-affinity.ts",
+        "sha256": "cea930de774d61f895c02cddf1c1e07fe0d18f6332bb8a9ea7c1ffd3029d36f7"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/protected-observation-closure.ts",
@@ -692,12 +2342,17 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/provider-request-error.ts",
         "upstreamPath": "src/ai/runtime/provider-request-error.ts",
-        "sha256": "fad1a957287d3b8fac44937f24c31f0fc1db752b7c5f2d9f1bc8f218348f3427"
+        "sha256": "8df8f8e0b06e1311476a0e8fd246f1856c902a73a634b06a911f0a9563185e36"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/provider-transcript-digest.ts",
         "upstreamPath": "src/ai/runtime/provider-transcript-digest.ts",
         "sha256": "fc6d7dda752f23a18e314acfe3b1d4a68c6d8702c13fac067d264e2874f926e6"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/runtime/runtime-errors.ts",
+        "upstreamPath": "src/ai/runtime/runtime-errors.ts",
+        "sha256": "5eb1fbd92cb1f6b98fec47c8618476ece4817cd6f9dfb5dcea9ea9c3c89bdb35"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-graph.ts",
@@ -707,7 +2362,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/aliases.ts",
         "upstreamPath": "src/ai/runtime/session-store/aliases.ts",
-        "sha256": "b0bc661285c29f38d5627c0ac7b7fe1ad767c8dddfdae1d715132cef6510939c"
+        "sha256": "c0f16a57bda81060967e58510e2a8d2d78197b0824507636e09784571674de29"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/compound-deletion-census.ts",
@@ -717,12 +2372,12 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/compound-deletion-read.ts",
         "upstreamPath": "src/ai/runtime/session-store/compound-deletion-read.ts",
-        "sha256": "bc254a05d6351536cf98e62ba0967fc174f6b9dcc6af381e22832296474c6785"
+        "sha256": "ecda3c9771fec043d64d9be8392b9259ade7bd1a856e2e39e2f1cd214c1bfb55"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/execution-authority.ts",
         "upstreamPath": "src/ai/runtime/session-store/execution-authority.ts",
-        "sha256": "b9ebb369d8a71d19afd72e014dc8746e359c6c1d3e83d1c99141c9032358fa7c"
+        "sha256": "67b42cb929c5849d29ac9ed6e2703c76c56dcf3e044849bd594bf2677e5244ae"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/execution-chain.ts",
@@ -737,12 +2392,12 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/file-session-reader.ts",
         "upstreamPath": "src/ai/runtime/session-store/file-session-reader.ts",
-        "sha256": "b6db230eba5fb5c7e40e5abd0227aeac4d344a97ec11cfb0aadc513d6afaddef"
+        "sha256": "fb2f0fb6a27e60ccfeee652d412b6fbfeb4cd2bbe52cd168a8bf448a3f47d5e1"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/file-store.ts",
         "upstreamPath": "src/ai/runtime/session-store/file-store.ts",
-        "sha256": "ce9799a0b9e9b2db9d15fdb42045b357b44b3e550a230b550df56fbb3965e1f2"
+        "sha256": "f1ab01898c3486b018b54055668a3049d552313feb58c0d42a7d184a022e492a"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/identity.ts",
@@ -757,7 +2412,12 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/mutation-lock.ts",
         "upstreamPath": "src/ai/runtime/session-store/mutation-lock.ts",
-        "sha256": "02d99bc34b825112bc43cd7a06c569249f8a819dbdc900696a025f3822dc0f77"
+        "sha256": "26b049357cb0d2838833868339cb0f9ce9967dc034e1bd131ee41840bb27acbc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/source-read-sdk.ts",
+        "upstreamPath": "src/ai/runtime/session-store/source-read-sdk.ts",
+        "sha256": "f40d06b487d14fd75864567d39d8b8fe0fe9f5856893e5d56283ade887feeffd"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/runtime/session-store/store.ts",
@@ -782,7 +2442,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/skills/defaults.ts",
         "upstreamPath": "src/ai/skills/defaults.ts",
-        "sha256": "9e732af145bb0a054e5c568d162e299e62e3b702e38b4ed5caedbb031c5c398e"
+        "sha256": "50ab27d216180b463a38be0867378a37a87e45a79357fe484d1cc4faa1ee8745"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/skills/execution-state.ts",
@@ -837,7 +2497,7 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/bounded-glob.ts",
         "upstreamPath": "src/ai/tools/bounded-glob.ts",
-        "sha256": "f9de9ab7b1d7efd35e6178724d60f76db5601e4b4631e5292f22e5445d4c9e66"
+        "sha256": "42ada3756e3f43b24b620d8389469856d5547fda066b790fb65ac652be22cdb7"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/command-result.ts",
@@ -932,22 +2592,27 @@
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/glob-worker.mjs",
         "upstreamPath": "src/ai/tools/glob-worker.mjs",
-        "sha256": "021533f2329732d355ecd14d187c95df2fd666bfe62db38f8e3ddce9b3ac9776"
+        "sha256": "f80a679bdca5f3d9fd67eff560cc77f2679d7bbb185642b39db81207eeb2a07a"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/glob.ts",
         "upstreamPath": "src/ai/tools/glob.ts",
-        "sha256": "8339933fc7eeb55b670f9cf620460fc54e67e38d8df4d96d2e715031f7b02b42"
+        "sha256": "38f9f5db05b73d72eef233b18d084d3c635d8acf4b147f0c50e5065ac78db16a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/tools/goal.ts",
+        "upstreamPath": "src/ai/tools/goal.ts",
+        "sha256": "7f32dbc56d243bb66ed0f3d0606f5437b116217f883b6440a34f5e1ba7aa95b2"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/grep.ts",
         "upstreamPath": "src/ai/tools/grep.ts",
-        "sha256": "42e9c9986ea2168406425eaf50e4fc091c16b8da097092c6ba16f8c0486757a2"
+        "sha256": "5c114a3a0cf9a0715bea1cac138a80beb8efa90a9e53d40f54c8c58c1bdc4111"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/index.ts",
         "upstreamPath": "src/ai/tools/index.ts",
-        "sha256": "fb8ef785c4feba71293c7baea72f82a20222420dfaf3567ecb3e84f66e032fb9"
+        "sha256": "6909b6b96eb9df9a316e3507f4acb47ddae8c818c85437b993abcef1f7941bf7"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/install-skill.ts",
@@ -963,6 +2628,11 @@
         "file": "vendor/xiaok-runtime/src/ai/tools/kim-judge.ts",
         "upstreamPath": "src/ai/tools/kim-judge.ts",
         "sha256": "bdb7bdf8ef1da38122642ceec1d64684d634171e8bda0255d49c172532b1ee00"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/tools/kim-status.ts",
+        "upstreamPath": "src/ai/tools/kim-status.ts",
+        "sha256": "bc2245ebbb69ae76480a278bfbec047b7a3213ccf58fec7ecb4b7dd525cba50d"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/lsp.ts",
@@ -990,9 +2660,14 @@
         "sha256": "9f290f3b29fdaa38616bb700549909a7e946fcab98fcd0cbf21a39f31a311bef"
       },
       {
+        "file": "vendor/xiaok-runtime/src/ai/tools/original-glob-worker-source.ts",
+        "upstreamPath": "src/ai/tools/original-glob-worker-source.ts",
+        "sha256": "986b345e5a20ead8456cf43b829c51a38c5cecb3d7571aeb42e40f26c4f1eba4"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/ai/tools/read.ts",
         "upstreamPath": "src/ai/tools/read.ts",
-        "sha256": "8ee69fff0f43fda194efc00952215c1be7efd50895f473d1a02ef87697c5df14"
+        "sha256": "fef9024f0344fa0f4441d835836ba4eee912bfdc25debf5b7faf6a99b74dc859"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/reminders.ts",
@@ -1003,6 +2678,21 @@
         "file": "vendor/xiaok-runtime/src/ai/tools/render-ui.ts",
         "upstreamPath": "src/ai/tools/render-ui.ts",
         "sha256": "9580ab1bf86169d15adc543a29e3ad315be1407d8d292e01e8a62a5dc44e3394"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/tools/scoped-native-readonly.ts",
+        "upstreamPath": "src/ai/tools/scoped-native-readonly.ts",
+        "sha256": "6ba72fb8b657cdb6be1ea07597eed0303facf74cbbdc663f8081a42fea726c67"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/tools/search-scope-context.ts",
+        "upstreamPath": "src/ai/tools/search-scope-context.ts",
+        "sha256": "e8f5a197f1afd71cd681f9a1c5ebd9b341ca641a81aa3661cae253fc756e5447"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/ai/tools/search-scope.mjs",
+        "upstreamPath": "src/ai/tools/search-scope.mjs",
+        "sha256": "4f53e3969e75dce018bfa010721d400e193368ce7abf695df0f5450ec9275597"
       },
       {
         "file": "vendor/xiaok-runtime/src/ai/tools/search.ts",
@@ -1088,6 +2778,26 @@
         "file": "vendor/xiaok-runtime/src/platform/computer-use/macos-cua-connection.ts",
         "upstreamPath": "src/platform/computer-use/macos-cua-connection.ts",
         "sha256": "bd02b77dcca5dbbf52117a411c9584bcdf80f4c01af0637c3e820548e9493dac"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/platform/computer-use/windows-cua-backend.ts",
+        "upstreamPath": "src/platform/computer-use/windows-cua-backend.ts",
+        "sha256": "05150ed7f00405410877173468bdf04f170c22e41035f98194f724033f75767d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/platform/computer-use/windows-cua-observation.ts",
+        "upstreamPath": "src/platform/computer-use/windows-cua-observation.ts",
+        "sha256": "1e50be8d6ef5fadbeea5fc68d01988a1dfd549422b7acbba943b3fb53b538feb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/platform/computer-use/windows-cua-profile.ts",
+        "upstreamPath": "src/platform/computer-use/windows-cua-profile.ts",
+        "sha256": "562eefb377eac959af55b6399087b728762a6f5e7bf2152af4ebe43efdc77e5f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/platform/computer-use/windows-cua-url.ts",
+        "upstreamPath": "src/platform/computer-use/windows-cua-url.ts",
+        "sha256": "4a54c7a5c8306d99a617f47162f44412185d374fbd05bde677334b00734362d1"
       },
       {
         "file": "vendor/xiaok-runtime/src/platform/lsp/client.ts",
@@ -1195,6 +2905,11 @@
         "sha256": "6842468751c2909dea9b3e1e5e67e39d22f9ab5c399f2585edb12af798877ba0"
       },
       {
+        "file": "vendor/xiaok-runtime/src/platform/provider-runtime/types.ts",
+        "upstreamPath": "src/platform/provider-runtime/types.ts",
+        "sha256": "70f8114552c03a4bb92d327b9f20104fda69eecbc5a9aa465faa7212b448b2d8"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/platform/runtime/capability-registry.ts",
         "upstreamPath": "src/platform/runtime/capability-registry.ts",
         "sha256": "78ee6473c8ab18a508683f666b55cb489a6f1495975c3d0b9bd59afe908601f9"
@@ -1217,22 +2932,22 @@
       {
         "file": "vendor/xiaok-runtime/src/platform/sandbox/enforcer.ts",
         "upstreamPath": "src/platform/sandbox/enforcer.ts",
-        "sha256": "beef11bcce4b67b9b9c04b7096bb4f516dbd7ee78aafe75e38de67e3e5f885be"
+        "sha256": "47895b360fd8bcccc962dbfc757ff09098a46ce7317d0e885dcf96fc70327fa0"
       },
       {
         "file": "vendor/xiaok-runtime/src/platform/sandbox/policy.ts",
         "upstreamPath": "src/platform/sandbox/policy.ts",
-        "sha256": "402d62db04150ec12718e952720449e095510bbab9128dd2b83119e5d02f20be"
+        "sha256": "08080571fed4a45aba21544d3d2aab9c17ca3c8b484ad3e86cc944c1a08d1d78"
       },
       {
         "file": "vendor/xiaok-runtime/src/platform/sandbox/search-scope.ts",
         "upstreamPath": "src/platform/sandbox/search-scope.ts",
-        "sha256": "d4261be554acfb1542e22f338806d8bf2ae93a8ede63176c83e38fc69805b864"
+        "sha256": "5edba696c35ee026a7e46c204eab0627eb0e41b49df3383e568b112ca1502493"
       },
       {
         "file": "vendor/xiaok-runtime/src/platform/sandbox/tool-wrappers.ts",
         "upstreamPath": "src/platform/sandbox/tool-wrappers.ts",
-        "sha256": "6537aeca8bebc4d04aa7177a93c8f03a6dd0c59a6c06c002a4aa3e377c1ef4e2"
+        "sha256": "d761df1d4c6483b0b97487a689619b06757b66d5c9fd789583e5af1bb1966a93"
       },
       {
         "file": "vendor/xiaok-runtime/src/platform/teams/service.ts",
@@ -1255,19 +2970,384 @@
         "sha256": "788233611ae6f4d181e3fe04116d2713ddad82643b4bf61576994abadceaf6fe"
       },
       {
+        "file": "vendor/xiaok-runtime/src/quality/artifact-structure.ts",
+        "upstreamPath": "src/quality/artifact-structure.ts",
+        "sha256": "435456987463f82976ed1644d856da9264215894d0440fb7b90ad82c4c06cf71"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/assessment-output.ts",
+        "upstreamPath": "src/runtime/admission/assessment-output.ts",
+        "sha256": "632034f2366230c85e7ed45dbc996d06d2ec729741987133c64381e898ede67c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/evaluate.ts",
+        "upstreamPath": "src/runtime/admission/evaluate.ts",
+        "sha256": "adbc80101919dcc1359ee9b8d23c19c6643d68af0cd68a1f5c31091789c6892f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/hash.ts",
+        "upstreamPath": "src/runtime/admission/hash.ts",
+        "sha256": "99189c1fe58e15a874d86665324ec6c5e6314b63df7db5139a31a9033ec73a74"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/model-response.ts",
+        "upstreamPath": "src/runtime/admission/model-response.ts",
+        "sha256": "5955bfacb19e0c013c8eba4e835262707838bf8f2ec284653ce973aa4ea3105c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/money.ts",
+        "upstreamPath": "src/runtime/admission/money.ts",
+        "sha256": "84837e4b19ca0fae27adbaa210441d7e03d4850c114cc4df4263116f40a86a91"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/parse.ts",
+        "upstreamPath": "src/runtime/admission/parse.ts",
+        "sha256": "44584d51674c56a31788782134f2ac3abda929928cf943ca84c4018b140f65f8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/admission/request-bounds.ts",
+        "upstreamPath": "src/runtime/admission/request-bounds.ts",
+        "sha256": "2571c860883b849562f7b81555265d7c4422cec2d8b5416a8593eabdf8d94b37"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/action-recommendation.ts",
+        "upstreamPath": "src/runtime/assistant/action-recommendation.ts",
+        "sha256": "3b46ae0fbc0cf5969bcc828b6b34817dd8d14da4e3785f2e45053ce60555a5a3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/digest-facts.ts",
+        "upstreamPath": "src/runtime/assistant/digest-facts.ts",
+        "sha256": "2e23cfb659ad35b645dbde0f4ed22263e6e0713d542406f461ace7e279b20804"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/digest-receipts.ts",
+        "upstreamPath": "src/runtime/assistant/digest-receipts.ts",
+        "sha256": "9b1239eb91158759ca0f31848f2e86790bb5b8fc991d82b396d91ab78c454711"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/model-identity.ts",
+        "upstreamPath": "src/runtime/assistant/model-identity.ts",
+        "sha256": "648908cc22a6d1516d8206b83a3ef9de45a1ea448d6c3b22dffeffce61ea5ce6"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/notification-policy.ts",
+        "upstreamPath": "src/runtime/assistant/notification-policy.ts",
+        "sha256": "6d151c63d63297acd3d6f7d36fa2087c49c04ec5d73378070faf57c9f6f30947"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/quality-assessment-observation.ts",
+        "upstreamPath": "src/runtime/assistant/quality-assessment-observation.ts",
+        "sha256": "cf6c8f7349c280d23bfb10fa6ded7e1d99a864d71359e0c5b3afcc413e9387e5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/quality-authorization.ts",
+        "upstreamPath": "src/runtime/assistant/quality-authorization.ts",
+        "sha256": "59cf23e6384b3664b578c7dfad88a812ab7676bc12b494a0d29fdedad0e05321"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/assistant/quality-qualification.ts",
+        "upstreamPath": "src/runtime/assistant/quality-qualification.ts",
+        "sha256": "0b0b32c89a8fc75c6bbd6f6cd02950408d318b2c8b92d1136f32bc23bd10e549"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/cli-archive-policy.ts",
+        "upstreamPath": "src/runtime/context-continuity/cli-archive-policy.ts",
+        "sha256": "22edecda804581680428be76e495c583fd969e70809253d439ecbcb92ec843c4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/policy-denial.ts",
+        "upstreamPath": "src/runtime/context-continuity/policy-denial.ts",
+        "sha256": "f428ef35548c39b6f1781393a3ae5d3087c03bac7aa46b3b8b1fbfc0b73ba40b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/policy.ts",
+        "upstreamPath": "src/runtime/context-continuity/policy.ts",
+        "sha256": "20b8d10ecb26c712776461885b8d8f733b25292a49715137d439dc780b4143be"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/profile-file.ts",
+        "upstreamPath": "src/runtime/context-continuity/profile-file.ts",
+        "sha256": "ecc10981b35feace093a3d0f4485549f053ad21800bc8a62713754a2b2926429"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/profile-identity.ts",
+        "upstreamPath": "src/runtime/context-continuity/profile-identity.ts",
+        "sha256": "82d89df0acddd715113d65fdee13d71daf14fb0abcb4f578f07f7475038eb8a6"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/profile-probe.ts",
+        "upstreamPath": "src/runtime/context-continuity/profile-probe.ts",
+        "sha256": "cb683fad7c589fa807a2a60a1f46d0ae43139a5d6ac7dad4446e5deefa8e0dca"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/context-continuity/profile.ts",
+        "upstreamPath": "src/runtime/context-continuity/profile.ts",
+        "sha256": "68fd3196f61e54657412b777586614cdb989c6f57ce177be80aacffcc6bc423d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/activity-projection-locked.ts",
+        "upstreamPath": "src/runtime/conversation-activity/activity-projection-locked.ts",
+        "sha256": "c7a10f849a37cf339502c09a76bcb5152551a70ae2c2257cfe27397e7e0c6922"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/agent-runs.ts",
+        "upstreamPath": "src/runtime/conversation-activity/agent-runs.ts",
+        "sha256": "cbbc089f6e3912cdc1a1b4a741590597224e5d7ce9f059bbac1a1011618ae017"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/attention-canonical-state.ts",
+        "upstreamPath": "src/runtime/conversation-activity/attention-canonical-state.ts",
+        "sha256": "c4902494fcae6a148c8afc8cae1486eaa4f7aae9792e56b662f75540c98cbaab"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/attention-catalog.ts",
+        "upstreamPath": "src/runtime/conversation-activity/attention-catalog.ts",
+        "sha256": "e4c0c7879a865c87b0f9db1118237551a2d5860e18450f0cd39425dc35dbff52"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/attention-presentation-store.ts",
+        "upstreamPath": "src/runtime/conversation-activity/attention-presentation-store.ts",
+        "sha256": "e2601338461462e64a6a66dc7787cb01c48a71c1cd97669cb619e0e96257bd4d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/attention-projector.ts",
+        "upstreamPath": "src/runtime/conversation-activity/attention-projector.ts",
+        "sha256": "b8109d53c46e86c8dc1e6e36907188c962e0bf0e281c48eeb365008d76d3b714"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/attention-reader-owner.ts",
+        "upstreamPath": "src/runtime/conversation-activity/attention-reader-owner.ts",
+        "sha256": "672b9920c65be373896fd61df3ae2a3b964a1266495673104f814abd12becd6e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/attention-work-reader.ts",
+        "upstreamPath": "src/runtime/conversation-activity/attention-work-reader.ts",
+        "sha256": "6d14eae0fb47beb4314c83d173e5cf8c891ded6a1ae710a74a6504c5d6881e7d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/canonical-dispatch-business.ts",
+        "upstreamPath": "src/runtime/conversation-activity/canonical-dispatch-business.ts",
+        "sha256": "2fa14d7960e8a1b9da35db7a40ae52a8e8d264221a07b4fbe9c6c67bac97b80a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/close.ts",
+        "upstreamPath": "src/runtime/conversation-activity/close.ts",
+        "sha256": "20d1b2357b6e63311942bd2eddc14e89cb6210617b930e4c5765a1232a4c486e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/disclosure.ts",
+        "upstreamPath": "src/runtime/conversation-activity/disclosure.ts",
+        "sha256": "25f3f5b9e75488b6904113efe9e69b1ee05c72473508604d50a46a72ef4d7df7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/dispatch-business-data.ts",
+        "upstreamPath": "src/runtime/conversation-activity/dispatch-business-data.ts",
+        "sha256": "1689fff0e1a9d7add56f0b0a0fd768d0c586ad0039c36c2db2812756246a189a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/mcp-input-forms.ts",
+        "upstreamPath": "src/runtime/conversation-activity/mcp-input-forms.ts",
+        "sha256": "63163892127aaf752e850d25376b94bf6cba1d47c5f32b85efffab4bf2326215"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/mcp.ts",
+        "upstreamPath": "src/runtime/conversation-activity/mcp.ts",
+        "sha256": "a81c7b37636aae8a68611d8c16c3aa8835008e77d60d992ca0ac9d5f13527dec"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-attention-inventory-data.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-attention-inventory-data.ts",
+        "sha256": "f6cd327aa3c147455641ac5286f6fa721bf9edaf0a974a9b59922f28e8234f4b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-attention-reconciliation.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-attention-reconciliation.ts",
+        "sha256": "2d7a3847449ba400199aa66d63dce705485b45445f0f99eb87657870885b4ac1"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-attention-source.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-attention-source.ts",
+        "sha256": "8182dd15bcb9fc9fc85b9ab6a5976fa5ec34e09755feeb1646281be28ea6f67f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-attention-terminal.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-attention-terminal.ts",
+        "sha256": "176247902c12abaa1cf3c6b500abf9561f30ad52118470091bd14aa558abaf2d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-identity.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-identity.ts",
+        "sha256": "b37584d331a631e701485ace6c6f3ca2c12407a006bbc2429fd437baf058f917"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-question-data.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-question-data.ts",
+        "sha256": "f4f7c52a895d79b5b8f5943e184fd8725c58c83e6d04be2ae88097428b738877"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/native-source-credentials.ts",
+        "upstreamPath": "src/runtime/conversation-activity/native-source-credentials.ts",
+        "sha256": "77a27cb34f9bf99802afd46d0899fc9469ce1f62d0145e6946494854ebdd0a81"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/observer-promise-contract.ts",
+        "upstreamPath": "src/runtime/conversation-activity/observer-promise-contract.ts",
+        "sha256": "b8cd35aebc2990148db76e2e54ad4c0ce2d8f78e27f21b73b8aa3ad171089882"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/ordinary-attention-facts.ts",
+        "upstreamPath": "src/runtime/conversation-activity/ordinary-attention-facts.ts",
+        "sha256": "dbe91840107bd0ee15f59dec52510257a6ec8733dab85fb02262fecc00aa4f57"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owned-canonical-business.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owned-canonical-business.ts",
+        "sha256": "992cf136a719dd2f8205d69ef6e3f596a36f4d6a094190dec6e71275bdc516af"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owned-kswarm-business.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owned-kswarm-business.ts",
+        "sha256": "1898664f0bd07c0cbad7510c51c122abcd58483b4df4d6b718e0ef96ca9a3794"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owned-kswarm-control.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owned-kswarm-control.ts",
+        "sha256": "7e3b3a930f480f13b35b474e01c53ce58bd86746dba2149305d36a33819b51d6"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-client-connection.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-client-connection.ts",
+        "sha256": "d06004b27cb51791b4b98e09e57a2225689b2ad5d8c1b79d57969691ffb32096"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-client.ts",
         "upstreamPath": "src/runtime/conversation-activity/owner-client.ts",
-        "sha256": "0525c8fc87ab714cef5fbccfa0380bf4f70e712d924ecaf60b0863cf5cc42c07"
+        "sha256": "8aa5296aad4ec6dcbe77c0fd9c5c3175d64ae7dfaa82eacd31a6eb7c93be773c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-config.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-config.ts",
+        "sha256": "61e572face6a382ec51a967b70ee8d21a621c8f82fec932c9428e481a28902d2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-entry.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-entry.ts",
+        "sha256": "60f835e846b525a5b0bf1f42b042f2f6ebdff5119b85c9216f41208d5e4cb7fc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-host.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-host.ts",
+        "sha256": "41e14dc48e8edc94ca52d4c51af923370e2b25f1f7959b215f2ca406ed673a38"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-launcher.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-launcher.ts",
+        "sha256": "feff9edeb9e40eb7a7b7bf2b932198cbdc3e13656760f5508b048181bdc4cfe8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-mcp.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-mcp.ts",
+        "sha256": "c53d6c65af85fc57b6859dc64c615c0a88e54ee025a2b49bf28c424aa1aadfd8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-notification.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-notification.ts",
+        "sha256": "fa461a1b6517aa5ba726782343706b7cbfdccbc14e879a2263ee933cce2e24d8"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-protocol.ts",
         "upstreamPath": "src/runtime/conversation-activity/owner-protocol.ts",
-        "sha256": "bf287e47b4dfb87b2bd1404c7d9967edbf7dc9248079838dc0dddeb02617e1ca"
+        "sha256": "344fe013aca4ff4366723a5533e5c56b99e7111a5dd6722dbef9152d6983a9aa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-qualification.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-qualification.ts",
+        "sha256": "651272f85aa37cf20d7a67e42d285fdf86bb8222cc137c6f4547405d241362ff"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-retire.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-retire.ts",
+        "sha256": "3bba37abe1c71a0ee76d0772abdfd134ff7d324eb59feeb6b611ae81b525390f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-runtime.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-runtime.ts",
+        "sha256": "31aa5f0518226f0cfbc1a15525094175c0a8dbbc8fe8c06bf3a8ed8721094dc2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-service.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-service.ts",
+        "sha256": "8e3e7a5f3326a19859d87c7124d355954a71ba2c6fb80661aaeaba980a5a2a9a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-source-client.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-source-client.ts",
+        "sha256": "29707bf17912567a2330fb6198d23c90ea9e973f801d85e891b1f866f82560ad"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/owner-sources.ts",
+        "upstreamPath": "src/runtime/conversation-activity/owner-sources.ts",
+        "sha256": "74d1b56fbaf150ba6a2a5266b4a41e59f572ba5a0d6c40617a2fc748f60c93c3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/pending-close-owner.ts",
+        "upstreamPath": "src/runtime/conversation-activity/pending-close-owner.ts",
+        "sha256": "d7d20ad819110132f251ba5671b3d998f0b3ed3663e40bb38245d1fc94949252"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/project-delivery-data.ts",
+        "upstreamPath": "src/runtime/conversation-activity/project-delivery-data.ts",
+        "sha256": "aaf230f34bf53b37e3fcd646a5446bc471a5822cb4763c001c29358b54b963d3"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/project-delivery-facts.ts",
+        "upstreamPath": "src/runtime/conversation-activity/project-delivery-facts.ts",
+        "sha256": "f599da6aabe7c7cdcfa1738db65ea8f6ae2aa36487e41bcff121090633191a16"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/project-forward-snapshot-data.ts",
+        "upstreamPath": "src/runtime/conversation-activity/project-forward-snapshot-data.ts",
+        "sha256": "e2a0d72b31c00320ce3a510b84ed4b67fd345b23bb71fa8da450628cddb355ae"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/project-http-transport.ts",
+        "upstreamPath": "src/runtime/conversation-activity/project-http-transport.ts",
+        "sha256": "e07b81e3dd2ceaaa1234039c87b706a2d0731706db5671fb5ae171dc49b53084"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/project-scoped-activity-data.ts",
+        "upstreamPath": "src/runtime/conversation-activity/project-scoped-activity-data.ts",
+        "sha256": "8109ac0a9a7c071d9f372323c0ba39c5a368f1ac474615fdffe05248ccd06086"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/readonly-snapshot.ts",
+        "upstreamPath": "src/runtime/conversation-activity/readonly-snapshot.ts",
+        "sha256": "315a1dbc939110b81133e9551ff5a01b5509abd3dc2e38965707a292575a466e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/service.ts",
+        "upstreamPath": "src/runtime/conversation-activity/service.ts",
+        "sha256": "d1b369228c5375a7f5f9b0d3287f59acd94e210727a71b1a56b26182eec93e42"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/source-supervisor.ts",
+        "upstreamPath": "src/runtime/conversation-activity/source-supervisor.ts",
+        "sha256": "ae43a853164461284f3279f20fd43859b97413b9e7c6238cc0c682d51b2d2ac0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/sources.ts",
+        "upstreamPath": "src/runtime/conversation-activity/sources.ts",
+        "sha256": "09cd483b2069e36703bfecf9cce385607ae232a325ead3295bb9019b35d1f720"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/storage-permissions.ts",
         "upstreamPath": "src/runtime/conversation-activity/storage-permissions.ts",
-        "sha256": "ff7e67a17742d65735410fb2f089209dc9a7de0466f6a3a16cfae7a45cc75e95"
+        "sha256": "31c2a1fc6e583e7276d269d25e07a53487c24ab8225673297144d1731e7ac2ca"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/conversation-activity/store.ts",
+        "upstreamPath": "src/runtime/conversation-activity/store.ts",
+        "sha256": "5e798a3a32378fa774fd66a1312196d818e42f79e27aa780501064197c639cf8"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/daemon/launcher.ts",
@@ -1280,14 +3360,114 @@
         "sha256": "fa22049dd11e5b0cbb9cd477699b372c7c6d2fafbb0ee52cce29375740f78c70"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/diagnostics/diagnoser.ts",
+        "upstreamPath": "src/runtime/diagnostics/diagnoser.ts",
+        "sha256": "56a423e611449a5363e9779cbccb67399a30863089f477779c3e2baee7fcf953"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/diagnostics/project-diagnoser.ts",
+        "upstreamPath": "src/runtime/diagnostics/project-diagnoser.ts",
+        "sha256": "1d100f3f2470829c755da75189e457138c3f456055d8ab7ad2c815d81e28bbba"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/execution-health.ts",
         "upstreamPath": "src/runtime/execution-health.ts",
         "sha256": "0769cea2c3330431138fc263e7a36c7d26298e8298f6148e29fb75850f7f1e85"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/completion-evaluator.ts",
+        "upstreamPath": "src/runtime/goal/completion-evaluator.ts",
+        "sha256": "cecd15be0246619fab2034895286a2e28347e0b3fd382f9fc880b51264211c7d"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/completion-intent.ts",
+        "upstreamPath": "src/runtime/goal/completion-intent.ts",
+        "sha256": "39585e3a67d78145003d8dfca70bf24b1ccadee7d24f2501e3c4f6f8a6345590"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/completion-observation.ts",
+        "upstreamPath": "src/runtime/goal/completion-observation.ts",
+        "sha256": "13d276a283c9d4c99a03c9a40c9e654e9882671d644124f3f2cbddd0f32c35ed"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/completion-projection.ts",
+        "upstreamPath": "src/runtime/goal/completion-projection.ts",
+        "sha256": "1a0c729265d743e53d2f71000a5d146dfbadd500433716937c50747a8f86ef6e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/native-mutation-journal.ts",
+        "upstreamPath": "src/runtime/goal/native-mutation-journal.ts",
+        "sha256": "4a15d4a4bcdaa6352b4b2fc48a3ef07d1b5f3f84faa43d91bf26fb70d3c6f187"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/native-mutation-projection.ts",
+        "upstreamPath": "src/runtime/goal/native-mutation-projection.ts",
+        "sha256": "0dbd8226353e06fcab843b30f2b9dfdb0c42b22e580a273144354744ec699643"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/native-mutation-workflow.ts",
+        "upstreamPath": "src/runtime/goal/native-mutation-workflow.ts",
+        "sha256": "83d438d383ecbcae03c9c0208394c9d34cd402f32c170270ef78c31e5a5a7309"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/prompt.ts",
+        "upstreamPath": "src/runtime/goal/prompt.ts",
+        "sha256": "47eef9252d6aa2c03bc882947429df48dde135bcc73ca428fc7a9725c4b55f54"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/publication-attempt.ts",
+        "upstreamPath": "src/runtime/goal/publication-attempt.ts",
+        "sha256": "93f533864e89da2bdcd71ac19627e986e95c86389e8b0b38e845c96a446f1cf4"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/publication-workflow.ts",
+        "upstreamPath": "src/runtime/goal/publication-workflow.ts",
+        "sha256": "7930a40e4ebcd2055539464c7faa901452a46fa516d9a649594d10db80e066b6"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/reducer.ts",
+        "upstreamPath": "src/runtime/goal/reducer.ts",
+        "sha256": "d5bb1f8e2a40a8f28a75aed3dfa0e35f2e5bdd503ab80eb4878f1391e381a02a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/service.ts",
+        "upstreamPath": "src/runtime/goal/service.ts",
+        "sha256": "d98f0e0e693c1d5accd00e16bffd9ae013b8615055b6c5a953dbd2322e3ce995"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/turn-ledger.ts",
+        "upstreamPath": "src/runtime/goal/turn-ledger.ts",
+        "sha256": "0a1224ede3cc38400be730a94261e57c813ed16e7d8a5826e6549fa3d4d7af9f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/goal/types.ts",
+        "upstreamPath": "src/runtime/goal/types.ts",
+        "sha256": "753f206c404b72185e8481d6adeb377c7010d7dc1761d6d59243fa6d4135b97b"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/goal/verification-definition.ts",
         "upstreamPath": "src/runtime/goal/verification-definition.ts",
         "sha256": "8d90f84229f5a597c5d41cccb6890028f028ae8748bc0d5c40bbe49de34739b8"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/guards/artifact-evidence-guard.ts",
+        "upstreamPath": "src/runtime/guards/artifact-evidence-guard.ts",
+        "sha256": "40ce389ff154f37f4eec3a682ce199de081e84bf9b47d68511f105d9713e9ae9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/guards/completion-evidence-async.ts",
+        "upstreamPath": "src/runtime/guards/completion-evidence-async.ts",
+        "sha256": "3ec3da5caa156c750d3f91241fa4ab43944d38a8782e646289fae5a4abe0f314"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/guards/completion-evidence.ts",
+        "upstreamPath": "src/runtime/guards/completion-evidence.ts",
+        "sha256": "46362d30276d4eac88934949f27a2579efb0458906def341c3d92ee42be1fed5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/guards/original-completion-file-io.ts",
+        "upstreamPath": "src/runtime/guards/original-completion-file-io.ts",
+        "sha256": "1c7badb8ab1039e75cd541dac29a09d44482d3580b5f5cc5ed67c2bca7f08e4f"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/guards/policy.ts",
@@ -1312,7 +3492,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/hooks-runner.ts",
         "upstreamPath": "src/runtime/hooks-runner.ts",
-        "sha256": "6dd6fe0079b707d9378746ba5e41a2750654d6a0db16c211535f65aa523b0a17"
+        "sha256": "81f758cbc6f5eb98f3a96afc0b07e02336aed982bae2b677330fa3e5a9035421"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/intent-delegation/business-projection.ts",
@@ -1445,6 +3625,21 @@
         "sha256": "de58997a4ccbd38f0749c3812c7b17877299e80c50648b60db568a3138b83823"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/loop/producer-value.ts",
+        "upstreamPath": "src/runtime/loop/producer-value.ts",
+        "sha256": "4e1a828ddd1478b706997170b387dc67b8ad385966fd4b68165502f077ddeba5"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/loop/publication-config.ts",
+        "upstreamPath": "src/runtime/loop/publication-config.ts",
+        "sha256": "b3d0b02e27c17c5f50aa7ed5e652ec1182cf65b53c9f8b79dd99b7a71c0e7183"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/loop/verification-execution.ts",
+        "upstreamPath": "src/runtime/loop/verification-execution.ts",
+        "sha256": "bd5e593ca20b426d5a4a0e00617758785850d2c60ae796212f6901d4d1be4183"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/materials/document-formats.ts",
         "upstreamPath": "src/runtime/materials/document-formats.ts",
         "sha256": "2cd67162c9293d910a683fe802ae167d4c81571617eec16b25938e5f3712f3f7"
@@ -1452,7 +3647,77 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/materials/text-extractor.ts",
         "upstreamPath": "src/runtime/materials/text-extractor.ts",
-        "sha256": "022d97c42cfdbf9475968f7fc71fdaeae72f99d76fcd992fbb3d87e524a41b45"
+        "sha256": "20e812dc1ce930b7a950b3b35fb711eef78eef2c7d196482b97736c2d4cdf44a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/approval-records.ts",
+        "upstreamPath": "src/runtime/multi-agent/approval-records.ts",
+        "sha256": "80d48a979ecfdf2fafca7387fbc0316e1f6b7c7a7999a9120995bec40130d0a7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-admission-authority-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-admission-authority-data.ts",
+        "sha256": "d61ed42d26797848caaf3a612333d6736294d244d7079206e714ce925542469f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-admission-cold-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-admission-cold-data.ts",
+        "sha256": "9053821b540e35af4c67ac0851c35b3c6553a7fee9df0487123eddfc2aa04787"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-admission-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-admission-data.ts",
+        "sha256": "1e258dfa7e734a947e52a8027dc28e089abd311d40e1e03af37b92e70a77d27f"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-admission-owner-command.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-admission-owner-command.ts",
+        "sha256": "356522c99fbf6916462105c244fbda6b9370eb29799824ed19c481efd0e75905"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-broker-control-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-broker-control-data.ts",
+        "sha256": "dcfba2462c4c14c363d88b2033b7258f31067f00844f4c4e55f35696bd0e2f60"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-draft-candidate.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-draft-candidate.ts",
+        "sha256": "73d7575b02f956abf727736b2f1f60efe51ffb5317ea049666693f66d861bb99"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-egress-policy-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-egress-policy-data.ts",
+        "sha256": "35571d9999d8c7c00db3ac668642ed7aa929c2e3f76a6768e3371c6d18fe62d0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-github-read-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-github-read-data.ts",
+        "sha256": "2b94ae830e661c38e05d175cc76ed0cda5650be0e192f50eb7f4fb588cba3b66"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-github-read-plan.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-github-read-plan.ts",
+        "sha256": "fee3acc2da9059df2df0825ecb49ff9132dbfe49b8ba873764b219c5dde81e21"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-github-setup-data.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-github-setup-data.ts",
+        "sha256": "43179c10d779b900e8ae640e5a53eea874632fb7c9c785f4df3eeeae22c415aa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-github-source-storage.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-github-source-storage.ts",
+        "sha256": "fdfe8a6635225c69068059196c6e06a515c058ed70b361b1551abb435058c09b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/dsh-source-configuration.ts",
+        "upstreamPath": "src/runtime/multi-agent/dsh-source-configuration.ts",
+        "sha256": "141895f009f5624eee1671231f381f2a16fad005db5cd989c4af49eda6828edd"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/multi-agent/row-codec.ts",
+        "upstreamPath": "src/runtime/multi-agent/row-codec.ts",
+        "sha256": "e76f1262010c29882b56d0c1f32817e9832859a731e398951345f08e345411fa"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/reminder/client.ts",
@@ -1505,6 +3770,16 @@
         "sha256": "89f4f21841e54d2ee7249838c382e9b4b0c20b40b08c385236f7491e48805369"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/snapshot/checkpoint.ts",
+        "upstreamPath": "src/runtime/snapshot/checkpoint.ts",
+        "sha256": "629541b4c99827f18fbd6e6d6e0b0b4743c64937d532495834ceaca109a38996"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/snapshot/store.ts",
+        "upstreamPath": "src/runtime/snapshot/store.ts",
+        "sha256": "66aa5d063e0eeaf1c3a8c9e0713010bc0cbf79ea956de3d98f1c029038bfd261"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/capacity-admission.ts",
         "upstreamPath": "src/runtime/sol-pi/capacity-admission.ts",
         "sha256": "75dce08d12af7ba63ae42e02617283073f3c09db2ca3cea76f04dca223220c7d"
@@ -1542,7 +3817,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-execution-coordinator.ts",
         "upstreamPath": "src/runtime/sol-pi/compound-execution-coordinator.ts",
-        "sha256": "58364928e72390311f5ce8b90ab167fe23b6c39640375cfd6b8baaac562b758b"
+        "sha256": "67795bed2d0a4e5bc998793a63340562968d211d4e012b606cd18d8835f7c9a0"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-execution-domain.ts",
@@ -1577,7 +3852,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-managed-lifecycle.ts",
         "upstreamPath": "src/runtime/sol-pi/compound-managed-lifecycle.ts",
-        "sha256": "f2684fee24a57719bc1eafc430036e35a812051f612da83aaa91847c324d03bd"
+        "sha256": "5277119f386563256b7c4110e4603dc69c2a734af395ba224799ff91eeb7c386"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-managed-message.ts",
@@ -1617,7 +3892,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-publication-producer.ts",
         "upstreamPath": "src/runtime/sol-pi/compound-publication-producer.ts",
-        "sha256": "71ef1561d154953be443138044bc7422b4571a80186a391cc2f2b66047f433d0"
+        "sha256": "b0fd3ab8df86fd55b29908570aceaf2cfc13474db07fa6b7518c8948567ad539"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-session-journal.ts",
@@ -1628,6 +3903,11 @@
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-source-inventory.ts",
         "upstreamPath": "src/runtime/sol-pi/compound-source-inventory.ts",
         "sha256": "b6dbb2a9883e36eaa5758942b551b7280d3c4d1f2c82eb6505dadd7ceb5afc5a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-status.ts",
+        "upstreamPath": "src/runtime/sol-pi/compound-status.ts",
+        "sha256": "e24965af81fa6ffd17e2d3c2bf8b8360dc5c8b5aae967dce9e595c5b31e7e522"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/compound-tree-budget.ts",
@@ -1667,7 +3947,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/observation-execution-scope.ts",
         "upstreamPath": "src/runtime/sol-pi/observation-execution-scope.ts",
-        "sha256": "5373ba600f528a7b9e7f29bcfdc387b5a554c27bb716d813a725eac2a43e8ebb"
+        "sha256": "7ec33f760b9aea3b12e075d3e1bce4e5e9b6868abb866c89842daa40c863e6f4"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/observation-message-publication.ts",
@@ -1710,6 +3990,11 @@
         "sha256": "2efa08168dd4ed428f3887fcd1ec9462979aae4c0488091466e1201fa49b56a8"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/sol-pi/product-validation-backend.ts",
+        "upstreamPath": "src/runtime/sol-pi/product-validation-backend.ts",
+        "sha256": "9fead3ed59581f5c620355887e5531dbdb1cd70a84d81ae3f834f8f67ddcd608"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/profile-disclosure-ledger.ts",
         "upstreamPath": "src/runtime/sol-pi/profile-disclosure-ledger.ts",
         "sha256": "101c160c367d52f495d5098233ac9259f426367a7e861ae1cacdb1d14c428eda"
@@ -1742,7 +4027,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/semantic-compaction-owner.ts",
         "upstreamPath": "src/runtime/sol-pi/semantic-compaction-owner.ts",
-        "sha256": "15ea7d383e8336e12cfd9d8aea50e54e097d97bbf33f0da40e02f169182fb8f6"
+        "sha256": "afab32ff721459c49e9b7ff85be50f9df9ebab5b321b5b02958d04bba7a6d5ea"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/semantic-execution-anchors.ts",
@@ -1767,12 +4052,12 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/semantic-summary-attempt.ts",
         "upstreamPath": "src/runtime/sol-pi/semantic-summary-attempt.ts",
-        "sha256": "e388ce894adf966a509725fb137667c6c5cf5a4602cee14a1a116491e0bba244"
+        "sha256": "eeda99c6ad18daf39d7973e80be1ef736116ea8266d6e33e52b3341a8778def3"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/single-request-https.ts",
         "upstreamPath": "src/runtime/sol-pi/single-request-https.ts",
-        "sha256": "886e4443805e3ee4e95554c3bfd9af77eed9c0260798457181c6e71087c4eb17"
+        "sha256": "221a801d0088109f086e5ceb49602985557ea67efe2d3fe997251533fa8be4d3"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/sol-pi/transport-lease.ts",
@@ -1780,9 +4065,134 @@
         "sha256": "9f2ed591a25c0516f7a0397290e21ff20fa3dff3769aa8f49f70c9aca60f1d06"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/stage/executor.ts",
+        "upstreamPath": "src/runtime/stage/executor.ts",
+        "sha256": "03ef375cacca1b1a5c70b90c2530be4c25a36e909dc0d5821deeff0d5c5d1475"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/captured-task-declarations.ts",
+        "upstreamPath": "src/runtime/task-host/captured-task-declarations.ts",
+        "sha256": "2b61a42f229194d5f66d2c4ade89bcf35f5b84399200c5e598310015eb860b7e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/compound-final-publication-receipt.ts",
+        "upstreamPath": "src/runtime/task-host/compound-final-publication-receipt.ts",
+        "sha256": "71425a1d502688e8dcb33390b6ec29ddea68c9a41fb50fc46707cbbecfae1a80"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/continuity-callback-custody.ts",
+        "upstreamPath": "src/runtime/task-host/continuity-callback-custody.ts",
+        "sha256": "76f1f00a1a3663c2f1c1ab98afbeff68b7d48966e6abb6046ce4f2431dce2d18"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/continuity-input-source.ts",
+        "upstreamPath": "src/runtime/task-host/continuity-input-source.ts",
+        "sha256": "a0397942d132f186dbf670dc815ef09370a96a32d7413aa3dbea71a433e2d52a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/default-dispatch-preparation.ts",
+        "upstreamPath": "src/runtime/task-host/default-dispatch-preparation.ts",
+        "sha256": "86eb3da3f2234232c994a30c3dd681866271cdb017a2437e3bbadf78af9488e0"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/deliverable-gate.ts",
+        "upstreamPath": "src/runtime/task-host/deliverable-gate.ts",
+        "sha256": "050e3b77ad9ca4c408311919e552b23d45721017d8fd79af1008cfd25ffae061"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/delivery-attempt.ts",
+        "upstreamPath": "src/runtime/task-host/delivery-attempt.ts",
+        "sha256": "bc6f378152535e93ce147fc2bbb92412ce154e1988660ba69e4423f1f967c26b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/delivery-facts.ts",
+        "upstreamPath": "src/runtime/task-host/delivery-facts.ts",
+        "sha256": "0292227d6b76a41a9817ded99c02c1f01e786ccbe9bdfdb3c8c79fc094aaf291"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/delivery-pure.ts",
+        "upstreamPath": "src/runtime/task-host/delivery-pure.ts",
+        "sha256": "c881eab2a7601258410876e409e0aae1e362571374c38b9820b6cc9a8033267a"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/delivery-verifier.ts",
+        "upstreamPath": "src/runtime/task-host/delivery-verifier.ts",
+        "sha256": "8aafb94ca0305252205311e127caecf3e2ab73cdb13ca98ef8ec16d93a6586b2"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/event-projection.ts",
+        "upstreamPath": "src/runtime/task-host/event-projection.ts",
+        "sha256": "e6604cd31b11b1cf19c6665c7a50efcb36941be23cefad75fcc59d9feb26cd41"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/material-paths.ts",
+        "upstreamPath": "src/runtime/task-host/material-paths.ts",
+        "sha256": "7333e580db373015e62ac1e5e86556dfbd41ffcf352583fd308170a7d3746b3c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/material-registry.ts",
+        "upstreamPath": "src/runtime/task-host/material-registry.ts",
+        "sha256": "02ceaf1510ec4a80cd84e2355cf0355a4fabe34ada43f867e024dde744f7a17b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/native-approval-owner.ts",
+        "upstreamPath": "src/runtime/task-host/native-approval-owner.ts",
+        "sha256": "c8be946339257e909d67b983968b764104123cc99c3fc4f22e9512836c81a544"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/protected-observation-reader.ts",
+        "upstreamPath": "src/runtime/task-host/protected-observation-reader.ts",
+        "sha256": "658a360d30273a546ccec54499fc1314c31c9e95ffe08ee20d8371b92d8b347b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/protected-observation-store.ts",
+        "upstreamPath": "src/runtime/task-host/protected-observation-store.ts",
+        "sha256": "8d8a244c72ff88a45b9d8b7b68591e44f1d3b582ba913d946e6d6e4e037c0a51"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/question-correlator.ts",
+        "upstreamPath": "src/runtime/task-host/question-correlator.ts",
+        "sha256": "2a20b03f4504561dadf44923232eb7df519404ab82fa19e93e2884b06f34f7eb"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/snapshot-completion-observation.ts",
+        "upstreamPath": "src/runtime/task-host/snapshot-completion-observation.ts",
+        "sha256": "28e5a7efdbdce7cffe6c7f1bd3302837702d9feb3e1248b81e91658f42e71a5e"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/snapshot-store.ts",
+        "upstreamPath": "src/runtime/task-host/snapshot-store.ts",
+        "sha256": "d4a94ab562b6b3abfb077194cf9038ab3e5a4d669c7008e7159023d38c6bab77"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/source-sdk-children.ts",
+        "upstreamPath": "src/runtime/task-host/source-sdk-children.ts",
+        "sha256": "191face240bfdf97239eb7a33711fb1e787d3a71f155179e769196944b6798f9"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/source-sync-custody.ts",
+        "upstreamPath": "src/runtime/task-host/source-sync-custody.ts",
+        "sha256": "e999280925c9af4c7cf5cdea5f5d0c6b3d6d710272152ef50ffff0dbce408dc1"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/task-runtime-host.ts",
+        "upstreamPath": "src/runtime/task-host/task-runtime-host.ts",
+        "sha256": "0f0097ff4132e21f06cbf44e26de72491b9818019767719e2013e26e7f8062d1"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/task-understanding.ts",
+        "upstreamPath": "src/runtime/task-host/task-understanding.ts",
+        "sha256": "1f169edf10330d4ef494f78a92ede7010426a4c3cb02173da53491733a9b5e91"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/task-host/tool-result-response.ts",
+        "upstreamPath": "src/runtime/task-host/tool-result-response.ts",
+        "sha256": "9852d686450d461899ea8077f478c0a457b55c95f639507371d9cb12489d0637"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/task-host/workflow-restriction-checkpoint.ts",
         "upstreamPath": "src/runtime/task-host/workflow-restriction-checkpoint.ts",
-        "sha256": "fbc614fd54a550bd997a95310ddd05285c7d6dd1801f1888ff2414f6935458b1"
+        "sha256": "a302aa5ec025e0ecfecc9d0aec3d71cc2387432c3a3a98f9c49696d8e6b26a15"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/tool-execution-health.ts",
@@ -1790,9 +4200,29 @@
         "sha256": "6c2cbae1d2e20a1a5eb1e95177f41a8c1777a1140765b9f3d1b7883a54eb1fb8"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/trace/exporter.ts",
+        "upstreamPath": "src/runtime/trace/exporter.ts",
+        "sha256": "c9a60b7dbf68aa1464507891dfc9b5aa0fae39c0b86c70d8c5ac76fa16527fac"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/trace/normalizer.ts",
+        "upstreamPath": "src/runtime/trace/normalizer.ts",
+        "sha256": "1b7ff5be6b950090e4bd31926a8ea06457beec3010b95b2b8fd1015139a0988f"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/trace/observation-metrics.ts",
         "upstreamPath": "src/runtime/trace/observation-metrics.ts",
         "sha256": "c20538b32e1887df1c561e83d56f55f54dfe017c6f8392776f268424baf73f22"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/trace/redactor.ts",
+        "upstreamPath": "src/runtime/trace/redactor.ts",
+        "sha256": "d01b5213b3a3ddff874dd3714f9d9e7fba96093b14588c9972b54d6a8ec537be"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/trace/schema.ts",
+        "upstreamPath": "src/runtime/trace/schema.ts",
+        "sha256": "12c736de8ce062654fb06d736e88c2d72127ff7d3bfe6faa10e713f1e2bee766"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/application-binding-review.ts",
@@ -1825,6 +4255,11 @@
         "sha256": "8bc7be88990e76bf5d9457a5c64ad9a700bc5904c234cf3d9bc5b4ef79b04bb8"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/before-effects.ts",
+        "upstreamPath": "src/runtime/verification/before-effects.ts",
+        "sha256": "42a95a814dcba2c0a819c5bd7063c46a1a2cc00fc5c12ee8b7bb1df9692704dd"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/verification/business-application-binding.ts",
         "upstreamPath": "src/runtime/verification/business-application-binding.ts",
         "sha256": "228e37687cc601d438c0003d7e3211d027c1e146b4f80570df7e1ccb5de860cb"
@@ -1847,17 +4282,17 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/completion-transport.ts",
         "upstreamPath": "src/runtime/verification/completion-transport.ts",
-        "sha256": "c46ee77afd37cb4d39c783306323cb563a0fbd8bc540e562a369c8e3d5520790"
+        "sha256": "8b1f32a4412300d5678d79a603416d68353b273b78c595665042890f25a250cb"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/controller-client.ts",
         "upstreamPath": "src/runtime/verification/controller-client.ts",
-        "sha256": "96396c576d4416ff8bf763f119aca258a032a5a57bd1ba8f3ae3628213f6db33"
+        "sha256": "6b703e5c1f2be6a48fb9b47e4e413c474cb0f3a194e7c83db12abf620872d05b"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/controller-ipc.ts",
         "upstreamPath": "src/runtime/verification/controller-ipc.ts",
-        "sha256": "c480a48da38cb0535300e1c2a7cd00522cbc2d28bb68dcd27a05ed0ef43e077b"
+        "sha256": "ef04cdc1b60575f5ac6d8da12228f127ff152278effda64cdbe7040fc10d5fdd"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/deployment-manifest.ts",
@@ -1875,14 +4310,29 @@
         "sha256": "7bbd1bc98ffb8dd52681eab895fab7fd3cef77e0e9da3a0e1c6cd1e73f426590"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/groups-source-schema.ts",
+        "upstreamPath": "src/runtime/verification/groups-source-schema.ts",
+        "sha256": "3dd5f0da0b3b8ef861a75f96feee7945582ff22c24d15460378161cea8ebf92c"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/verification/independent-recipes.ts",
         "upstreamPath": "src/runtime/verification/independent-recipes.ts",
         "sha256": "645d99ca51517af3ffc1c179adc5122a591a104c695ed5f5dd61c7414bcc4e67"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/installed-completion-observation.ts",
+        "upstreamPath": "src/runtime/verification/installed-completion-observation.ts",
+        "sha256": "7ccd2fb1fb1763efb07658b5accbfc5fd634ab717542a4995f303b7bfb997158"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/verification/installed-completion-publication.ts",
         "upstreamPath": "src/runtime/verification/installed-completion-publication.ts",
-        "sha256": "58082268b07fc9c78ddda96c228372e76fad6f45c2e2152e4e9b275a72a06fae"
+        "sha256": "2946a1659750601fe6a92b00c6d9e0e4eb054e77ef87f5b1ddcad3ffda8be718"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/installed-goal-application.ts",
+        "upstreamPath": "src/runtime/verification/installed-goal-application.ts",
+        "sha256": "e2cd581005a8a971f530e73bc39d3b40d8702806c2da8ae18a13aa226f24da04"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/installed-identity.ts",
@@ -1925,6 +4375,11 @@
         "sha256": "ef1e5f30fab5c9faa42888c1f82f39e56f9c2ef27b72169979180fb86d8742a9"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/intrinsic-async-collection.ts",
+        "upstreamPath": "src/runtime/verification/intrinsic-async-collection.ts",
+        "sha256": "742b762c4eea2f439f170c6a3efb1830e9b56710093ffdbfc9b2d448024ccb50"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/verification/known-directory-writer-fence.ts",
         "upstreamPath": "src/runtime/verification/known-directory-writer-fence.ts",
         "sha256": "c7f79078493acb5cdb9b1669c52142425211a05ed34fa2f1332b21f3af07aabd"
@@ -1940,6 +4395,11 @@
         "sha256": "99cce8e1ce2b9f75833f0a4b472b8230e447f0b39db2e996bacecbad9c26801a"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/local-source-writer-lifetime.ts",
+        "upstreamPath": "src/runtime/verification/local-source-writer-lifetime.ts",
+        "sha256": "03c3813ca561d6cebbff03de2b79acdb9bd6d304d8bbe8b1727a225d71d39b34"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/verification/loop-application-artifacts.ts",
         "upstreamPath": "src/runtime/verification/loop-application-artifacts.ts",
         "sha256": "0efadd7297a2761112dc2c88cfd68e6c1b6b5f3a21e911ebb8da8f2f9587c4c2"
@@ -1947,7 +4407,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/loop-application-binding.ts",
         "upstreamPath": "src/runtime/verification/loop-application-binding.ts",
-        "sha256": "6701ba94b516771c6b85c87920fc121765c982209c4998d0eaff3d1ef8b22a21"
+        "sha256": "d6a13378674d03d2c9abaaa278d29ac243d1599f852c8e60514d75f2fc20a40d"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/loop-application-contract.ts",
@@ -1958,6 +4418,11 @@
         "file": "vendor/xiaok-runtime/src/runtime/verification/loop-host-subject.ts",
         "upstreamPath": "src/runtime/verification/loop-host-subject.ts",
         "sha256": "4028486d0dec362603b0a239277af8a1e35a5f6bb3f08785de0e8255b644accc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/main-root-family-enrollment-data.ts",
+        "upstreamPath": "src/runtime/verification/main-root-family-enrollment-data.ts",
+        "sha256": "b8fc8e9521916a39122a37f14b2be310fb1546b760d8e5e1c4e65e073a3997e5"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/material-request.ts",
@@ -1975,6 +4440,11 @@
         "sha256": "8ee677c55f98f02d973b0b3e62ff083a01822a6549d422aac693d2089a8d388d"
       },
       {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/native-ipc-promise.ts",
+        "upstreamPath": "src/runtime/verification/native-ipc-promise.ts",
+        "sha256": "4fa97ca0747bfc6147090d66352e62b319bc14a67e95404210d0135febfd8813"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/runtime/verification/native-sqlite-census.ts",
         "upstreamPath": "src/runtime/verification/native-sqlite-census.ts",
         "sha256": "ce5af722d320ebbab540f67d765c036979512dc8b6446d4b808fdc9630caaea0"
@@ -1987,7 +4457,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/ordinary-profile-source-registry.ts",
         "upstreamPath": "src/runtime/verification/ordinary-profile-source-registry.ts",
-        "sha256": "7a242bcb5a7f8dd3a080a79493a0afad15e108c31a7f443c0d2edc755541ea12"
+        "sha256": "5fe7b1ca8e55d5b8ef067a2796fdcb26db0146ee5b274346fde98a72420746a2"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/ordinary-profile-source-storage-codec.ts",
@@ -1998,6 +4468,46 @@
         "file": "vendor/xiaok-runtime/src/runtime/verification/ordinary-source-writer-observation.ts",
         "upstreamPath": "src/runtime/verification/ordinary-source-writer-observation.ts",
         "sha256": "222da2e91b4caa585d3ba94dc7fc534ae0bbe6a1ee4575db68764f863ef4df23"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-main-native-loader.ts",
+        "upstreamPath": "src/runtime/verification/original-main-native-loader.ts",
+        "sha256": "6bb2ff3fa237120a66625c291ea490cbaf2a7d725cb5bcdfb41172209414864c"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-main-sdk-bridge.ts",
+        "upstreamPath": "src/runtime/verification/original-main-sdk-bridge.ts",
+        "sha256": "88045585660b7ea5d9a54a40855040a8656bafbd04f633a41138ddcad357db88"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-process-sdk-loader.ts",
+        "upstreamPath": "src/runtime/verification/original-process-sdk-loader.ts",
+        "sha256": "acb8597ecaa58448564082525be89d65119c0fa01ad12e3776ac5f4ec1463dd7"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-process-sdk.ts",
+        "upstreamPath": "src/runtime/verification/original-process-sdk.ts",
+        "sha256": "1c0e9fb4d32bd80d91136cce3b18715c24464b3ca5c4b3a413e68fef764dd7cc"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-root-execution-context.ts",
+        "upstreamPath": "src/runtime/verification/original-root-execution-context.ts",
+        "sha256": "b6c9bd815643aa095ea8b46faaf4ef9d551855f0e77e5ee032f42e21f4b00a01"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-root-ledger-source-loader.ts",
+        "upstreamPath": "src/runtime/verification/original-root-ledger-source-loader.ts",
+        "sha256": "7ff1de17cef08319b62572022cf54cc3eb98119443b34fd49f8895a3e671ce82"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-root-nmp-ledger.ts",
+        "upstreamPath": "src/runtime/verification/original-root-nmp-ledger.ts",
+        "sha256": "303f736dad7569314c3740b4a20d83175f692bff290a4191cca3bfefae4d89aa"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/original-sdk-custody.ts",
+        "upstreamPath": "src/runtime/verification/original-sdk-custody.ts",
+        "sha256": "ea3aca058ae85332822030f583a08462647e78a51e81a2b1a6c95ceb7bbdf9a6"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/owner-enrollment-review.ts",
@@ -2022,7 +4532,7 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/profile-owner-registry.ts",
         "upstreamPath": "src/runtime/verification/profile-owner-registry.ts",
-        "sha256": "2ebc91946849af21516ef652c54b25579a143dca9c95f56f00af26c0d9d1bcda"
+        "sha256": "a80b7359f97475a847d46fd230580f6f22cd47d90571daf7d800e42ec6465334"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/protocol.ts",
@@ -2032,7 +4542,12 @@
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/publication-client.ts",
         "upstreamPath": "src/runtime/verification/publication-client.ts",
-        "sha256": "65c31d3430ad445e7059e368d46d8c4b80c8c77a20884ce8e93f657b7e2ed3c6"
+        "sha256": "4b56ca6bb626c9f1b7030e41448fa5c656379c64d68803f7f97d3ef966d100f1"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/publication-page-size.ts",
+        "upstreamPath": "src/runtime/verification/publication-page-size.ts",
+        "sha256": "ea3897f7c6394c55474c190ed453e7cc20699f52fed48635eb976542431124e4"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/published-artifact-index.ts",
@@ -2053,6 +4568,11 @@
         "file": "vendor/xiaok-runtime/src/runtime/verification/registration-intrinsics.ts",
         "upstreamPath": "src/runtime/verification/registration-intrinsics.ts",
         "sha256": "d6b474a59d449167ff299ee5a211495b27b4e8862b40c3b750ead541a5d6f8be"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/runtime/verification/source-error-tails.ts",
+        "upstreamPath": "src/runtime/verification/source-error-tails.ts",
+        "sha256": "2ce33bdd0808e9a064236eb4096a0b7ca017b5339f205ac8f330f19a4baff948"
       },
       {
         "file": "vendor/xiaok-runtime/src/runtime/verification/source-sqlite-cell.ts",
@@ -2078,6 +4598,11 @@
         "file": "vendor/xiaok-runtime/src/runtime/verification/windows-installation-absence.ts",
         "upstreamPath": "src/runtime/verification/windows-installation-absence.ts",
         "sha256": "5f7b3df9d166564dc42c20022415908ddaa0a502daaa3ed4d2dbb71eb1d57a35"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/shared/credential-answer-safety.ts",
+        "upstreamPath": "src/shared/credential-answer-safety.ts",
+        "sha256": "a2cfa30c08b34da08f097b58e8299586aa8b8a5e108f08bd5b07cb462e7ef757"
       },
       {
         "file": "vendor/xiaok-runtime/src/shared/credential-fields.ts",
@@ -2107,7 +4632,7 @@
       {
         "file": "vendor/xiaok-runtime/src/types.ts",
         "upstreamPath": "src/types.ts",
-        "sha256": "4e5025e33838f74567979fac491a9474cdd115e75d8e127086da9a08f04d8571"
+        "sha256": "13b29ab9ab31db82c8580830dc6f9fc15f5b80c16014cc91d858511df3e942b8"
       },
       {
         "file": "vendor/xiaok-runtime/src/ui/input-mode.ts",
@@ -2115,14 +4640,19 @@
         "sha256": "550e5b3585f3e936a6d5b41a12babd8310be1f88f99ad91870ad5e726e44b414"
       },
       {
+        "file": "vendor/xiaok-runtime/src/ui/keyboard-protocol.ts",
+        "upstreamPath": "src/ui/keyboard-protocol.ts",
+        "sha256": "89db9f26c8ad6bd11cb02a8a14f283474535301dc7d2e76e79f12dd3a8186ae0"
+      },
+      {
         "file": "vendor/xiaok-runtime/src/ui/locale.ts",
         "upstreamPath": "src/ui/locale.ts",
-        "sha256": "cac89908e57d9bf7bafd42fcd1eb44f43905d4a522f9686cecb289a421c97b7b"
+        "sha256": "894cca2b7e992ff4f4f47d4e0ba54dc9a66bce20842fb85c77a80e6fe01e57d7"
       },
       {
         "file": "vendor/xiaok-runtime/src/ui/permission-prompt.ts",
         "upstreamPath": "src/ui/permission-prompt.ts",
-        "sha256": "10bdb5286a0f4bcd34e67ef4abc770033af91c4e51dc9102be06f6ef23bd1038"
+        "sha256": "6b74335ed0b1e7923e92cff472a053b38611150818f1ca37935d50cb7526e797"
       },
       {
         "file": "vendor/xiaok-runtime/src/ui/render.ts",
@@ -2137,7 +4667,7 @@
       {
         "file": "vendor/xiaok-runtime/src/utils/atomic-file.ts",
         "upstreamPath": "src/utils/atomic-file.ts",
-        "sha256": "0e20b51c238bac4a5dacb40422f1ee6d8d7c8de34a73527f0b15ef6680a89cf9"
+        "sha256": "e06b17a0e00cf6d3c65dba1a5ec91493716719ffe85aa58e15ced8f780c401d6"
       },
       {
         "file": "vendor/xiaok-runtime/src/utils/config.ts",
@@ -2147,12 +4677,17 @@
       {
         "file": "vendor/xiaok-runtime/src/utils/credential-store.ts",
         "upstreamPath": "src/utils/credential-store.ts",
-        "sha256": "008cdd9bd63599488e6c83f8167674814bf24e320da01babd76e17db3846fa76"
+        "sha256": "f4b88337031d24b9f303478c17bc24bb8f1723c1d192279eeb1cc906ae66a7e1"
       },
       {
         "file": "vendor/xiaok-runtime/src/utils/desktop-service-discovery.ts",
         "upstreamPath": "src/utils/desktop-service-discovery.ts",
         "sha256": "7c49acb49bc17a523b92c844d364600d86e2e6ef32643bc3c59e20b98e26d15b"
+      },
+      {
+        "file": "vendor/xiaok-runtime/src/utils/fixed-keyring-native.ts",
+        "upstreamPath": "src/utils/fixed-keyring-native.ts",
+        "sha256": "9ac78f46ead319c537dc47fde4c36e97e09a671f9459b12d290d40a4df1d8ef7"
       },
       {
         "file": "vendor/xiaok-runtime/src/utils/git.ts",
@@ -2182,12 +4717,12 @@
       {
         "file": "vendor/xiaok-runtime/src/utils/system-credentials.ts",
         "upstreamPath": "src/utils/system-credentials.ts",
-        "sha256": "e6e6117169d0f14fc7abb69c04772236a3a3e95da7814fa1373234f46822291e"
+        "sha256": "31fdfe1a199d864e04b18ed51a32862616391e3762c2c636c89d443efb4b9bc8"
       },
       {
         "file": "vendor/xiaok-runtime/src/utils/ui.ts",
         "upstreamPath": "src/utils/ui.ts",
-        "sha256": "e419126e6eb38b4f6412d8196d3cfc6746adaea6f2176437a811ff27e146b21e"
+        "sha256": "0b5add032c03478c350f5458bbc7c0a2c5e7fe1fbf24ee305b413e695bcf6d02"
       }
     ],
     "adaptations": {

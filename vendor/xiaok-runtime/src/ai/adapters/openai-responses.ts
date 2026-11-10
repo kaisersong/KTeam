@@ -1,10 +1,12 @@
 import type {AdapterCredentialResolver} from '../providers/model-harness-profile.js';
+import {createOriginalModelSdkAttemptTransport,finishOriginalModelSdkAttempt} from '../runtime/original-model-sdk-attempt.js';
 import { resolveObservationProviderDisclosure } from '../../runtime/sol-pi/observation-execution-scope.js';
 import { createProviderDisclosureFetch, getProviderDisclosureSignal, assertProviderDisclosureActive, disposeProviderDisclosureContext } from '../../runtime/sol-pi/provider-disclosure.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ModelAdapter, Message, StreamChunk, ToolDefinition } from '../../types.js';
 import { isAbortError } from '../runtime/abort-utils.js';
 import type { ModelCapabilities, StreamOptions } from '../runtime/model-capabilities.js';
+import { CompactionResponseError } from '../runtime/compaction-response.js';
 import { resolveClonedCapabilityOverrides, type AdapterCatalogIdentity } from './catalog-identity.js';
 
 type ResponsesUsage = {
@@ -130,6 +132,8 @@ export class OpenAIResponsesAdapter implements ModelAdapter {
     options?: StreamOptions,
     credentials?: ReturnType<AdapterCredentialResolver>,
   ): AsyncIterable<StreamChunk> {
+    const modelPhysical=createOriginalModelSdkAttemptTransport(options?.signal);let originalFailure:{raw:unknown}|undefined;
+    try {
     const signal = options?.signal;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
@@ -140,7 +144,7 @@ export class OpenAIResponsesAdapter implements ModelAdapter {
     let response: Response;
     try {
       const fetchImpl = options?.providerDisclosure
-        ? createProviderDisclosureFetch(options.providerDisclosure, globalThis.fetch.bind(globalThis)) : fetch;
+        ? createProviderDisclosureFetch(options.providerDisclosure, modelPhysical?.fetch??globalThis.fetch.bind(globalThis)) : modelPhysical?.fetch??fetch;
       response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: {
@@ -172,10 +176,26 @@ export class OpenAIResponsesAdapter implements ModelAdapter {
     }
 
     if (!response.ok) {
-      throw new Error(`${response.status} ${await response.text()}`);
+      throw new Error(`${response.status} ${await (modelPhysical?modelPhysical.readText(response):response.text())}`);
     }
 
-    const result = await response.json() as ResponsesResult;
+    let result: ResponsesResult;
+    try {
+      result = await (modelPhysical ? modelPhysical.readJSON(response) : response.json()) as ResponsesResult;
+    } catch (error) {
+      if (options?.requireCompleteResponse && !isAbortError(error)) throw new CompactionResponseError('provider_incomplete', { cause: error });
+      throw error;
+    }
+    if (options?.requireCompleteResponse && (
+      !result || result.status !== 'completed' || !Array.isArray(result.output)
+      || result.output.some(item => !item || typeof item.type !== 'string' || item.type === 'function_call'
+        || (item.type === 'message' && (!Array.isArray(item.content)
+          || item.content.some(content => !content || content.type === 'refusal'
+            || (content.type === 'output_text' && typeof content.text !== 'string')))))
+    )) {
+      if (result?.usage) yield { type: 'usage', usage: { inputTokens: result.usage.input_tokens ?? 0, outputTokens: result.usage.output_tokens ?? 0 } };
+      throw new CompactionResponseError('provider_incomplete');
+    }
     if (options?.maxOutputTokens !== undefined && result.status !== 'completed') throw new Error('memory_output_incomplete');
 
     for (const item of result.output ?? []) {
@@ -207,14 +227,17 @@ export class OpenAIResponsesAdapter implements ModelAdapter {
       }
     }
 
-    yield {
-      type: 'usage',
-      usage: {
-        inputTokens: result.usage?.input_tokens ?? 0,
-        outputTokens: result.usage?.output_tokens ?? 0,
-      },
-    };
+    if (result.usage || !options?.requireCompleteResponse) {
+      yield {
+        type: 'usage',
+        usage: {
+          inputTokens: result.usage?.input_tokens ?? 0,
+          outputTokens: result.usage?.output_tokens ?? 0,
+        },
+      };
+    }
     yield { type: 'done' };
+    }catch(raw){originalFailure={raw};throw raw;}finally{await finishOriginalModelSdkAttempt(modelPhysical,originalFailure);}
   }
 }
 

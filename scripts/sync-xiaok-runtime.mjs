@@ -9,7 +9,7 @@ const root=resolve(import.meta.dirname,'..'),lockPath=join(root,'sources.lock.js
 const revision=lock.runtime.revision,repo=resolve(root,'../xiaok-cli');
 const temp=realpathSync(mkdtempSync(join(tmpdir(),'kteam-source-pin-')));
 try{
- execFileSync('tar',['-x','-C',temp],{input:execFileSync('git',['-C',repo,'archive',revision,'src','desktop/shared','desktop/electron/assistant-inbox-service.ts','desktop/electron/assistant-inbox-store.ts','desktop/electron/assistant-triage.ts','desktop/electron/pdf-text.ts'],{maxBuffer:80*1024*1024})});
+ execFileSync('tar',['-x','-C',temp],{input:execFileSync('git',['-C',repo,'archive',revision,'src','desktop/shared','desktop/electron','desktop/resources'],{maxBuffer:256*1024*1024})});
  const modules=JSON.parse(readFileSync(join(root,'scripts/runtime-exports.json'),'utf8'));
  const entry=Object.entries(modules).map(([file,names])=>`export {${names.join(',')}} from ${JSON.stringify(join(temp,file))};`).join('\n');
  const result=await build({stdin:{contents:entry,resolveDir:root,loader:'ts'},bundle:true,platform:'node',format:'esm',packages:'external',write:false,metafile:true,logLevel:'silent'});
