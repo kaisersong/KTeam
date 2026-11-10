@@ -6,6 +6,7 @@ import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {PrivateConversations} from '../src/service/private-conversations.js';
+import {PeerExchanges} from '../src/service/peer-exchanges.js';
 import {TeamAssistant} from '../src/service/assistant.js';
 import {TeamAutomation} from '../src/service/automation.js';
 import {CollaborationService,LOCAL_HUMAN,agentAddress} from '../src/service/collaboration.js';
@@ -13,14 +14,14 @@ const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fix
 const id=()=>'msg_'+randomBytes(16).toString('hex');
 const sleep=()=>new Promise(r=>setTimeout(r,5));
 async function setup(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);const master=await coordinator.bootstrap(user),a=await coordinator.createMember({name:'开发',modelId:'fixture',requestId:id()},user),b=await coordinator.createMember({name:'CTO',modelId:'fixture',requestId:id()},user),group=await coordinator.createGroup({title:'产品团队',memberAgentIds:[a.bot.id,b.bot.id],requestId:id()},user);return {...f,store,coordinator,master,a,b,roomId:group.room.roomId,async close(){store.close();await f.close();}};}
-async function admission(f:any,botId:string){
+async function admission(f:any,botId:string,jobId='source-job'){
  const roomId=f.roomId,origin=(await f.upstream.sendMessage(roomId,{text:'查看KTeam源码并与团队协作',kind:'text',threadId:'source',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()})).message;
  let task=(await f.upstream.aimp(roomId,'event',{id:id(),threadId:'source',act:'request',body:'查看源码',payload:{kind:'task.request@1',must_understand:true,description:'查看KTeam源码',deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',acceptance:{predicates:['artifact_hash']},assignee:agentAddress(botId),reviewer:LOCAL_HUMAN}})).task;
  task=(await f.upstream.aimp(roomId,'agent-event',{logicalAgentId:botId,id:id(),threadId:task.threadId,taskRef:task.taskRef,act:'accept',body:'accept',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.accept@1',must_understand:true,terms_hash:task.termsHash,caveats:[]}})).task;
- task=(await f.upstream.aimp(roomId,'begin-execution',{logicalAgentId:botId,taskRef:task.taskRef,requestId:'source-run',expectedRevision:task.revision,bindingRevision:1,hostFence:1})).task;
+ task=(await f.upstream.aimp(roomId,'begin-execution',{logicalAgentId:botId,taskRef:task.taskRef,requestId:'source-run-'+jobId,expectedRevision:task.revision,bindingRevision:1,hostFence:1})).task;
  const grant={logicalAgentId:botId,taskRef:task.taskRef,epoch:task.epoch,bindingRevision:1,hostFence:1};
- f.store.enqueue('source-job',roomId,origin.messageId);const job=f.store.claim();job.state='running';f.store.save(job);
- return {roomId,botId,originId:origin.messageId,jobId:'source-job',admission:grant,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{await f.upstream.aimp(roomId,'execution-check',grant);}};
+ f.store.enqueue(jobId,roomId,origin.messageId);const job=f.store.claim();job.state='running';f.store.save(job);
+ return {roomId,botId,originId:origin.messageId,jobId,admission:grant,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{await f.upstream.aimp(roomId,'execution-check',grant);}};
 }
 test('master sees actual group work beyond its own chat, including accessible groups not locally created',async()=>{const f=await setup(),assistant=new TeamAssistant(f.upstream,f.store);try{await f.upstream.sendMessage(f.master.roomId,{text:'方案卡片已生成，点击开始',kind:'text',threadId:'assistant',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});const scope=await admission(f,f.a.bot.id);await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'正在核对KTeam源码，尚未完成开发'});const other=(await f.upstream.createTeam({title:'另一项目组',memberAgentIds:[],clientRequestKey:'not-kteam-created'})).room.roomId;const snapshot=await assistant.snapshot(f.master.botId,f.master.roomId);assert.ok(snapshot.groups.some(g=>g.title==='产品团队'));assert.ok(snapshot.groups.some(g=>g.roomId===other));assert.match(JSON.stringify(snapshot),/核对KTeam源码/);assert.equal(snapshot.groups.find(g=>g.roomId===f.roomId)?.execution,'running');await assert.rejects(assistant.snapshot(f.a.bot.id,f.a.roomId),/assistant_scope_required/);}finally{await assistant.close();await f.close();}});
 
@@ -73,4 +74,26 @@ test('peer source context is rejected if membership is revoked while its message
   f.upstream.getTeam=async(roomId:string)=>{const result=await get(roomId);if(roomId===f.roomId){const changed=f.broker.room.updateRoomMembers({roomId,removeAgentIds:[f.b.bot.id]},{sessionId:'revoke-read',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(changed.ok,true);}return result;};
   await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
  }finally{chats.close();await f.close();}
+});
+
+test('peer summary counts broker receipts without disclosing text; clicking resolves only its original exchange',async()=>{
+ const f=await setup();let automation:TeamAutomation|undefined;const chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{void automation!.tick();}),reader=new PeerExchanges(f.upstream,f.store);let calls=0;
+ try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();return {text:'PRIVATE_REPLY_'+(++calls),model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};},f.coordinator);
+  const first=await admission(f,f.a.bot.id);await chats.contact(first,{botId:f.b.bot.id,message:'PRIVATE_REQUEST_ONE',wait:true});const parent=f.store.job(first.jobId);parent.state='delivered';f.store.save(parent);
+  const second=await admission(f,f.a.bot.id,'source-job-two');await chats.contact(second,{botId:f.b.bot.id,message:'PRIVATE_REQUEST_TWO',wait:true});
+  const result=await reader.list(f.roomId,{originIds:[first.originId]});assert.equal(result.exchanges.length,1);const summary=result.exchanges[0]!;assert.equal(summary.messageCount,2);assert.equal(summary.state,'complete');assert.doesNotMatch(JSON.stringify(result),/PRIVATE_/);assert.deepEqual(new Set(summary.participantIds),new Set([f.a.bot.id,f.b.bot.id]));
+  const detail=await reader.messages(f.roomId,summary.id);assert.deepEqual(detail.messages.map(m=>m.text),['PRIVATE_REQUEST_ONE','PRIVATE_REPLY_1']);assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_REQUEST_TWO|PRIVATE_REPLY_2/);await assert.rejects(reader.messages(f.a.roomId,summary.id),/peer_exchange_not_found/);await assert.rejects(reader.list(f.roomId,{originIds:[first.originId],roomId:'foreign'}),/unknown_field/);
+ }finally{chats.close();await automation?.close();await f.close();}
+});
+test('expanding peer membership while opening details rejects the whole response and removes the summary',async()=>{
+ const f=await setup();let automation:TeamAutomation|undefined;const chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{void automation!.tick();}),reader=new PeerExchanges(f.upstream,f.store);
+ try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();return {text:'PRIVATE_REPLY',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};},f.coordinator);const scope=await admission(f,f.a.bot.id),sent=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'PRIVATE_REQUEST',wait:true})),summary=(await reader.list(f.roomId,{originIds:[scope.originId]})).exchanges[0]!;const read=f.upstream.conversationMessage.bind(f.upstream);let changed=false;f.upstream.conversationMessage=async(...args:any[])=>{const result=await read(...args);if(!changed){changed=true;assert.equal(f.broker.room.updateRoomMembers({roomId:sent.roomId,addUserIds:['observer']},{sessionId:'peer-reader',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()}).ok,true);}return result;};await assert.rejects(reader.messages(f.roomId,summary.id),/peer_exchange_forbidden|peer_exchange_scope_changed/);assert.equal((await reader.list(f.roomId,{originIds:[scope.originId]})).exchanges.length,0);
+ }finally{chats.close();await automation?.close();await f.close();}
+});
+test('peer reader rejects another exchange owner receipt and rechecks target access after source revalidation',async()=>{
+ const f=await setup();let automation:TeamAutomation|undefined;const chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{void automation!.tick();}),reader=new PeerExchanges(f.upstream,f.store);
+ try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();return {text:'PRIVATE_REPLY',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};},f.coordinator);const scope=await admission(f,f.a.bot.id),sent=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'PRIVATE_REQUEST',wait:true})),summary=(await reader.list(f.roomId,{originIds:[scope.originId]})).exchanges[0]!;
+  const read=f.upstream.conversationMessage.bind(f.upstream);for(const field of ['exchangeId','originMessageId','recipientLogicalAgentId']){f.upstream.conversationMessage=async(...args:any[])=>{const result=structuredClone(await read(...args));if(result.message.sourceRef.kind==='bot_private_message')result.message.sourceRef[field]='another-exchange';return result;};await assert.rejects(reader.messages(f.roomId,summary.id),/peer_exchange_message_unavailable/);}f.upstream.conversationMessage=read;
+  const membership=f.upstream.membership.bind(f.upstream);let sourceReads=0;f.upstream.membership=async(room:string)=>{const value=await membership(room);if(room===f.roomId&&++sourceReads===2)assert.equal(f.broker.room.updateRoomMembers({roomId:sent.roomId,addUserIds:['late-observer']},{sessionId:'peer-late-scope',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()}).ok,true);return value;};await assert.rejects(reader.list(f.roomId,{originIds:[scope.originId]}),/peer_exchange_forbidden|peer_exchange_scope_changed/);
+ }finally{chats.close();await automation?.close();await f.close();}
 });

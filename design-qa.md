@@ -1,1 +1,1 @@
-docs/design/desktop/design-qa-xiaok-harness.md
+docs/design/desktop/design-qa-presence-peer-exchanges.md

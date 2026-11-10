@@ -19,7 +19,21 @@ export function botFamily(identity:BotAppearanceIdentity):BotFamily {
  for(const character of identity.id??name)hash=Math.imul(hash^character.codePointAt(0)!,16777619)>>>0;
  return BOT_FAMILIES[hash%BOT_FAMILIES.length]!;
 }
-export function botAvatarSource(family:BotFamily,options:{expressive?:boolean;animated?:boolean;front?:boolean}={}) {
- if(family==='k'&&options.expressive)return `./brand/lively/curious-avatar${options.animated?'-animated':''}.svg`;
- return `./brand/bot-v3/${family}-${options.front?'front':'right34'}.svg`;
+export function botAvatarSource(family:BotFamily,options:{expressive?:boolean;animated?:boolean;front?:boolean;angle?:BotAngle}={}) {
+ if(family==='k'&&options.expressive&&!options.angle)return `./brand/lively/curious-avatar${options.animated?'-animated':''}.svg`;
+ return `./brand/${options.animated?'motion':'bot-v3'}/${family}-${options.angle??(options.front?'front':familyAngles[family])}.svg`;
+}
+
+export const BOT_ANGLES=['front','left34','right34','left','right','up','down'] as const;
+export type BotAngle=typeof BOT_ANGLES[number];
+const familyAngles:Record<BotFamily,BotAngle>={k:'front',dev:'left34',design:'right',pm:'left',data:'right34',qa:'up'};
+export function botAngle(identity:BotAppearanceIdentity):BotAngle{
+ const family=botFamily(identity);if(!identity.id)return familyAngles[family];
+ let hash=2166136261;for(const character of identity.id)hash=Math.imul(hash^character.codePointAt(0)!,16777619)>>>0;
+ // Stable per-Bot variation; unaffected by sidebar ordering, display rename or job progress.
+ const choices:BotAngle[]=[familyAngles[family],'front','left34','right34','left','right','up'];return choices[hash%choices.length]!;
+}
+export function workingBotAngle(base:BotAngle,step:number):BotAngle{
+ const sweep:BotAngle[]=base==='front'?['front','left34','front','down','front','right34','front','up']:base==='left'||base==='left34'?['left34','front','down','front','left34',base]:base==='right'||base==='right34'?['right34','front','down','front','right34',base]:[base,'front','left34','front','down','front','right34','front'];
+ return sweep[((step%sweep.length)+sweep.length)%sweep.length]!;
 }

@@ -9,3 +9,5 @@ dist/
 .xiaok/
 build/
 release/
+
+desktop/renderer/public/brand/motion/

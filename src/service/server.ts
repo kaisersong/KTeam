@@ -4,7 +4,7 @@ import {ToolApprovals} from './tool-approvals.js';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { chmodSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
-import { KTeamError, record } from '../errors.js';
+import { KTeamError, record,fields } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { AIMP_SPEC, AIMP_WIRE,validateL0,intentHash } from '../protocol/aimp.js';
 import { Upstreams, type UpstreamOptions } from '../adapters/upstream.js';
@@ -14,6 +14,7 @@ import { CollaborationService,LOCAL_HUMAN } from './collaboration.js';
 import { TeamStore } from './team-store.js';
 import { TeamAutomation } from './automation.js';
 import {saveBotProfile} from './bot-profile.js';
+import {PeerExchanges} from './peer-exchanges.js';
 import {LocalAgents} from './local-agents.js';
 import {BuiltinAgent} from './builtin-agent.js';
 import {ConversationService} from './conversation.js';
@@ -62,11 +63,13 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const builtinAgent=new BuiltinAgent(teamStore);
   const conversations=new ConversationService(options.root,upstream,teamStore);
   const approvals=new ToolApprovals(teamStore);
+  const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment});
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
+  const directoryMembers=new Map<string,{revision:number;at:number;ids:string[]}>();
   const sourceChanges=new Set<string>();
   const changeSource=async<T>(botId:string,action:()=>Promise<T>)=>{if(sourceChanges.has(botId))throw new KTeamError('source_change_pending',409);sourceChanges.add(botId);teamStore.setState('source-changing:'+botId,{instanceId});try{await automation.quiesceBot(botId);return await action();}finally{teamStore.setState('source-changing:'+botId,null);sourceChanges.delete(botId);}};
   // A previous process's gate cannot outlive its fenced model calls.
@@ -101,7 +104,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           access: compatible ? 'read_write' : 'read_only',
           aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
-          capabilities: ['master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','xiaok-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
+          capabilities: ['conversation-pins','peer-exchange-summary','working-bot-presence','master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','xiaok-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-xiaok-readiness','conversation-workspace'],
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
@@ -130,8 +133,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/assistant/state'&&req.method==='GET')return send(res,200,{ok:true,...automation.assistant.state()});
       if(url.pathname==='/v1/assistant/proactivity'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='enabled')||typeof input.enabled!=='boolean')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...automation.assistant.setEnabled(input.enabled)});}
       if(url.pathname==='/v1/bot-questions/answer'&&req.method==='POST')return send(res,200,await automation.privateChats!.answer(await body(req)));
-      if(url.pathname==='/v1/bot-questions'&&req.method==='GET')return send(res,200,{ok:true,questions:automation.privateChats?.questions()??[]});
-      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
+      if(url.pathname==='/v1/bot-questions'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions()??[]});
+      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.jobs().filter(j=>['unknown','blocked'].includes(j.state))});
       if(url.pathname==='/v1/creations/resume'&&req.method==='POST'){const result=await coordinator.resumeCreation(await body(req),{requestSource:'user'});return send(res,200,{...result,roomId:result.roomId??result.room?.roomId});}
       if(url.pathname==='/v1/bootstrap'&&req.method==='POST')return send(res,200,{ok:true,...await coordinator.bootstrap({requestSource:'user'})});
       if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
@@ -143,7 +146,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if (url.pathname === '/v1/bots' && req.method === 'GET') {const result=await collaboration.bots();return send(res,200,{...result,bots:result.bots.map(bot=>({...bot,isAssistant:automation.assistant.identity()?.botId===bot.id,binding:teamStore.binding(String(bot.id)),connection:links.forBot(String(bot.id))}))});}
       if (url.pathname === '/v1/runtimes' && req.method === 'GET') return send(res, 200, await collaboration.runtimes());
       if (url.pathname === '/v1/teams') {
-        if (req.method === 'GET') {const result=await collaboration.teams();return send(res,200,{...result,rooms:(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId)).map(room=>({...room,kind:teamStore.settings(room.roomId)?.kind??'group',botId:teamStore.state<any>('conversation:'+room.roomId)?.members?.length===1?teamStore.state<any>('conversation:'+room.roomId)?.members[0]?.botId:undefined}))});}
+        if (req.method === 'GET') {
+          const result=await collaboration.teams(),managed=(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId)),present=new Set(managed.map(room=>room.roomId));for(const id of directoryMembers.keys())if(!present.has(id))directoryMembers.delete(id);
+          const rooms=await Promise.all(managed.map(async room=>{const kind=teamStore.settings(room.roomId)?.kind??'group';let memberAgentIds:string[]|undefined;if(kind==='group'){const previous=directoryMembers.get(room.roomId);if(previous&&previous.revision===room.revision&&Date.now()-previous.at<10000)memberAgentIds=previous.ids;else{const snapshot=await upstream.membership(room.roomId),ids=(snapshot.members as any[]).filter(m=>m.status==='active'&&m.subject?.kind==='agent').map(m=>String(m.subject.logicalAgentId));directoryMembers.set(room.roomId,{revision:Number((snapshot.room as any).revision),at:Date.now(),ids});memberAgentIds=ids;}}return {...room,kind,memberAgentIds,pinnedAt:teamStore.state<any>('sidebar:'+room.roomId)?.pinnedAt??null,botId:teamStore.state<any>('conversation:'+room.roomId)?.members?.length===1?teamStore.state<any>('conversation:'+room.roomId)?.members[0]?.botId:undefined};}));
+          return send(res,200,{...result,rooms});
+        }
         if (req.method === 'POST') {
           return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
         }
@@ -157,10 +164,13 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(managed) {const settings=teamStore.settings(input.room_id)!;const membership=await upstream.membership(input.room_id);const hasHosted=(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='agent'&&teamStore.binding(m.subject.logicalAgentId));teamStore.completeSubmission(input.id,String(result.messageId),hasHosted&&settings.delivery!=='external-agent');void automation.tick();}
         return send(res,201,result);
       }
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate)$/.exec(url.pathname);
+      const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);
+      if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         const membership=await upstream.membership(roomId);
+        if(req.method==='POST'&&action==='sidebar'){const input=record(await body(req));fields(input,['pinned']);if(typeof input.pinned!=='boolean')throw new KTeamError('sidebar_input_invalid');if(!teamStore.settings(roomId)||teamStore.settings(roomId)?.kind==='peer'||!(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('sidebar_conversation_forbidden',403);const prior=teamStore.state<any>('sidebar:'+roomId),value={pinnedAt:input.pinned?(prior?.pinnedAt??new Date().toISOString()):null};teamStore.setState('sidebar:'+roomId,value);return send(res,200,{ok:true,...value});}
         if(req.method==='POST'&&action==='edit')return send(res,200,await coordinator.editGroup({...record(await body(req)),roomId}));
         if(req.method==='GET'&&action==='shared')return send(res,200,await conversations.data(roomId));
         if(req.method==='POST'&&action==='shared')return send(res,200,await conversations.shared(roomId,await body(req)));
@@ -176,7 +186,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='regenerate'){const result=await conversations.regenerate(roomId,await body(req));void automation.tick();return send(res,202,result);}
         if(req.method==='GET'&&action==='proposals')return send(res,200,{ok:true,proposals:coordinator.proposals(roomId)});
         if(req.method==='GET'&&action==='settings')return send(res,200,{ok:true,settings:teamStore.settings(roomId),seen:teamStore.seen(roomId),members:membership.members});
-        if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,questions:automation.privateChats?.questions(roomId)??[],approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
+        if(req.method==='GET'&&action==='work')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions(roomId)??[],approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),pendingSubmissions:teamStore.pendingSubmissions(roomId),...await upstream.aimp(roomId,'tasks')});
         if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
         if(req.method==='POST'&&action==='pause')return send(res,200,await automation.pause(roomId));
         if(req.method==='POST'&&action==='resume'){

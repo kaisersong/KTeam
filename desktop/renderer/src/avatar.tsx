@@ -1,20 +1,14 @@
 import {memo,useEffect,useRef,useState} from 'react';
 import {UserRound} from 'lucide-react';
-import {botFamily,botAvatarSource,type BotAppearanceIdentity} from '../../../src/bot-appearance';
+import {botFamily,botAvatarSource,botAngle,workingBotAngle,type BotAppearanceIdentity} from '../../../src/bot-appearance';
+import {observeWorkingAvatar} from './avatar-motion';
 
-/** History/list avatars stay static. Only the visible current conversation opts into motion. */
-export const Avatar=memo(function Avatar({name,id,description,isAssistant,human=false,expressive=false,front=false}:BotAppearanceIdentity&{human?:boolean;expressive?:boolean;front?:boolean}){
- const family=botFamily({name,id,description,isAssistant}),target=useRef<HTMLSpanElement>(null);
- const [animated,setAnimated]=useState(false);
- const lively=expressive&&!human&&family==='k';
- useEffect(()=>{
-  if(!lively){setAnimated(false);return;}
-  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');let visible=false;
-  const update=()=>setAnimated(visible&&document.visibilityState==='visible'&&!motion.matches);
-  const observer=new IntersectionObserver(entries=>{visible=!!entries[0]?.isIntersecting;update();});
-  if(target.current)observer.observe(target.current);
-  motion.addEventListener('change',update);document.addEventListener('visibilitychange',update);
-  return()=>{observer.disconnect();motion.removeEventListener('change',update);document.removeEventListener('visibilitychange',update);};
- },[lively]);
- return <span ref={target} className={'avatar '+(human?'human-avatar':'bot-avatar')} role="img" aria-label={human?'我':name+'的头像'} data-family={human?undefined:family} data-animated={lively&&animated?'true':undefined}>{human?<UserRound size={18}/>:<img src={botAvatarSource(family,{expressive:lively,animated:lively&&animated,front})} alt="" draggable={false}/>}</span>;
+/** Original angle artwork; only visible live-work avatars opt into the shared motion clock. */
+export const Avatar=memo(function Avatar({name,id,description,isAssistant,human=false,expressive=false,front=false,working=false}:BotAppearanceIdentity&{human?:boolean;expressive?:boolean;front?:boolean;working?:boolean}){
+ const identity={name,id,description,isAssistant},family=botFamily(identity),target=useRef<HTMLSpanElement>(null);
+ const [motion,setMotion]=useState({animated:false,step:0}),lively=working&&!human;
+ useEffect(()=>{if(!lively||!target.current){setMotion(previous=>previous.animated?{animated:false,step:0}:previous);return;}return observeWorkingAvatar(target.current,next=>setMotion(previous=>previous.animated===next.animated&&previous.step===next.step?previous:next));},[lively]);
+ const base=front?'front':botAngle(identity),angle=motion.animated?workingBotAngle(base,motion.step):base;
+ const source=botAvatarSource(family,{angle,animated:lively&&motion.animated});
+ return <span ref={target} className={'avatar '+(human?'human-avatar':'bot-avatar')} role="img" aria-label={human?'我':name+'的头像'+(working?'，正在工作':'')} data-family={human?undefined:family} data-angle={human?undefined:angle} data-working={lively?'true':undefined} data-animated={lively&&motion.animated?'true':undefined}>{human?<UserRound size={18}/>:<img key={source} src={source} alt="" draggable={false}/>}</span>;
 });

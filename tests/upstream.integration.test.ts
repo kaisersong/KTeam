@@ -63,6 +63,13 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     assert.equal(((await request('/v1/teams', input)).room as any).roomId, roomId);
     await assert.rejects(request('/v1/teams', { ...input, goal: 'different' }), /room_create_request_conflict/);
     assert.equal(((await hostRequest(state, 'xiaok-main', '/v1/teams')).rooms as any[]).filter(room => room.roomId === roomId).length, 1);
+    const directory=()=>request('/v1/teams').then(result=>(result.rooms as any[]).find(room=>room.roomId===roomId));
+    assert.equal((await directory()).pinnedAt,null);
+    const pin=await request(`/v1/teams/${roomId}/sidebar`,{pinned:true});
+    assert.ok(typeof pin.pinnedAt==='string');
+    assert.equal((await request(`/v1/teams/${roomId}/sidebar`,{pinned:true})).pinnedAt,pin.pinnedAt,'retry keeps pin order');
+    await assert.rejects(request(`/v1/teams/${roomId}/sidebar`,{pinned:'false'}),/sidebar_input_invalid/);
+    await assert.rejects(request(`/v1/teams/${roomId}/sidebar`,{pinned:true,title:'changed'}),/unknown_field/);
     const envelope = { aimp: '1.0', id: 'msg_' + randomBytes(16).toString('hex'), room_id: roomId, thread_id: 'thread-' + roomId,
       from: LOCAL_HUMAN, to: [], mentions: [], ts: new Date().toISOString(), act: 'chat', source_level: 'principal', body: '运营和技术一起准备复盘。' };
     const first = await request('/v1/messages', envelope);
@@ -81,6 +88,9 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     const epoch = host.epoch; await host.close();
     host = await startHost({ root: state, upstream });
     assert.ok(host.epoch > epoch);
+    assert.equal((await directory()).pinnedAt,pin.pinnedAt,'pin survives host restart');
+    assert.equal((await request(`/v1/teams/${roomId}/sidebar`,{pinned:false})).pinnedAt,null);
+    assert.equal((await directory()).pinnedAt,null);
     assert.equal(((await request(`/v1/teams/${roomId}/messages`)).messages as any[]).length, 1);
     assert.equal((await request('/v1/messages', envelope)).messageId, first.messageId);
     assert.equal(broker.room.listRoomMessages({ roomId }, ctx).messages.length, 1);

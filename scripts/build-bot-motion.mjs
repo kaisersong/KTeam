@@ -1,0 +1,8 @@
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const families=['k','dev','design','pm','data','qa'],angles=['front','left34','right34','left','right','up','down'];
+// Derived styles only. Supplied outlines, fills, eye paths and original archive bytes stay intact.
+const motion=`<style>.av-form{transform-box:fill-box;transform-origin:50% 70%;animation:kt-work-nod 6.7s ease-in-out infinite}.av-eye-left,.av-eye-right{transform-box:fill-box;transform-origin:center;animation:kt-work-blink 4.8s ease-in-out infinite}@keyframes kt-work-blink{0%,36%,40%,100%{transform:scaleY(1)}38%{transform:scaleY(.07)}}@keyframes kt-work-nod{0%,36%,62%,100%{transform:translateY(0) rotate(0)}44%,53%{transform:translateY(1.4px) rotate(1.2deg)}48%{transform:translateY(.2px) rotate(.2deg)}}@media(prefers-reduced-motion:reduce){.av-form,.av-eye-left,.av-eye-right{animation:none!important}}</style>`;
+export function buildBotMotion(root,out=join(root,'desktop/renderer/public/brand/motion')){mkdirSync(out,{recursive:true});for(const family of families)for(const angle of angles){const name=family+'-'+angle+'.svg',original=readFileSync(join(root,'desktop/renderer/public/brand/bot-v3',name),'utf8');if(!original.includes('class="av-eye-left"')||!original.includes('class="av-form"'))throw Error('bot_motion_source_contract:'+name);writeFileSync(join(out,name),original.replace(/(<svg\b[^>]*>)/,'$1'+motion));}return {files:families.length*angles.length,source:'original bot-v3 artwork; derived animation styles'};}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))console.log(JSON.stringify(buildBotMotion(fileURLToPath(new URL('../',import.meta.url)))));

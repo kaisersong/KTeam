@@ -37,6 +37,8 @@ export class TeamStore {
  state<T=any>(key:string):T|null{const row=this.db.prepare('SELECT value_json FROM product_state WHERE key=?').get(key);return row?JSON.parse(String(row.value_json)):null;}
  stateOnce(key:string,value:unknown){this.db.prepare('INSERT OR IGNORE INTO product_state VALUES(?,?)').run(key,JSON.stringify(value));return this.state(key);}
  installationId():string{return this.stateOnce('installation-id',randomUUID()) as string;}
+ peerContacts(roomId:string,originIds?:string[]):any[]{if(originIds?.length===0)return [];return this.db.prepare("SELECT o.value_json FROM product_operations o JOIN team_jobs j ON j.id=json_extract(o.value_json,'$.rootJobId') WHERE substr(o.id,1,12)='bot-contact:' AND j.room_id=?"+(originIds?' AND j.origin_id IN ('+originIds.map(()=>'?').join(',')+')':'')+' ORDER BY o.rowid').all(roomId,...(originIds??[])).map(row=>JSON.parse(String(row.value_json)));}
+ workingBotIds():string[]{return this.db.prepare("SELECT DISTINCT json_extract(value_json,'$.activeBotId') AS bot FROM team_jobs WHERE state IN ('routing','running','stopping') AND json_extract(value_json,'$.activeBotId') IS NOT NULL").all().map(row=>String(row.bot));}
  operationsWithPrefix(prefix:string):any[]{return this.db.prepare('SELECT value_json FROM product_operations WHERE substr(id,1,?)=? ORDER BY rowid DESC').all(prefix.length,prefix).map(row=>JSON.parse(String(row.value_json)));}
  operations():any[]{return this.db.prepare('SELECT value_json FROM product_operations ORDER BY rowid DESC LIMIT 100').all().map(row=>JSON.parse(String(row.value_json)));}
  operation(id:string):any{const row=this.db.prepare('SELECT value_json FROM product_operations WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {botFamily,botAvatarSource} from '../src/bot-appearance.js';
+import {botFamily,botAvatarSource,botAngle,workingBotAngle,BOT_FAMILIES,BOT_ANGLES} from '../src/bot-appearance.js';
 
 test('master identity and named roles use the supplied hairstyle families',()=>{
  assert.equal(botFamily({name:'小白',isAssistant:true}),'k');
@@ -16,7 +16,7 @@ test('custom Bot identity survives sorting, duplicate display names, and fallbac
  for(const bot of bots.reverse())assert.equal(botFamily(bot),before.get(bot.id));
  assert.equal(botFamily({id:'bot-1',name:'新名字'}),before.get('bot-1'));
  assert.equal(botAvatarSource('k',{expressive:true,animated:false}),'./brand/lively/curious-avatar.svg');
- assert.equal(botAvatarSource('dev',{animated:true}),'./brand/bot-v3/dev-right34.svg');
+ assert.equal(botAvatarSource('dev',{animated:true}),'./brand/motion/dev-left34.svg');
 });
 test('all imported design assets retain original verified archive bytes',()=>{
  const provenance=JSON.parse(readFileSync('desktop/assets/brand/provenance.json','utf8'));
@@ -24,4 +24,10 @@ test('all imported design assets retain original verified archive bytes',()=>{
  for(const [path,asset] of Object.entries(provenance.files) as [string,{sha256:string}][]){
   assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'),asset.sha256,path);
  }
+});
+
+test('supplied viewpoints vary by identity, survive rename/order, and genuine working turns use existing art',()=>{
+ const roles=['小K','CTO','设计师','产品经理','财务','测试员'];assert.equal(new Set(roles.map(name=>botAngle({name}))).size,6);const original=botAngle({id:'permanent-id',name:'CTO'});assert.equal(botAngle({id:'permanent-id',name:'开发'}),original);
+ for(const family of BOT_FAMILIES)for(const angle of BOT_ANGLES){const source=botAvatarSource(family,{angle});assert.ok(readFileSync('desktop/renderer/public/'+source.replace('./','')).length);}
+ const turns=Array.from({length:9},(_,step)=>workingBotAngle('left34',step));assert.ok(turns.includes('front'));assert.ok(turns.includes('down'));assert.ok(!turns.includes('right'));
 });
