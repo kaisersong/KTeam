@@ -6,7 +6,7 @@ import type {AppPreferences} from '../../../src/service/app-preferences';
 import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
 import './settings.css';
 import {ModelSettingsPanel,DecisionModelSettings} from './model-settings';
-import {MailSettings,VoiceSettings} from './integration-settings';
+import {VoiceSettings} from './voice-settings';
 import {ConnectorsSettings} from './connector-settings';
 import {MCPSettings} from './mcp-settings';
 import {ComputerSettings as CUASettings} from './computer-settings';

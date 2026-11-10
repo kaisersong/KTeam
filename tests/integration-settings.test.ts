@@ -59,3 +59,16 @@ test('memory connection check validates the saved embedding model and actual dim
   const report=await f.settings.test({expectedRevision:state.revision,kind:'memory'});assert.equal(report.dimensions,3);assert.equal(model,'fixture-embedding');dimensions=2;await assert.rejects(f.settings.test({expectedRevision:state.revision,kind:'memory'}),/memory_embedding_dimensions/);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));f.close();}
 });
+
+test('voice profiles keep independent protected credentials and use only the selected default for real transcription',async()=>{
+ const f=fixture();let authorization='',payload='';const server=http.createServer(async(req,res)=>{authorization=String(req.headers.authorization);payload='';for await(const part of req)payload+=part;res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({text:'合成默认语音配置测试'}));});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));try{
+  let state=await f.settings.view();const baseUrl='http://127.0.0.1:'+(server.address() as any).port+'/v1',voice={...integrationDefaults().voice,asrEnabled:true,defaultProfileId:'first',profiles:{first:{name:'语音一',baseUrl,model:'asr-one',apiKey:'FICTIONAL_PROFILE_KEY_ONE'},second:{name:'语音二',baseUrl,model:'asr-two',apiKey:'FICTIONAL_PROFILE_KEY_TWO'}}};
+  state=await f.settings.save({expectedRevision:state.revision,section:'voice',value:voice});assert.equal(state.settings.voice.profiles.first.hasApiKey,true);assert.equal(state.settings.voice.profiles.second.hasApiKey,true);assert(!JSON.stringify(state).includes('FICTIONAL_PROFILE_'));
+  assert.equal((await readIntegrations('voice')).voice.profiles.second.apiKey,undefined);await transcribeAudio({audioBase64:'YWJj',mimeType:'audio/wav'});assert.equal(authorization,'Bearer FICTIONAL_PROFILE_KEY_ONE');assert.match(payload,/asr-one/);
+  const clean=structuredClone(state.settings.voice);delete clean.hasApiKey;for(const row of Object.values(clean.profiles) as any[])delete row.hasApiKey;clean.defaultProfileId='second';state=await f.settings.save({expectedRevision:state.revision,section:'voice',value:clean});
+  await transcribeAudio({audioBase64:'YWJj',mimeType:'audio/wav'});assert.equal(authorization,'Bearer FICTIONAL_PROFILE_KEY_TWO');assert.match(payload,/asr-two/);
+  const before=state.revision;await assert.rejects(f.settings.save({expectedRevision:before,section:'voice',value:{...clean,defaultProfileId:'missing'}}),/integration_input_invalid/);assert.equal((await f.settings.view()).revision,before);
+  delete clean.profiles.first;state=await f.settings.save({expectedRevision:state.revision,section:'voice',value:clean});assert.equal(state.settings.voice.profiles.first,undefined);assert.equal(state.settings.voice.profiles.second.hasApiKey,true);
+  assert(!readFileSync(join(f.root,'config/integrations.json'),'utf8').includes('FICTIONAL_PROFILE_'));
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));f.close();}
+});
