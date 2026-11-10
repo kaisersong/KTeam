@@ -19,9 +19,9 @@ export function adaptPlatformSource(path,source){
   replace("if (kind === 'ooxml') {", "if (kind === 'ooxml' || kind === 'pdf') {");
   replace("            mimeType: '',", "            mimeType: kind === 'pdf' ? 'application/pdf' : '', pdfToText:extractPdfText,");
  }
- if(path.endsWith('/electron/pdf-text.ts')){
+ if(path.endsWith('/electron/pdf-text-body.ts')){
   text="import {createRequire as pdfRequire} from 'node:module';import {dirname as pdfDirname,join as pdfJoin} from 'node:path';\n"+text;
-  replace('const loadingTask = pdfjsLib.getDocument({ data: bytes });', "const pdfRoot=pdfDirname(pdfRequire(import.meta.url).resolve('pdfjs-dist/package.json')); const loadingTask = pdfjsLib.getDocument({data:bytes,isEvalSupported:false,standardFontDataUrl:pdfJoin(pdfRoot,'standard_fonts')+'/',cMapUrl:pdfJoin(pdfRoot,'cmaps')+'/',cMapPacked:true,wasmUrl:pdfJoin(pdfRoot,'wasm')+'/'});");
+  replace('const value = apply(shell.fn, namespace, [{ data: bytes }]);', "const pdfRoot=pdfDirname(pdfRequire(import.meta.url).resolve('pdfjs-dist/package.json')); const value = apply(shell.fn, namespace, [{data:bytes,isEvalSupported:false,standardFontDataUrl:pdfJoin(pdfRoot,'standard_fonts')+'/',cMapUrl:pdfJoin(pdfRoot,'cmaps')+'/',cMapPacked:true,wasmUrl:pdfJoin(pdfRoot,'wasm')+'/'}]);");
  }
  if(path.endsWith('/tools/install-skill.ts')){
   replace("import { execSync } from 'child_process';", "import { execFile } from 'child_process';");
