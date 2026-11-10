@@ -6,7 +6,7 @@ import { KTeamError, fields, record } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { loopbackUrl, type UpstreamOptions } from '../adapters/upstream.js';
 
-export const CLIENTS = ['kteam-main','xiaok-main'] as const;
+export const CLIENTS = ['kteam-main','kteam-companion'] as const;
 export type ClientId = typeof CLIENTS[number];
 export interface Config {
   version: 1; brokerUrl: string; kswarmUrl: string;

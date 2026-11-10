@@ -3,8 +3,8 @@ import {KTeamError, fields, record, text} from '../errors.js';
 import {modelCatalog, modelIdentity, nativeTurn} from '../runtime/native.js';
 import {TeamStore} from './team-store.js';
 
-// Desktop-managed xiaok runs in the host. Its readiness never depends on a CLI executable.
-// See upstream desktop/electron/managed-xiaok-agent.ts:resolveLocalXiaokRuntimePath.
+// The built-in runtime-core agent runs in the host. Its readiness never depends on a CLI executable.
+// See runtime-core/desktop/electron/managed-kteam-agent.ts:resolveLocalKTeamRuntimePath.
 export class BuiltinAgent {
   private closed=false;
   private tasks=new Map<string,Promise<void>>();

@@ -38,7 +38,7 @@ async function ready(child) {
 try {
   await execute(process.execPath, [cli, 'init'], { env });
   const first = start(); const one = await ready(first);
-  assert.equal((await hostRequest(root, 'xiaok-main', '/v1/handshake')).ownerEpoch, one.ownerEpoch);
+  assert.equal((await hostRequest(root, 'kteam-companion', '/v1/handshake')).ownerEpoch, one.ownerEpoch);
   await assert.rejects(execute(process.execPath, [cli, 'start'], { env }), error => error.stderr.includes('host_already_running'));
   report.assertions.push('separate CLI processes cannot acquire a second writer');
   await exited(first, 'SIGKILL');

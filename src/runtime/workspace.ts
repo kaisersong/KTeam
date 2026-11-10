@@ -2,7 +2,7 @@ import {realpathSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {sharedRuntime} from './native.js';
 import {KTeamError} from '../errors.js';
-/** The xiaok tools and search guard are reused verbatim; the host binds cwd. */
+/** The runtime-core tools and search guard are used as-is; the host binds cwd. */
 export async function workspaceTools(workspace:string,assertCurrent:()=>void|Promise<void>){
  if(!workspace)return [];
  let root:string;try{root=realpathSync(workspace);if(root!==workspace||!statSync(root).isDirectory())throw Error();}catch{throw new KTeamError('bot_workspace_invalid');}
