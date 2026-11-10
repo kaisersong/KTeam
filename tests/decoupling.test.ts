@@ -1,11 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {cpSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {chmodSync,cpSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {dataRoot} from '../src/service/config.js';
+import {dataRoot,initConfig,loadConfig,upstreamOptions} from '../src/service/config.js';
+import {ensureSharedServices} from '../src/runtime/services.js';
 
 // KTeam owns runtime-core (a one-time copy of xiaok-cli f8728a34, see NOTICE). These checks keep it decoupled:
 // no xiaok build input, no xiaok runtime path/env var/keychain entry, and no update feed but KTeam's Releases.
@@ -15,9 +16,9 @@ const read=(file:string)=>readFileSync(join(root,file),'utf8');
 const code=(file:string)=>/\.(?:[cm]?[jt]sx?|json|ya?ml)$/.test(file);
 
 // External-agent interop only: KTeam can launch an independently installed xiaok CLI like Codex or Kimi
-// (forwarding its own XIAOK_HOME, fingerprinting its config). KTeam never imports xiaok's models or credentials.
+// (forwarding its own XIAOK_HOME); it is detected by its command only. KTeam never reads xiaok's files.
 const INTEROP:Record<string,RegExp[]>={
- 'src/runtime/local-agents.ts':[/'XIAOK_HOME'/g,/join\(home,'\.xiaok\/config\.json'\)/g,/join\(home,'\.config\/xiaok\/config\.json'\)/g],
+ 'src/runtime/local-agents.ts':[/'XIAOK_HOME'/g],
  'desktop/main.ts':[/'XIAOK_HOME'/g],
 };
 // Persisted format identifiers inside KTeam's own files (config meta key, secret references, A2UI catalog).
@@ -71,20 +72,39 @@ test('runtime code has no xiaok default path, env var or keychain service outsid
  for(const file of tracked('runtime-core','desktop/core-ui'))assert.doesNotMatch(read(file).replace(FORMAT_IDS,''),/xiaok/i,file);
 });
 
-test('KTeam source never reads xiaok model config or the xiaok keychain',()=>{
- const XIAOK_CONFIG=/\.xiaok['"\x60]?\s*(?:,\s*['"\x60]|[/\\])config\.json/g,XIAOK_KEYCHAIN=/com\.xiaok\.credentials/g;
- // The only allowed mention: the xiaok-cli local agent's config fingerprint (hashed to detect setup changes, never parsed).
- const FINGERPRINT='src/runtime/local-agents.ts';
+test('KTeam source never reads xiaok config, the xiaok keychain or xiaok shared-service settings',()=>{
+ // No exceptions: not even the xiaok-cli local agent reads xiaok's files.
+ const XIAOK_CONFIG=/\.xiaok['"\x60]?\s*(?:,\s*['"\x60]|[/\\])config\.json|xiaok[/\\]config\.json/g,XIAOK_KEYCHAIN=/com\.xiaok\.credentials/g,XIAOK_SHARED=/xiaokActivityConfig/g;
  const hits:string[]=[];
  for(const file of tracked('src','desktop','runtime-core','scripts','electron-builder.yml','package.json').filter(f=>!f.startsWith('tests/'))){
   const text=read(file);
-  for(const m of text.matchAll(XIAOK_KEYCHAIN))hits.push(file+': '+m[0]);
-  const config=[...text.matchAll(XIAOK_CONFIG)];
-  if(file===FINGERPRINT){assert.equal(config.length,1,FINGERPRINT+' fingerprint path');assert.match(text,/:\[join\(home,'\.xiaok\/config\.json'\),join\(home,'\.config\/xiaok\/config\.json'\)\];/);}
-  else for(const m of config)hits.push(file+': '+m[0]);
+  for(const pattern of [XIAOK_CONFIG,XIAOK_KEYCHAIN,XIAOK_SHARED])for(const m of text.matchAll(pattern))hits.push(file+': '+m[0]);
  }
  assert.deepEqual(hits,[]);
  for(const file of ['src/service/model-settings.ts','src/service/server.ts','desktop/semantic-api.ts','desktop/semantic-methods.ts','desktop/renderer/src/api.ts','desktop/renderer/src/model-settings.tsx'])assert.doesNotMatch(read(file),/importXiaok|import-xiaok|importAvailable|小K导入/,file);
+});
+
+test('a legacy xiaok shared-service key in an existing config is ignored with one warning and never followed',async()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-legacy-')));
+ const warnings:Error[]=[],listen=(warning:Error)=>{if((warning as any).code==='KTEAM_CONFIG_LEGACY_KEYS')warnings.push(warning);};
+ process.on('warning',listen);
+ try{
+  // The referenced file would fail a private read (and holds a fake token); it must never be opened.
+  const shared=join(root,'xiaok-shared.json');writeFileSync(shared,JSON.stringify({kswarm:{url:'http://127.0.0.1:1',brokerUrl:'http://127.0.0.1:2',roomToken:'XIAOK_TOKEN_MUST_NOT_BE_READ',mutationToken:'x'}}));chmodSync(shared,0o644);
+  const legacy={version:1,brokerUrl:'http://127.0.0.1:41001',kswarmUrl:'http://127.0.0.1:41002',['xiaok'+'ActivityConfig']:shared};
+  assert.throws(()=>initConfig(join(root,'fresh'),legacy as any),/unknown_field/,'new configs stay strict');
+  writeFileSync(join(root,'config.json'),JSON.stringify(legacy),{mode:0o600});
+  for(let i=0;i<2;i++){
+   const config=loadConfig(root);
+   assert.deepEqual(config,{version:1,brokerUrl:'http://127.0.0.1:41001',kswarmUrl:'http://127.0.0.1:41002'});
+   const options=upstreamOptions(config);
+   assert.equal(options.brokerUrl,'http://127.0.0.1:41001');assert.equal(options.brokerToken,undefined);assert.doesNotMatch(JSON.stringify(options),/XIAOK_TOKEN|xiaok-shared/);
+   await ensureSharedServices(config,root);
+  }
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(warnings.length,1);assert.match(warnings[0]!.message,/ignoring 1 legacy key/);
+  assert.equal(existsSync(join(root,'services')),false);
+ }finally{process.off('warning',listen);rmSync(root,{recursive:true,force:true});}
 });
 
 test('default data, runtime config and keychain locations belong to KTeam',async()=>{
