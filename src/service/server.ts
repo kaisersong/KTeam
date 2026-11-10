@@ -27,6 +27,8 @@ import { OnboardingService } from './onboarding.js';
 import { TeamCoordinator } from './coordination.js';
 import { modelCatalog, modelIdentity } from '../runtime/native.js';
 import { createHash } from 'node:crypto';
+import {appResources} from './app-settings.js';
+import {appPreferences,saveAppPreferences} from './app-preferences.js';
 
 import {API_VERSION,SCHEMA_VERSION} from './api-version.js';
 export {API_VERSION,SCHEMA_VERSION,versionHeaders} from './api-version.js';
@@ -112,6 +114,15 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
+      if(url.pathname.startsWith('/v1/app/')){
+        if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);
+        if(url.pathname==='/v1/app/preferences'){
+          if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
+          if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
+        }
+        if(url.pathname==='/v1/app/resources'&&req.method==='GET')return send(res,200,{ok:true,...await appResources()});
+        throw new KTeamError('app_settings_operation_forbidden',403);
+      }
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
       if(url.pathname==='/v1/builtin-agent'&&req.method==='GET')return send(res,200,{ok:true,agent:await builtinAgent.status(url.searchParams.get('modelId')??undefined)});
       if(url.pathname==='/v1/builtin-agent/probe'&&req.method==='POST')return send(res,202,{ok:true,agent:await builtinAgent.start(await body(req))});

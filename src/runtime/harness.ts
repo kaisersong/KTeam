@@ -12,7 +12,7 @@ import {openHarnessSession,type HarnessSessionScope} from './harness-session.js'
 
 export function harnessWorkspace(configured=''){try{const path=realpathSync(configured||homedir());if(!statSync(path).isDirectory())throw Error();return path;}catch{throw new KTeamError('bot_workspace_invalid');}}
 const expand=(value:string,cwd:string)=>resolve(cwd,value==='~'?homedir():value.startsWith('~/')?resolve(homedir(),value.slice(2)):value);
-export interface HarnessContext {scope?:HarnessSessionScope;onCloseFailure?:()=>void;onPrepared?:(facts:any)=>void;workspace?:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>;onTool?:(event:any)=>void;onProcess?:(process:any)=>void|Promise<void>}
+export interface HarnessContext {disabledSkills?:string[];assertSkillsCurrent?:()=>void;scope?:HarnessSessionScope;onCloseFailure?:()=>void;onPrepared?:(facts:any)=>void;workspace?:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>;onTool?:(event:any)=>void;onProcess?:(process:any)=>void|Promise<void>}
 /** Original first-party tool implementations and permission rules; KTeam binds actor, cwd and lifecycle. */
 export async function createHarness(input:HarnessContext){
  const core=await sharedRuntime(),cwd=harnessWorkspace(input.workspace),settings=await core.loadSettings(cwd),rules=core.mergeRules(settings);
@@ -21,8 +21,10 @@ export async function createHarness(input:HarnessContext){
  const permissionManager=new BoundPermissions({mode:'default',cwd,...rules,allowRules:[...rules.allowRules,'propose_team','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','read_runtime_output']});
  const permissionManagerForCwd=(base:string)=>base===cwd?permissionManager:new BoundPermissions({mode:'default',cwd:base,...rules,allowRules:[...rules.allowRules,'propose_team','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','read_runtime_output']},base);
  const permissionFingerprint=createHash('sha256').update(JSON.stringify(rules)).digest('hex');
- const guard=async()=>{input.signal.throwIfAborted();await input.assertCurrent();const latest=core.mergeRules(await core.loadSettings(cwd));if(createHash('sha256').update(JSON.stringify(latest)).digest('hex')!==permissionFingerprint)throw new KTeamError('harness_permissions_changed',409);};
- const catalog=core.createSkillCatalog(core.getConfigDir(),cwd,{extraRoots:[...(input.scope?[join(input.scope.root,'harness-assets',createHash('sha256').update(input.scope.botId+'\n'+input.scope.roomId).digest('hex'),'skills')]:[]),process.env.KTEAM_SKILLS_ROOT,resolve(process.cwd(),'desktop/skills')].filter((p):p is string=>typeof p==='string'&&existsSync(p))});await catalog.reload();
+ const guard=async()=>{input.signal.throwIfAborted();input.assertSkillsCurrent?.();await input.assertCurrent();const latest=core.mergeRules(await core.loadSettings(cwd));if(createHash('sha256').update(JSON.stringify(latest)).digest('hex')!==permissionFingerprint)throw new KTeamError('harness_permissions_changed',409);};
+ const sourceCatalog=core.createSkillCatalog(core.getConfigDir(),cwd,{extraRoots:[...(input.scope?[join(input.scope.root,'harness-assets',createHash('sha256').update(input.scope.botId+'\n'+input.scope.roomId).digest('hex'),'skills')]:[]),process.env.KTEAM_SKILLS_ROOT,resolve(process.cwd(),'desktop/skills')].filter((p):p is string=>typeof p==='string'&&existsSync(p))});await sourceCatalog.reload();
+ const enabled=(skill:any)=>!input.disabledSkills?.includes(skill.name);
+ const catalog={...sourceCatalog,list:()=>sourceCatalog.list().filter(enabled),get:(name:string)=>{const skill=sourceCatalog.get(name);return skill&&enabled(skill)?skill:undefined;},resolve:(names:string[])=>sourceCatalog.resolve(names).filter(enabled)};
  const skill=core.createSkillTool(catalog),metadata=new Map();
  const native=core.buildToolList(skill,{cwd,allowOutsideCwd:false},[],metadata,{isYolo:()=>false}).filter((t:any)=>!['install_skill','uninstall_skill','render_ui','kim_judge_messages'].includes(t.definition.name));
  const boundSet=new WeakSet<object>();
