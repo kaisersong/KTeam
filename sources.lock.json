@@ -2195,11 +2195,11 @@
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "fb2bf29687691e719b737f773af2cad312adca3145b2f581e14e3d29eb01dc13"
+          "sha256": "5234cdb431b8002f86d547a643cf33a1b203c91b3944a51d5297463476116bec"
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "ed588e46c54237bea64cac81b5fb1d78a2284a118a96570755023d683cd091f2"
+          "sha256": "c31daf01a7b5fd57774593512d866a61b5407f7696de1dd54103f91e7dc2fd51"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",

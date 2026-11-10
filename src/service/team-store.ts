@@ -3,13 +3,17 @@ import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
 import {KTeamError} from '../errors.js';
 import {randomUUID} from 'node:crypto';
+import {ExecutionLog} from './execution-log.js';
+import {executionEventSummary,toolInputDisplay} from '../runtime/tool-display.js';
 
 export interface Binding {botId:string;modelId:string;fingerprint:string;model:string;revision:number;kind:'xiaok-hosted'|'local-native'}
 export interface TeamSettings {roomId:string;goal:string;mode:'auto'|'mentions';paused:boolean;quiet:boolean;revision:number;maxRuns:number;dailyCalls:number;kind?:'assistant'|'direct'|'group'|'peer';delivery?:'external-agent';goalConfirmed?:boolean;lastGoalOperation?:string}
 export class TeamStore {
  private db:DatabaseSync;private transactionDepth=0;
+ private executionLog:ExecutionLog;
  transaction<T>(fn:()=>T):T{if(this.transactionDepth)return fn();this.db.exec('BEGIN IMMEDIATE');this.transactionDepth++;try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}finally{this.transactionDepth--;}}
  constructor(readonly root:string){
+  this.executionLog=new ExecutionLog(root);
   this.db=new DatabaseSync(join(root,'team-extensions.sqlite'));
   this.db.exec(`CREATE TABLE IF NOT EXISTS bot_bindings(bot_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_settings(room_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
@@ -24,6 +28,28 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS team_proposals(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,run_id TEXT NOT NULL,reply_id TEXT,value_json TEXT NOT NULL);`);
   if(!this.state('harness-budget-v1')){this.db.prepare("UPDATE team_settings SET value_json=json_set(value_json,'$.maxRuns',128,'$.dailyCalls',1000,'$.revision',coalesce(json_extract(value_json,'$.revision'),0)+1) WHERE json_extract(value_json,'$.maxRuns')=6 AND json_extract(value_json,'$.dailyCalls')=20").run();this.setState('harness-budget-v1',true);}
   this.db.prepare("UPDATE team_jobs SET state='noop',value_json=json_set(value_json,'$.state','noop','$.reason','legacy_goal_gate_retired') WHERE state='awaiting_goal'").run();
+  if(!this.state('compact-tool-history-v1')){
+   this.transaction(()=>{
+    for(const row of this.db.prepare('SELECT id,value_json FROM team_jobs').all()){
+     const job=JSON.parse(String(row.value_json));
+     if(Array.isArray(job.toolTrace)){const events=job.toolTrace;job.toolTrace=[];for(const event of events)this.recordToolEvent(job,event);}
+     if(Array.isArray(job.recoveryContext?.recentTools))job.recoveryContext.recentTools=job.recoveryContext.recentTools.map(executionEventSummary).filter(Boolean).slice(-12);
+     this.db.prepare('UPDATE team_jobs SET value_json=? WHERE id=?').run(JSON.stringify(job),String(row.id));
+    }
+    for(const op of this.operationsWithPrefix('tool-approval:')){
+     const display=toolInputDisplay(op.toolName,op.display??{});const {input,...summary}=op;
+     this.db.prepare('UPDATE product_operations SET value_json=? WHERE id=?').run(JSON.stringify({...summary,display}),op.id);
+    }
+    this.setState('compact-tool-history-v1',true);
+   });
+  }
+ }
+ recordToolEvent(job:any,event:any){
+  this.executionLog.append(job.id,event);
+  const summary=executionEventSummary(event);if(!summary)return;
+  const trace=job.toolTrace??[],index=summary.id?trace.findIndex((e:any)=>e.id===summary.id):-1;
+  if(index>=0)trace[index]={...trace[index],...summary};else trace.push(summary);
+  job.toolTrace=trace.slice(-12);
  }
  stateEntries(prefix:string){return this.db.prepare('SELECT key,value_json FROM product_state WHERE substr(key,1,?)=?').all(prefix.length,prefix).map(r=>({key:String(r.key),value:JSON.parse(String(r.value_json))}));}
  resetSourceGates(){this.db.prepare("UPDATE product_state SET value_json='null' WHERE substr(key,1,16)='source-changing:'").run();}

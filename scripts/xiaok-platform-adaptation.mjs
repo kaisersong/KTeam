@@ -43,6 +43,9 @@ export function adaptPlatformSource(path,source){
       }
       const timeout = hook.timeoutMs ?? defaultTimeout;`);
  }
+ if(path.endsWith('/permissions/policy-engine.ts')){
+  replace('function shellWords(text: string): string[] {','export function shellWords(text: string): string[] {');
+ }
  if(path.endsWith('/worktrees/manager.ts')){
   replace("import { execFileSync, spawnSync } from 'node:child_process';", "import { execFileSync, execFile } from 'node:child_process';");
   replace("      'ps',", "      '/bin/ps',");
