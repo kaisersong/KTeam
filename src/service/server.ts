@@ -22,6 +22,7 @@ import {TeamRoles} from './team-roles.js';
 import {loadConfig} from './config.js';
 import {transcribeAudio} from './voice.js';
 import {IntegrationSettings} from './integration-settings.js';
+import {EnterpriseConnectors} from './enterprise-connectors.js';
 import {ModelSettings} from './model-settings.js';
 import {attentionSource} from './attention.js';
 import {systemOneChoice,kimJudgment,decisionModels} from '../runtime/decision.js';
@@ -90,7 +91,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const teamStore = new TeamStore(options.root);
   const localAgents=new LocalAgents(options.root,teamStore,upstream);
   const builtinAgent=new BuiltinAgent(teamStore);
-  const modelSettings=new ModelSettings(undefined,()=>onboarding.ensureConfigured()),integrationSettings=new IntegrationSettings();
+  const modelSettings=new ModelSettings(undefined,()=>onboarding.ensureConfigured()),integrationSettings=new IntegrationSettings(),enterpriseConnectors=new EnterpriseConnectors({configRoot:process.env.KTEAM_MODEL_CONFIG_DIR??join(options.root,'runtime')});
   const conversations=new ConversationService(options.root,upstream,teamStore);
   const approvals=new ToolApprovals(teamStore);
   const peerExchanges=new PeerExchanges(upstream,teamStore);
@@ -159,6 +160,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       if(url.pathname.startsWith('/v1/app/')){
         if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);
+        if(url.pathname==='/v1/app/enterprise-connectors'&&req.method==='GET')return send(res,200,await enterpriseConnectors.view());
+        if(url.pathname==='/v1/app/enterprise-connectors'&&req.method==='POST')return send(res,200,await enterpriseConnectors.control(await body(req)));
         if(url.pathname==='/v1/app/preferences'){
           if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
@@ -337,7 +340,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const host={ epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
-        links.close();approvals.close();
+        links.close();approvals.close();await enterpriseConnectors.close();
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         if(windows&&existsSync(path))unlinkSync(path);

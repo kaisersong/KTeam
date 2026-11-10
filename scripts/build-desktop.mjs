@@ -1,6 +1,7 @@
 import {build} from 'esbuild';
 import {execFileSync} from 'node:child_process';
 import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+execFileSync(process.execPath,['scripts/ensure-connector-cli.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-bot-motion.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-service-bundles.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-icon.mjs'],{stdio:'inherit'});

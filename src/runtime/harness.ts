@@ -3,6 +3,7 @@ import {harnessLocation} from './harness-storage.js';
 import {captureGeneratedFile,generatedFileExtension} from './generated-files.js';
 import {parseToolScope,toolScopePolicy} from './tool-scope.js';
 import {scopedCatalog,skillBindingRoot,withSkillMutation,assertSkillPins,parseSkillPins,type SkillPin} from './skill-library.js';
+import {configureConnectorClis} from './connector-clis.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {homedir,hostname} from 'node:os';
 import {resolve,join} from 'node:path';
@@ -26,6 +27,7 @@ export interface HarnessContext {toolApprovalPort?:any;toolScope?:unknown;recove
 export async function createHarness(input:HarnessContext){
  const selectedToolScope=parseToolScope(input.toolScope);
  const pinnedSkills=parseSkillPins(input.skillPins).filter(pin=>!input.disabledSkills?.includes(pin.name));
+ configureConnectorClis();
  const integrations=await readIntegrations(),settingsRevision=await runtimeIntegrationRevision();
  const core=await sharedRuntime(),webRegistry=new core.ConnectorRegistry(integrations.web),cwd=harnessWorkspace(input.workspace),settings=await core.loadSettings(cwd),rules=core.mergeRules(settings);
  const toolPolicy=toolScopePolicy(core,selectedToolScope,input.scope?.root);toolPolicy.validate();

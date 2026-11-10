@@ -1,7 +1,9 @@
+import {configureConnectorClis} from '../src/runtime/connector-clis.js';
 import {startHost} from '../src/service/server.js';
 import {dataRoot,loadConfig,upstreamOptions} from '../src/service/config.js';
 import {ensureSharedServices} from '../src/runtime/services.js';
 async function main(){
+ configureConnectorClis();
  const root=dataRoot();
  const config=loadConfig(root);
  try{await ensureSharedServices(config,root);}catch{process.stdout.write(JSON.stringify({event:'shared-service-owner-unavailable'})+'\n');}

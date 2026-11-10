@@ -1,3 +1,4 @@
+import {EnterpriseConnectorSettings} from './enterprise-connectors';
 import {NotificationSettings} from './notification-settings';
 import {settingsAutosave} from './autosave-api';
 import React,{useEffect,useRef,useState} from 'react';
@@ -30,7 +31,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='services'&&<Services/>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved} onFinished={onClose}/>}
  {page==='decision'&&<DecisionPanel/>}
- {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/></>}
+ {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/><EnterpriseConnectorSettings/></>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='tools'&&<WebToolsSettings/>}
  {page==='mcp'&&<MCPSettings/>}{page==='cua'&&<CUASettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}

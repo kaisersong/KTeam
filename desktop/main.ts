@@ -91,7 +91,7 @@ async function ensureHostBody(){
  assertHostCanStart();
  const output=openSync(join(root,'host.log'),'a',0o600);
  let child;
- try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,windowsHide:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','kteam-runtime.mjs')}});}finally{closeSync(output);}
+ try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,windowsHide:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_DESKTOP_RESOURCES:process.resourcesPath,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','kteam-runtime.mjs')}});}finally{closeSync(output);}
  child.unref();
  if(process.platform==='win32'&&child.pid)windowsHost=captureWindowsHostIdentity(child.pid,windowsHostLayer());
  const deadline=Date.now()+15000;
