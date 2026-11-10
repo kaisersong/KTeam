@@ -54,33 +54,3 @@ export function isCurrentPromptAuthorization(scope: PromptAuthorizationScope): b
 export function invalidateCurrentPromptAuthorization(): void {
   activePrompt.getStore()?.invalidate();
 }
-
-/** Snapshot before the terminal producer first reads choice.action. */
-export function snapshotTerminalPromptChoice(choice: PermissionChoice): PermissionChoice | undefined {
-  const scope = activePrompt.getStore();
-  if (!scope) return choice;
-  try { return snapshotPromptData(choice); }
-  catch { scope.invalidate(); return undefined; }
-}
-
-/** Called only by the real terminal-choice producer, after its race has settled. */
-export async function capturePromptRememberChoice(name: string, input: Record<string, unknown>, choice: PermissionChoice | undefined): Promise<{
-  choice: PermissionChoice | undefined; plan?: PromptRememberPlan;
-}> {
-  const scope = activePrompt.getStore();
-  if (!scope) return { choice };
-  try {
-    const snapshot = snapshotPromptData(choice);
-    if (!snapshot || snapshot.action === 'allow_once' || snapshot.action === 'deny') return { choice: snapshot };
-    const capturedInput = snapshotPromptData(input);
-    // Keep PermissionManager's module initialization independent of terminal UI.
-    const { buildPermissionPromptOptions, deriveRule } = await import('../../ui/permission-prompt.js');
-    const canonical = buildPermissionPromptOptions(deriveRule(name, capturedInput), name, capturedInput);
-    if (!canonical.some(option => isDeepStrictEqual(option.choice, snapshot))) throw new Error('invalid_prompt_remember_choice');
-    return { choice: snapshot, plan: scope.begin(name, capturedInput, snapshot) };
-  } catch {
-    scope.invalidate();
-    // Do not persist an unvalidated choice; the registry will fail closed.
-    return { choice: undefined };
-  }
-}
