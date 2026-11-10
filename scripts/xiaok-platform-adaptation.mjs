@@ -71,6 +71,8 @@ export function adaptPlatformSource(path,source){
   replace("apiKey: config.fetch.firecrawlApiKey?.trim() || undefined,", "apiKey: config.fetch.firecrawlApiKey?.trim() || undefined,endpoint:config.fetch.firecrawlBaseUrl ? config.fetch.firecrawlBaseUrl.replace(/\\/$/,'')+'/v2/scrape' : undefined,");
  }
  if(path.endsWith('/runtime/context.ts')){
+  replace('    mergedMcpServers,', '    options.kteamMcpAllowed ? mergedMcpServers.filter(server => options.kteamMcpAllowed(server.name)) : mergedMcpServers,');
+  replace('const lspClient = await connectWorkspaceLspServers(', 'const lspClient = options.kteamDisableLsp ? undefined : await connectWorkspaceLspServers(');
   replace('const settingsMcpServers = loadSettingsMcpServers();','const settingsMcpServers = options.kteamMcpServers ?? loadSettingsMcpServers();');
   replace('const pluginMcpServers = loadPluginMcpServers(pluginRuntime);',"const pluginMcpServers = [...loadPluginMcpServers(pluginRuntime),...(options.kteamCuaServer ? [{...options.kteamCuaServer,name:'cua-driver',source:{origin:'plugin',pluginName:'cua-computer-use'},requiresUserActivation:true}] : [])];");
   replace('const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs);', 'const customAgents = await loadCustomAgents(undefined, options.cwd, pluginRuntime.agentDirs); await options.assertCurrent?.();');
@@ -99,6 +101,7 @@ export function adaptPlatformSource(path,source){
   replace('const name = tool.definition.name;\n      const current', 'tool = options.bindTool?.(tool, state.cwd) ?? tool;\n      const name = tool.definition.name;\n      const current');
   // The child registry uses the same permission owner and revocation guards.
   replace('for (const tool of orderedTools) {','for (let tool of orderedTools) {');
+  replace('hooks: options.platform.pluginRuntime.hookConfigs,','hooks: options.disableHooks ? [] : options.platform.pluginRuntime.hookConfigs,');
   replace('const hooksRunner = createHooksRunner({', 'const hooksRunner = createHooksRunner({assertCurrent:options.assertCurrent,promptExecutor:options.promptExecutor,');
   replace('createRegistry: createRegistryForCwd,\n    getReminderApi()', 'createRegistry: createRegistryForCwd,\n    listChildren: () => multiAgentCoordinator?.listAgents({requestSource:\'agent\',callerId:\'main\'}) ?? [],\n    getReminderApi()');
   replace('const registry = new ToolRegistry({', 'const boundTools = filteredTools.map(tool => options.bindTool?.(tool, cwd) ?? tool);\n    const boundDescriptions = new Map(); filteredTools.forEach((tool, index) => { const metadata = wrappedDescriptions.get(tool); if(metadata)boundDescriptions.set(boundTools[index],metadata); });\n    const registry = new ToolRegistry({');

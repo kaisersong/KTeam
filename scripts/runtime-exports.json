@@ -153,12 +153,16 @@
     "selectMacosCuaAbiProfile"
   ],
   "src/platform/mcp/config.ts": [
-    "loadSettingsMcpServers"
+    "loadSettingsMcpServers",
+    "loadPluginMcpServers"
   ],
   "src/ai/permissions/policy-engine.ts": [
     "requiresAlwaysCommandConfirmation"
   ],
   "src/ai/permissions/sensitive-paths.ts": [
     "isSensitiveToolInvocation"
+  ],
+  "src/platform/plugins/runtime.ts": [
+    "loadPlatformPluginRuntime"
   ]
 }

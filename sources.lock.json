@@ -111,6 +111,10 @@
     {
       "file": "docs/design/desktop/reviewed-skill-learning-20261111.md",
       "sha256": "64ae8a592fe3ca6dea51eaf028b33ca28dd02f22e414879c479b475ac29bbef8"
+    },
+    {
+      "file": "docs/design/desktop/bot-tool-scopes-20261111.md",
+      "sha256": "ae529ceffb25e1433eb9a6e5b9d1c88b59e88731d855e4ff4f995d25949f9a52"
     }
   ],
   "productBaseline": {
@@ -120,7 +124,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "2ca69dae387ba8519cf787be72e69d8016d61428",
+    "revision": "07b75bed2ff3392aaefaee08e5e38a6a5eda1b3d",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -2237,12 +2241,12 @@
       "files": [
         {
           "file": "scripts/runtime-exports.json",
-          "sha256": "d95172d58cb18ab5b7fb474c9aa0f576fa0533d09bc1a08266af31ca62577d53",
+          "sha256": "df19bb89f7033dcba83389cc584e5926bb45b2c30f9c086839776e772cd880e2",
           "usage": "Expose the unchanged discoverSkills function to check the exact original uninstall target before undoing a reviewed Room skill."
         },
         {
           "file": "scripts/xiaok-platform-adaptation.mjs",
-          "sha256": "93822b22bd31510fcd925fe361fab8054e55c5414b9fddf8f95d7729c7d60426"
+          "sha256": "44eafbfe0454bfe7870fd2c0c1a4bdc979201f5a0d6a270554dc8f99ea45e2f7"
         },
         {
           "file": "scripts/xiaok-process-adaptation.mjs",
