@@ -32,8 +32,13 @@ export function adaptPlatformSource(path,source){
   text=text.slice(0,start)+`    await new Promise((resolve,reject)=>execFile('git',['clone','--single-branch','--depth','1',repoUrl,skillDir],{timeout:60000},error=>error?reject(error):resolve()));\n\n`+text.slice(end);
  }
  if(path.endsWith('/runtime/hooks-runner.ts')){
-  replace('for (const hook of allHooks) {', `for (const hook of allHooks) {
-      try { await config.assertCurrent?.(); } catch { return {ok:false,message:'harness_scope_revoked'}; }`);
+  replace('        executedOnce.add(hookKey);','        // Mark only after current-scope admission succeeds.');
+  replace('      const timeout = hook.timeoutMs ?? defaultTimeout;', `      try { await config.assertCurrent?.(); } catch (error) {
+        const code = typeof error?.code === 'string' && /^[a-z0-9_-]{1,96}$/.test(error.code) ? error.code : 'scope_check_failed';
+        return {ok:false,message:'harness_scope_check_failed:'+code+'。当前执行环境校验未通过；不能据此判定其他成员离线或授权已撤销。'};
+      }
+      if (hook.once) executedOnce.add(hookKey);
+      const timeout = hook.timeoutMs ?? defaultTimeout;`);
  }
  if(path.endsWith('/worktrees/manager.ts')){
   replace("import { execFileSync, spawnSync } from 'node:child_process';", "import { execFileSync, execFile } from 'node:child_process';");

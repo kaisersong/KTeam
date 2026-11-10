@@ -23,7 +23,7 @@ export class Upstreams {
     this.brokerUrl = loopbackUrl(options.brokerUrl);
     this.kswarmUrl = loopbackUrl(options.kswarmUrl);
   }
-  private async request(component: 'broker' | 'kswarm', route: string, method = 'GET', body?: unknown): Promise<Record<string, unknown>> {
+  private async request(component: 'broker' | 'kswarm', route: string, method = 'GET', body?: unknown, readOnly = method === 'GET'): Promise<Record<string, unknown>> {
     const token = component === 'broker' ? this.options.brokerToken : this.options.kswarmToken;
     if ((component === 'broker' || method !== 'GET') && !token) throw new KTeamError(component + '_credential_required', 503);
     let response: Response;
@@ -38,17 +38,18 @@ export class Upstreams {
       try{response=await fetchOnce();}catch(error){
         const code=(error as {cause?:{code?:string}})?.cause?.code;
         // Read-only requests may meet a stale keep-alive socket after sleep/restart.
-        // A mutation receipt stays unknown: never retry POST/PUT or redirects.
-        if(method!=='GET'||!['ECONNRESET','ECONNREFUSED','UND_ERR_SOCKET'].includes(code??'')||signal.aborted)throw error;
+        // Mutation receipts stay unknown; only GET and the pure execution-check
+        // observation can retry a stale socket. Redirects remain forbidden.
+        if(!readOnly||!['ECONNRESET','ECONNREFUSED','UND_ERR_SOCKET'].includes(code??'')||signal.aborted)throw error;
         response=await fetchOnce();
       }
     } catch {
       // A timeout after POST is an unknown result: caller must reuse the same request ID.
-      throw new KTeamError(method === 'GET' ? component + '_unavailable' : 'upstream_operation_unknown', 503);
+      throw new KTeamError(readOnly ? component + '_unavailable' : 'upstream_operation_unknown', 503);
     }
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = []; let size = 0;
-    if (!reader) throw new KTeamError(method === 'GET' ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502);
+    if (!reader) throw new KTeamError(readOnly ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502);
     try {
       while (true) {
         const chunk = await reader.read();
@@ -59,7 +60,7 @@ export class Upstreams {
       }
       let result: Record<string, unknown>;
       try { result = record(parseJson(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)), 2 * 1024 * 1024)); }
-      catch { throw new KTeamError(method === 'GET' ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502); }
+      catch { throw new KTeamError(readOnly ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502); }
       if (!response.ok || result.ok === false) {
         // Broker duplicate is an original receipt, not permission to run anything again.
         if (result.code === 'room_message_duplicate' && result.message) return { ...result, ok: true, reused: true };
@@ -69,7 +70,7 @@ export class Upstreams {
       return result;
     } catch (error) {
       if (error instanceof KTeamError) throw error;
-      throw new KTeamError(method === 'GET' ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502);
+      throw new KTeamError(readOnly ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502);
     } finally { reader.releaseLock(); }
   }
   async probe() {
@@ -95,7 +96,8 @@ export class Upstreams {
   createBot(input:Record<string,unknown>){return this.request('kswarm','/agents','POST',input);}
   aimp(roomId:string,command:string,input?:Record<string,unknown>){
     if(!['session','status','tasks','configure','event','agent-event','begin-execution','execution-check','effect','heartbeat','chat','verify-delivery'].includes(command))throw new KTeamError('aimp_command_invalid');
-    return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/aimp/${command}`,input?'POST':'GET',input);
+    // checkExecution is a pure observation even though the broker accepts POST.
+    return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/aimp/${command}`,input?'POST':'GET',input, !input || command==='execution-check');
   }
   async requireExternalMessages(){const result=await this.probe();if(!result.ready||!result.broker.externalAgentMessages)throw new KTeamError('agent_service_upgrade_required',503);}
   updateTeam(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/metadata`,'PUT',input);}

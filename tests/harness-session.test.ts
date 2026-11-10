@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import {join,resolve} from 'node:path';
 import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
+import {KTeamError} from '../src/errors.js';
 
 async function fixture(){
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');
@@ -54,7 +55,36 @@ test('revoked scope cannot launch a real plugin PreToolUse command before the to
   const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{if(!current)throw Error('synthetic_revoked');},onPrompt:async()=>true});
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);current=false;
   const result=await owner.registry.executeTool('read',{file_path:'proof'});
-  assert.match(result,/harness_scope_revoked|synthetic_revoked/);assert.equal(existsSync(marker),false);
+  assert.match(result,/harness_scope_check_failed:scope_check_failed/);assert.equal(existsSync(marker),false);
+ }finally{await owner?.close();f.close();}
+});
+
+test('hook admission preserves a safe cause and a failed check does not consume a once-only hook',async()=>{
+ const f=await fixture();let owner:any;try{
+  const plugin=join(f.cwd,'.xiaok/plugins/review');mkdirSync(plugin,{recursive:true});
+  const marker=join(f.root,'ran');
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',once:true,events:['PreToolUse'],matcher:'read',command:'printf checked > '+marker}]}));
+  writeFileSync(join(f.cwd,'proof'),'read-only');let unavailable=false;
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{if(unavailable)throw new KTeamError('broker_unavailable',503);},onPrompt:async()=>true});
+  owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);unavailable=true;
+  const failed=await owner.registry.executeTool('read',{file_path:'proof'});
+  assert.match(failed,/harness_scope_check_failed:broker_unavailable/);assert.doesNotMatch(failed,/harness_scope_revoked/);assert.equal(existsSync(marker),false);
+  unavailable=false;assert.match(await owner.registry.executeTool('read',{file_path:'proof'}),/read-only/);assert.equal(readFileSync(marker,'utf8'),'checked');
+ }finally{await owner?.close();f.close();}
+});
+
+test('unmatched plugin events do not perform extra remote scope checks',async()=>{
+ const f=await fixture();let owner:any;try{
+  const plugin=join(f.cwd,'.xiaok/plugins/review');mkdirSync(plugin,{recursive:true});
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[
+   {events:['PreToolUse'],matcher:'write',command:'exit 2'},
+   {events:['SessionEnd'],command:'exit 2'}
+  ]}));
+  writeFileSync(join(f.cwd,'proof'),'read-only');let checks=0;
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{checks++;},onPrompt:async()=>true});
+  owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);checks=0;
+  assert.match(await owner.registry.executeTool('read',{file_path:'proof'}),/read-only/);
+  assert.equal(checks,2,'only the bound tool pre/post guards, no unmatched hook guards');
  }finally{await owner?.close();f.close();}
 });
 
