@@ -20,6 +20,9 @@ asarUnpack:
   - build/native-child.cjs
   - build/agent-cli.cjs
   - build/shared/**
+  - build/service-owner.cjs
+  - build/service-child.cjs
+  - build/services/**
   - node_modules/**
 npmRebuild: false
 mac:
