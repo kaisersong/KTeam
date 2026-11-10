@@ -66,5 +66,6 @@ test('Bot details aggregate its accessible group arrangements while group detail
   f.store.enqueue('group-schedule-source',roomId,String(origin.messageId));await f.automation.tick();
   const botView=await f.schedules.view(f.bot.roomId),groupView=await f.schedules.view(roomId);assert.equal(botView.schedules.length,2);assert.equal(groupView.schedules.length,1);assert.equal(groupView.schedules[0]?.sourceRoomId,roomId);
   const direct=botView.schedules.find(s=>s.sourceRoomId===f.bot.roomId)!;await assert.rejects(f.schedules.change(roomId,{id:direct.id,expectedRevision:direct.revision,action:'pause'}),/scheduled_work_forbidden/);
+  const settings=f.store.settings(roomId)!;f.store.configure({...settings,kind:undefined},settings.revision);assert.equal((await f.schedules.view(roomId)).schedules.length,1,'legacy groups must not aggregate another conversation');
  }finally{await f.close();}
 });
