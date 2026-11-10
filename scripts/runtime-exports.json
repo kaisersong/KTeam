@@ -38,7 +38,8 @@
   ],
   "src/ai/skills/loader.ts": [
     "createSkillCatalog",
-    "formatSkillsContext"
+    "formatSkillsContext",
+    "discoverSkills"
   ],
   "src/ai/skills/tool.ts": [
     "createSkillTool"

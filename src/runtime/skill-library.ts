@@ -34,3 +34,7 @@ export function parseSkillPins(value:unknown):SkillPin[]{
  if(value===undefined)return [];if(!Array.isArray(value)||value.length>500)throw new KTeamError('skill_pins_invalid',409);const keys=new Set<string>();return value.map(pin=>{if(!pin||typeof pin!=='object'||Object.keys(pin).some(key=>!['roomId','name','version'].includes(key))||typeof pin.roomId!=='string'||!pin.roomId||pin.roomId.length>256||typeof pin.name!=='string'||!pin.name||pin.name.length>256||typeof pin.version!=='string'||!/^[a-f0-9]{64}$/.test(pin.version))throw new KTeamError('skill_pins_invalid',409);const key=JSON.stringify([pin.roomId,pin.name]);if(keys.has(key))throw new KTeamError('skill_pins_invalid',409);keys.add(key);return {...pin};});
 }
 export function assertSkillPins(catalog:any,pins:SkillPin[],roomId:string){const budget={remaining:64*1024*1024};for(const pin of parseSkillPins(pins).filter(pin=>pin.roomId===roomId)){const skill=catalog.get(pin.name);if(!skill||skillSnapshot(skill,budget).version!==pin.version)throw new KTeamError('skill_version_changed',409);}}
+
+// Serialize writes to one existing Bot/Room asset directory, including runtime tools.
+const mutations=new Map<string,Promise<unknown>>();
+export async function withSkillMutation<T>(scope:SkillScope,action:()=>Promise<T>):Promise<T>{const key=skillBindingRoot(scope),prior=mutations.get(key)??Promise.resolve(),running=prior.catch(()=>{}).then(action);mutations.set(key,running);try{return await running;}finally{if(mutations.get(key)===running)mutations.delete(key);}}
