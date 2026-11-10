@@ -22,7 +22,7 @@ type Page=typeof sections[number][0];
 
 export function SettingsWorkspace({initialPage='general',preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
  const [page,setPage]=useState<Page>(initialPage);
- useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[onClose]);
+ useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229&&!e.defaultPrevented){if(document.activeElement instanceof HTMLElement)document.activeElement.blur();onClose();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[onClose]);
  return <div className="settings-workspace"><aside className="settings-nav"><button className="settings-back" onClick={onClose}><ArrowLeft size={17}/>返回会话</button><h1>设置</h1><nav aria-label="设置分类">{sections.map(([id,label,Icon])=><button key={id} aria-current={page===id?'page':undefined} onClick={()=>setPage(id)}><Icon size={18}/><span>{label}</span></button>)}</nav><p>KTeam<span>你的本地 AI 工作空间</span></p></aside><div className="settings-content" key={page} tabIndex={-1}>
  {page==='general'&&<><ProfileSettings preferences={preferences} onSaved={onPreferences}/><PreferencesPanel kind="general" preferences={preferences} onSaved={onPreferences}/><Services/><Section title="你的 AI 团队" description="创建成员后，在 Bot 设置中选择模型、职责与工作目录。"><button className="secondary" onClick={onCreate}>创建 Bot / 接入 Agent<ArrowRight size={15}/></button></Section></>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved}/>}
@@ -37,19 +37,19 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
 }
 
 function PreferencesPanel({kind,preferences,onSaved}:{kind:'general'|'appearance';preferences?:AppPreferences;onSaved:(value:AppPreferences)=>void}){
- const resource=useResource('appPreferences'),[draft,setDraft]=useState<AppPreferences>(),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
+ const resource=useResource('appPreferences'),[draft,setDraft]=useState<AppPreferences>(),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const loaded=resource.data?.preferences as AppPreferences|undefined,base=preferences&&(!loaded||preferences.revision>loaded.revision)?preferences:loaded;
  const previousBase=useRef<AppPreferences|undefined>(undefined);
  useEffect(()=>{if(!base)return;const previous=previousBase.current;previousBase.current=base;setDraft(current=>{const next={...base};for(const key of ['sendShortcut','theme','fontSize','density'] as const)if(current&&previous&&current[key]!==previous[key])(next as any)[key]=current[key];return next;});},[base]);
  const change=(patch:Partial<AppPreferences>)=>{setDraft(v=>v?{...v,...patch}:v);void save(patch);};
- async function save(patch:Partial<AppPreferences>){if(!base)return;setBusy(true);setError('');setSaved(false);try{const result=await settingsAutosave.preferences(patch);resource.setData(result);onSaved(result.preferences);setSaved(true);}catch(e){setError(explain(e));setDraft(base);}finally{setBusy(false);}}
+ async function save(patch:Partial<AppPreferences>){if(!base)return;setBusy(true);setError('');try{const result=await settingsAutosave.preferences(patch);resource.setData(result);onSaved(result.preferences);}catch(e){setError(explain(e));setDraft(base);}finally{setBusy(false);}}
  if(resource.loading)return <Loading/>;if(resource.error)return <Failure error={resource.error} retry={resource.reload}/>;if(!draft)return null;
- return <><Section title={kind==='general'?'通用设置':'外观设置'} description={kind==='general'?'让日常交流更顺手。选择后自动保存。':'沿用当前配色与字体，选择后自动保存。'}>
+ return <><Section title={kind==='general'?'通用设置':'外观设置'} description={kind==='general'?'让日常交流更顺手。':'沿用当前配色与字体。'}>
  {kind==='general'?<label className="settings-field"><span>发送消息<small>输入法选词时不会发送消息。</small></span><select aria-label="发送快捷键" disabled={busy} value={draft.sendShortcut} onChange={e=>change({sendShortcut:e.target.value as AppPreferences['sendShortcut']})}><option value="enter">Enter 发送，Shift Enter 换行</option><option value="modifier-enter">⌘ / Ctrl + Enter 发送，Enter 换行</option></select></label>:<>
  <label className="settings-field"><span>主题</span><select aria-label="界面主题" disabled={busy} value={draft.theme} onChange={e=>change({theme:e.target.value as AppPreferences['theme']})}><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
  <label className="settings-field"><span>消息字号</span><select aria-label="消息字号" disabled={busy} value={draft.fontSize} onChange={e=>change({fontSize:Number(e.target.value) as AppPreferences['fontSize']})}><option value="13">小 · 13</option><option value="14">标准 · 14</option><option value="16">大 · 16</option></select></label>
  <label className="settings-field"><span>会话密度</span><select aria-label="会话密度" disabled={busy} value={draft.density} onChange={e=>change({density:e.target.value as AppPreferences['density']})}><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label><div className="appearance-preview" style={{fontSize:draft.fontSize}}><span className="preview-avatar">K</span><div><strong>小K</strong><p>把想做的事告诉我，我们一起推进。</p></div></div></>}
- {error&&<Failure error={error} retry={resource.reload}/>}<p className="settings-save-status" role="status" aria-live="polite">{busy?'正在保存…':saved?'已自动保存':'更改会自动保存'}</p></Section></>;
+ {error&&<Failure error={error} retry={resource.reload}/>}</Section></>;
 }
 
 function Services(){const value=useResource('status');return <Section title="服务状态" description="连接状态来自正在运行的本地服务。">{value.loading?<Loading/>:value.error?<Failure error={value.error} retry={value.reload}/>:<div className="settings-list">{[['broker','消息服务 · Intent Broker'],['kswarm','成员服务 · KSwarm']].map(([key,label])=><div className="settings-row" key={key}><span>{label}</span><span className={'settings-badge '+(value.data?.upstream?.[key]?.available?'ready':'')}>{value.data?.upstream?.[key]?.available?'已连接':'未连接'}</span></div>)}</div>}<button className="secondary" disabled={value.loading} onClick={value.reload}><RefreshCw size={14}/>重新检查</button></Section>;}

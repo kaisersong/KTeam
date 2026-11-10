@@ -28,4 +28,6 @@
 
 .settings-nav nav{overflow-y:auto;min-height:0}.settings-nav>p{flex-shrink:0}.settings-nav .settings-back{flex-shrink:0}.integration-buttons{flex-wrap:wrap}.integration-panel textarea:focus-visible{outline:2px solid var(--green);outline-offset:2px}.advanced>.secondary{margin-top:14px}
 
-.settings-save-status{min-height:18px;margin:16px 0 0;color:var(--muted);font-size:12px}
+
+
+.profile-name-save{flex:none;min-width:54px}.profile-name>div{flex-wrap:wrap}.profile-name>div>small{font-size:11px}
