@@ -1,3 +1,5 @@
+import {readMemoryView} from './memory-view.js';
+import {harnessSessionDirectory} from '../runtime/harness-session.js';
 import{hostname}from'node:os';import{createHash,randomUUID}from'node:crypto';import{join,extname,basename}from'node:path';import{mkdirSync,openSync,closeSync,fstatSync,readFileSync,writeFileSync,fsyncSync,renameSync,existsSync,realpathSync,unlinkSync,constants}from'node:fs';
 import{Upstreams}from'../adapters/upstream.js';import{TeamStore}from'./team-store.js';import{KTeamError,record,fields,text}from'../errors.js';import{harnessWorkspace}from'../runtime/harness.js';
 import{modelIdentity,sharedRuntime}from'../runtime/native.js';
@@ -6,6 +8,16 @@ const DOCUMENTS=new Set(['md','txt','csv','json','log','pdf','docx','pptx','xlsx
 export class ConversationService{
  constructor(private root:string,private upstream:Upstreams,private store:TeamStore){}
  async scope(roomId:string){if(!this.store.settings(roomId))throw new KTeamError('conversation_not_managed',403);const membership=await this.upstream.membership(roomId);if((membership.room as any)?.status!=='active'||!(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('team_scope_changed',403);return membership;}
+ async memory(value:unknown){
+  const input=record(value);fields(input,['roomId','botId','layer','offset']);const roomId=text(input.roomId,'room_id'),botId=text(input.botId,'bot_id'),layer=input.layer??1,offset=input.offset??0;
+  if(!Number.isInteger(layer)||Number(layer)<0||Number(layer)>3||!Number.isSafeInteger(offset)||Number(offset)<0||Number(offset)>100000)throw new KTeamError('integration_input_invalid');
+  const validate=(membership:any)=>{if(!membership.members.some((m:any)=>m.status==='active'&&m.subject?.kind==='agent'&&m.subject.logicalAgentId===botId))throw new KTeamError('memory_scope_forbidden',403);};validate(await this.scope(roomId));
+  const binding=this.store.binding(botId);if(!binding||binding.kind!=='xiaok-hosted')return {ok:true,backend:'external',stats:null,entries:[],hasMore:false};
+  const bots=await this.upstream.listBots(),bot=(bots.agents as any[]).find(b=>b.id===botId);if(!bot)throw new KTeamError('memory_scope_forbidden',403);
+  const cwd=harnessWorkspace(bot.kteamProfile?.workspace),directory=harnessSessionDirectory({root:this.root,botId,roomId,bindingRevision:binding.revision,fingerprint:binding.fingerprint,profileRevision:bot.kteamProfile?.revision??0},cwd);
+  validate(await this.scope(roomId));if(this.store.binding(botId)?.revision!==binding.revision)throw new KTeamError('model_binding_changed',409);
+  return readMemoryView(directory,Number(layer),Number(offset));
+ }
  async owner(roomId:string){const current=await this.scope(roomId);if(!(current.members as any[]).some(m=>m.status==='active'&&m.role==='owner'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('room_actor_forbidden',403);}
  libraryDirectory(roomId:string,create=false){const dir=join(this.root,'room-libraries',hash(roomId).slice(0,32));if(create)mkdirSync(dir,{recursive:true,mode:0o700});if(existsSync(dir)&&realpathSync(dir)!==dir)throw new KTeamError('library_path_invalid',403);return dir;}
  async data(roomId:string){await this.scope(roomId);return this.upstream.conversationData(roomId);}

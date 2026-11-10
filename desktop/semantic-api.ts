@@ -10,6 +10,7 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  toolPermissions:()=>call('/v1/app/tool-permissions'),revokeToolPermission:(input:unknown)=>call('/v1/app/tool-permissions/revoke',input),
  removeModel:(input:unknown)=>call('/v1/model-settings/remove',input),discoverModels:(input:unknown)=>call('/v1/model-settings/discover',input),
  importMcpServers:(input:unknown)=>call('/v1/app/integrations/import-mcp',input),
+ memoryView:(input:unknown)=>call('/v1/app/memory',input),
  integrationSettings:()=>call('/v1/app/integrations'),saveIntegrationSettings:(input:unknown)=>call('/v1/app/integrations',input),testIntegration:(input:unknown)=>call('/v1/app/integrations/test',input),importProviderModels:(input:unknown)=>call('/v1/model-settings/import-provider',input),transcribeAudio:(input:unknown)=>call('/v1/app/voice/transcribe',input),
  appPreferences:()=>call('/v1/app/preferences'),saveAppPreferences:(input:unknown)=>call('/v1/app/preferences',input),appResources:()=>call('/v1/app/resources'),
  decisionModels:()=>call('/v1/decision-models'),assistantState:()=>call('/v1/assistant/state'),setAssistantProactivity:(input:unknown)=>call('/v1/assistant/proactivity',input),

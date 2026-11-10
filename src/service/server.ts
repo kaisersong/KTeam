@@ -127,6 +127,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
         }
+        if(url.pathname==='/v1/app/memory'&&req.method==='POST')return send(res,200,await conversations.memory(await body(req)));
         if(url.pathname==='/v1/app/voice/transcribe'&&req.method==='POST')return send(res,200,await transcribeAudio(await body(req,12*1024*1024)));
         if(url.pathname==='/v1/app/tool-permissions'&&req.method==='GET')return send(res,200,{ok:true,permissions:approvals.permissions.list()});
         if(url.pathname==='/v1/app/tool-permissions/revoke'&&req.method==='POST')return send(res,200,approvals.permissions.revoke(await body(req)));

@@ -52,3 +52,10 @@ test('tool management affects production catalogs and registries, refuses disabl
   state=await f.settings.save({expectedRevision:state.revision,section:'tools',value:{disabled:[],descriptions:{}}});assert.deepEqual(state.settings.tools,{disabled:[],descriptions:{}});
  }finally{await owner?.close();f.close();}
 });
+
+test('memory connection check validates the saved embedding model and actual dimensions',async()=>{
+ const f=fixture();let dimensions=3,model='';const server=http.createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;model=JSON.parse(body).model;res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({data:[{embedding:Array(dimensions).fill(0.5)}]}));});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));try{
+  let state=await f.settings.view();state=await f.settings.save({expectedRevision:state.revision,section:'memory',value:{...integrationDefaults().memory,embedding:{provider:'api',model:'fixture-embedding',apiUrl:'http://127.0.0.1:'+(server.address() as any).port+'/v1',dimensions:3}}});
+  const report=await f.settings.test({expectedRevision:state.revision,kind:'memory'});assert.equal(report.dimensions,3);assert.equal(model,'fixture-embedding');dimensions=2;await assert.rejects(f.settings.test({expectedRevision:state.revision,kind:'memory'}),/memory_embedding_dimensions/);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));f.close();}
+});

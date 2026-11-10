@@ -7,6 +7,7 @@ export interface KTeamAPI {
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
  removeModel(input:any):Promise<any>;discoverModels(input:any):Promise<any>;
  importMcpServers(input:any):Promise<any>;computerAccess():Promise<any>;openComputerPermission(input:any):Promise<any>;
+ memoryView(input:any):Promise<any>;
  integrationSettings():Promise<any>;saveIntegrationSettings(input:any):Promise<any>;testIntegration(input:any):Promise<any>;importProviderModels(input:any):Promise<any>;voiceOptions():Promise<any>;previewVoice():Promise<any>;transcribeAudio(input:any):Promise<any>;
  appPreferences():Promise<any>;saveAppPreferences(input:any):Promise<any>;appResources():Promise<any>;openSettingsLocation(input:any):Promise<any>;
  reconnectServices():Promise<any>;modelSettings():Promise<any>;saveModel(input:any):Promise<any>;setCredentialStorage(input:any):Promise<any>;saveDecisionModels(input:any):Promise<any>;importXiaokModels(input:any):Promise<any>;
@@ -53,6 +54,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ memory_scope_forbidden:'此成员不在当前会话中，无法查看记忆',memory_embedding_dimensions:'向量服务返回的维度与配置不一致，请检查模型和维度',
  tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
  model_discovery_failed:'无法获取模型列表，请检查地址、密钥或手动填写模型 ID',model_provider_not_found:'服务商已被移除，请重新读取模型设置',model_not_found:'模型已被移除，请重新读取模型设置',

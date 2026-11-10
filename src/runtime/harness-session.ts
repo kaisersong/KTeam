@@ -7,13 +7,14 @@ import {KTeamError} from '../errors.js';
 export interface HarnessSessionScope {root:string;botId:string;roomId:string;bindingRevision:number;fingerprint:string;profileRevision:number}
 export interface HarnessRuntimeOwner {registry:any;session:any;memoryStore:any;promptSnapshot:any;system:string;persist:()=>Promise<void>;close:()=>Promise<void>;onEvent:(event:any)=>void;runOwned:<T>(work:()=>T)=>T;settleChildren:()=>Promise<any[]>;distill:(text:string)=>Promise<void>;spillDir:string}
 const key=(input:unknown)=>createHash('sha256').update(JSON.stringify(input)).digest('hex');
+export function harnessSessionDirectory(scope:HarnessSessionScope,cwd:string){return join(scope.root,'harness',key([scope.botId,scope.roomId,scope.bindingRevision,scope.fingerprint,cwd]));}
 // One host owner opens each scope once. Runtime history is private model state,
 // never a writable Room transcript or an authoritative project/task store.
 const opened=new Set<string>();
 export async function openHarnessSession(input:{core:any;integrations?:any;scope:HarnessSessionScope;cwd:string;adapter:any;model:string;system:string;query?:string;tools:any[];catalog:any;permissions:any;permissionManagerForCwd:any;onPrompt:any;onPromptForCwd:any;bindTool:(tool:any,cwd?:string)=>any;assertCurrent:()=>Promise<void>;onCloseFailure?:()=>void;processOwner?:any;onEvent?:(event:any)=>void}):Promise<HarnessRuntimeOwner>{
  const {core,scope,cwd}=input;
  const identity=key([scope.botId,scope.roomId,scope.bindingRevision,scope.fingerprint,cwd]);
- const directory=join(scope.root,'harness',identity);mkdirSync(directory,{recursive:true,mode:0o700});
+ const directory=harnessSessionDirectory(scope,cwd);mkdirSync(directory,{recursive:true,mode:0o700});
  if(realpathSync(directory)!==directory||lstatSync(directory).isSymbolicLink())throw new KTeamError('harness_storage_invalid');
  if(opened.has(directory))throw new KTeamError('harness_session_busy',409);opened.add(directory);
  let platform:any,factory:any,memory:any,session:any,store:any;

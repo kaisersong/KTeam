@@ -49,6 +49,7 @@ test('real host binds settings to KTeam client and semantic API; model failure l
   try{mkdirSync(process.env.KTEAM_MODEL_CONFIG_DIR);writeFileSync(join(process.env.KTEAM_MODEL_CONFIG_DIR,'config.json'),'{invalid');await assert.rejects(api.modelSettings());assert.equal((await api.appPreferences()).preferences.fontSize,16);}finally{if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;}
   assert.equal((await api.appPreferences()).preferences.revision,2);
   await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/integrations'),/app_settings_forbidden/);
+  await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/memory',{}),/app_settings_forbidden/);
   await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/integrations/import-mcp',{}),/app_settings_forbidden/);
   await assert.rejects(hostRequest(root,'xiaok-main','/v1/model-settings/discover',{}),/app_settings_forbidden/);
   await assert.rejects(hostRequest(root,'xiaok-main','/v1/model-settings/remove',{}),/app_settings_forbidden/);
