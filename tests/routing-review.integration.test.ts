@@ -6,6 +6,10 @@ import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamAutomation} from '../src/service/automation.js';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {sharedRuntime} from '../src/runtime/native.js';
+import {kimJudgment,systemOneChoice} from '../src/runtime/decision.js';
 
 const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture-model',fingerprint:'frozen'})};
 for(const scenario of ['resume','quiet','revoked','budget','invalid'] as const)test('System One silence is reviewed with real services: '+scenario,async()=>{
@@ -33,4 +37,15 @@ for(const scenario of ['resume','quiet','revoked','budget','invalid'] as const)t
   if(scenario==='revoked'||scenario==='budget'){assert.equal(job.state,'blocked');assert.equal(routerCalls,0);assert.equal(answerCalls,0);assert.equal(job.calls,1);assert.equal(messages.length,1);}
   if(scenario==='invalid'){assert.equal(job.reason,'routing_response_invalid');assert.equal(answerCalls,0);assert.equal(messages.length,1);}
  }finally{await automation?.close();store.close();await f.close();}
+});
+
+for(const enabled of [false,true])test('real group routing completes without a deployed K-IM service; enabled='+enabled,async()=>{
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),previous=process.env.KTEAM_MODEL_CONFIG_DIR,configDir=join(f.root,'config');mkdirSync(configDir);process.env.KTEAM_MODEL_CONFIG_DIR=configDir;
+ let automation:TeamAutomation|undefined;
+ try{const core=await sharedRuntime(),config=await core.loadConfig();delete config.systemOne;config.kimDecision={enabled,baseUrl:'http://127.0.0.1:1'};writeFileSync(join(configDir,'config.json'),JSON.stringify(config));
+  const member=await coordinator.createMember({name:'CTO',modelId:'fixture',requestId:randomUUID()},user),group=await coordinator.createGroup({title:'无KIM验证',memberAgentIds:[member.bot.id],requestId:randomUUID()},user),roomId=group.room.roomId;
+  const sent=await f.upstream.sendMessage(roomId,{text:'继续核对项目',kind:'text',threadId:'no-kim',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:randomUUID()});store.enqueue('no-kim',roomId,sent.message.messageId);
+  const turn:any=async(input:any)=>{await input.onRequest?.();return {text:input.maxIterations===1?JSON.stringify({members:[member.bot.id],reason:'按成员职责继续'}):'已核对当前项目事实。',model:'fixture',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};};
+  automation=new TeamAutomation(f.upstream,store,1,turn,coordinator,undefined,undefined,undefined,{choose:systemOneChoice,judge:kimJudgment});await automation.tick();const job=store.job('no-kim');assert.equal(job.state,'delivered',JSON.stringify(job));assert.equal(job.kim.state,enabled?'unavailable':'disabled');assert.equal(job.calls,2);assert.deepEqual(job.members,[member.bot.id]);assert.equal((await f.upstream.messages(roomId,0,100)).messages.filter((m:any)=>m.sender.kind==='agent').length,1);
+ }finally{await automation?.close();store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}
 });

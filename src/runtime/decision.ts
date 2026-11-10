@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {sharedRuntime} from './native.js';
 import {KTeamError} from '../errors.js';
 const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
+const kimRetryAfter=new Map<string,number>();
 export async function decisionModels(){const core=await sharedRuntime(),config=await core.loadConfig(),system=core.resolveSystemOneConfig(config),kim=await core.defaultKimDecisionRuntime.view();return {systemOne:{configured:system.configured,model:system.model,baseUrl:system.baseUrl},kim:{...kim,model:'Songkai/K-IM-Deiction'}};}
 /** Separate, explicitly configured product decision model. No tool is executed. */
 export async function systemOneChoice(input:{state:unknown;choices:{id:string;description:string}[];guard:()=>Promise<void>;signal:AbortSignal;onRequest:()=>void|Promise<void>}){
@@ -18,8 +19,19 @@ export async function systemOneChoice(input:{state:unknown;choices:{id:string;de
  await input.guard();if(digest(core.resolveSystemOneConfig(await core.loadConfig()))!==before)throw new KTeamError('decision_config_changed',409);if(!chosen)throw new KTeamError('decision_response_invalid');return {chosen,model:adapter.getModelName(),usage,provider:'system-one'};
 }
 export async function kimJudgment(input:{window:any;guard:()=>Promise<void>;signal:AbortSignal}){
- const core=await sharedRuntime(),runtime=core.defaultKimDecisionRuntime,lease=await runtime.begin();if(!lease.config.enabled)return {state:'disabled'};
  await input.guard();input.signal.throwIfAborted();
- try{const scores=await runtime.judge([input.window],input.signal,lease);await input.guard();return {state:'ready',model:'Songkai/K-IM-Deiction',scores:scores[0],at:Date.now()};}
- catch(error){input.signal.throwIfAborted();await input.guard();return {state:'unavailable',model:'Songkai/K-IM-Deiction',code:error instanceof Error&&/^kim_/.test(error.message)?error.message:'kim_unavailable'};}
+ let configKey:string|undefined;const deadline=AbortSignal.timeout(1000);
+ try{
+  const core=await sharedRuntime(),runtime=core.defaultKimDecisionRuntime,lease=await runtime.begin();await input.guard();input.signal.throwIfAborted();
+  configKey=digest(lease.config);
+  if(!lease.config.enabled){kimRetryAfter.clear();return {state:'disabled'};}
+  if((kimRetryAfter.get(configKey)??0)>Date.now())return {state:'unavailable',model:'Songkai/K-IM-Deiction',code:'kim_retry_deferred'};
+  const scores=await runtime.judge([input.window],AbortSignal.any([input.signal,deadline]),lease);await input.guard();input.signal.throwIfAborted();kimRetryAfter.delete(configKey);
+  return {state:'ready',model:'Songkai/K-IM-Deiction',scores:scores[0],at:Date.now()};
+ }catch(error){
+  input.signal.throwIfAborted();await input.guard();
+  const code=deadline.aborted?'kim_timeout':error instanceof Error&&/^kim_/.test(error.message)?error.message:'kim_unavailable';
+  if(configKey&&!['kim_busy','kim_config_changed'].includes(code)){if(kimRetryAfter.size>32)kimRetryAfter.clear();kimRetryAfter.set(configKey,Date.now()+30000);}
+  return {state:'unavailable',model:'Songkai/K-IM-Deiction',code};
+ }
 }

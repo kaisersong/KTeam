@@ -59,3 +59,5 @@
 .work-recovery{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;line-height:1.5}.work-recovery p{margin:0}.work-recovery small{color:var(--text-secondary);max-width:60ch}.conversation-note:has(.work-recovery){align-items:flex-start;flex-wrap:wrap}.work-recovery .secondary{flex-shrink:0;white-space:normal}
 
 .composer-column>.conversation-note{margin:0 0 12px}.composer-column>.conversation-note>.work-recovery{flex:1}
+
+.team-roles label{display:flex;flex-direction:column;gap:8px;font-size:12px}.team-roles select{width:100%;min-height:36px}.team-roles dl{display:flex;flex-direction:column;gap:10px}.team-roles dl>div{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px}.team-roles dd{margin:0;overflow-wrap:anywhere}

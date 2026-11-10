@@ -1,5 +1,6 @@
 import {ensureSharedServices} from '../runtime/services.js';
 import {WorkRecovery} from './work-recovery.js';
+import {TeamRoles} from './team-roles.js';
 import {loadConfig} from './config.js';
 import {transcribeAudio} from './voice.js';
 import {IntegrationSettings} from './integration-settings.js';
@@ -74,7 +75,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const approvals=new ToolApprovals(teamStore);
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
-  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment});
+  const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
+  const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
   const links=new AgentLinks(upstream,teamStore,coordinator);
@@ -195,6 +197,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
+      const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
+      if(rolesRoute){const roomId=decodeURIComponent(rolesRoute[1]!);if(req.method==='GET')return send(res,200,await teamRoles.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);const input=record(await body(req));if(input.action==='ensure'){fields(input,['action','force']);if(input.force!==undefined&&typeof input.force!=='boolean')throw new KTeamError('invalid_input');return send(res,202,await teamRoles.start(roomId,input.force===true));}if(input.action==='assign'){delete input.action;return send(res,200,await teamRoles.assign(roomId,input));}throw new KTeamError('invalid_input');}}
       const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
@@ -267,7 +271,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     close() {
       if (!closePromise) closePromise = (async () => {
         links.close();approvals.close();
-        await Promise.all([builtinAgent.close(),localAgents.close(),automation.close()]);
+        await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         teamStore.close();
         owner.release();

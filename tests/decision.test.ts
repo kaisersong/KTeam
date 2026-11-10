@@ -5,6 +5,7 @@ import {join,resolve} from 'node:path';
 import {createServer} from 'node:http';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {systemOneChoice,kimJudgment,decisionModels} from '../src/runtime/decision.js';
+import {ModelSettings} from '../src/service/model-settings.js';
 async function fixture(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/xiaok-runtime.mjs');const root=realpathSync(mkdtempSync('/tmp/kteam-decision-')),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;const core=await sharedRuntime();const config=await core.loadConfig();const write=()=>writeFileSync(join(root,'config.json'),JSON.stringify(config));return {root,config,write,close(){if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}};}
 test('configured original System One is a decision-only endpoint, validates choices, and checks source before sending',async()=>{
  const f=await fixture();let requests=0,chosen='pick';const bodies:any[]=[];const server=createServer(async(req,res)=>{requests++;let body='';for await(const c of req)body+=c;bodies.push(JSON.parse(body));assert.equal(req.url,'/v1/systemone');res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({model:'fixture-system-one',answers:{next:{type:'choice',choice:chosen}},usage:{input_tokens:3,output_tokens:1}}));});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
@@ -18,4 +19,24 @@ test('original K-IM runs only against its configured loopback and reports an una
  const server=createServer(async(req,res)=>{requests++;let body='';for await(const c of req)body+=c;assert.equal(req.url,'/decide_batch');assert.match(JSON.parse(body).texts[0],/S0001/);res.writeHead(fail?500:200,{'content-type':'application/json'});res.end(JSON.stringify({results:[score]}));});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
  try{f.config.kimDecision={enabled:true,baseUrl:'http://127.0.0.1:'+(server.address() as any).port,attentionThreshold:0.65};f.write();const input={window:{group:'fixture',target:{sender:'synthetic-person',text:'请核对交付'}},guard:async()=>{},signal:AbortSignal.timeout(5000)};const result=await kimJudgment(input);assert.equal(result.state,'ready');assert.equal(result.scores.needs_attention,0.9);fail=true;assert.equal((await kimJudgment(input)).state,'unavailable');assert.equal(requests,2);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));f.close();}
+});
+
+test('K-IM is disabled by default, needs no service URL when disabled, and invalid optional config cannot block routing',async()=>{
+ const f=await fixture();let requests=0;const server=createServer((_req,res)=>{requests++;res.end('{}');});await new Promise<void>(done=>server.listen(0,'127.0.0.1',done));
+ const input={window:{group:'fixture',target:{sender:'synthetic-person',text:'继续推进'}},guard:async()=>{},signal:AbortSignal.timeout(5000)};
+ try{delete f.config.kimDecision;f.write();assert.equal((await kimJudgment(input)).state,'disabled');
+  f.config.kimDecision={enabled:false,baseUrl:'http://127.0.0.1:'+(server.address() as any).port};f.write();assert.equal((await kimJudgment(input)).state,'disabled');assert.equal(requests,0);
+  const settings=new ModelSettings(),view=await settings.view();await settings.decision({expectedRevision:view.revision,systemOne:{enabled:false},kim:{enabled:false}});assert.equal((await kimJudgment(input)).state,'disabled');
+  f.config.kimDecision={enabled:true,baseUrl:'https://not-a-loopback.test'};f.write();assert.equal((await kimJudgment(input)).state,'unavailable');assert.equal(requests,0);
+ }finally{server.closeAllConnections();await new Promise<void>(done=>server.close(()=>done()));f.close();}
+});
+
+test('a hung optional K-IM call is bounded, deferred on later messages, and never swallows cancellation or revoked access',async()=>{
+ const f=await fixture();let requests=0;const server=createServer(req=>{requests++;req.resume();});await new Promise<void>(done=>server.listen(0,'127.0.0.1',done));
+ try{f.config.kimDecision={enabled:true,baseUrl:'http://127.0.0.1:'+(server.address() as any).port};f.write();const input={window:{group:'fixture',target:{sender:'synthetic-person',text:'核对进度'}},guard:async()=>{},signal:AbortSignal.timeout(8000)};
+  const start=Date.now(),result=await kimJudgment(input);assert.equal(result.state,'unavailable');assert.equal(result.code,'kim_timeout');assert.ok(Date.now()-start<5000);assert.equal(requests,1);
+  assert.equal((await kimJudgment(input)).code,'kim_retry_deferred');assert.equal(requests,1);
+  const cancelled=new AbortController();cancelled.abort(Error('user_cancelled'));await assert.rejects(kimJudgment({...input,signal:cancelled.signal}),/user_cancelled/);
+  await assert.rejects(kimJudgment({...input,guard:async()=>{throw Error('scope_revoked');}}),/scope_revoked/);
+ }finally{server.closeAllConnections();await new Promise<void>(done=>server.close(()=>done()));f.close();}
 });
