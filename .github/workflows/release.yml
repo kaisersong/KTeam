@@ -14,31 +14,110 @@ concurrency:
   group: desktop-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
-  desktop:
+  create-release:
     permissions:
       contents: write
-    runs-on: macos-15
-    timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: kteam
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      sha: ${{ steps.identity.outputs.sha }}
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - name: Validate release tag and record identity
+        id: identity
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const tag = process.env.RELEASE_TAG;
+          if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) throw new Error('release_tag_invalid');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (tag !== `v${pkg.version}`) {
+            if (!tag.includes('-')) throw new Error('release_tag_version_mismatch');
+            console.log(`Prerelease/test tag ${tag} allowed (package version ${pkg.version})`);
+          }
+          const sha = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+          if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('release_sha_unconfirmed');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\nsha=${sha}\n`);
+          JS
+      - name: Create draft GitHub Release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .artifacts
+          cat > .artifacts/release-notes.md <<'NOTES'
+          KTeam 桌面安装包（草稿，待验收后手动发布）。
+
+          - macOS Apple Silicon：Developer ID 签名，已公证并装订；提供 dmg 与 zip（zip 供自动更新使用）。
+          - Windows x64：NSIS 安装包（当前未签名），附带 latest.yml 与 blockmap。
+          - 自动更新只认 KTeam 自己的 GitHub Releases（kaisersong/KTeam）。
+          - 本工作流只创建或更新草稿，不会自动正式发布。质量书面通过后，由发布负责人执行：
+            `gh release edit <tag> --draft=false [--prerelease | --latest] --notes-file <final notes>`
+
+          当前未提供 Intel Mac 或 Linux 安装包。SHA256SUMS 用于校验安装包与更新元数据。
+          NOTES
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > .artifacts/existing-draft.txt 2>/dev/null; then
+            test "$(cat .artifacts/existing-draft.txt)" = true || { echo 'Refusing to replace a published release'; exit 1; }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md --latest=false
+          fi
+          echo "Draft $RELEASE_TAG ready; platform jobs will upload artifacts."
+
+  build-mac:
+    needs: create-release
+    permissions:
+      contents: write
+    runs-on: macos-15
+    timeout-minutes: 240
+    defaults:
+      run:
+        working-directory: kteam
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
+      RELEASE_SHA: ${{ needs.create-release.outputs.sha }}
+    steps:
+      - name: Check macOS signing secrets
+        working-directory: .
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          missing=()
+          for name in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_TEAM_ID APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_API_KEY_P8_BASE64; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            printf 'Missing macOS signing secret(s): %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.sha }}
           path: kteam
           persist-credentials: false
-      - name: Validate release identity and source pins
+      - name: Read sidecar source pins
         id: pins
         run: |
           node --input-type=module <<'JS'
           import fs from 'node:fs';
-          const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
-          if(!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(process.env.RELEASE_TAG)||process.env.RELEASE_TAG!=='v'+pkg.version)throw Error('release_tag_version_mismatch');
-          const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
-          for(const source of lock.sources.filter(s=>['kswarm','intent-broker'].includes(s.name)))fs.appendFileSync(process.env.GITHUB_OUTPUT,source.name.replaceAll('-','_')+'='+source.revision+'\n');
+          const lock = JSON.parse(fs.readFileSync('sources.lock.json', 'utf8'));
+          for (const source of lock.sources.filter((s) => ['kswarm', 'intent-broker'].includes(s.name))) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-', '_') + '=' + source.revision + '\n');
+          }
           JS
       - uses: actions/checkout@v4
         with:
@@ -58,54 +137,352 @@ jobs:
           cache: npm
           cache-dependency-path: kteam/package-lock.json
       - run: npm ci
-      - name: Build desktop and verify original assets
-        run: npm run build:desktop
-      - name: Package and sign from an isolated working directory
+      - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
+        run: node node_modules/electron/install.js
+      - run: npm run build:desktop
+      - name: Write Apple notarization API key
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          key_id = os.environ["APPLE_API_KEY_ID"]
+          key_path = Path(os.environ["RUNNER_TEMP"]) / f"AuthKey_{key_id}.p8"
+          key_path.write_bytes(base64.b64decode(os.environ["APPLE_API_KEY_P8_BASE64"]))
+          key_path.chmod(0o600)
+          PY
+      - name: Import macOS signing certificate
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          cert_path="$RUNNER_TEMP/kteam-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/kteam-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          cert_path = Path(os.environ["RUNNER_TEMP"]) / "kteam-developer-id.p12"
+          cert_path.write_bytes(base64.b64decode(os.environ["MACOS_CERTIFICATE_P12_BASE64"]))
+          PY
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$cert_path" -k "$keychain_path" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain_path"
+          rm -f "$cert_path"
+
+          echo "MACOS_SIGNING_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
+      - name: Package signed macOS app
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           # osx-sign discovers provisioning profiles by stat-ing cwd entries.
-          # Private docs remain a symlink; signing must not traverse that workspace.
+          # Signing must not traverse an unrelated workspace symlink.
           mkdir -p .artifacts/signing-cwd
+          root="$PWD"
           cd .artifacts/signing-cwd
-          CSC_IDENTITY_AUTO_DISCOVERY=false node ../../node_modules/electron-builder/out/cli/cli.js --projectDir ../.. --config electron-builder.yml --mac dir --arm64 --publish never
-          cd ../..
-          node scripts/verify-desktop-signature.mjs
-      - name: Package clean versioned download and checksums
-        run: node scripts/package-release.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: kteam-mac-arm64
-          path: |
-            kteam/release/KTeam-*-mac-arm64.zip
-            kteam/release/KTeam-*-mac-arm64-build.json
-            kteam/release/SHA256SUMS
-          if-no-files-found: error
-          retention-days: 14
-      - name: Verify downloadable artifacts
-        run: cd release && shasum -a 256 --check SHA256SUMS
-      - name: Publish versioned preview
+          # codesign runs from this cwd, so entitlements must be absolute paths.
+          node "$root/node_modules/electron-builder/out/cli/cli.js" --projectDir "$root" --config electron-builder.yml --mac dir --arm64 --publish never -c.mac.forceCodeSigning=true -c.mac.notarize=false \
+            -c.mac.entitlements="$root/desktop/assets/entitlements.mac.plist" \
+            -c.mac.entitlementsInherit="$root/desktop/assets/entitlements.mac.inherit.plist"
+      - name: Notarize macOS app
+        timeout-minutes: 135
+        env:
+          APPLE_API_KEY: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          NOTARY_ARCHIVE_KEY: ${{ needs.create-release.outputs.sha }}
+          NOTARY_TIMEOUT_SECONDS: "7200"
+          NOTARY_POLL_INTERVAL_SECONDS: "30"
+          NOTARY_REUSE_IN_PROGRESS: "true"
+          NOTARY_REUSE_WINDOW_SECONDS: "7200"
+        run: bash --noprofile --norc -euo pipefail scripts/notarize-macos.sh release/mac-arm64/KTeam.app
+      - name: Package macOS dmg and zip
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          node node_modules/electron-builder/out/cli/cli.js --config electron-builder.yml --mac dmg zip --arm64 --publish never --prepackaged release/mac-arm64/KTeam.app -c.mac.notarize=false
+      - name: Sign, notarize and staple the dmg
+        timeout-minutes: 135
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          NOTARY_ARCHIVE_KEY: ${{ needs.create-release.outputs.sha }}
+          NOTARY_TIMEOUT_SECONDS: "7200"
+          NOTARY_POLL_INTERVAL_SECONDS: "30"
+          NOTARY_REUSE_IN_PROGRESS: "true"
+          NOTARY_REUSE_WINDOW_SECONDS: "7200"
+        run: |
+          shopt -s nullglob
+          dmgs=(release/KTeam-*-arm64-mac.dmg)
+          if (( ${#dmgs[@]} != 1 )); then
+            echo "Expected exactly one arm64 mac dmg, found: ${dmgs[*]:-none}" >&2
+            exit 1
+          fi
+          dmg="${dmgs[0]}"
+          identity="$(security find-identity -v -p codesigning "$MACOS_SIGNING_KEYCHAIN" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          if [[ -z "$identity" ]]; then
+            echo "Developer ID Application identity not found in the signing keychain" >&2
+            exit 1
+          fi
+          codesign --force --sign "$identity" --timestamp "$dmg"
+          bash --noprofile --norc -euo pipefail scripts/notarize-macos.sh "$dmg"
+      - name: Verify macOS signature and notarization
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          app_path="release/mac-arm64/KTeam.app"
+          shopt -s nullglob
+          dmgs=(release/KTeam-*-arm64-mac.dmg)
+          if (( ${#dmgs[@]} != 1 )); then
+            echo "Expected exactly one arm64 mac dmg, found: ${dmgs[*]:-none}" >&2
+            exit 1
+          fi
+          dmg="${dmgs[0]}"
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign -dv --verbose=4 "$app_path" 2>&1 | tee "$RUNNER_TEMP/kteam-app-codesign.txt"
+          grep "TeamIdentifier=${APPLE_TEAM_ID}" "$RUNNER_TEMP/kteam-app-codesign.txt"
+          if grep -q "Signature=adhoc\|flags=0x2(adhoc)" "$RUNNER_TEMP/kteam-app-codesign.txt"; then
+            echo "App is still ad-hoc signed; Developer ID signature is required" >&2
+            exit 1
+          fi
+          xcrun stapler validate "$app_path"
+
+          codesign --verify --verbose=2 "$dmg"
+          codesign -dv --verbose=4 "$dmg" 2>&1 | tee "$RUNNER_TEMP/kteam-dmg-codesign.txt"
+          grep "TeamIdentifier=${APPLE_TEAM_ID}" "$RUNNER_TEMP/kteam-dmg-codesign.txt"
+          xcrun stapler validate "$dmg"
+          spctl -a -vv -t install "$dmg"
+      - name: Refresh latest-mac.yml after stapling
+        # electron-builder writes latest-mac.yml before the dmg is signed and
+        # stapled, so the dmg entry's sha512/size are stale. Recompute every
+        # entry from the final files and drop the now-stale dmg blockmap.
+        run: |
+          set -euo pipefail
+          rm -f release/KTeam-*-arm64-mac.dmg.blockmap
+          node - <<'JS'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const crypto = require("node:crypto");
+          const yaml = require("js-yaml");
+          const ymlPath = path.join("release", "latest-mac.yml");
+          const doc = yaml.load(fs.readFileSync(ymlPath, "utf8"));
+          const digest = (file) => crypto.createHash("sha512").update(fs.readFileSync(file)).digest("base64");
+          if (!Array.isArray(doc.files) || doc.files.length === 0) throw new Error("latest-mac.yml has no files");
+          for (const entry of doc.files) {
+            const file = path.join("release", entry.url);
+            if (!fs.existsSync(file)) throw new Error(`latest-mac.yml references missing file ${entry.url}`);
+            const sha512 = digest(file);
+            const size = fs.statSync(file).size;
+            if (entry.sha512 === sha512 && entry.size === size) continue;
+            if (!entry.url.endsWith(".dmg")) {
+              // The zip and its blockmap drive auto-update; they must already match.
+              throw new Error(`${entry.url} changed after latest-mac.yml was written`);
+            }
+            console.log(`refresh ${entry.url}: size ${entry.size} -> ${size}`);
+            entry.sha512 = sha512;
+            entry.size = size;
+            delete entry.blockMapSize;
+          }
+          const primary = doc.files.find((entry) => entry.url === doc.path);
+          if (!primary) throw new Error(`latest-mac.yml path ${doc.path} is not in files`);
+          if (!doc.path.endsWith(".zip")) throw new Error(`latest-mac.yml path must be the zip, got ${doc.path}`);
+          doc.sha512 = primary.sha512;
+          fs.writeFileSync(ymlPath, yaml.dump(doc, { lineWidth: -1 }));
+          JS
+          cat release/latest-mac.yml
+      - name: Upload macOS artifacts to draft release
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > .artifacts/release-notes.md <<'NOTES'
-          KTeam 多 Bot 协作桌面预览版（macOS Apple Silicon）。
-
-          - 无需安装小K：内置固定版本 KSwarm 和 intent-broker，旧安装保留原数据库与消息。
-          - 模型和凭据独立配置，默认私有文件；仅主动选择时使用 KTeam 自己的 Mac 钥匙串。
-          - 可显式导入小K模型，来源配置不变；后台缺失时读请求可恢复连接，未知写入不会自动重放。
-          - 小K保持正面与轻微转头；保留会话置顶、四人组合头像、成员往来摘要和详情。
-
-          下载 ZIP 并解压，将 KTeam.app 拖入“应用程序”。本版为 ad-hoc 签名，尚未 Apple 公证；系统阻止首次打开时，在“系统设置 → 隐私与安全性”核对来源后允许打开。首次使用请在 KTeam 中配置模型，或显式导入现有模型。当前未提供 Intel Mac、Windows 或 Linux 安装包。
-
-          SHA256SUMS 可校验安装包与构建信息；完整 harness 等量迁移的剩余差异见仓库说明。
-          NOTES
-          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > .artifacts/existing-draft.txt 2>/dev/null; then
-            test "$(cat .artifacts/existing-draft.txt)" = true || { echo 'Refusing to replace a published release'; exit 1; }
-          else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "KTeam $RELEASE_TAG" --notes-file .artifacts/release-notes.md
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          release = Path("release")
+          listing = "\n".join(sorted(p.name for p in release.iterdir())) if release.exists() else "(missing release dir)"
+          required = {
+              "dmg": list(release.glob("KTeam-*-arm64-mac.dmg")),
+              "zip": list(release.glob("KTeam-*-arm64-mac.zip")),
+              "latest-mac.yml": list(release.glob("latest-mac.yml")),
+          }
+          missing = [name for name, files in required.items() if len(files) != 1]
+          if missing:
+              raise SystemExit(f"Required mac artifacts missing or duplicated: {missing}\n{listing}")
+          Path(".artifacts").mkdir(parents=True, exist_ok=True)
+          uploads = [required["dmg"][0], required["zip"][0], required["latest-mac.yml"][0], *sorted(release.glob("KTeam-*-arm64-mac*.blockmap"))]
+          Path(".artifacts/mac-upload.txt").write_text("\n".join(str(p) for p in uploads) + "\n")
+          PY
+          gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          uploads=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -z "$line" ]] && continue
+            uploads+=("$line")
+          done < .artifacts/mac-upload.txt
+          gh release upload "$RELEASE_TAG" "${uploads[@]}" --clobber
+      - name: Clean up signing material
+        if: always()
+        working-directory: .
+        run: |
+          set +e
+          if [[ -n "${MACOS_SIGNING_KEYCHAIN:-}" && -f "$MACOS_SIGNING_KEYCHAIN" ]]; then
+            security delete-keychain "$MACOS_SIGNING_KEYCHAIN"
           fi
-          gh release upload "$RELEASE_TAG" release/KTeam-*-mac-arm64.zip release/KTeam-*-mac-arm64-build.json release/SHA256SUMS --clobber
-          # Stay a draft: QA verifies the uploaded files against the CI artifact (hashes + install smoke)
-          # and the release owner publishes manually after the written pass:
-          #   gh release edit <tag> --draft=false [--prerelease | --latest] --notes-file <final notes>
-          echo "Draft $RELEASE_TAG uploaded; waiting for QA written pass before publishing."
+          rm -f "$RUNNER_TEMP/kteam-developer-id.p12"
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+          if [[ -f "$HOME/Library/Keychains/login.keychain-db" ]]; then
+            security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
+          fi
+
+  build-windows:
+    needs: create-release
+    permissions:
+      contents: write
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: kteam
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
+      RELEASE_SHA: ${{ needs.create-release.outputs.sha }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.sha }}
+          path: kteam
+          persist-credentials: false
+      - name: Read sidecar source pins
+        id: pins
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const lock = JSON.parse(fs.readFileSync('sources.lock.json', 'utf8'));
+          for (const source of lock.sources.filter((s) => ['kswarm', 'intent-broker'].includes(s.name))) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-', '_') + '=' + source.revision + '\n');
+          }
+          JS
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kswarm
+          ref: ${{ steps.pins.outputs.kswarm }}
+          path: kswarm
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/intent-broker
+          ref: ${{ steps.pins.outputs.intent_broker }}
+          path: intent-broker
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: kteam/package-lock.json
+      - run: npm ci
+      - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
+        run: node node_modules/electron/install.js
+      - run: npm run build:desktop
+      - name: Package unsigned Windows NSIS installer
+        run: node node_modules/electron-builder/out/cli/cli.js --config electron-builder.yml --win nsis --x64 --publish never
+      - name: Upload Windows artifacts to draft release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          release = Path("release")
+          listing = "\n".join(sorted(p.name for p in release.iterdir())) if release.exists() else "(missing release dir)"
+          required = {
+              "exe": [p for p in release.glob("KTeam-setup-*.exe") if not p.name.endswith(".blockmap")],
+              "latest.yml": list(release.glob("latest.yml")),
+          }
+          missing = [name for name, files in required.items() if len(files) != 1]
+          if missing:
+              raise SystemExit(f"Required Windows artifacts missing or duplicated: {missing}\n{listing}")
+          Path(".artifacts").mkdir(parents=True, exist_ok=True)
+          uploads = [required["exe"][0], required["latest.yml"][0], *sorted(release.glob("KTeam-setup-*.exe.blockmap"))]
+          Path(".artifacts/windows-upload.txt").write_text("\n".join(str(p) for p in uploads) + "\n")
+          PY
+          gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          uploads=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -z "$line" ]] && continue
+            uploads+=("$line")
+          done < .artifacts/windows-upload.txt
+          gh release upload "$RELEASE_TAG" "${uploads[@]}" --clobber
+
+  finalize-release:
+    needs: [create-release, build-mac, build-windows]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Write SHA256SUMS and confirm the release stays a draft
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          gh release download "$RELEASE_TAG" --dir "$work"
+          python3 - "$work" <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          names = sorted(p.name for p in root.iterdir() if p.is_file() and p.name != "SHA256SUMS")
+          required_exact = {"latest-mac.yml", "latest.yml"}
+          missing_exact = sorted(required_exact - set(names))
+          has_dmg = any(name.endswith(".dmg") for name in names)
+          has_zip = any(name.endswith("-mac.zip") for name in names)
+          has_exe = any(name.endswith(".exe") and not name.endswith(".blockmap") for name in names)
+          has_blockmap = any(name.endswith(".blockmap") for name in names)
+          problems = []
+          if missing_exact:
+              problems.append("missing " + ", ".join(missing_exact))
+          if not has_dmg:
+              problems.append("missing dmg")
+          if not has_zip:
+              problems.append("missing mac zip")
+          if not has_exe:
+              problems.append("missing NSIS exe")
+          if not has_blockmap:
+              problems.append("missing blockmap")
+          if problems:
+              raise SystemExit("Draft assets incomplete: " + "; ".join(problems) + "\n" + "\n".join(names))
+          lines = []
+          for name in names:
+              digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+              lines.append(f"{digest}  {name}")
+          (root / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("\n".join(lines))
+          PY
+          gh release upload "$RELEASE_TAG" "$work/SHA256SUMS" --clobber
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = true
+          echo "Draft $RELEASE_TAG uploaded with SHA256SUMS; waiting for QA written pass before publishing."
