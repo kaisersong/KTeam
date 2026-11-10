@@ -19,7 +19,7 @@ export interface BundledYzjCli {
 
 export function getYzjCliLaunchArgs(cli: BundledYzjCli, packageRoot?: string): string[] {
   const resources = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? process.env.KTEAM_DESKTOP_RESOURCES;
-  const here = dirname(fileURLToPath(import.meta.url));
+  const here = dirname(typeof __filename==='string'?__filename:fileURLToPath(import.meta.url));
   const candidates = [
     ...(resources ? [join(resources, 'yzj-cli', 'runner.cjs')] : []),
     ...['../..', '../../..', '../../../../..'].map(up => resolve(here, up, 'desktop', 'yzj-cli', 'runner.cjs')),
@@ -124,4 +124,4 @@ export function configureBundledYzjCli(options: YzjCliOptions & {
   }
 }
 
-export function bundledYzjPackageRoot():string{const resources=(process as NodeJS.Process&{resourcesPath?:string}).resourcesPath??process.env.KTEAM_DESKTOP_RESOURCES;const bundled=resources?join(resources,'yzj-cli','package'):undefined;return bundled&&existsSync(join(bundled,'package.json'))?bundled:dirname(createRequire(import.meta.url).resolve('@yunzhijia/cli/package.json'));}
+export function bundledYzjPackageRoot():string{const resources=(process as NodeJS.Process&{resourcesPath?:string}).resourcesPath??process.env.KTEAM_DESKTOP_RESOURCES;const bundled=resources?join(resources,'yzj-cli','package'):undefined;return bundled&&existsSync(join(bundled,'package.json'))?bundled:dirname(createRequire(typeof __filename==='string'?__filename:import.meta.url).resolve('@yunzhijia/cli/package.json'));}
