@@ -24,19 +24,19 @@ test('ordinary project inspection and document writing run through the productio
   const h=await createHarness({scope:{root:f.state,botId:'synthetic-bot',roomId:'synthetic-room',bindingRevision:1,fingerprint:'synthetic',profileRevision:1},workspace:f.cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>{prompts++;return false;},onTool:e=>{store.recordToolEvent(job,e);store.save(job);}});
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','Only actual results',[]);
   await owner.runOwned(async()=>{
-   const result=await owner.registry.executeTool('bash',{command:'cd "'+f.cwd+'" && pwd && ls && echo "--- git ---" && git log -8 --oneline && git status -sb | head -30',workdir:f.root,timeout_ms:5000});assert.match(result,/project with spaces/);assert.match(result,/seed/);
-   const body='DOCUMENT_BODY_PRIVATE_83\n'.repeat(200);
+   const result=await owner.registry.executeTool('bash',{command:'cd "'+f.cwd+'" && pwd -P && ls && echo "--- git ---" && git log -8 --date=short --pretty=\'%h %ad %s\' && git status -sb | head -30',workdir:f.root,timeout_ms:5000});assert.match(result,/project with spaces/);assert.match(result,/seed/);
+   const body='DOCUMENT_BODY_PRIVATE_83\n'.repeat(2000);
    assert.match(await owner.registry.executeTool('write',{file_path:'assessment.md',content:body}),/已写入/);
    assert.match(await owner.registry.executeTool('edit',{file_path:'assessment.md',old_string:body,new_string:body+'updated'}),/已编辑/);
    assert.equal(readFileSync(join(f.cwd,'assessment.md'),'utf8'),body+'updated');assert.equal(prompts,0);
   });
-  const persisted=JSON.stringify(store.job(job.id));assert.doesNotMatch(persisted,/DOCUMENT_BODY_PRIVATE_83|--- git ---/);assert.ok(job.toolTrace.length<=12);assert.ok(!job.toolTrace.some((e:any)=>e.result));
+  const persisted=JSON.stringify(store.job(job.id));assert.doesNotMatch(persisted,/DOCUMENT_BODY_PRIVATE_83|--- git ---/);assert.ok(job.toolTrace.length<=12);assert.ok(!job.toolTrace.some((e:any)=>e.result));assert.ok(job.toolTrace.some((e:any)=>e.name==='write'&&e.input?.includes('assessment.md')&&JSON.parse(e.input).characters>20000));
   const logs=readdirSync(join(f.state,'execution-logs')).map(n=>readFileSync(join(f.state,'execution-logs',n),'utf8')).join('');assert.match(logs,/git log/);assert.doesNotMatch(logs,/DOCUMENT_BODY_PRIVATE_83/);assert.match(logs,/characters/);
  }finally{await owner?.close();store.close();f.close();}
 });
 test('routine admission does not include writes disguised as inspection, sensitive paths, or documents escaping through a symlink',async()=>{
  const f=await fixture();try{
-  for(const command of ['ls && rm note.md','git push origin main','git -c core.pager=sh log','echo $(touch proof)','cat .env','cat .e*','sort -oresult input','sort --compress-program=sh','find . -exec sh {} ;','find . -fprint proof','uniq input output','cat '+join(f.state,'service.token')])assert.equal(routineReadCommand(f.core,{command,workdir:f.cwd},f.state),false,command);
+  for(const command of ['ls && rm note.md','git push origin main','git -c core.pager=sh log','git log --format=%s --output=proof','git log --date=short; touch proof','echo $(touch proof)','cat .env','cat .e*','sort -oresult input','sort --compress-program=sh','find . -exec sh {} ;','find . -fprint proof','uniq input output','cat '+join(f.state,'service.token')])assert.equal(routineReadCommand(f.core,{command,workdir:f.cwd},f.state),false,command);
   assert.equal(routineReadCommand(f.core,{command:'find src -maxdepth 2 -type d | sort && find src -name "*.ts" -o -name "*.tsx" | wc -l',workdir:f.cwd},f.state),true);
   const outside=join(f.root,'outside');mkdirSync(outside);symlinkSync(outside,join(f.cwd,'escape'));
   assert.equal(routineDocument('write',{file_path:join(f.cwd,'escape','new.md')},f.cwd),false);

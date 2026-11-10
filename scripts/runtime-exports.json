@@ -156,7 +156,8 @@
   ],
   "src/ai/permissions/policy-engine.ts": [
     "requiresAlwaysCommandConfirmation",
-    "parseCommandSegments"
+    "parseCommandSegments",
+    "shellWords"
   ],
   "src/ai/permissions/sensitive-paths.ts": [
     "isSensitiveToolInvocation"
