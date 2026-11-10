@@ -1,3 +1,4 @@
+import {configureConnectorClis} from './connector-clis.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {homedir,hostname} from 'node:os';
@@ -17,6 +18,7 @@ const expand=(value:string,cwd:string)=>resolve(cwd,value==='~'?homedir():value.
 export interface HarnessContext {permissions?:{store:ToolPermissions;botId:string;bindingRevision?:number};disabledSkills?:string[];assertSkillsCurrent?:()=>void;scope?:HarnessSessionScope;onCloseFailure?:()=>void;onPrepared?:(facts:any)=>void;workspace?:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>;onTool?:(event:any)=>void;onProcess?:(process:any)=>void|Promise<void>}
 /** Original first-party tool implementations and permission rules; KTeam binds actor, cwd and lifecycle. */
 export async function createHarness(input:HarnessContext){
+ configureConnectorClis();
  const integrations=await readIntegrations(),settingsRevision=await runtimeIntegrationRevision();
  const core=await sharedRuntime(),webRegistry=new core.ConnectorRegistry(integrations.web),cwd=harnessWorkspace(input.workspace),settings=await core.loadSettings(cwd),rules=core.mergeRules(settings);
  const normalize=(name:string,raw:Record<string,unknown>,base=cwd)=>{const args={...raw};if(name==='install_skill'&&typeof args.source==='string')args.source=args.source.trim();if(name==='render_ui'&&typeof args.output_path==='string')args.output_path=args.output_path.trim();if(['read','write','edit'].includes(name)&&typeof args.file_path==='string')args.file_path=expand(args.file_path,base);if(['glob','grep'].includes(name))args.path=expand(typeof args.path==='string'?args.path:'.',base);if(name==='bash')args.workdir=expand(typeof args.workdir==='string'?args.workdir:'.',base);return args;};
