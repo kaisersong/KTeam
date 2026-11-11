@@ -111,6 +111,10 @@
     {
       "file": "docs/design/desktop/durable-work-questions-20261111.md",
       "sha256": "64743fe3d412934ae5aaf4c2b8e3193049b8aad08fb2592558b640cf7f726402"
+    },
+    {
+      "file": "docs/design/desktop/portable-team-recipes-20261111.md",
+      "sha256": "3f86fd84891b2b65a0e5bb424a8677e6bf65d28461c8637eb056b365dc813697"
     }
   ],
   "productBaseline": {
@@ -120,7 +124,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "1f323495856ca1731bb1ea4c76d24dacf32bd736",
+    "revision": "dff76774ce399de883e223ee8c94dd25eb96f33a",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

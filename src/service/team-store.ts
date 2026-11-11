@@ -47,6 +47,7 @@ export class TeamStore {
  notificationAttempts():any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'desktop-notification:*' ORDER BY json_extract(value_json,'$.claimedAt') DESC LIMIT 20").all().map(row=>JSON.parse(String(row.value_json)));}
  notificationAttemptCount(since:number,kind?:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'desktop-notification:*' AND json_extract(value_json,'$.claimedAt')>? AND (? IS NULL OR json_extract(value_json,'$.kind')=?)").get(since,kind??null,kind??null)?.n??0);}
  operationsWithPrefix(prefix:string):any[]{return this.db.prepare('SELECT value_json FROM product_operations WHERE substr(id,1,?)=? ORDER BY rowid DESC').all(prefix.length,prefix).map(row=>JSON.parse(String(row.value_json)));}
+ recipeImports():any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'recipe-import:*' ORDER BY rowid DESC LIMIT 10").all().map(row=>JSON.parse(String(row.value_json)));}
  operations():any[]{return this.db.prepare('SELECT value_json FROM product_operations ORDER BY rowid DESC LIMIT 100').all().map(row=>JSON.parse(String(row.value_json)));}
  operation(id:string):any{const row=this.db.prepare('SELECT value_json FROM product_operations WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
  saveOperation(value:any,expectedRevision:number){

@@ -22,6 +22,8 @@ KTeam 内置 Agent 使用原平台注册工厂、连续 Session、分层记忆�
 
 内置成员必须向本人澄清时，可将原工作保存并挂起，在私聊显示带来源的问题。重启保留问题，回答后核验原消息并接续同一任务；等待期间不调用模型，未知投递不重复发送，答案不替代工具批准。原会话和问题卡可互相定位。见[持久问题](docs/design/desktop/durable-work-questions-20261111.md)；执行批准的重启恢复、视觉与安装验收仍待完成。
 
+群详情可导出团队配方，在新建交流中选择配方文件、重新选择本机模型并审阅后，创建全新成员与团队。职责和负责人相对关系可保留，例行任务默认暂停；旧凭据、历史、私有记忆、工作目录设置和批准不迁移。重复点击复用原创建回执，未完成的导入可以审阅后核对继续。见[团队配方](docs/design/desktop/portable-team-recipes-20261111.md)；视觉与安装验收仍待完成。
+
 ## 下载
 
 **[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)
