@@ -19,7 +19,7 @@ test('one real directory approval covers write/edit/read and queued sibling file
  }finally{f.close();}});
 
 test('directory grants cannot cover sensitive/system files, sibling prefixes, symlink escapes or explicit deny',async()=>{const f=await fixture();try{
- const dir=join(f.workspace,'reports');mkdirSync(dir);const scope={botId:'bot',bindingRevision:1,cwd:f.workspace},target=join(dir,'one.txt'),access=directoryAccess(f.core,'write',{file_path:target},f.workspace)!;f.approvals.permissions.rememberDirectory(scope,access);
+ const dir=join(f.workspace,'reports');mkdirSync(dir);const scope={botId:'bot',bindingRevision:1,cwd:f.workspace},target=join(dir,'one.csv'),access=directoryAccess(f.core,'write',{file_path:target},f.workspace)!;f.approvals.permissions.rememberDirectory(scope,access);
  const {h}=await f.make(),pm=h.registryOptions.permissionManager;assert.equal(await pm.check('write',{file_path:join(dir,'.env'),content:'secret'}),'deny');assert.equal(f.approvals.permissions.findDirectory(scope,'write',{file_path:join(dir,'credentials.json')},f.core),null);
  assert.equal(directoryAccess(f.core,'write',{file_path:'/etc/synthetic-report.txt'},f.workspace),undefined);assert.equal(directoryAccess(f.core,'write',{file_path:'/SYSTEM/synthetic-report.txt'},f.workspace),undefined);assert.equal(directoryAccess(f.core,'write',{file_path:'/Users/example/Library/report.txt'},f.workspace),undefined);
  assert.equal(f.approvals.permissions.findDirectory(scope,'write',{file_path:dir+'-other/file.txt'},f.core),null);
@@ -28,9 +28,12 @@ test('directory grants cannot cover sensitive/system files, sibling prefixes, sy
  }finally{f.close();}});
 
 test('directory identity changes while prompting are rejected; one-file permission and recovery stay fresh',async()=>{const f=await fixture();try{
- const dir=join(f.workspace,'reports');mkdirSync(dir);const {registry}=await f.make(),target=join(dir,'one.txt'),work=registry.executeTool('write',{file_path:target,content:'one'}),p=await f.pending();renameSync(dir,dir+'-old');mkdirSync(dir);
+ const dir=join(f.workspace,'reports');mkdirSync(dir);const {registry}=await f.make(),target=join(dir,'one.csv'),work=registry.executeTool('write',{file_path:target,content:'one'}),p=await f.pending();renameSync(dir,dir+'-old');mkdirSync(dir);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory'}),/tool_directory_changed/);await f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'deny'});await work;assert.equal(existsSync(target),false);
  const next=registry.executeTool('write',{file_path:target,content:'one'}),single=await f.pending();await f.approvals.decide({id:single.id,expectedHash:single.hash,decision:'allow_once'});await next;assert.equal(f.approvals.permissions.list().length,0);
  const scope={botId:'bot',bindingRevision:1,cwd:f.workspace};f.approvals.permissions.rememberDirectory(scope,directoryAccess(f.core,'write',{file_path:target},f.workspace)!);
  const recovery=await f.make('bot',1,true),review=recovery.registry.executeTool('write',{file_path:join(dir,'review.txt'),content:'review'}),pending=await f.pending();assert.equal(pending.directory,undefined);await assert.rejects(f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory'}),/tool_directory_changed/);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'deny'});await review;assert.equal(existsSync(join(dir,'review.txt')),false);
  }finally{f.close();}});
+
+
+test('rejecting a grouped directory request stops all queued writes without storing a grant',async()=>{const f=await fixture();try{const {registry}=await f.make(),dir=join(f.workspace,'batch');const first=registry.executeTool('write',{file_path:join(dir,'a.csv'),content:'no'}),second=registry.executeTool('write',{file_path:join(dir,'b.json'),content:'no'});const pending=await f.pending(2);assert.equal(f.approvals.list().length,1);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'deny'});await Promise.all([first,second]);assert.equal(existsSync(join(dir,'a.csv')),false);assert.equal(existsSync(join(dir,'b.json')),false);assert.equal(f.approvals.permissions.list().length,0);assert.equal(f.approvals.list().length,0);}finally{f.close();}});
