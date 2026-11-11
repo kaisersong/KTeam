@@ -18,6 +18,8 @@ KTeam 内置 Agent 使用原平台注册工厂、连续 Session、分层记忆�
 
 系统通知可在通用设置中开启，并按答复、阻塞和问题/工具批准分类，支持暂停与安静时段。点击定位真实事项，不替你回答、批准或清空其它未读。默认关闭；原生展示、系统勿扰及冷启动点击仍待正式安装验收。见[工作通知](docs/design/desktop/work-notifications-20261111.md)。
 
+工作进行中，可在发送前选择追加本轮要求，或等当前工作结束后处理。内置成员在完整工具批次后的模型边界接收补充，沿用同一任务、会话和工具批准；不支持的阶段会明确排队。回执可查看补充来源和修订答复，结果不明时不会自动重做。见[本轮补充要求](docs/design/desktop/running-work-inputs-20261111.md)；视觉与安装验收仍待完成。
+
 ## 下载
 
 **[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)

@@ -103,6 +103,10 @@
     {
       "file": "docs/design/desktop/runtime-feature-integration-20261111.md",
       "sha256": "1705398c9197816f2a28592a9033eb317fae97ba8f806977ff1b14330fdbc325"
+    },
+    {
+      "file": "docs/design/desktop/running-work-inputs-20261111.md",
+      "sha256": "2ed5152c47a4d6a4bf4f7a65dc2080741b23e26a4f15c55b3b9858719d8da764"
     }
   ],
   "productBaseline": {
@@ -112,7 +116,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "711fe9416b9ba2d51519640b502b4217cb723ba9",
+    "revision": "376e6614b4d0a213dced19f2dc5182f97d8b7ebf",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

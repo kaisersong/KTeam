@@ -19,6 +19,7 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS team_outbox(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,intent_hash TEXT NOT NULL,envelope_json TEXT,state TEXT NOT NULL,origin_id TEXT);
    CREATE TABLE IF NOT EXISTS product_state(key TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS product_operations(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,value_json TEXT NOT NULL);
+   CREATE INDEX IF NOT EXISTS work_input_scope ON product_operations(json_extract(value_json,'$.roomId'),json_extract(value_json,'$.createdAt')) WHERE id GLOB 'work-input:*';
    CREATE INDEX IF NOT EXISTS skill_learning_scope ON product_operations(json_extract(value_json,'$.botId'),json_extract(value_json,'$.roomId'),json_extract(value_json,'$.createdAt')) WHERE id GLOB 'skill-learning:*';
    CREATE INDEX IF NOT EXISTS notification_claim_time ON product_operations(json_extract(value_json,'$.claimedAt')) WHERE id GLOB 'desktop-notification:*';
    CREATE TABLE IF NOT EXISTS agent_deliveries(bot_id TEXT NOT NULL,room_id TEXT NOT NULL,origin_id TEXT NOT NULL,reads INTEGER NOT NULL,PRIMARY KEY(bot_id,room_id,origin_id));
@@ -97,6 +98,11 @@ export class TeamStore {
  recordedJobs(roomId:string){return this.db.prepare('SELECT value_json FROM team_jobs WHERE room_id=? ORDER BY rowid DESC LIMIT 10000').all(roomId).map(r=>JSON.parse(String(r.value_json)));}
  jobForMessage(roomId:string,messageId:string){const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE room_id=? AND EXISTS(SELECT 1 FROM json_each(team_jobs.value_json,'$.results') WHERE json_extract(value,'$.messageId')=?) ORDER BY rowid DESC LIMIT 1").get(roomId,messageId);return row?JSON.parse(String(row.value_json)):null;}
  jobs(roomId?:string){return this.db.prepare('SELECT value_json FROM team_jobs '+(roomId?'WHERE room_id=? ':'')+'ORDER BY rowid DESC LIMIT 100').all(...(roomId?[roomId]:[])).map(row=>JSON.parse(String(row.value_json)));}
+ workInputRecords(roomId?:string,jobId?:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'work-input:*' AND "+(roomId?"json_extract(value_json,'$.roomId')=?":"json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected')")+(jobId?" AND json_extract(value_json,'$.jobId')=?":"")+" ORDER BY json_extract(value_json,'$.createdAt') DESC LIMIT 100").all(...(roomId?[roomId]:[]),...(jobId?[jobId]:[])).map(row=>JSON.parse(String(row.value_json)));}
+ workInputRecoveryPage(after=''):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'work-input:*' AND id>? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected') ORDER BY id LIMIT 100").all(after).map(row=>JSON.parse(String(row.value_json)));}
+ workInputCount(roomId:string,jobId:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'work-input:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.jobId')=? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected')").get(roomId,jobId)?.n??0);}
+
+ submission(id:string):any{return this.db.prepare('SELECT id,room_id AS roomId,state,origin_id AS originId FROM team_outbox WHERE id=?').get(id);}
  prepareSubmission(id:string,roomId:string,intentHash:string,envelope:unknown){
   const prior=this.db.prepare('SELECT intent_hash FROM team_outbox WHERE id=?').get(id);
   if(prior&&prior.intent_hash!==intentHash)throw new KTeamError('aimp_id_conflict',409);
@@ -107,14 +113,14 @@ export class TeamStore {
  completeSubmission(id:string,originId:string,enqueue=true){
   this.db.exec('BEGIN IMMEDIATE');try{
    const row=this.db.prepare('SELECT room_id FROM team_outbox WHERE id=?').get(id);if(!row)throw new KTeamError('submission_not_found');
-   if(enqueue)this.enqueue('job-'+originId,String(row.room_id),originId);
+   if(enqueue&&!this.operation('work-input:'+id))this.enqueue('job-'+originId,String(row.room_id),originId);
    this.db.prepare("UPDATE team_outbox SET state='sent',origin_id=?,envelope_json=NULL WHERE id=?").run(originId,id);
    this.db.exec('COMMIT');
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
  save(job:any){this.db.prepare('UPDATE team_jobs SET state=?,value_json=? WHERE id=?').run(job.state,JSON.stringify(job),job.id);}
  claim(excludedRooms:string[]=[],peerOnly=false){
-  const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND room_id NOT IN (SELECT value FROM json_each(?)) AND (?=0 OR json_extract(value_json,'$.trigger')='peer') ORDER BY CASE WHEN json_extract(value_json,'$.trigger')='peer' THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0);if(!row)return null;
+  const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND (json_extract(value_json,'$.afterJobId') IS NULL OR json_extract(value_json,'$.afterJobId') IN (SELECT id FROM team_jobs WHERE state IN ('delivered','noop'))) AND room_id NOT IN (SELECT value FROM json_each(?)) AND (?=0 OR json_extract(value_json,'$.trigger')='peer') ORDER BY CASE WHEN json_extract(value_json,'$.trigger')='peer' THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0);if(!row)return null;
   const job=JSON.parse(String(row.value_json));job.state='routing';this.save(job);return job;
  }
  reserveCall(job:any,team:TeamSettings,persistJob=true){

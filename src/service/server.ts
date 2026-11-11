@@ -211,9 +211,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
         }
       }
+      if(url.pathname==='/v1/work-inputs'||url.pathname==='/v1/work-inputs/release'){if(client.id!=='kteam-main')throw new KTeamError('work_input_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/work-inputs')return send(res,200,await automation.inputs!.view(url.searchParams.get('roomId')??''));if(req.method==='POST'){const result=url.pathname.endsWith('/release')?await automation.inputs!.release(await body(req)):await automation.inputs!.submit(await body(req));void automation.tick();return send(res,201,result);}throw new KTeamError('route_not_found',404);}
       if (url.pathname === '/v1/messages' && req.method === 'POST') {
         const input=validateL0(await body(req));
-        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);
+        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);if(teamStore.operation('work-input:'+input.id))throw new KTeamError('work_input_id_conflict',409);
         await coordinator.guardConversation(input.room_id);
         const managed=!!teamStore.settings(input.room_id);
         const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
@@ -245,9 +246,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='regenerate'){const result=await conversations.regenerate(roomId,await body(req));void automation.tick();return send(res,202,result);}
         if(req.method==='GET'&&action==='proposals')return send(res,200,{ok:true,proposals:coordinator.proposals(roomId)});
         if(req.method==='GET'&&action==='settings')return send(res,200,{ok:true,settings:teamStore.settings(roomId),seen:teamStore.seen(roomId),members:membership.members});
-        if(req.method==='GET'&&action==='work'){const snapshot=await upstream.aimp(roomId,'tasks');return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions(roomId)??[],approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),recovery:workRecovery.view(roomId,snapshot.tasks as any[]),pendingSubmissions:teamStore.pendingSubmissions(roomId),...snapshot});}
+        if(req.method==='GET'&&action==='work'){const snapshot=await upstream.aimp(roomId,'tasks');return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions(roomId)??[],approvals:approvals.list(roomId),connection:links.forRoom(roomId),jobs:teamStore.jobs(roomId),recovery:workRecovery.view(roomId,snapshot.tasks as any[]),pendingSubmissions:teamStore.pendingSubmissions(roomId),inputReceipts:automation.inputs?.receipts(roomId)??[],inputCapabilities:teamStore.jobs(roomId).filter(job=>['routing','running','waiting'].includes(job.state)).map(job=>automation.inputs?.capability(job)),...snapshot});}
         if(req.method==='POST'&&action==='recover'){if(client.id!=='kteam-main')throw new KTeamError('recovery_forbidden',403);const result=await workRecovery.continue(roomId,await body(req));void automation.tick();return send(res,202,result);}
-        if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);await automation.retirePriorClaims(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
+        if(req.method==='POST'&&action==='reconcile'){await automation.reconcileSubmissions(roomId);await automation.inputs?.view(roomId);await automation.retirePriorClaims(roomId);return send(res,200,{ok:true,pendingSubmissions:teamStore.pendingSubmissions(roomId)});}
         if(req.method==='POST'&&action==='pause')return send(res,200,await automation.pause(roomId));
         if(req.method==='POST'&&action==='resume'){
           return send(res,200,{ok:true,settings:teamStore.resume(roomId)});
