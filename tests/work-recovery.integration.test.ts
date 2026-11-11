@@ -34,6 +34,7 @@ test('real host shutdown and restart expose recovery and complete one linked run
   const bot=await api.createBot({name:'真实恢复验证员',modelId:'fixture',requestId:'real-recovery'});await api.send({roomId:bot.roomId,text:'完成测试答复'});await waiting;await host.close();host=undefined;
   host=await startHost({root,upstream:f.upstream.options});await api.reconcile(bot.roomId);const before=await api.work(bot.roomId),source=before.jobs[0];assert.equal(source.state,'stopped');assert.equal(source.failure.message,'host_shutdown');assert.equal(before.recovery.canContinue,true);assert.equal(before.recovery.hostInterrupted,true);assert.equal(source.interruption.reason,'host_shutdown');
   const visibleBefore=(await api.messages({roomId:bot.roomId})).messages;assert.deepEqual(visibleBefore.map((m:any)=>m.text),['完成测试答复']);
+  assert.equal((await api.teams()).rooms.find((room:any)=>room.roomId===bot.roomId).lastMessage.text,'完成测试答复');
   const raw=await f.upstream.request('broker','/rooms/'+bot.roomId+'/messages?afterSequence=0&limit=100');const stop=raw.messages.find((m:any)=>m.sourceRef?.kind==='aimp_event');assert.ok(stop);
   const internalPage=await f.upstream.messages(bot.roomId,stop.roomSequence-1,1);assert.equal(internalPage.messages.length,0);assert.equal(internalPage.nextSequence,stop.roomSequence);assert.equal(internalPage.previousSequence,stop.roomSequence);
   assert.equal((await f.upstream.getTeam(bot.roomId)).messages.some((m:any)=>m.sourceRef?.kind==='aimp_event'),false);
