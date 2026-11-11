@@ -1,3 +1,4 @@
+import {memoryReviewRooms} from '../runtime/harness-storage.js';
 import {recordGeneratedFile,backfillGeneratedFiles} from '../runtime/generated-file-receipts.js';
 import {WorkInputs} from './work-inputs.js';
 import {parseToolScope,restrictedToolScope} from '../runtime/tool-scope.js';
@@ -94,7 +95,7 @@ export class TeamAutomation {
   if(!this.accepting||this.starting||this.polling)return [];this.polling=true;const completions:Promise<void>[]=[];
   try{await this.routines.wake();await this.handoffs?.wake();await this.wakeFollowups();while(this.accepting&&this.active.size<6){
    const ordinary=[...this.active.values()].filter(v=>v.job.trigger!=='peer').length;
-   const job=this.store.claim([...this.active.values()].map(v=>v.job.roomId),ordinary>=3);if(!job)break;
+   const job=this.store.claim([...new Set([...this.active.values()].map(v=>v.job.roomId).concat(memoryReviewRooms(this.store.root)))],ordinary>=3);if(!job)break;
    const controller=new AbortController();const completion=this.run(job,controller.signal).finally(()=>{this.active.delete(job.id);});
    this.active.set(job.id,{job,controller,completion});completions.push(completion);
   }}finally{this.polling=false;}

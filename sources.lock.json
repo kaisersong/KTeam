@@ -123,6 +123,10 @@
     {
       "file": "docs/design/desktop/composer-attachments-20261111.md",
       "sha256": "7ad5b64f9eb3c4e388fc72b1d88409baf2a5c8354c36025b13bf308efd03431c"
+    },
+    {
+      "file": "docs/design/desktop/bot-memory-review-20261111.md",
+      "sha256": "6bf8b72cd8a74cf9159d75fe3c363aae5cdc5d0be4e1e17621a9c18c1e8786ad"
     }
   ],
   "productBaseline": {

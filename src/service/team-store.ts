@@ -108,6 +108,7 @@ export class TeamStore {
  workInputRecoveryPage(after=''):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'work-input:*' AND id>? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected') ORDER BY id LIMIT 100").all(after).map(row=>JSON.parse(String(row.value_json)));}
  workInputCount(roomId:string,jobId:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'work-input:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.jobId')=? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected')").get(roomId,jobId)?.n??0);}
 
+ memoryBusy(roomId:string){return !!this.db.prepare("SELECT 1 FROM team_jobs WHERE room_id=? AND state IN ('routing','running','stopping','waiting') LIMIT 1").get(roomId);}
  submission(id:string):any{return this.db.prepare('SELECT id,room_id AS roomId,state,origin_id AS originId FROM team_outbox WHERE id=?').get(id);}
  submissionEnvelope(id:string):any{const row=this.db.prepare('SELECT envelope_json FROM team_outbox WHERE id=?').get(id);return row?.envelope_json?JSON.parse(String(row.envelope_json)):undefined;}
  composerUploads(roomId:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'composer-upload:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.status') NOT IN ('cancelled','attached') ORDER BY rowid DESC LIMIT 64").all(roomId).map(row=>JSON.parse(String(row.value_json)));}

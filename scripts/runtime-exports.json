@@ -171,5 +171,11 @@
   ],
   "src/platform/plugins/runtime.ts": [
     "loadPlatformPluginRuntime"
+  ],
+  "src/ai/memory/management.ts": [
+    "LayeredMemoryReview"
+  ],
+  "src/ai/memory/file-management.ts": [
+    "FileMemoryReview"
   ]
 }

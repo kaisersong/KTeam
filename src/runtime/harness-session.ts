@@ -1,3 +1,4 @@
+import {harnessLocation,acquireHarnessStorage} from './harness-storage.js';
 import {createHash} from 'node:crypto';
 import {mkdirSync,realpathSync,lstatSync,openSync,closeSync,readSync,fstatSync,constants} from 'node:fs';
 import {join} from 'node:path';
@@ -9,13 +10,10 @@ export interface HarnessRuntimeOwner {registry:any;session:any;memoryStore:any;p
 const key=(input:unknown)=>createHash('sha256').update(JSON.stringify(input)).digest('hex');
 // One host owner opens each scope once. Runtime history is private model state,
 // never a writable Room transcript or an authoritative project/task store.
-const opened=new Set<string>();
 export async function openHarnessSession(input:{core:any;toolPolicy?:any;integrations?:any;scope:HarnessSessionScope;cwd:string;adapter:any;model:string;system:string;query?:string;tools:any[];catalog:any;permissions:any;permissionManagerForCwd:any;onPrompt:any;onPromptForCwd:any;bindTool:(tool:any,cwd?:string)=>any;assertCurrent:()=>Promise<void>;onCloseFailure?:()=>void;processOwner?:any;onEvent?:(event:any)=>void}):Promise<HarnessRuntimeOwner>{
  const {core,scope,cwd}=input;
- const identity=key([scope.botId,scope.roomId,scope.bindingRevision,scope.fingerprint,cwd]);
- const directory=join(scope.root,'harness',identity);mkdirSync(directory,{recursive:true,mode:0o700});
- if(realpathSync(directory)!==directory||lstatSync(directory).isSymbolicLink())throw new KTeamError('harness_storage_invalid');
- if(opened.has(directory))throw new KTeamError('harness_session_busy',409);opened.add(directory);
+ const {identity,directory}=harnessLocation(scope,cwd);
+ const releaseStorage=acquireHarnessStorage(directory);
  let platform:any,factory:any,memory:any,session:any,store:any;
  try{
   await input.assertCurrent();
@@ -58,6 +56,6 @@ export async function openHarnessSession(input:{core:any;toolPolicy?:any;integra
   const collect=()=>[...factory.listChildren().filter((a:any)=>a.id!=='main').map((a:any)=>({id:a.id,turn:a.turn,state:a.status,active:a.executionActive||a.status==='pending',result:a.lastResult,error:a.error})),...platform.listBackgroundJobs(sessionId).filter((j:any)=>!backgroundBefore.has(j.jobId)).map((j:any)=>({id:j.jobId,state:j.status,active:['queued','running'].includes(j.status),result:j.summary,error:j.errorMessage}))];
   const settleChildren=async()=>{if(!collect().some((r:any)=>!joined.has(key(r))))return [];for(;;){await input.assertCurrent();const rows=collect();if(!rows.some((r:any)=>r.active)){const pending=rows.filter((r:any)=>!joined.has(key(r)));for(const row of pending)joined.add(key(row));return pending;}await new Promise(r=>setTimeout(r,1000));}};
   const distill=async(text:string)=>{await input.assertCurrent();input.processOwner?.signal.throwIfAborted();await memory.writeRawMessage?.(sessionId,'assistant',text);if(memoryEnabled&&integration.memory.autoCompact&&memory.compact&&(memory.getStats?.().l0??0)>=5){try{await memory.compact({requestSource:'scheduler'});}catch{input.processOwner?.signal.throwIfAborted();await input.assertCurrent();input.onEvent?.({type:'memory_distillation_deferred'});}}input.processOwner?.signal.throwIfAborted();await input.assertCurrent();};
-  return {registry,session,settleChildren,distill,spillDir:join(directory,'spill'),runOwned:<T>(work:()=>T):T=>core.withHarnessProcessOwner(input.processOwner,work),memoryStore:memory,promptSnapshot:{...snapshot,rendered:system},system:system+'\n当前实际工具目录：'+registry.getToolDefinitions().map((t:any)=>t.name).join('、'),persist,onEvent:event=>input.onEvent?.(event),async close(){if(closed)return;closed=true;const errors:unknown[]=[];for(const run of [()=>factory.dispose(),()=>factory.waitForDisposedResources()]){try{await run();}catch(e){errors.push(e);}}try{await platform.dispose();}catch(e){errors.push(e);}try{session.repairIncompleteToolCalls();await persist();}catch(e){errors.push(e);}try{await memory.close?.();}catch(e){errors.push(e);}if(errors.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}opened.delete(directory);}};
- }catch(error){const failures:unknown[]=[];for(const cleanup of [()=>factory?.dispose(),()=>factory?.waitForDisposedResources(),()=>platform?.dispose(),()=>memory?.close?.()]){try{await cleanup();}catch(e){failures.push(e);}}if(failures.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}opened.delete(directory);throw error;}
+  return {registry,session,settleChildren,distill,spillDir:join(directory,'spill'),runOwned:<T>(work:()=>T):T=>core.withHarnessProcessOwner(input.processOwner,work),memoryStore:memory,promptSnapshot:{...snapshot,rendered:system},system:system+'\n当前实际工具目录：'+registry.getToolDefinitions().map((t:any)=>t.name).join('、'),persist,onEvent:event=>input.onEvent?.(event),async close(){if(closed)return;closed=true;const errors:unknown[]=[];for(const run of [()=>factory.dispose(),()=>factory.waitForDisposedResources()]){try{await run();}catch(e){errors.push(e);}}try{await platform.dispose();}catch(e){errors.push(e);}try{session.repairIncompleteToolCalls();await persist();}catch(e){errors.push(e);}try{await memory.close?.();}catch(e){errors.push(e);}if(errors.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}releaseStorage();}};
+ }catch(error){const failures:unknown[]=[];for(const cleanup of [()=>factory?.dispose(),()=>factory?.waitForDisposedResources(),()=>platform?.dispose(),()=>memory?.close?.()]){try{await cleanup();}catch(e){failures.push(e);}}if(failures.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}releaseStorage();throw error;}
 }
