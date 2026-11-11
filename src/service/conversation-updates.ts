@@ -1,3 +1,4 @@
+import {textPrefix} from '../protocol/text.js';
 import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 import {KTeamError,record,fields,text} from '../errors.js';
 import type {Upstreams} from '../adapters/upstream.js';
@@ -147,7 +148,7 @@ export class ConversationUpdates {
    if(budget<=0||depth>10){truncated=true;return '[记录预览已截断]';}
    if(typeof value==='string'){
     const safe=core.redactSecrets(value).text,max=input.part==='cards'?512*1024:input.part==='draft'?32768:16384;
-    let result=safe.slice(0,max);if(result.length<safe.length)truncated=true;
+    let result=textPrefix(safe,max);if(result.length<safe.length)truncated=true;
     if(Buffer.byteLength(result)>budget){result=Buffer.from(result).subarray(0,Math.max(0,budget-3)).toString('utf8');truncated=true;}
     budget-=Buffer.byteLength(result);return result;
    }
@@ -158,8 +159,8 @@ export class ConversationUpdates {
   };
   // Select display fields before redaction; never send the entire internal job or harness configuration.
   const summary={...projectWork(job,version),toolTrace:(job.toolTrace??[]).map(projectWorkEvent),toolTraceLimited:(job.toolTrace??[]).length>=100};
-  const selected=input.part==='summary'?summary:input.part==='draft'?{id:job.id,state:job.state,answerDraft:job.answerDraft??job.partialText}:input.part==='cards'?{id:job.id,cards:job.cards??[]}:{...summary,toolTrace:job.toolTrace??[],answerDraft:job.answerDraft,cards:job.cards??[],harness:job.harness?{toolNames:job.harness.toolNames,memoryBackend:job.harness.memoryBackend}:undefined};
-  const result=bounded(event??selected);
+  const selected=input.part==='summary'?summary:input.part==='draft'?{id:job.id,state:job.state,answerDraft:job.answerDraft??job.partialText}:input.part==='cards'?{id:job.id,cards:job.cards??[]}:{...summary,toolTrace:(job.toolTrace??[]).map((event:any)=>({...event,output:undefined,outputAvailable:event.type==='tool_output_saved'&&!!event.output})),answerDraft:job.answerDraft,cards:job.cards??[],harness:job.harness?{toolNames:job.harness.toolNames,memoryBackend:job.harness.memoryBackend}:undefined};
+  const result=bounded(event?{...event,output:undefined,outputAvailable:event.type==='tool_output_saved'&&!!event.output}:selected);
   if(Buffer.byteLength(JSON.stringify(result))>1750*1024)throw new KTeamError('conversation_projection_too_large',413);
   await this.sameScope(roomId,scope);
   if(this.store.workRecordVersion(job.id)!==version)throw new KTeamError('work_record_changed',409);

@@ -62,7 +62,7 @@ export function capForModel(input: string, maxChars = MODEL_OUTPUT_CAP): CappedR
     return { text: input, truncated: false };
   }
   return {
-    text: `${input.slice(0, maxChars)}${MODEL_OUTPUT_TRUNCATION_MARKER}`,
+    text: `${input.slice(0, maxChars).replace(/[\uD800-\uDBFF]$/,'')}${MODEL_OUTPUT_TRUNCATION_MARKER}`,
     truncated: true,
   };
 }

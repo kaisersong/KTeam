@@ -1,3 +1,4 @@
+import {ToolOutput} from './tool-output.js';
 import {originalSequences} from './room-reads.js';
 import {ConversationUpdates} from './conversation-updates.js';
 import {MemberWorkspace} from './member-workspace.js';
@@ -144,6 +145,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/conversation-view/updates')return send(res,200,await conversationUpdates.read(input));
         if(url.pathname==='/v1/conversation-view/history')return send(res,200,await conversationUpdates.history(input));
         if(url.pathname==='/v1/conversation-view/records')return send(res,200,await conversationUpdates.records(input));
+        if(url.pathname==='/v1/conversation-view/output')return send(res,200,await new ToolOutput(upstream,teamStore).read(input));
         if(url.pathname==='/v1/conversation-view/detail')return send(res,200,await conversationUpdates.detail(input));
         throw new KTeamError('route_not_found',404);
       }

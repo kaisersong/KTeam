@@ -98,3 +98,5 @@
 @media(max-height:850px){.member-profile-avatar>.avatar{width:64px;height:64px}.member-profile-identity{margin:0 0 16px}.member-profile-avatar{margin-bottom:4px}.member-profile-identity h2{font-size:20px}.member-profile-identity p{margin:4px auto}.member-profile-tabs{margin-bottom:18px}.member-link-group{margin:18px 0}.member-link-group>button{padding:11px 0}}
 
 .history-window-note{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;color:var(--text-secondary);font-size:12px}.history-window-note button{font-size:12px}.history-version pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+.full-tool-output{min-width:0}.full-tool-output .text-button{width:auto;padding:6px 0;font-size:12px}.full-tool-output .activity-pager{display:flex;justify-content:flex-end;align-items:center;gap:18px}.full-tool-output .muted{margin:8px 0;line-height:1.8}

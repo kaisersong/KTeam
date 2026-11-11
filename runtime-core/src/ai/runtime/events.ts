@@ -15,6 +15,7 @@ export type AgentRuntimeEvent =
   | { type: 'model_recovery'; runId: string; attempt: number; delayMs: number; remainingMs: number; failure?: import('./model-failure.js').ModelFailureDiagnostic }
   | { type: 'assistant_text'; runId: string; delta: string }
   | { type: 'tool_started'; runId: string; toolName: string; input: Record<string, unknown> }
+  | { type: 'tool_output_saved'; runId: string; invocationId: string; toolName: string; sessionId: string; key: string; sha256: string; bytes: number }
   | { type: 'tool_finished'; runId: string; invocationId: string; toolName: string; ok: boolean }
   | { type: 'tool_execution_fact'; runId: string; invocationId: string; toolName: string; factKind: 'command_result' | 'file_mutation'; exitCode?: number | null; normalizedFilePaths?: string[] }
   | { type: 'usage_updated'; runId: string; usage: UsageStats }

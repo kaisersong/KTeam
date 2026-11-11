@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import type { Message, ToolDefinition } from '../../types.js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -455,7 +456,7 @@ export interface TruncatedResult {
 export function truncateToolResult(
   content: string,
   limit = DEFAULT_TOOL_RESULT_LIMIT,
-  options?: { sessionId?: string; toolCallId?: string; spillDir?: string },
+  options?: { sessionId?: string; toolCallId?: string; runId?: string; spillDir?: string },
 ): TruncatedResult {
   if (content.length <= limit) return { content };
 
@@ -464,15 +465,15 @@ export function truncateToolResult(
     // Sanitize: remove path traversal chars, keep only alphanumeric, dash, underscore
     const safeId = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
     const safeSessionId = safeId(options.sessionId) || 'unknown';
-    const safeToolCallId = safeId(options.toolCallId) || 'unknown';
+    const safeToolCallId = options.runId ? createHash('sha256').update(JSON.stringify([options.runId,options.toolCallId])).digest('hex') : safeId(options.toolCallId) || 'unknown';
     const spillPath = join(options.spillDir, safeSessionId, `${safeToolCallId}.txt`);
     const relativeHint = `.kteam/spill/${safeSessionId}/${safeToolCallId}.txt`;
 
     try {
       mkdirSync(dirname(spillPath), { recursive: true });
-      writeFileSync(spillPath, content, 'utf-8');
-      const kept = content.slice(0, limit);
-      const omitted = content.length - limit;
+      writeFileSync(spillPath, content, {encoding:'utf8',mode:0o600,flag:options.runId?'wx':'w'});
+      const kept = content.slice(0, limit).replace(/[\uD800-\uDBFF]$/,'');
+      const omitted = content.length - kept.length;
       return {
         content: `${kept}\n...[truncated ${omitted} chars, 完整输出见 file://${relativeHint}]`,
         spillPath,
@@ -480,14 +481,14 @@ export function truncateToolResult(
       };
     } catch {
       // Fall back to pure truncation if spill fails
-      const kept = content.slice(0, limit);
-      const omitted = content.length - limit;
+      const kept = content.slice(0, limit).replace(/[\uD800-\uDBFF]$/,'');
+      const omitted = content.length - kept.length;
       return { content: `${kept}\n...[truncated ${omitted} chars]` };
     }
   }
 
   // Legacy behavior: pure truncation (no spill)
-  const kept = content.slice(0, limit);
-  const omitted = content.length - limit;
+  const kept = content.slice(0, limit).replace(/[\uD800-\uDBFF]$/,'');
+  const omitted = content.length - kept.length;
   return { content: `${kept}\n...[truncated ${omitted} chars]` };
 }

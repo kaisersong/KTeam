@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {retainCommandResult} from '../tools/command-result.js';
 import { getModelFailure } from './model-failure.js';
 import { normalizeRuntimeError } from './runtime-errors.js';
@@ -549,6 +550,13 @@ export class AgentRuntime {
           try {
             result = await this.registry.executeTool(toolCall.name, toolCall.input, {
               ...toolExecutionContext,
+              retainToolOutput: content => {
+                if(toolCall.name==='read_runtime_output'||!this.spillDir||content.length<=2000||Buffer.byteLength(content)>32*1024*1024)return;
+                const snapshot=this.session.exportSnapshot(),saved=truncateToolResult(content,0,{sessionId:snapshot.sessionId,toolCallId:toolCall.id,runId:run.runId,spillDir:this.spillDir??join(snapshot.cwd,'.kteam','spill')});
+                if(!saved.spillPath)return;
+                onEvent({type:'tool_output_saved',runId:run.runId,invocationId:toolCall.id,toolName:toolCall.name,sessionId:snapshot.sessionId,key:createHash('sha256').update(JSON.stringify([run.runId,toolCall.id])).digest('hex'),sha256:createHash('sha256').update(content).digest('hex'),bytes:Buffer.byteLength(content)});
+                return '\n[已保存完整返回正文：'+saved.hint+'；可用 read_runtime_output 分段读取。]';
+              },
               // Install host media callbacks only after strict provider projection.
               modelSupportsImageInput: supportsImages,
               emitToolImage: toolImages.emit,
@@ -574,6 +582,7 @@ export class AgentRuntime {
           const truncated = truncateToolResult(result, MODEL_OUTPUT_CAP + MODEL_OUTPUT_TRUNCATION_MARKER.length, {
             sessionId: sessionSnapshot.sessionId,
             toolCallId: toolCall.id,
+            runId: run.runId,
             spillDir: this.spillDir ?? join(sessionSnapshot.cwd, '.kteam', 'spill'),
           });
           // Exact final history bytes; failure only makes this observation ineligible for P1-B.
