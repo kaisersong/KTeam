@@ -1,3 +1,4 @@
+import {legacySharedNoticeView,dismissLegacySharedNotice} from './legacy-notice.js';
 import {ensureSharedServices} from '../runtime/services.js';
 import {loadConfig} from './config.js';
 import {transcribeAudio} from './voice.js';
@@ -122,6 +123,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
         }
+        if(url.pathname==='/v1/app/notices/legacy-shared-services'&&req.method==='GET')return send(res,200,legacySharedNoticeView(options.root));
+        if(url.pathname==='/v1/app/notices/legacy-shared-services/dismiss'&&req.method==='POST'){fields(record(await body(req)),[]);return send(res,200,dismissLegacySharedNotice(options.root));}
         if(url.pathname==='/v1/app/voice/transcribe'&&req.method==='POST')return send(res,200,await transcribeAudio(await body(req,12*1024*1024)));
         if(url.pathname==='/v1/app/tool-permissions'&&req.method==='GET')return send(res,200,{ok:true,permissions:approvals.permissions.list()});
         if(url.pathname==='/v1/app/tool-permissions/revoke'&&req.method==='POST')return send(res,200,approvals.permissions.revoke(await body(req)));

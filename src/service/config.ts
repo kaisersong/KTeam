@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { KTeamError, fields, record } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { loopbackUrl, type UpstreamOptions } from '../adapters/upstream.js';
+import { recordLegacySharedServicesDropped } from './legacy-notice.js';
 
 export const CLIENTS = ['kteam-main','kteam-companion'] as const;
 export type ClientId = typeof CLIENTS[number];
@@ -45,17 +46,22 @@ export function validateConfig(value: unknown): Config {
   for (const key of ['brokerTokenFile','kswarmTokenFile','managedServiceConfig']) if (config[key] !== undefined && (typeof config[key] !== 'string' || !config[key])) throw new KTeamError('invalid_token_reference');
   return config as unknown as Config;
 }
+// 0.2 configs pointed KTeam at services shared with xiaok. The value is never read; only the key's presence
+// is used to show the one-time 0.3 notice. This is the single allowlisted literal in tests/decoupling.test.ts.
+const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';
 let legacyWarned=false;
 /** Keys an older KTeam wrote but this version no longer uses are ignored (never read, never followed),
- * with one warning per process. New configs are still validated strictly by initConfig. */
-function dropLegacyKeys(value: unknown): unknown {
+ * with one warning per process. The config file itself is never rewritten here; the notice state is
+ * persisted separately so it survives restarts even if the file is later rewritten without the key. New configs are still validated strictly by initConfig. */
+function dropLegacyKeys(value: unknown, root: string): unknown {
   const config = record(value), legacy = Object.keys(config).filter(key => !CONFIG_KEYS.includes(key));
   if (!legacy.length) return config;
+  if (Object.hasOwn(config, LEGACY_SHARED_SERVICE_KEY)) recordLegacySharedServicesDropped(root);
   if (!legacyWarned) { legacyWarned = true; process.emitWarning(`KTeam config.json: ignoring ${legacy.length} legacy key(s) no longer used: ${legacy.slice(0, 8).map(key => JSON.stringify(key.slice(0, 64))).join(', ')}`, { code: 'KTEAM_CONFIG_LEGACY_KEYS' }); }
   return Object.fromEntries(Object.entries(config).filter(([key]) => CONFIG_KEYS.includes(key)));
 }
 export function loadConfig(root: string): Config {
-  return validateConfig(dropLegacyKeys(parseJson(privateRead(join(root, 'config.json')))));
+  return validateConfig(dropLegacyKeys(parseJson(privateRead(join(root, 'config.json'))), root));
 }
 export function upstreamOptions(config: Config): UpstreamOptions {
   return { ...config, brokerToken: config.brokerTokenFile ? privateRead(resolve(config.brokerTokenFile)) : undefined,
