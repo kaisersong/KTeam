@@ -25,6 +25,10 @@ test('ordinary project inspection and document writing run through the productio
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','Only actual results',[]);
   await owner.runOwned(async()=>{
    const result=await owner.registry.executeTool('bash',{command:'cd "'+f.cwd+'" && pwd -P && ls && echo "--- git ---" && git log -8 --date=short --pretty=\'%h %ad %s\' && git status -sb | head -30',workdir:f.root,timeout_ms:5000});assert.match(result,/project with spaces/);assert.match(result,/seed/);
+   mkdirSync(join(f.cwd,'source'));
+   const listing='ls -d "'+f.cwd+'"/*/ 2>/dev/null | head -40; echo ---; ls "'+f.cwd+'" | head -60';
+   assert.equal(routineReadCommand(f.core,{command:listing,workdir:f.cwd},f.state),true);
+   assert.match(await owner.registry.executeTool('bash',{command:listing,workdir:f.cwd,timeout_ms:5000}),/source/);
    const body='DOCUMENT_BODY_PRIVATE_83\n'.repeat(2000);
    assert.match(await owner.registry.executeTool('write',{file_path:'assessment.md',content:body}),/已写入/);
    assert.match(await owner.registry.executeTool('edit',{file_path:'assessment.md',old_string:body,new_string:body+'updated'}),/已编辑/);
@@ -36,13 +40,13 @@ test('ordinary project inspection and document writing run through the productio
 });
 test('routine admission does not include writes disguised as inspection, sensitive paths, or documents escaping through a symlink',async()=>{
  const f=await fixture();try{
-  for(const command of ['ls && rm note.md','git push origin main','git -c core.pager=sh log','git log --format=%s --output=proof','git log --date=short; touch proof','echo $(touch proof)','cat .env','cat .e*','sort -oresult input','sort --compress-program=sh','find . -exec sh {} ;','find . -fprint proof','uniq input output','cat '+join(f.state,'service.token')])assert.equal(routineReadCommand(f.core,{command,workdir:f.cwd},f.state),false,command);
+  for(const command of ['ls && rm note.md','ls 2>/dev/null; rm note.md','ls 2>/dev/null > proof','ls 2>/dev/null/else','ls 2>>/dev/null','ls 2>proof','ls 2> /dev/null$(touch proof)','git push origin main','git -c core.pager=sh log','git log --format=%s --output=proof','git log --date=short; touch proof','echo $(touch proof)','cat .env','cat .e*','sort -oresult input','sort --compress-program=sh','find . -exec sh {} ;','find . -fprint proof','uniq input output','cat '+join(f.state,'service.token')])assert.equal(routineReadCommand(f.core,{command,workdir:f.cwd},f.state),false,command);
   assert.equal(routineReadCommand(f.core,{command:'find src -maxdepth 2 -type d | sort && find src -name "*.ts" -o -name "*.tsx" | wc -l',workdir:f.cwd},f.state),true);
   const outside=join(f.root,'outside');mkdirSync(outside);symlinkSync(outside,join(f.cwd,'escape'));
   assert.equal(routineDocument('write',{file_path:join(f.cwd,'escape','new.md')},f.cwd),false);
   const unchanged={command:'cd "'+f.cwd+'" || touch proof',workdir:f.root};assert.deepEqual(projectCommand(unchanged),unchanged);
   writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['bash:*','write:*']}}));
-  const h=await createHarness({workspace:f.cwd,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{}});assert.equal(await h.registryOptions.permissionManager.check('bash',{command:'ls'}),'deny');assert.equal(await h.registryOptions.permissionManager.check('write',{file_path:'new.md',content:'draft'}),'deny');
+  const h=await createHarness({workspace:f.cwd,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{}});assert.equal(await h.registryOptions.permissionManager.check('bash',{command:'ls'}),'deny');assert.equal(await h.registryOptions.permissionManager.check('bash',{command:'ls 2>/dev/null'}),'deny');assert.equal(await h.registryOptions.permissionManager.check('write',{file_path:'new.md',content:'draft'}),'deny');
  }finally{f.close();}
 });
 test('approval and existing history retain metadata instead of document bodies; debug output moves into bounded log files',async()=>{

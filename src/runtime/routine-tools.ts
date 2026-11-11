@@ -10,8 +10,23 @@ export function projectCommand(input:Record<string,unknown>){
  try{const workdir=realpathSync(path);if(statSync(workdir).isDirectory())return {...input,command:match![4]!,workdir};}catch{}
  return input;
 }
+/** Discarding stderr is not a file write grant; recognize only this literal shell redirect. */
+function inspectionCommand(command:string){
+ let quote='',result='';
+ for(let index=0;index<command.length;index++){
+  const char=command[index]!;
+  if(char==="'"||char==='"'){if(!quote)quote=char;else if(quote===char)quote='';}
+  if(!quote&&char==='2'&&(index===0||/\s/.test(command[index-1]!))){
+   const redirect=command.slice(index).match(/^2>\s*\/dev\/null(?=$|[\s;|&])/);
+   if(redirect){result+=' ';index+=redirect[0].length-1;continue;}
+  }
+  result+=char;
+ }
+ return result;
+}
 export function routineReadCommand(core:any,input:Record<string,unknown>,privateRoot?:string){
- const command=input.command;if(typeof command!=='string'||command.length>16000||/[$`<>\\{}!]|(?<!&)&(?!&)/.test(command))return false;
+ if(typeof input.command!=='string'||input.command.length>16000)return false;
+ const command=inspectionCommand(input.command);if(/[$`<>\\{}!]|(?<!&)&(?!&)/.test(command))return false;
  const parsed=core.parseCommandSegments(command);if(!parsed.valid||!parsed.segments.length)return false;
  return parsed.segments.every((segment:string)=>{
   const [name,...args]=core.shellWords(segment) as string[];if(!name)return false;

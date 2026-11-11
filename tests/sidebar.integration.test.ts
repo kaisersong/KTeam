@@ -27,7 +27,7 @@ test('real room sidebar: latest message, durable unread, scoped rename/delete, r
   await sidebar.control(direct,{action:'read',expectedRevision:unread.revision,throughSequence:last.roomSequence});assert.equal(sidebar.state(direct).manualUnread,false);
   for(const id of [direct,group]){
    const snapshot=await f.upstream.membership(id),input={action:'rename',title:id===direct?'新名称':'新群名称',expectedRevision:sidebar.state(id).revision,expectedRoomRevision:snapshot.room.revision,requestId:randomUUID()};
-   await sidebar.control(id,input);assert.equal((await f.upstream.membership(id)).room.title,input.title);assert.deepEqual(await sidebar.control(id,input),{ok:true,roomId:id,title:input.title});
+   await sidebar.control(id,input);assert.equal(((await f.upstream.listBots()).agents as any[]).find(agent=>agent.id===bot.bot.id)?.name,'新名称');assert.equal((await f.upstream.membership(id)).room.title,input.title);assert.deepEqual(await sidebar.control(id,input),{ok:true,roomId:id,title:input.title});
    await assert.rejects(sidebar.control(id,{...input,title:'conflict'}),/sidebar_request_conflict/);
   }
   await coordinator.guardConversation(direct);
@@ -48,5 +48,18 @@ test('unknown rename result recovers by authoritative read without repeating the
   const b=await coordinator.createMember({name:'PM',modelId:'fixture',requestId:randomUUID()},user),snapshot=await f.upstream.membership(b.roomId),input={action:'rename',title:'恢复的名称',expectedRevision:0,expectedRoomRevision:snapshot.room.revision,requestId:randomUUID()};
   const update=f.upstream.updateTeam.bind(f.upstream);let calls=0;f.upstream.updateTeam=async(...args:any[])=>{calls++;await update(...args);throw Error('lost-response');};
   await assert.rejects(sidebar.control(b.roomId,input),/lost-response/);assert.equal((await new ConversationSidebar(f.upstream,store,async()=>{}).control(b.roomId,input)).title,input.title);assert.equal(calls,1);await coordinator.guardConversation(b.roomId);
+ }finally{store.close();await f.close();}
+});
+
+
+test('a direct Bot rename recovers its roster receipt without replaying the rename or changing another member',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),sidebar=new ConversationSidebar(f.upstream,store,async()=>{});
+ try{
+  const member=await coordinator.createMember({name:'旧分析成员',modelId:'fixture',requestId:randomUUID()},user),other=await coordinator.createMember({name:'其他成员',modelId:'fixture',requestId:randomUUID()},user);
+  const snapshot=await f.upstream.membership(member.roomId),input={action:'rename',title:'研究员',expectedRevision:0,expectedRoomRevision:snapshot.room.revision,requestId:randomUUID()};
+  const update=f.upstream.updateBot.bind(f.upstream);let calls=0;f.upstream.updateBot=async(...args:any[])=>{calls++;await update(...args);throw Error('lost-bot-rename-receipt');};
+  await assert.rejects(sidebar.control(member.roomId,input),/lost-bot-rename-receipt/);await coordinator.guardConversation(member.roomId);
+  const afterRestart=new ConversationSidebar(f.upstream,store,async()=>{});assert.equal((await afterRestart.control(member.roomId,input)).title,'研究员');assert.equal(calls,1);
+  const bots=(await f.upstream.listBots()).agents as any[];assert.equal(bots.find(b=>b.id===member.bot.id).name,'研究员');assert.equal(bots.find(b=>b.id===other.bot.id).name,'其他成员');
  }finally{store.close();await f.close();}
 });
