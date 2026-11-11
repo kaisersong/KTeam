@@ -1,3 +1,4 @@
+import {ConversationSidebar} from './sidebar.js';
 import {join} from 'node:path';
 import {ensureSharedServices} from '../runtime/services.js';
 import {WorkRecovery} from './work-recovery.js';
@@ -83,6 +84,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
+  const sidebar=new ConversationSidebar(upstream,teamStore,roomId=>automation.pause(roomId));
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
@@ -188,7 +190,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if (req.method === 'GET') {
           const result=await collaboration.teams(),managed=(result.rooms as any[]).filter(room=>teamStore.settings(room.roomId)),present=new Set(managed.map(room=>room.roomId));for(const id of directoryMembers.keys())if(!present.has(id))directoryMembers.delete(id);
           const rooms=await Promise.all(managed.map(async room=>{const kind=teamStore.settings(room.roomId)?.kind??'group';let memberAgentIds:string[]|undefined;if(kind==='group'){const previous=directoryMembers.get(room.roomId);if(previous&&previous.revision===room.revision&&Date.now()-previous.at<10000)memberAgentIds=previous.ids;else{const snapshot=await upstream.membership(room.roomId),ids=(snapshot.members as any[]).filter(m=>m.status==='active'&&m.subject?.kind==='agent').map(m=>String(m.subject.logicalAgentId));directoryMembers.set(room.roomId,{revision:Number((snapshot.room as any).revision),at:Date.now(),ids});memberAgentIds=ids;}}return {...room,kind,memberAgentIds,pinnedAt:teamStore.state<any>('sidebar:'+room.roomId)?.pinnedAt??null,botId:teamStore.state<any>('conversation:'+room.roomId)?.members?.length===1?teamStore.state<any>('conversation:'+room.roomId)?.members[0]?.botId:undefined};}));
-          return send(res,200,{...result,rooms});
+          return send(res,200,{...result,rooms:await sidebar.decorate(rooms)});
         }
         if (req.method === 'POST') {
           return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
@@ -210,9 +212,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|library-remove|computer|usage|regenerate|sidebar|scheduled-work)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
+        if(req.method==='POST'&&action==='sidebar'){if(client.id!=='kteam-main')throw new KTeamError('sidebar_conversation_forbidden',403);return send(res,200,await sidebar.control(roomId,await body(req)));}
         const membership=await upstream.membership(roomId);
         if(action==='scheduled-work'){if(req.method==='GET')return send(res,200,await scheduledWork.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);return send(res,200,await scheduledWork.change(roomId,await body(req)));}}
-        if(req.method==='POST'&&action==='sidebar'){const input=record(await body(req));fields(input,['pinned']);if(typeof input.pinned!=='boolean')throw new KTeamError('sidebar_input_invalid');if(!teamStore.settings(roomId)||teamStore.settings(roomId)?.kind==='peer'||!(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('sidebar_conversation_forbidden',403);const prior=teamStore.state<any>('sidebar:'+roomId),value={pinnedAt:input.pinned?(prior?.pinnedAt??new Date().toISOString()):null};teamStore.setState('sidebar:'+roomId,value);return send(res,200,{ok:true,...value});}
         if(req.method==='POST'&&action==='edit')return send(res,200,await coordinator.editGroup({...record(await body(req)),roomId}));
         if(req.method==='GET'&&action==='shared')return send(res,200,await conversations.data(roomId));
         if(req.method==='POST'&&action==='shared')return send(res,200,await conversations.shared(roomId,await body(req)));
