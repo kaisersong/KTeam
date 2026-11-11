@@ -7,7 +7,7 @@ function dueLabel(item:any){
  if(item.state==='queued')return '正在进行';
  if(item.unavailable)return item.unavailable;
  if(item.dueAt<=Date.now())return '等待检查';
- return (item.kind==='routine'?item.scheduleLabel+' · 下次 ':'一次 · ')+new Intl.DateTimeFormat('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(item.dueAt));
+ return (item.kind==='routine'?item.scheduleLabel+' · 下次 ':'一次 · ')+new Intl.DateTimeFormat('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',...(item.timeZone?{timeZone:item.timeZone}:{})}).format(new Date(item.dueAt));
 }
 export function UpcomingWork({roomId,bots,onBot,onManage}:{roomId:string;bots:Bot[];onBot:(bot:Bot)=>void;onManage?:()=>void}){
  const [items,setItems]=useState<any[]>([]),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState<string>(),[expanded,setExpanded]=useState(false);
