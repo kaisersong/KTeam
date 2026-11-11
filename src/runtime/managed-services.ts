@@ -1,9 +1,10 @@
 import {createServer,connect} from 'node:net';
-import {join,dirname,resolve} from 'node:path';
-import {existsSync,writeFileSync,openSync,closeSync} from 'node:fs';
+import {join,dirname,resolve,sep} from 'node:path';
+import {existsSync,writeFileSync,openSync,closeSync,renameSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {ensurePrivateRoot,initConfig,privateRead,CLIENTS,loadConfig,type Config} from '../service/config.js';
+import {ensurePrivateRoot,initConfig,privateRead,CLIENTS,loadConfig,readRawConfig,isLegacySharedConfig,type Config} from '../service/config.js';
+import {recordLegacySharedServicesDropped} from '../service/legacy-notice.js';
 import {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
 import {writeServiceEndpoints,portOf} from '../service/service-endpoints.js';
@@ -11,8 +12,12 @@ export interface ServicePlan{version:1;broker:{cwd:string;env:Record<string,stri
 const freePort=()=>new Promise<number>((accept,reject)=>{const server=createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=(server.address() as any).port;server.close(error=>error?reject(error):accept(port));});});
 function clientCredentials(root:string){for(const name of CLIENTS){const file=join(root,name+'.token');if(existsSync(file)){if(privateRead(file).length<32)throw new KTeamError('client_credentials_invalid');}else writeFileSync(file,randomBytes(32).toString('base64url')+'\n',{mode:0o600,flag:'wx'});}}
 export async function initStandalone(root:string){
- ensurePrivateRoot(root);if(existsSync(join(root,'config.json'))){const config=loadConfig(root);clientCredentials(root);if(config.managedServiceConfig)recordEndpoints(root,config);return;}
- const serviceRoot=join(root,'services');ensurePrivateRoot(serviceRoot);const brokerRoot=join(serviceRoot,'broker'),kswarmRoot=join(serviceRoot,'kswarm');ensurePrivateRoot(brokerRoot);ensurePrivateRoot(kswarmRoot);
+ ensurePrivateRoot(root);const serviceRoot=join(root,'services');
+ if(existsSync(join(root,'config.json'))){
+  if(!legacySharedConfig(root,serviceRoot)){const config=loadConfig(root);clientCredentials(root);if(config.managedServiceConfig)recordEndpoints(root,config);return;}
+  archiveLegacySharedConfig(root,serviceRoot);
+ }
+ensurePrivateRoot(serviceRoot);const brokerRoot=join(serviceRoot,'broker'),kswarmRoot=join(serviceRoot,'kswarm');ensurePrivateRoot(brokerRoot);ensurePrivateRoot(kswarmRoot);
  const brokerTokenFile=join(serviceRoot,'broker.token'),kswarmTokenFile=join(serviceRoot,'kswarm.token'),managedServiceConfig=join(serviceRoot,'config.json');let plan:ServicePlan;
  if(existsSync(managedServiceConfig)){plan=readServicePlan(managedServiceConfig);}else{
   if(existsSync(join(brokerRoot,'broker.sqlite')))throw new KTeamError('managed_services_history_unconfigured');
@@ -26,6 +31,26 @@ export async function initStandalone(root:string){
  // Prepare all client credentials before the completion config; a crash remains retryable.
  const config:Config={version:1,brokerUrl:'http://127.0.0.1:'+plan.broker.env.PORT,kswarmUrl:'http://127.0.0.1:'+plan.kswarm.env.KSWARM_PORT,brokerTokenFile,kswarmTokenFile,managedServiceConfig};
  clientCredentials(root);initConfig(root,config);recordEndpoints(root,config);
+}
+/** A 0.2 config ran KTeam on services shared with xiaok (its plan lived outside KTeam's data dir and carried no
+ * KTeam-owned credential files). It can never connect in 0.3, so it is detected here before anything else. */
+function legacySharedConfig(root:string,serviceRoot:string){
+ const raw=readRawConfig(root);if(isLegacySharedConfig(raw))return true;
+ const planFile=(raw as {managedServiceConfig?:unknown}).managedServiceConfig;if(typeof planFile!=='string'||!existsSync(planFile))return false;
+ // An unreadable plan is not evidence of a 0.2 config: leave it for the normal path to report.
+ let plan:ServicePlan;try{plan=readServicePlan(planFile);}catch{return false;}return [plan.broker.cwd,plan.kswarm.cwd].some(cwd=>!resolve(cwd).startsWith(serviceRoot+sep));
+}
+/** Move the 0.2 shared-service config (and the plan/connection files 0.2 kept in KTeam's services dir) into
+ * backups/, untouched, so a fresh KTeam-owned setup can be created. Nothing outside KTeam's data dir is read,
+ * moved or modified. Client credentials stay in place. The one-time 0.3 notice is recorded before the move. */
+function archiveLegacySharedConfig(root:string,serviceRoot:string){
+ recordLegacySharedServicesDropped(root);
+ const backups=join(root,'backups');ensurePrivateRoot(backups);
+ const target=join(backups,'legacy-0.2-shared-'+new Date().toISOString().replace(/[:.]/g,'-'));ensurePrivateRoot(target);
+ for(const [from,name] of [[join(serviceRoot,'config.json'),'services-config.json'],[join(serviceRoot,'shared-connection.json'),'services-shared-connection.json'],[join(root,'service-endpoints.json'),'service-endpoints.json']] as [string,string][])if(existsSync(from))renameSync(from,join(target,name));
+ // config.json moves last: until it is gone, a crash re-runs this same detection on the next start.
+ renameSync(join(root,'config.json'),join(target,'config.json'));
+ process.emitWarning('KTeam moved a 0.2 shared-service config to '+target+' and is creating its own services.',{code:'KTEAM_LEGACY_SHARED_CONFIG_ARCHIVED'});
 }
 /** Publish the ports KTeam's own services use to KTeam's discovery file for the CLI and clients. */
 function recordEndpoints(root:string,config:Config){writeServiceEndpoints(root,{broker:portOf(config.brokerUrl),kswarm:portOf(config.kswarmUrl)});}

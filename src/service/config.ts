@@ -60,6 +60,14 @@ function dropLegacyKeys(value: unknown, root: string): unknown {
   if (!legacyWarned) { legacyWarned = true; process.emitWarning(`KTeam config.json: ignoring ${legacy.length} legacy key(s) no longer used: ${legacy.slice(0, 8).map(key => JSON.stringify(key.slice(0, 64))).join(', ')}`, { code: 'KTEAM_CONFIG_LEGACY_KEYS' }); }
   return Object.fromEntries(Object.entries(config).filter(([key]) => CONFIG_KEYS.includes(key)));
 }
+/** True for a config an older KTeam (0.2) wrote to run on shared services: it points at a managed service plan
+ * without KTeam-owned credential files. Such a config can never connect in 0.3, so standalone init archives it
+ * and creates KTeam's own services. Explicitly external configs (no managed plan) are left alone. */
+export function isLegacySharedConfig(value: unknown): boolean {
+  const config = record(value);
+  return typeof config.managedServiceConfig === 'string' && (typeof config.brokerTokenFile !== 'string' || typeof config.kswarmTokenFile !== 'string');
+}
+export function readRawConfig(root: string): unknown { return parseJson(privateRead(join(root, 'config.json'))); }
 export function loadConfig(root: string): Config {
   return validateConfig(dropLegacyKeys(parseJson(privateRead(join(root, 'config.json'))), root));
 }
