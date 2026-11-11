@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AIMP v3.1 signature projections; event policy is specified in the design document",
+  "$defs": {
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aimp", "id", "thread_id", "from", "to", "audience", "exp", "key_id", "act", "source_level", "body_hash"],
+      "properties": {
+        "aimp": {"const": "1.0"},
+        "id": {"type": "string", "minLength": 1},
+        "thread_id": {"type": "string", "minLength": 1},
+        "room_id": {"type": "string", "minLength": 1},
+        "task_ref": {"type": "string", "minLength": 1},
+        "control_ref": {"type": "string", "minLength": 1},
+        "target_event": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false, "required": ["id", "hash"], "properties": {"id": {"type": "string", "minLength": 1}, "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+          ]
+        },
+        "from": {"type": "string", "minLength": 1},
+        "to": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "mentions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "audience": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "exp": {"type": "string", "pattern": "^.*Z$"},
+        "key_id": {"type": "string", "minLength": 1},
+        "reply_to": {"type": "string", "minLength": 1},
+        "act": {"type": "string", "minLength": 1},
+        "source_level": {"enum": ["principal", "peer", "environment"]},
+        "classification": {"enum": ["public", "internal", "confidential"]},
+        "body_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "payload_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "capability_token": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"ref": {"type": "string"}, "chain_head": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "inline": {"type": "object"}}
+        },
+        "intent_origin": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "content_hash"],
+            "properties": {"id": {"type": "string", "minLength": 1}, "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+          }
+        },
+        "artifacts": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["ref", "version", "sha256"],
+            "properties": {"ref": {"type": "string", "minLength": 1}, "version": {"type": "integer", "minimum": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "media_type": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["intent_hash", "sender_sig", "seq", "term", "recorded_at", "prev_hash", "verdict"],
+      "properties": {
+        "intent_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "sender_sig": {"type": "string", "pattern": "^[0-9a-f]{128}$"},
+        "seq": {"type": "integer", "minimum": 1},
+        "term": {"type": "integer", "minimum": 1},
+        "recorded_at": {"type": "string", "pattern": "^.*Z$"},
+        "prev_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "verdict": {"enum": ["sequenced"]}
+      }
+    },
+    "system": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "thread_id", "target_event", "act", "source_level", "key_id", "payload"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "thread_id": {"type": "string", "minLength": 1},
+        "task_ref": {"type": "string", "minLength": 1},
+        "control_ref": {"type": "string", "minLength": 1},
+        "target_event": {"type": "object", "additionalProperties": false, "required": ["id", "hash"], "properties": {"id": {"type": "string"}, "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+        "act": {"type": "string", "pattern": "^sys\\."},
+        "source_level": {"const": "peer"},
+        "key_id": {"type": "string", "minLength": 1},
+        "payload": {"type": "object", "required": ["kind", "must_understand"], "properties": {"kind": {"type": "string", "pattern": "^sys\\..+@1$"}, "must_understand": {"const": true}}}
+      }
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task_ref", "action_type", "target", "amount", "irreversibility", "artifacts", "payload", "constraints"],
+      "properties": {
+        "schema_version": {"type": "string", "minLength": 1},
+        "task_ref": {"type": "string", "minLength": 1},
+        "action_type": {"enum": ["read", "write", "execute", "send", "pay"]},
+        "target": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "amount": {"anyOf": [{"const": "none"}, {"type": "object", "additionalProperties": false, "required": ["amount", "currency"], "properties": {"amount": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"}, "currency": {"type": "string", "pattern": "^[A-Z]{3}$"}}}]},
+        "irreversibility": {"enum": ["reversible", "costly-reversible", "irreversible"]},
+        "artifacts": {"type": "array"},
+        "payload": {"type": "object"},
+        "constraints": {"type": "object"}
+      }
+    }
+  }
+}

@@ -43,15 +43,15 @@
       "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
     },
     {
-      "file": "docs/reference/aimp-design-spec-v3.1.md",
+      "file": "spec/aimp/aimp-design-spec-v3.1.md",
       "sha256": "95ef720884deef2ff0d26dba3ebb08713b2d12357ece0647c24c1ce8e22778d0"
     },
     {
-      "file": "docs/reference/aimp-v3.1-schemas.json",
+      "file": "spec/aimp/aimp-v3.1-schemas.json",
       "sha256": "c7f0096793ef92df5d8f399654dcbc240ae4184a7ab697cc7fec26635db15123"
     },
     {
-      "file": "docs/reference/aimp-v3.1-test-vectors.json",
+      "file": "spec/aimp/aimp-v3.1-test-vectors.json",
       "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
     }
   ],

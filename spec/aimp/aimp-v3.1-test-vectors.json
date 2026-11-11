@@ -1,0 +1,185 @@
+{
+  "format": "aimp-v3.1-vectors@1",
+  "public_test_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "seed_notice": "RFC 8032 public test seed; never use for real identities or authorization",
+  "envelope": {
+    "aimp": "1.0",
+    "id": "msg_vector_01",
+    "thread_id": "thr_vector_01",
+    "room_id": "room_vector_01",
+    "task_ref": "task_vector_01",
+    "target_event": null,
+    "from": "human://relay.example/test",
+    "to": [
+      "agent://relay.example/test-bot"
+    ],
+    "audience": [
+      "domain:relay.example@1"
+    ],
+    "exp": "2026-11-07T06:05:00Z",
+    "key_id": "rfc8032-public-test-key",
+    "ts": "2026-11-07T06:00:00Z",
+    "act": "propose",
+    "source_level": "principal",
+    "classification": "internal",
+    "body": "请生成域内草稿。",
+    "locale": "zh-CN",
+    "payload": {
+      "kind": "task.propose@1",
+      "must_understand": true,
+      "deadline": "2026-11-07T07:00:00Z",
+      "expires": "2026-11-07T06:04:00Z",
+      "budget": "none",
+      "acceptance": {
+        "predicates": [],
+        "subjective": "生成草稿"
+      }
+    }
+  },
+  "intent_projection": {
+    "aimp": "1.0",
+    "id": "msg_vector_01",
+    "thread_id": "thr_vector_01",
+    "room_id": "room_vector_01",
+    "task_ref": "task_vector_01",
+    "target_event": null,
+    "from": "human://relay.example/test",
+    "to": [
+      "agent://relay.example/test-bot"
+    ],
+    "audience": [
+      "domain:relay.example@1"
+    ],
+    "exp": "2026-11-07T06:05:00Z",
+    "key_id": "rfc8032-public-test-key",
+    "act": "propose",
+    "source_level": "principal",
+    "classification": "internal",
+    "body_hash": "79ab994c5290c663af2b065d6cffa078015f5d6819d7fd74e36a06630199daee",
+    "payload_hash": "d7450d895a2ed062e290d78a764e2d64874a80584813356589e8b17697f476f8"
+  },
+  "jcs_subset": "Strings, objects, arrays, booleans, null and safe integers; no Unicode normalization; UTF-16 key sorting",
+  "canonical_cases": [
+    {
+      "input": {
+        "😀": 1,
+        "�": 2
+      },
+      "expected": "{\"😀\":1,\"�\":2}"
+    }
+  ],
+  "vectors": [
+    {
+      "name": "intent",
+      "input": {
+        "aimp": "1.0",
+        "id": "msg_vector_01",
+        "thread_id": "thr_vector_01",
+        "room_id": "room_vector_01",
+        "task_ref": "task_vector_01",
+        "target_event": null,
+        "from": "human://relay.example/test",
+        "to": [
+          "agent://relay.example/test-bot"
+        ],
+        "audience": [
+          "domain:relay.example@1"
+        ],
+        "exp": "2026-11-07T06:05:00Z",
+        "key_id": "rfc8032-public-test-key",
+        "act": "propose",
+        "source_level": "principal",
+        "classification": "internal",
+        "body_hash": "79ab994c5290c663af2b065d6cffa078015f5d6819d7fd74e36a06630199daee",
+        "payload_hash": "d7450d895a2ed062e290d78a764e2d64874a80584813356589e8b17697f476f8"
+      },
+      "canonical_utf8": "{\"act\":\"propose\",\"aimp\":\"1.0\",\"audience\":[\"domain:relay.example@1\"],\"body_hash\":\"79ab994c5290c663af2b065d6cffa078015f5d6819d7fd74e36a06630199daee\",\"classification\":\"internal\",\"exp\":\"2026-11-07T06:05:00Z\",\"from\":\"human://relay.example/test\",\"id\":\"msg_vector_01\",\"key_id\":\"rfc8032-public-test-key\",\"payload_hash\":\"d7450d895a2ed062e290d78a764e2d64874a80584813356589e8b17697f476f8\",\"room_id\":\"room_vector_01\",\"source_level\":\"principal\",\"target_event\":null,\"task_ref\":\"task_vector_01\",\"thread_id\":\"thr_vector_01\",\"to\":[\"agent://relay.example/test-bot\"]}",
+      "canonical_hex": "7b22616374223a2270726f706f7365222c2261696d70223a22312e30222c2261756469656e6365223a5b22646f6d61696e3a72656c61792e6578616d706c654031225d2c22626f64795f68617368223a2237396162393934633532393063363633616632623036356436636666613037383031356635643638313964376664373465333661303636333031393964616565222c22636c617373696669636174696f6e223a22696e7465726e616c222c22657870223a22323032362d31312d30375430363a30353a30305a222c2266726f6d223a2268756d616e3a2f2f72656c61792e6578616d706c652f74657374222c226964223a226d73675f766563746f725f3031222c226b65795f6964223a22726663383033322d7075626c69632d746573742d6b6579222c227061796c6f61645f68617368223a2264373435306438393561326564303632653239306437386137363465326436343837346138303538343831333335363538396538623137363937663437366638222c22726f6f6d5f6964223a22726f6f6d5f766563746f725f3031222c22736f757263655f6c6576656c223a227072696e636970616c222c227461726765745f6576656e74223a6e756c6c2c227461736b5f726566223a227461736b5f766563746f725f3031222c227468726561645f6964223a227468725f766563746f725f3031222c22746f223a5b226167656e743a2f2f72656c61792e6578616d706c652f746573742d626f74225d7d",
+      "domain_hex": "41494d502f312f696e74656e7400",
+      "signed_bytes_sha256": "1cf0aed617f11438fc0fe34c93624e309e7bdf2c9ea2661ad40c9171b5dd4a35",
+      "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "signature_hex": "f4237fd503c1f070531e50e78b9feaa99bbbbf7a2f4beaee782233ef5a4efb62c29bb7218a2a6febfec254fc2ce219289e5bce86fe1a4b668cac82f7f86db30d",
+      "expected": "valid"
+    },
+    {
+      "name": "record",
+      "input": {
+        "intent_hash": "1cf0aed617f11438fc0fe34c93624e309e7bdf2c9ea2661ad40c9171b5dd4a35",
+        "sender_sig": "f4237fd503c1f070531e50e78b9feaa99bbbbf7a2f4beaee782233ef5a4efb62c29bb7218a2a6febfec254fc2ce219289e5bce86fe1a4b668cac82f7f86db30d",
+        "seq": 1,
+        "term": 1,
+        "recorded_at": "2026-11-07T06:00:01Z",
+        "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "verdict": "sequenced"
+      },
+      "canonical_utf8": "{\"intent_hash\":\"1cf0aed617f11438fc0fe34c93624e309e7bdf2c9ea2661ad40c9171b5dd4a35\",\"prev_hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"recorded_at\":\"2026-11-07T06:00:01Z\",\"sender_sig\":\"f4237fd503c1f070531e50e78b9feaa99bbbbf7a2f4beaee782233ef5a4efb62c29bb7218a2a6febfec254fc2ce219289e5bce86fe1a4b668cac82f7f86db30d\",\"seq\":1,\"term\":1,\"verdict\":\"sequenced\"}",
+      "canonical_hex": "7b22696e74656e745f68617368223a2231636630616564363137663131343338666330666533346339333632346533303965376264663263396561323636316164343063393137316235646434613335222c22707265765f68617368223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030222c227265636f726465645f6174223a22323032362d31312d30375430363a30303a30315a222c2273656e6465725f736967223a226634323337666435303363316630373035333165353065373862396665616139396262626266376132663462656165653738323233336566356134656662363263323962623732313861326136666562666563323534666332636532313932383965356263653836666531613462363638636163383266376638366462333064222c22736571223a312c227465726d223a312c2276657264696374223a2273657175656e636564227d",
+      "domain_hex": "41494d502f312f7265636f726400",
+      "signed_bytes_sha256": "423e80084ea300e6514e057a80dbd9ccfd2fa553276ff36057dd107997220173",
+      "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "signature_hex": "aa1351ec50720142e7b43c6e95f1dbe6e7d3fd4daf107b04c7af8a06f36c852ae79d3337c99f4792d11ccb1c3c3adab5919b4f4541d36de14ca4af973e2a2c0d",
+      "expected": "valid"
+    },
+    {
+      "name": "system",
+      "input": {
+        "act": "sys.timeout",
+        "id": "sys_vector_01",
+        "task_ref": "task_vector_01",
+        "thread_id": "thr_vector_01",
+        "target_event": {
+          "id": "msg_vector_01",
+          "hash": "1cf0aed617f11438fc0fe34c93624e309e7bdf2c9ea2661ad40c9171b5dd4a35"
+        },
+        "source_level": "peer",
+        "key_id": "rfc8032-public-test-key",
+        "payload": {
+          "kind": "sys.timeout@1",
+          "must_understand": true,
+          "reason": "proposal_expired"
+        }
+      },
+      "canonical_utf8": "{\"act\":\"sys.timeout\",\"id\":\"sys_vector_01\",\"key_id\":\"rfc8032-public-test-key\",\"payload\":{\"kind\":\"sys.timeout@1\",\"must_understand\":true,\"reason\":\"proposal_expired\"},\"source_level\":\"peer\",\"target_event\":{\"hash\":\"1cf0aed617f11438fc0fe34c93624e309e7bdf2c9ea2661ad40c9171b5dd4a35\",\"id\":\"msg_vector_01\"},\"task_ref\":\"task_vector_01\",\"thread_id\":\"thr_vector_01\"}",
+      "canonical_hex": "7b22616374223a227379732e74696d656f7574222c226964223a227379735f766563746f725f3031222c226b65795f6964223a22726663383033322d7075626c69632d746573742d6b6579222c227061796c6f6164223a7b226b696e64223a227379732e74696d656f75744031222c226d7573745f756e6465727374616e64223a747275652c22726561736f6e223a2270726f706f73616c5f65787069726564227d2c22736f757263655f6c6576656c223a2270656572222c227461726765745f6576656e74223a7b2268617368223a2231636630616564363137663131343338666330666533346339333632346533303965376264663263396561323636316164343063393137316235646434613335222c226964223a226d73675f766563746f725f3031227d2c227461736b5f726566223a227461736b5f766563746f725f3031222c227468726561645f6964223a227468725f766563746f725f3031227d",
+      "domain_hex": "41494d502f312f73797374656d00",
+      "signed_bytes_sha256": "7b256cba093c78bf3cd5419c9b8a36edc2cc07368c262df69beb988828a90d07",
+      "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "signature_hex": "774edd4f07c778b35f0d11b80836104bc088c57806550007689e3654b35141617d3af0d6710c63ab4a46b67b0d6ed577e20e90ff88ecd617f673128fa80bf20e",
+      "expected": "valid"
+    },
+    {
+      "name": "approval",
+      "input": {
+        "schema_version": "action.send@1",
+        "task_ref": "task_vector_01",
+        "action_type": "send",
+        "target": [
+          "human://relay.example/receiver"
+        ],
+        "amount": "none",
+        "irreversibility": "costly-reversible",
+        "artifacts": [],
+        "payload": {
+          "subject": "草稿",
+          "content": "测试正文"
+        },
+        "constraints": {
+          "redirects": false
+        }
+      },
+      "canonical_utf8": "{\"action_type\":\"send\",\"amount\":\"none\",\"artifacts\":[],\"constraints\":{\"redirects\":false},\"irreversibility\":\"costly-reversible\",\"payload\":{\"content\":\"测试正文\",\"subject\":\"草稿\"},\"schema_version\":\"action.send@1\",\"target\":[\"human://relay.example/receiver\"],\"task_ref\":\"task_vector_01\"}",
+      "canonical_hex": "7b22616374696f6e5f74797065223a2273656e64222c22616d6f756e74223a226e6f6e65222c22617274696661637473223a5b5d2c22636f6e73747261696e7473223a7b22726564697265637473223a66616c73657d2c2269727265766572736962696c697479223a22636f73746c792d72657665727369626c65222c227061796c6f6164223a7b22636f6e74656e74223a22e6b58be8af95e6ada3e69687222c227375626a656374223a22e88d89e7a8bf227d2c22736368656d615f76657273696f6e223a22616374696f6e2e73656e644031222c22746172676574223a5b2268756d616e3a2f2f72656c61792e6578616d706c652f7265636569766572225d2c227461736b5f726566223a227461736b5f766563746f725f3031227d",
+      "domain_hex": "41494d502f312f617070726f76616c00",
+      "signed_bytes_sha256": "3891bb049f9683225da8531472d080560d53504f2cb786ba227680c13c271be8",
+      "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "signature_hex": "f53b49dbfbf599a453c12402ce8b9995887d5a67e351d7b56343385e3d129138e829f62172ac0290115eefa15e2681f21f2b07db0a86e929a07aad7dcc481803",
+      "expected": "valid"
+    }
+  ],
+  "negative_cases": [
+    "tampered_body",
+    "wrong_domain",
+    "duplicate_key",
+    "noncanonical_number"
+  ]
+}
