@@ -9,7 +9,7 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
 }
 export function toolActivity(events:any[],bots:Bot[]){
  const descriptions:Record<string,string>={read:'正在查阅本机资料',glob:'正在定位资料',grep:'正在检索资料',bash:'正在检查本机资料',web_fetch:'正在核对网络资料',web_search:'正在查找公开来源',update_shared_context:'正在整理共享纪要',ask_user:'等待你在私聊中确认'};
- const event=[...events].reverse().find(e=>e.input&&(e.name==='contact_bot'||descriptions[e.name]));
+ const event=[...events].reverse().find(e=>(e.name==='contact_bot'||descriptions[e.name]));
  if(!event||event.state!=='running')return undefined;
  if(event.name==='contact_bot'){try{const input=typeof event.input==='string'?JSON.parse(event.input):event.input;const name=bots.find(b=>b.id===input.botId)?.name;return name?'正在与'+name+'核对，等待对方答复':'正在与另一位成员核对';}catch{return '正在与另一位成员核对';}}
  return descriptions[event.name];

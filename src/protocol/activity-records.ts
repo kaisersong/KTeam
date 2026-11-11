@@ -29,7 +29,7 @@ export function activityRecords(jobs:unknown[],roomId:string):ActivityRecord[]{
   return {id:job.id,state:job.needsReview?'needs_review':text(job.state)??'unknown',reason:text(job.reason),createdAt:text(job.createdAt),originId:job.trigger==='routine'?undefined:text(job.originId),sourceLabel:job.trigger==='routine'?'例行任务：'+(text(job.routine?.name)??'已安排的工作'):undefined,
    resultMessageIds:[...new Set<string>((Array.isArray(job.results)?job.results:[]).map((result:any)=>text(result?.messageId)).filter((id:unknown):id is string=>typeof id==='string'))].slice(0,128),
    botIds:[...new Set<string>([...(Array.isArray(job.members)?job.members:[]),job.activeBotId,...events.map(event=>event.botId)].filter((id:unknown):id is string=>typeof id==='string'))].slice(0,128),
-   events,eventsLimited:all.length>=100,calls:Number.isSafeInteger(job.calls)&&job.calls>=0?job.calls:0};
+   events,eventsLimited:job.toolTraceLimited===true||all.length>=100,calls:Number.isSafeInteger(job.calls)&&job.calls>=0?job.calls:0};
  });
 }
 export const activityStateLabels:Record<string,string>={queued:'等待执行',routing:'正在选择成员',running:'正在执行',stopping:'正在停止',waiting:'等待结果',needs_review:'交付中有未完成项，需核对',delivered:'已提交答复',blocked:'需要处理',unknown:'结果待核对',stopped:'已停止',noop:'检查已结束',held:'会话已暂停',cancelled:'已取消'};

@@ -10,7 +10,7 @@ import {RuntimeMessageContent} from './harness-status';
 const seenPending=new Map<string,Set<number>>();let seenTimer:ReturnType<typeof setTimeout>|undefined;
 function seen(roomId:string,sequence:number){
  if(!roomId)return;const pending=seenPending.get(roomId)??new Set<number>();pending.add(sequence);seenPending.set(roomId,pending);
- if(!seenTimer)seenTimer=setTimeout(()=>{seenTimer=undefined;for(const [roomId,sequences] of seenPending){void api.seen({roomId,sequences:[...sequences]}).catch(()=>{});}seenPending.clear();},80);
+ if(!seenTimer)seenTimer=setTimeout(()=>{seenTimer=undefined;for(const [roomId,sequences] of seenPending){void api.seen({roomId,sequences:[...sequences],responseScope:'requested'}).catch(()=>{});}seenPending.clear();},80);
 }
 
 import {Avatar} from './avatar';

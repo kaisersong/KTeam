@@ -11,7 +11,7 @@ import type {TeamRoles} from './team-roles.js';
 import {ConversationService} from './conversation.js';
 import {conversationPage} from './conversation-pages.js';
 import {sharedRuntime} from '../runtime/native.js';
-import {projectWork} from './work-projection.js';
+import {projectWork,projectWorkEvent} from './work-projection.js';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function sequence(value:unknown):number {
@@ -73,7 +73,7 @@ export class ConversationUpdates {
    ||input.sequences!==undefined&&(!Array.isArray(input.sequences)||input.sequences.length>300||input.sequences.some(n=>!Number.isSafeInteger(n)||Number(n)<1)))throw new KTeamError('conversation_cursor_invalid');
   const ids=new Set<string>((input.messageIds as string[]|undefined)??[]),sequences=new Set<number>((input.sequences as number[]|undefined)??[]);
   const prior=this.cursor(input.cursor,roomId),resume=input.resumeAfter===undefined?0:sequence(input.resumeAfter),reset=!prior;
-  let after=prior?.seq??resume;
+  let after=input.tail===true?0:prior?.seq??resume;
   // An untrusted persisted offset past the real head cannot hide the original history.
   if(reset&&resume>0&&!input.tail){const head=await conversationPage(this.upstream,roomId,{tail:true,limit:1});if(resume>Number(head.toSequence??0))after=0;}
   const messages=await conversationPage(this.upstream,roomId,{after,tail:!!input.tail||reset&&after===0,limit:50});
@@ -135,7 +135,7 @@ export class ConversationUpdates {
   await this.sameScope(roomId,scope);return {ok:true,...page};
  }
  async detail(value:unknown){
-  const input=record(value);fields(input,['roomId','jobId','messageId','eventId']);
+  const input=record(value);fields(input,['roomId','jobId','messageId','eventId','part']);if(input.part!==undefined&&!['summary','draft','cards'].includes(String(input.part)))throw new KTeamError('conversation_cursor_invalid');
   const roomId=text(input.roomId,'room_id'),scope=await this.conversations.scope(roomId);
   const job=input.jobId===undefined?this.store.jobForMessage(roomId,text(input.messageId,'message_id')):this.store.job(text(input.jobId,'job_id'));
   if(!job||job.roomId!==roomId)throw new KTeamError('work_record_not_found',404);
@@ -146,16 +146,21 @@ export class ConversationUpdates {
   const bounded=(value:any,depth=0):any=>{
    if(budget<=0||depth>10){truncated=true;return '[记录预览已截断]';}
    if(typeof value==='string'){
-    const safe=core.redactSecrets(value).text,limit=Math.max(0,Math.min(16384,Math.floor(budget/3)));
-    if(safe.length>limit)truncated=true;
-    const result=safe.slice(0,limit);budget-=Buffer.byteLength(result);return result;
+    const safe=core.redactSecrets(value).text,max=input.part==='cards'?512*1024:input.part==='draft'?32768:16384;
+    let result=safe.slice(0,max);if(result.length<safe.length)truncated=true;
+    if(Buffer.byteLength(result)>budget){result=Buffer.from(result).subarray(0,Math.max(0,budget-3)).toString('utf8');truncated=true;}
+    budget-=Buffer.byteLength(result);return result;
    }
+   budget-=8;
    if(Array.isArray(value)){if(value.length>100)truncated=true;return value.slice(0,100).map(item=>bounded(item,depth+1));}
-   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).slice(0,100).map(([key,value])=>[key,bounded(value,depth+1)]));
+   if(value&&typeof value==='object'){const entries=Object.entries(value);if(entries.length>100)truncated=true;return Object.fromEntries(entries.slice(0,100).map(([key,value])=>{budget-=Buffer.byteLength(key)+4;return [key,bounded(value,depth+1)];}));}
    return value;
   };
   // Select display fields before redaction; never send the entire internal job or harness configuration.
-  const result=bounded(event??{...projectWork(job,this.store.workRecordVersion(job.id)),toolTrace:job.toolTrace??[],answerDraft:job.answerDraft,cards:job.cards??[],harness:job.harness?{toolNames:job.harness.toolNames,memoryBackend:job.harness.memoryBackend}:undefined});
+  const summary={...projectWork(job,version),toolTrace:(job.toolTrace??[]).map(projectWorkEvent),toolTraceLimited:(job.toolTrace??[]).length>=100};
+  const selected=input.part==='summary'?summary:input.part==='draft'?{id:job.id,state:job.state,answerDraft:job.answerDraft??job.partialText}:input.part==='cards'?{id:job.id,cards:job.cards??[]}:{...summary,toolTrace:job.toolTrace??[],answerDraft:job.answerDraft,cards:job.cards??[],harness:job.harness?{toolNames:job.harness.toolNames,memoryBackend:job.harness.memoryBackend}:undefined};
+  const result=bounded(event??selected);
+  if(Buffer.byteLength(JSON.stringify(result))>1750*1024)throw new KTeamError('conversation_projection_too_large',413);
   await this.sameScope(roomId,scope);
   if(this.store.workRecordVersion(job.id)!==version)throw new KTeamError('work_record_changed',409);
   return {ok:true,jobId:job.id,viewRevision:version,...(event?{event:result}:{job:result}),previewTruncated:truncated};
