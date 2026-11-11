@@ -80,8 +80,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
-  const scheduledWork = new ScheduledWork(upstream,teamStore,coordinator);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
+  const scheduledWork = new ScheduledWork(upstream,teamStore,coordinator,automation.routines);
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
   const sidebar=new ConversationSidebar(upstream,teamStore,roomId=>automation.pause(roomId));
@@ -145,6 +145,14 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/app/integrations/test'&&req.method==='POST')return send(res,200,await integrationSettings.test(await body(req)));
         if(url.pathname==='/v1/app/resources'&&req.method==='GET')return send(res,200,{ok:true,...await appResources()});
         throw new KTeamError('app_settings_operation_forbidden',403);
+      }
+      if(url.pathname==='/v1/routines'||url.pathname==='/v1/routines/remove'||url.pathname==='/v1/routines/pause'){
+        if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);
+        if(url.pathname==='/v1/routines'&&req.method==='GET')return send(res,200,await automation.routines.list(url.searchParams.get('roomId')??''));
+        if(url.pathname==='/v1/routines'&&req.method==='POST')return send(res,200,await automation.routines.save(await body(req)));
+        if(url.pathname==='/v1/routines/pause'&&req.method==='POST')return send(res,200,await automation.routines.pause(await body(req)));
+        if(url.pathname==='/v1/routines/remove'&&req.method==='POST')return send(res,200,await automation.routines.remove(await body(req)));
+        throw new KTeamError('route_not_found',404);
       }
       if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
       if(url.pathname==='/v1/builtin-agent'&&req.method==='GET')return send(res,200,{ok:true,agent:await builtinAgent.status(url.searchParams.get('modelId')??undefined)});

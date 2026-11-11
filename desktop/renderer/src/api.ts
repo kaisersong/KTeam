@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ routines(roomId:string):Promise<any>;pauseRoutine(input:any):Promise<any>;saveRoutine(input:any):Promise<any>;removeRoutine(input:any):Promise<any>;
  scheduledWork(roomId:string):Promise<any>;changeScheduledWork(input:{roomId:string;id:string;expectedRevision:number;action:'pause'|'resume'|'cancel'}):Promise<any>;
  teamRoles(roomId:string):Promise<any>;ensureTeamRoles(input:{roomId:string;force?:boolean}):Promise<any>;assignTeamCoordinator(input:{roomId:string;coordinatorBotId:string;expectedRevision:number;requestId:string}):Promise<any>;
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;

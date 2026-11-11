@@ -3,10 +3,11 @@ import {KTeamError,fields,record,text} from '../errors.js';
 import {TeamStore} from './team-store.js';
 import {TeamCoordinator} from './coordination.js';
 import {profile} from './bot-profile.js';
+import type {Routines} from './routines.js';
 
 /** A projection/control surface over the existing followup owner, not a new queue. */
 export class ScheduledWork{
- constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator){}
+ constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private routines?:Routines){}
  private async context(roomId:string){
   const settings=this.store.settings(roomId),snapshot=await this.upstream.membership(roomId),active=(snapshot.members as any[]).filter(m=>m.status==='active');
   if(!settings||(snapshot.room as any)?.status!=='active'||!active.some(m=>m.subject?.userId==='user.local'))throw new KTeamError('scheduled_work_forbidden',403);
@@ -37,13 +38,34 @@ export class ScheduledWork{
    const source=await this.source(item);
    schedules.push({id:item.id,revision:item.revision,botId:item.botId,botName:source.botName,sourceRoomId:item.roomId,sourceTitle:source.sourceTitle,title:item.reason,dueAt:item.dueAt,kind:'once',state:item.status,unavailable:source.unavailable});
   }
+  if(this.routines){
+   const rooms=[...new Set(this.store.operationsWithPrefix('routine:').filter(item=>!item.deletedAt&&this.belongs(item,roomId,context)).map(item=>String(item.roomId)))];
+   for(const sourceRoom of rooms){
+    let rows:any[];try{rows=(await this.routines.list(sourceRoom)).items;}catch(error){if(error instanceof KTeamError&&[403,404].includes(error.status))continue;throw error;}
+    const bots=(await this.upstream.listBots()).agents as any[];
+    for(const row of rows.filter(row=>context.botIds.includes(row.botId))){
+     const active=row.runs.some((run:any)=>['queued','routing','running','stopping'].includes(run.state));
+     if(!active&&row.nextAt===null&&row.enabled)continue;
+     const scheduleLabel=row.schedule.kind==='daily'?(row.schedule.weekdays.length===7?'每天':'每周')+' '+row.schedule.time:row.schedule.kind==='interval'?'每 '+row.schedule.minutes+' 分钟':'一次';
+     schedules.push({id:row.id,revision:row.revision,botId:row.botId,botName:bots.find(bot=>bot.id===row.botId)?.name??'成员',sourceRoomId:row.roomId,sourceTitle:sourceRoom===roomId?'':((await this.upstream.membership(sourceRoom)).room as any)?.title,title:row.name,dueAt:row.nextAt??0,kind:'routine',scheduleLabel,timeZone:row.timeZone,state:active?'queued':row.enabled?'pending':'paused',unavailable:row.needsReview?'上次结果需要核对':undefined});
+    }
+   }
+  }
   await this.context(roomId);
   return {ok:true,schedules:schedules.sort((a,b)=>a.dueAt-b.dueAt)};
  }
- async change(roomId:string,value:unknown){
+ async change(roomId:string,value:unknown):Promise<{ok:boolean;reused?:boolean;[key:string]:unknown}>{
   const input=record(value);fields(input,['id','expectedRevision','action']);const id=text(input.id,'schedule_id'),action=String(input.action);
   if(!['pause','resume','cancel'].includes(action)||!Number.isSafeInteger(input.expectedRevision))throw new KTeamError('invalid_input');
   const context=await this.context(roomId),prior=this.store.operation(id);
+  if(id.startsWith('routine:')&&this.routines){
+   if(!prior||!this.belongs(prior,roomId,context))throw new KTeamError('scheduled_work_forbidden',403);
+   const row=(await this.routines.list(prior.roomId)).items.find(item=>item.id===id);if(!row)throw new KTeamError('scheduled_work_changed',409);
+   if(action==='pause')return this.routines.pause({roomId:prior.roomId,id,expectedRevision:input.expectedRevision});
+   if(action==='cancel')return this.routines.remove({roomId:prior.roomId,id,expectedRevision:input.expectedRevision});
+   if(row.revision!==input.expectedRevision)throw new KTeamError('scheduled_work_changed',409);
+   return this.routines.save({roomId:prior.roomId,id,botId:row.botId,name:row.name,prompt:row.prompt,schedule:row.schedule,timeZone:row.timeZone,maxRuns:row.maxRuns,endAt:row.endAt,enabled:true,overlap:'skip',expectedRevision:row.revision,requestId:'upcoming-resume:'+id+':'+row.revision});
+  }
   if(!id.startsWith('followup:')||!prior||!this.belongs(prior,roomId,context))throw new KTeamError('scheduled_work_forbidden',403);
   const source=await this.source(prior);await this.context(roomId);
   const current=this.store.operation(id);if(!current)throw new KTeamError('scheduled_work_changed',409);
