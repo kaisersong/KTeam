@@ -82,3 +82,4 @@
 @media(max-width:650px){.message-menu,.message-reaction-picker{max-width:calc(100vw - 118px);width:222px}.message-actions>.icon-button{width:30px;height:30px}}
 
 :root[data-app-theme=dark] .from-user .message-text{background:var(--message-self-bg);color:var(--message-self-text)}
+.directory-permission-path{overflow-wrap:anywhere;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--text-primary);background:var(--rail)}
