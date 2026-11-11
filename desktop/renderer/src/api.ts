@@ -1,7 +1,8 @@
 export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
-export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
+export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ conversationAction(input:any):Promise<any>;
  enterpriseConnectors():Promise<any>;controlEnterpriseConnector(input:any):Promise<any>;
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
  integrationSettings():Promise<any>;saveIntegrationSettings(input:any):Promise<any>;testIntegration(input:any):Promise<any>;importProviderModels(input:any):Promise<any>;voiceOptions():Promise<any>;previewVoice():Promise<any>;transcribeAudio(input:any):Promise<any>;
@@ -50,6 +51,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ sidebar_changed:'会话已变化，请重新打开菜单后操作',sidebar_busy:'会话正在更新，请稍后再试',sidebar_title_invalid:'请输入 1–80 个字符的会话名称',sidebar_request_conflict:'此操作内容已变化，请重新打开菜单',sidebar_conversation_forbidden:'没有权限修改此会话',room_delete_pending:'会话中的工作正在停止，请稍后再次确认删除',
  connector_changed:'连接状态已变化，请刷新后重试',connector_busy:'连接器正在执行操作，请完成或取消后重试',connector_cli_unavailable:'CLI 暂不可用，请检查安装',connector_not_found:'连接器不可用，请刷新',connector_action_invalid:'此连接器不支持该操作',
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',
  invalid_profile_name:'请输入 1–40 个字符的名字，不含换行或控制字符',invalid_profile_avatar:'图片无法读取，请重新选择 PNG、JPG 或 WebP 图片',profile_avatar_type:'请选择 PNG、JPG 或 WebP 图片',profile_avatar_too_large:'图片过大，请选择 10 MB、4000 万像素以内的图片',
