@@ -98,7 +98,7 @@ export class TeamAutomation {
  }
  async close(){
   this.accepting=false;await this.automatic?.close();this.privateChats?.close();if(this.timer)clearInterval(this.timer);await this.assistant.close();await this.recovering?.catch(()=>{});await this.dispatching;
-  await Promise.all([...this.active.values()].map(async active=>{try{if(active.job.task)await this.stopTask(active.job.roomId,active.job.task,'执行主机关闭');}catch{active.job.stopResultUnknown=true;this.store.save(active.job);}finally{active.controller.abort(new Error('host_shutdown'));await active.completion;}}));
+  await Promise.all([...this.active.values()].map(async active=>{active.job.interruption={reason:'host_shutdown',at:new Date().toISOString()};this.store.save(active.job);try{if(active.job.task)await this.stopTask(active.job.roomId,active.job.task,'执行主机关闭');}catch{active.job.stopResultUnknown=true;this.store.save(active.job);}finally{active.controller.abort(new Error('host_shutdown'));await active.completion;}}));
  }
  tick():Promise<void>{
   if(this.dispatching)return this.dispatching;

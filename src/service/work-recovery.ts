@@ -19,7 +19,7 @@ export class WorkRecovery {
   const failure = executionFailure(job);
   const priorTask = tasks.find(task => task.taskRef === job.task?.taskRef);
   const needsStop = priorTask && ['proposed','committed','working','blocked'].includes(priorTask.state);
-  return {jobId: job.id, state: job.state, hostInterrupted: failure?.message === 'host_shutdown' || job.reason === 'host_restarted_result_unknown',
+  return {jobId: job.id, state: job.state, hostInterrupted: failure?.code === 'host_restarted_result_unknown',
    canContinue: !this.store.settings(roomId)?.paused && !jobs.some(active) && !needsStop && !continuation,
    reason: this.store.settings(roomId)?.paused ? 'team_paused' : needsStop ? 'recovery_waiting_stop' : undefined,
    hasDraft: !!(job.answerDraft || job.partialText), completedReplies: (job.results ?? []).length,
