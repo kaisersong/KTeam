@@ -16,7 +16,16 @@ export class ConversationSidebar{
   if(!(snapshot.members as any[]).some(m=>m.status==='active'&&m.role==='owner'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('sidebar_conversation_forbidden',403);
   return snapshot;
  }
- async preview(roomId:string){const result=await new CollaborationService(this.upstream).messages(roomId,0,1,undefined,true);const last=result.messages.at(-1);return last?{messageId:last.messageId,roomSequence:last.roomSequence,text:String(last.text??'').replace(/\s+/g,' ').slice(0,240),sender:last.sender,createdAt:last.createdAt}:null;}
+ async preview(roomId:string){
+  let before:number|undefined;
+  for(let page=0;page<10;page++){
+   const result=await new CollaborationService(this.upstream).messages(roomId,0,100,before,true),last=result.messages.at(-1);
+   if(last)return {messageId:last.messageId,roomSequence:last.roomSequence,text:String(last.text??'').replace(/\s+/g,' ').slice(0,240),sender:last.sender,createdAt:last.createdAt};
+   if(!result.hasMoreBefore||!result.previousSequence||result.previousSequence===before)break;
+   before=result.previousSequence;
+  }
+  return null;
+ }
  async decorate(rooms:any[]){const result=new Array<any>(rooms.length);let next=0;await Promise.all(Array.from({length:Math.min(6,rooms.length)},async()=>{for(;;){const index=next++;if(index>=rooms.length)return;const room=rooms[index],state=this.state(room.roomId);if(room.kind==='peer'){result[index]=room;continue;}let lastMessage;try{lastMessage=await this.preview(room.roomId);}catch{lastMessage=undefined;}result[index]={...room,pinnedAt:state.pinnedAt,sidebarRevision:state.revision,manualUnread:state.manualUnread,unread:state.manualUnread||!!lastMessage&&Number(lastMessage.roomSequence)>state.readThrough&&(lastMessage.sender as any)?.kind!=='user',lastMessage};}}));return result;}
  async control(roomId:string,value:unknown){
   const input=record(value);fields(input,['action','pinned','expectedRevision','expectedRoomRevision','requestId','title','throughSequence']);

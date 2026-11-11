@@ -116,7 +116,7 @@ export class Upstreams {
   createTeam(input: Record<string, unknown>) { return this.request('broker', '/rooms', 'POST', input); }
   async messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
     const result = await this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}${before!==undefined?'&beforeSequence='+before:''}${tail?'&direction=backward':''}`);
-    return {...conversationSnapshot(result), nextSequence: Math.max(after, ...(result.messages as any[] ?? []).map(message => Number(message.roomSequence) || 0)), previousSequence: (result.messages as any[] ?? [])[0]?.roomSequence};
+    return {...conversationSnapshot(result), hasMoreBefore: result.hasMoreBefore===true, nextSequence: Math.max(after, ...(result.messages as any[] ?? []).map(message => Number(message.roomSequence) || 0)), previousSequence: (result.messages as any[] ?? [])[0]?.roomSequence};
   }
   sendBotPrivate(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/bot-messages`,'POST',input);}
   sendMessage(roomId: string, input: Record<string, unknown>) {
