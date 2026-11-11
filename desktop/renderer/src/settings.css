@@ -58,3 +58,6 @@
 /* Groups own their outer divider; rows only separate adjacent items. */
 .settings-list>:is(.settings-row,.settings-model,.settings-member,.settings-resource):last-child{border-bottom:0}
 .settings-block>.settings-row:last-of-type{border-bottom:0}
+
+/* Action rows retain their spacing when a narrow window forces wrapping. */
+.settings-actions,.profile-picture-actions{flex-wrap:wrap}
