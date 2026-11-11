@@ -1,3 +1,4 @@
+import {findOwnerMessage,originalMessage,ownerPage} from './room-reads.js';
 import { Upstreams } from '../adapters/upstream.js';
 import { intentHash, validateL0 } from '../protocol/aimp.js';
 import { KTeamError, fields, record, text } from '../errors.js';
@@ -46,7 +47,7 @@ export class CollaborationService {
     const envelope = validateL0(value);
     if (envelope.from !== LOCAL_HUMAN) throw new KTeamError('sender_identity_mismatch', 403);
     await this.upstream.requireReady();
-    const team = await this.upstream.getTeam(envelope.room_id);
+    const team = await this.upstream.membership(envelope.room_id);
     await assertSnapshot?.(team);
     const allowed = new Set([LOCAL_HUMAN, ...rows(team.members).filter(m => m.status === 'active').flatMap(member => {
       const subject = record(member.subject);
@@ -55,13 +56,8 @@ export class CollaborationService {
     if ([...envelope.to, ...envelope.mentions].some(id => !allowed.has(id))) throw new KTeamError('recipient_not_member', 403);
     let replyToMessageId: unknown;
     if (envelope.reply_to) {
-      let target = rows(team.messages).find(message => {
-        if(message.messageId===envelope.reply_to)return true;
-        if (!message.sourceRef) return false;
-        const ref = record(message.sourceRef);
-        return ref.kind === 'aimp_l0' && ref.envelope && record(ref.envelope).id === envelope.reply_to;
-      });
-      if(!target){try{target=record((await this.upstream.conversationMessage(envelope.room_id,String(envelope.reply_to))).message);}catch{throw new KTeamError('reply_message_not_found',404);}}
+      let target=await originalMessage(this.upstream,envelope.room_id,String(envelope.reply_to));
+      if(!target)target=await findOwnerMessage(this.upstream,envelope.room_id,message=>message.sourceRef?.kind==='aimp_l0'&&message.sourceRef.envelope?.id===envelope.reply_to);
       if (!target) throw new KTeamError('reply_message_not_found', 404);
       replyToMessageId = target.messageId;
     }
@@ -83,7 +79,7 @@ export class CollaborationService {
       roomSequence: message.roomSequence, envelope: ref.envelope, effect: 'conversation_only' };
   }
   async messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
-    const result = await this.upstream.messages(roomId, after, limit,before,tail);
+    const result = await ownerPage(this.upstream,roomId,{after,limit,before,tail});
     return { ...result, messages: rows(result.messages).map(projectMessage) };
   }
 }

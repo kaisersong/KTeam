@@ -1,3 +1,4 @@
+import {findOwnerMessage} from './room-reads.js';
 import {WorkConditions} from './work-conditions.js';
 import {createHash} from 'node:crypto';
 import {KTeamError,fields,record,text} from '../errors.js';
@@ -10,7 +11,7 @@ import {appPreferences} from './app-preferences.js';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const eventId=(value:string)=>'msg_'+hash(value).slice(0,32);
 const terminal=new Set(['delivered','blocked','unknown','stopped','noop','cancelled']);
-const humanTail=(messages:any[])=>messages.filter(message=>message.sender?.kind==='user'&&!['aimp_event','bot_question_answer'].includes(message.sourceRef?.kind)).at(-1)?.messageId??null;
+
 
 /** Durable references to the existing peer jobs and AIMP task, never a second task owner. */
 export class WorkHandoffs {
@@ -19,10 +20,10 @@ export class WorkHandoffs {
  private conditions:WorkConditions;
  private async capture(job:any,botId:string,targetIds:string[]){
   await this.coordinator.guardConversation(job.roomId);
-  const snapshot=await this.upstream.getTeam(job.roomId),bots=((await this.upstream.listBots()).agents as any[]),members=snapshot.members as any[];
+  const snapshot=await this.upstream.membership(job.roomId),bots=((await this.upstream.listBots()).agents as any[]),members=snapshot.members as any[];
   const bindings=Object.fromEntries([botId,...targetIds].map(id=>{const bot=bots.find(bot=>bot.id===id&&!bot.archivedAt),binding=this.store.binding(id);if(!bot||!binding||this.store.state('source-changing:'+id)||!members.some(member=>member.status==='active'&&member.subject?.logicalAgentId===id))throw new KTeamError('handoff_scope_changed',409);return [id,{binding,profileRevision:profile(bot).revision}];}));
   const settings=this.store.settings(job.roomId);if(!settings||settings.paused)throw new KTeamError('handoff_scope_changed',409);
-  return {settingsRevision:settings.revision,roomRevision:(snapshot.room as any).revision,bindings,sourceTailId:humanTail(snapshot.messages as any[]),rolesRevision:this.store.state<any>('team-role-policy:'+job.roomId)?.revision??0,disabledSkills:appPreferences(this.store).disabledSkills};
+  return {settingsRevision:settings.revision,roomRevision:(snapshot.room as any).revision,bindings,sourceTailId:(await findOwnerMessage(this.upstream,job.roomId,message=>message.sender?.kind==='user'&&!['aimp_event','bot_question_answer'].includes(message.sourceRef?.kind)))?.messageId??null,rolesRevision:this.store.state<any>('team-role-policy:'+job.roomId)?.revision??0,disabledSkills:appPreferences(this.store).disabledSkills};
  }
  async guard(job:any){
   if(!job?.currentHandoffId)return;

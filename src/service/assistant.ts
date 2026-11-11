@@ -1,3 +1,4 @@
+import {ownerPage} from './room-reads.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import type {systemOneChoice} from '../runtime/decision.js';
 import {createHash} from 'node:crypto';
@@ -48,10 +49,10 @@ export class TeamAssistant {
  async validateSources(groups:any[]){for(const group of groups){const current=await this.groupScope(group.roomId);if((current.room as any).revision!==group.roomRevision)throw new KTeamError('assistant_team_changed',409);}}
  async team(roomId:string){
   const scope=await this.groupScope(roomId);
-  const [transcript,conversation,taskData]=await Promise.all([this.upstream.messages(roomId,0,12,undefined,true),this.upstream.conversationData(roomId),this.upstream.aimp(roomId,'tasks')]);
+  const [transcript,conversation,taskData]=await Promise.all([ownerPage(this.upstream,roomId,{limit:12,tail:true}),this.upstream.conversationData(roomId),this.upstream.aimp(roomId,'tasks')]);
   const jobs=this.store.jobs(roomId),taskRows=(taskData.tasks as any[]??[]),live=jobs.filter(j=>activeStates.has(j.state));
   const waiting=[...this.store.operationsWithPrefix('bot-question:'),...this.store.operationsWithPrefix('tool-approval:')].filter(op=>op.status==='pending'&&(op.sourceRoomId??op.roomId)===roomId).map(op=>({id:op.id,botId:op.botId,question:op.question,toolName:op.toolName,privateRoomId:op.displayRoomId??op.roomId}));
-  const value={roomId,title:(scope.room as any).title,roomRevision:(scope.room as any).revision,checkedAt:new Date().toISOString(),paused:this.store.settings(roomId)?.paused===true,
+  const value={roomId,transcriptWindow:{limit:12,returned:(transcript.messages as any[]).length,hasMoreBefore:transcript.hasMoreBefore===true},title:(scope.room as any).title,roomRevision:(scope.room as any).revision,checkedAt:new Date().toISOString(),paused:this.store.settings(roomId)?.paused===true,
    members:(scope.members as any[]).filter(m=>m.status==='active'&&m.subject?.kind==='agent').map(m=>m.subject.logicalAgentId),
    waitingForUser:waiting,execution:waiting.length?'needs_input':live.length?'running':jobs[0]?.state??'no_run',activeBotIds:live.map(j=>j.activeBotId).filter(Boolean),
    tasks:taskRows.slice(-12).map(t=>({id:t.taskRef,state:t.state,description:t.terms?.description,assignee:t.terms?.assignee})),

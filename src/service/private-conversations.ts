@@ -1,3 +1,4 @@
+import {originalMessage,ownerPage,recentContext} from './room-reads.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError,record,fields,text} from '../errors.js';
@@ -65,7 +66,7 @@ export class PrivateConversations {
  async answeredQuestion(id:string){
   let op=this.store.operation(id);if(!op?.durable)throw new KTeamError('bot_question_changed',409);await this.coordinator.guardConversation(op.roomId);
   if(op.status==='unknown'&&op.previousStatus==='answering'){
-   const page=await this.upstream.messages(op.roomId,op.answerCursor??0,100),messages=page.messages as any[];const answer=messages.find(m=>m.sender?.kind==='user'&&m.sourceRef?.kind==='bot_question_answer'&&m.sourceRef?.questionId===id&&hash(m.text)===op.answerHash&&m.replyToMessageId===op.messageId);
+   const page=await ownerPage(this.upstream,op.roomId,{after:op.answerCursor??0,limit:100}),messages=page.messages as any[];const answer=messages.find(m=>m.sender?.kind==='user'&&m.sourceRef?.kind==='bot_question_answer'&&m.sourceRef?.questionId===id&&hash(m.text)===op.answerHash&&m.replyToMessageId===op.messageId);
    const current=this.store.operation(id);if(current.revision!==op.revision)return undefined;
    op=this.store.saveOperation({...op,...(answer?{status:'answered',answerMessageId:answer.messageId,answeredAt:Date.now()}:{answerCursor:Math.max(op.answerCursor??0,...messages.map(m=>Number(m.roomSequence)||0))})},op.revision);
   }
@@ -93,10 +94,10 @@ export class PrivateConversations {
  async sourceContext(job:any){
   if(!job.peer)return undefined;
   await this.validatePeer(job);
-  const parent=this.store.job(job.peer.sourceJobId),snapshot=await this.upstream.getTeam(job.peer.sourceRoomId);
-  const origin=parent?.trigger==='routine'?undefined:(snapshot.messages as any[]).find(m=>m.messageId===parent?.originId)??(await this.upstream.conversationMessage(job.peer.sourceRoomId,parent.originId)).message;
+  const parent=this.store.job(job.peer.sourceJobId),snapshot=await this.upstream.membership(job.peer.sourceRoomId),context=await recentContext(this.upstream,job.peer.sourceRoomId,12);
+  const origin=parent?.trigger==='routine'?undefined:await originalMessage(this.upstream,job.peer.sourceRoomId,parent.originId);
   await this.validatePeer(job);
-  return {roomId:job.peer.sourceRoomId,title:(snapshot.room as any).title,userMessage:origin?{messageId:origin.messageId,text:origin.text}:undefined,routine:!origin?{name:parent.routine.name,prompt:parent.routine.prompt,scheduledAt:parent.routine.scheduledAt,source:'用户在KTeam设置的例行任务'}:undefined,history:(snapshot.messages as any[]).slice(-12).map(m=>({messageId:m.messageId,sender:m.sender,text:String(m.text??'').slice(0,6000)}))};
+  return {roomId:job.peer.sourceRoomId,title:(snapshot.room as any).title,userMessage:origin?{messageId:origin.messageId,text:origin.text}:undefined,routine:!origin?{name:parent.routine.name,prompt:parent.routine.prompt,scheduledAt:parent.routine.scheduledAt,source:'用户在KTeam设置的例行任务'}:undefined,historyCoverage:{limited:context.limited,bytes:context.bytes,limit:12},history:context.messages.map(m=>({messageId:m.messageId,sender:m.sender,text:String(m.text??'').slice(0,6000)}))};
  }
  async validatePeer(job:any){const p=job.peer;if(!p)return;const source=this.store.settings(p.sourceRoomId),parent=this.store.job(p.sourceJobId);if(!source||source.paused||!parent||['stopping','stopped','unknown','blocked','held','cancelled'].includes(parent.state))throw new KTeamError('bot_private_scope_denied',403);await this.validateParent?.(parent);if(p.rootJobId&&p.rootJobId!==parent.id){const root=this.store.job(p.rootJobId);if(!root)throw new KTeamError('bot_private_scope_denied',403);await this.validateParent?.(root);}const snapshot=await this.upstream.membership(p.sourceRoomId),active=(snapshot.members as any[]).filter(m=>m.status==='active');if((snapshot.room as any).status!=='active'||![p.fromBotId,p.toBotId].every(id=>active.some(m=>m.subject?.logicalAgentId===id))||!active.some(m=>m.subject?.userId==='user.local'))throw new KTeamError('bot_private_scope_denied',403);}
  close(){this.closed=true;for(const p of [...this.pending.values()])p.resolve(null);}

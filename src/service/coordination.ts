@@ -78,7 +78,7 @@ export class TeamCoordinator{
   if(assistant?.botId!==proposal.botId||this.store.settings(proposal.roomId)?.kind!=='assistant')throw new KTeamError('proposal_scope_mismatch',403);
   const binding=this.store.binding(proposal.botId);if(!binding||binding.revision!==proposal.bindingRevision||binding.fingerprint!==proposal.fingerprint)throw new KTeamError('model_binding_changed',409);
   await this.frozen({...binding,name:'',existing:true,bindingRevision:binding.revision});
-  const snapshot=await this.upstream.getTeam(proposal.roomId);await this.guardConversation(proposal.roomId,snapshot);const origin=(snapshot.messages as any[]).find(m=>m.messageId===proposal.originId);
+  const snapshot=await this.upstream.membership(proposal.roomId);await this.guardConversation(proposal.roomId,snapshot);const origin=(await this.upstream.conversationMessage(proposal.roomId,proposal.originId)).message as any;
   if(!origin||origin.sender?.kind!=='user'||origin.threadId!==proposal.threadId)throw new KTeamError('proposal_scope_mismatch',403);
   const member=(snapshot.members as any[]).find(m=>m.status==='active'&&m.subject?.logicalAgentId===proposal.botId);if(!member)throw new KTeamError('proposal_scope_mismatch',403);
  }

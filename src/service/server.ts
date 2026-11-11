@@ -1,3 +1,4 @@
+import {originalSequences} from './room-reads.js';
 import {ConversationUpdates} from './conversation-updates.js';
 import {MemberWorkspace} from './member-workspace.js';
 import {BotMemory} from './bot-memory.js';
@@ -278,9 +279,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         }
         if(req.method==='POST'&&action==='seen'){
           const input=record(await body(req));if(!Array.isArray(input.sequences)||input.sequences.length>200||input.sequences.some(n=>!Number.isSafeInteger(n)||Number(n)<1))throw new KTeamError('seen_input_invalid');
-          const snapshot=await upstream.getTeam(roomId),valid=new Set((snapshot.messages as any[]).map(message=>message.roomSequence));
+          await conversations.scope(roomId);const valid=new Set(await originalSequences(upstream,roomId,input.sequences as number[]));await conversations.scope(roomId);
           if(input.sequences.some(n=>!valid.has(n)))throw new KTeamError('seen_scope_invalid');
-          teamStore.markSeen(roomId,input.sequences as number[]);return send(res,200,{ok:true,seen:teamStore.seen(roomId)});
+          teamStore.markSeen(roomId,input.sequences as number[]);return send(res,200,{ok:true,seen:teamStore.seenWithin(roomId,input.sequences as number[]),seenScope:'requested'});
         }
         if(req.method==='POST'&&action==='review'){
           const input=record(await body(req));if(typeof input.taskRef!=='string'||input.decision!=='pass')throw new KTeamError('review_decision_not_supported');

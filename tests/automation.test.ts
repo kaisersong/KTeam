@@ -9,11 +9,17 @@ import {DatabaseSync} from 'node:sqlite';
 import {KTeamError} from '../src/errors.js';
 
 const user={sessionId:'test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};
+function originalReads(broker:any,roomId:string){const unwrap=(result:any)=>{if(!result.ok)throw new KTeamError(result.code);return result;};return {
+ membership:async()=>unwrap(broker.room.getRoomMembership({roomId},user)),
+ messages:async(_room:string,afterSequence:number,limit:number,beforeSequence?:number,tail=false)=>unwrap(broker.room.listRoomMessages({roomId,afterSequence,limit,beforeSequence,direction:tail?'backward':'forward'},user)),
+ conversationMessage:async(_room:string,messageId:string)=>unwrap(broker.room.workspace.getConversationMessage({roomId,messageId},user)),
+};}
+
 test('startup reconciliation is a barrier for concurrent work and close',async()=>{
  const root=realpathSync(mkdtempSync('/tmp/kteam-start-barrier-'));const store=new TeamStore(root);
  let release!:()=>void;const gate=new Promise<void>(r=>{release=r;});
  store.prepareSubmission('pending','room','hash',{});store.enqueue('new','room','origin');
- const upstream={getTeam:async()=>{await gate;return {messages:[]};}} as unknown as Upstreams;
+ const upstream={messages:async()=>{await gate;return {messages:[],hasMoreBefore:false};}} as unknown as Upstreams;
  const automation=new TeamAutomation(upstream,store,1);
  try{automation.start();await automation.tick();assert.equal(store.jobs()[0].state,'queued');const closed=automation.close();release();await closed;assert.equal(store.jobs()[0].state,'queued');}
  finally{release();await automation.close();store.close();rmSync(root,{recursive:true,force:true});}
@@ -39,7 +45,7 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
  const store=new TeamStore(root);store.configure({roomId,goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
  store.bind({botId:'a',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.enqueue('job',roomId,origin.messageId);
  let lost=false,inferences=0;
- const upstream={getTeam:async()=>broker.room.getCollaborationRoom({roomId},user),listBots:async()=>({agents:[{id:'a',name:'CEO'}]}),aimp:async(_room:string,command:string,input:any={})=>{
+ const upstream={...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'}]}),aimp:async(_room:string,command:string,input:any={})=>{
   const ctx=input.logicalAgentId?{...user,requestSource:'agent',actor:{kind:'agent',logicalAgentId:'a'},allowedLogicalAgentIds:['a']}:user;
   if(loss==='chat-unconfirmed'&&command==='chat')throw new KTeamError('upstream_operation_unknown',503);
   const method=({session:'getSession',tasks:'listTasks',event:'submit','agent-event':'submit','begin-execution':'beginExecution','execution-check':'checkExecution',chat:'chat','verify-delivery':'verifyDelivery'} as Record<string,string>)[command];assert.ok(method,'unexpected command '+command);
@@ -63,7 +69,7 @@ test('crash between broker receipt and local job: read-only reconciliation recov
   assert.throws(()=>store.prepareSubmission('id','room','changed',{}),/aimp_id_conflict/);
   store.close();store=new TeamStore(root);
   let reads=0;
-  const upstream={getTeam:async()=>{reads++;return {messages:[{messageId:'actual-broker-id',sender:{kind:'user'},sourceRef:{kind:'aimp_l0',envelope:{id:'id'},intentHash:'hash'}}]};}} as unknown as Upstreams;
+  const upstream={messages:async()=>{reads++;return {hasMoreBefore:false,messages:[{roomSequence:1,messageId:'actual-broker-id',sender:{kind:'user'},sourceRef:{kind:'aimp_l0',envelope:{id:'id'},intentHash:'hash'}}]};}} as unknown as Upstreams;
   const automation=new TeamAutomation(upstream,store,2);
   await automation.reconcileSubmissions();await automation.reconcileSubmissions();await automation.close();
   assert.equal(reads,2);assert.equal(store.jobs().length,1);assert.equal(store.jobs()[0].originId,'actual-broker-id');assert.equal(store.jobs()[0].state,'held');
@@ -96,7 +102,7 @@ for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stop
  let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>{release=r;}),seen=new Promise<void>(r=>{entered=r;});
  let held=false;
  const upstream={
-  getTeam:async()=>broker.room.getCollaborationRoom({roomId},user),listBots:async()=>({agents:[{id:'a',name:'CEO'}]}),
+  ...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'}]}),
   aimp:async(_room:string,command:string,input:any={})=>{
    if(stopFailure&&command==='event'&&input.act==='stop')throw Error('stop transport lost');
    const ctx=input.logicalAgentId?{...user,requestSource:'agent',actor:{kind:'agent',logicalAgentId:'a'},allowedLogicalAgentIds:['a']}:user;

@@ -74,8 +74,8 @@ test('peer consultation receives the original group request but never another pr
 });
 test('peer source context is rejected if membership is revoked while its messages are being read',async()=>{
  const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{
-  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'核对来源',wait:false})),job=f.store.jobs(receipt.roomId)[0],get=f.upstream.getTeam.bind(f.upstream);
-  f.upstream.getTeam=async(roomId:string)=>{const result=await get(roomId);if(roomId===f.roomId){const changed=f.broker.room.updateRoomMembers({roomId,removeAgentIds:[f.b.bot.id]},{sessionId:'revoke-read',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(changed.ok,true);}return result;};
+  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'核对来源',wait:false})),job=f.store.jobs(receipt.roomId)[0],get=f.upstream.messages.bind(f.upstream);
+  f.upstream.messages=async(roomId:string,...args:any[])=>{const result=await get(roomId,...args);if(roomId===f.roomId){const changed=f.broker.room.updateRoomMembers({roomId,removeAgentIds:[f.b.bot.id]},{sessionId:'revoke-read',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(changed.ok,true);}return result;};
   await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
  }finally{chats.close();await f.close();}
 });
