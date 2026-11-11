@@ -10,5 +10,6 @@ export function parseAttachmentMessage(body:unknown):AttachmentMessage|undefined
  }catch{return;}
 }
 export function encodeAttachmentMessage(text:string,attachments:MessageAttachment[]):string{const body=JSON.stringify({kind:'kteam_message_with_attachments',version:1,text,attachments});if(!parseAttachmentMessage(body))throw Error('attachment_message_invalid');return body;}
-export function attachmentMessageView(message:any){return message?.sender?.kind==='user'&&message.sourceRef?.kind==='aimp_l0'&&message.sourceRef?.envelope?.body===message.text?parseAttachmentMessage(message.text):undefined;}
+/** Both original Broker projections: list rows carry envelope, details carry sourceRef. Display never grants file access. */
+export function attachmentMessageView(message:any){const envelope=message?.sourceRef?.kind==='aimp_l0'?message.sourceRef.envelope:message?.envelope;return message?.sender?.kind==='user'&&envelope?.aimp==='1.0'&&envelope.body===message.text&&envelope.room_id===message.roomId?parseAttachmentMessage(message.text):undefined;}
 export const messageDisplayText=(message:any)=>attachmentMessageView(message)?.text??message?.text??'';
