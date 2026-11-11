@@ -11,7 +11,7 @@ const lock=JSON.parse(readFileSync(join(root,'sources.lock.json'),'utf8')).creat
 const target=process.env.KTEAM_PLUGIN_TARGET??`${process.platform}-${process.arch}`;
 const cache=join(root,'.sources','creator-plugins-'+lock.revision);
 const repository=process.env.KTEAM_PLUGINS_SOURCE??join(root,'.sources','creator-plugin-repository');
-const run=(command,args,cwd=cache)=>{if(command==='npm'&&process.platform==='win32'){args=[process.env.npm_execpath??join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'),...args];command=process.execPath;}return execFileSync(command,args,{cwd,stdio:'inherit',env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});};
+const run=(command,args,cwd=cache)=>{const env={...process.env,PYTHONDONTWRITEBYTECODE:'1'};if(process.platform==='win32'){if(command==='npm'){args=[process.env.npm_execpath??join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'),...args];command=process.execPath;}const search=process.env.PATH??process.env.Path??'';for(const key of Object.keys(env))if(key.toUpperCase()==='PATH')delete env[key];env.PATH=join(process.env.SystemRoot??'C:\\Windows','System32')+';'+search;}return execFileSync(command,args,{cwd,stdio:'inherit',env});};
 mkdirSync(cache,{recursive:true});
 if(!existsSync(join(cache,'.source-ready'))){
  let repo=repository;
