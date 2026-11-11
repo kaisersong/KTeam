@@ -8,6 +8,7 @@ type SidebarState={revision:number;pinnedAt:string|null;manualUnread:boolean;rea
 /** Personal presentation state only; rooms and message content remain broker-owned. */
 export class ConversationSidebar{
  private pending=new Map<string,Promise<any>>();
+ private renamingBots=new Set<string>();
  constructor(private upstream:Upstreams,private store:TeamStore,private pause:(roomId:string)=>Promise<unknown>){}
  state(roomId:string):SidebarState{return {revision:0,pinnedAt:null,manualUnread:false,readThrough:0,...this.store.state<Partial<SidebarState>>('sidebar:'+roomId)};}
  private async scope(roomId:string){
@@ -49,19 +50,48 @@ export class ConversationSidebar{
     const result=await this.upstream.deleteTeam(roomId,Number(input.expectedRoomRevision));return this.deleted(roomId,key,fingerprint,result);
    }throw error;}
   const room=snapshot.room;
-  if(action==='rename'&&prior&&room.title===title&&room.revision===Number(input.expectedRoomRevision)+1)return this.renamed(roomId,key,fingerprint,title!);
+  if(action==='rename'&&prior&&room.title===title&&room.revision===Number(input.expectedRoomRevision)+1)return this.finishRename(roomId,key,fingerprint,title!);
   if(prior&&!prior.retryable)throw new KTeamError('operation_result_unknown',409);
   if(room.revision!==input.expectedRoomRevision||this.state(roomId).revision!==input.expectedRevision)throw new KTeamError('sidebar_changed',409);
   const frozen=this.store.state<any>('conversation:'+roomId);if(frozen&&frozen.title!==room.title)throw new KTeamError('conversation_identity_changed',409);
-  this.store.setState(key,{fingerprint,roomId,action});
+  let renameBot:any;
+  if(action==='rename'&&this.store.settings(roomId)?.kind==='direct'&&frozen?.members?.length===1){
+   const botId=frozen.members[0].botId;
+   if(!this.store.binding(botId)&&!this.store.state('external-bot:'+botId))throw new KTeamError('bot_not_managed',403);
+   const bots=(await this.upstream.listBots()).agents as any[];
+   renameBot=bots.find(bot=>bot.id===botId&&!bot.archivedAt);
+   if(bots.some(bot=>bot.id!==botId&&!bot.archivedAt&&bot.name===title))throw new KTeamError('bot_name_exists',409);
+   if(!renameBot)throw new KTeamError('agent_not_found',404);
+  }
+  this.store.setState(key,{fingerprint,roomId,action,...(renameBot?{botId:renameBot.id,oldName:renameBot.name}:{})});
   if(action==='rename'){
    await this.upstream.updateTeam(roomId,{title,description:room.description??'',expectedRoomRevision:room.revision});
-   return this.renamed(roomId,key,fingerprint,title!);
+   return this.finishRename(roomId,key,fingerprint,title!);
   }
   await this.pause(roomId);
   try{return this.deleted(roomId,key,fingerprint,await this.upstream.deleteTeam(roomId,room.revision));}
   catch(error){if(error instanceof KTeamError&&error.code==='room_delete_pending')this.store.setState(key,{fingerprint,roomId,action,retryable:true});throw error;}
  }
- private renamed(roomId:string,key:string,fingerprint:string,title:string){const frozen=this.store.state<any>('conversation:'+roomId);if(frozen)this.store.setState('conversation:'+roomId,{...frozen,title});const receipt={ok:true,roomId,title};this.store.setState(key,{fingerprint,receipt});return receipt;}
+ private async finishRename(roomId:string,key:string,fingerprint:string,title:string){
+  const frozen=this.store.state<any>('conversation:'+roomId);if(frozen)this.store.setState('conversation:'+roomId,{...frozen,title});
+  const intent=this.store.state<any>(key);
+  if(intent?.botId){
+   if(this.renamingBots.has(intent.botId))throw new KTeamError('sidebar_busy',409);
+   this.renamingBots.add(intent.botId);
+   try{
+    const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===intent.botId&&!bot.archivedAt);
+    if(!bot)throw new KTeamError('agent_not_found',404);
+    if(bot.name!==title){
+     if(intent.botRenameAttempted)throw new KTeamError('operation_result_unknown',409);
+     if(bot.name!==intent.oldName)throw new KTeamError('bot_name_changed',409);
+     this.store.setState(key,{...intent,botRenameAttempted:true});
+     const current=await this.scope(roomId);
+     if(!(current.members as any[]).some(member=>member.status==='active'&&member.subject?.logicalAgentId===bot.id))throw new KTeamError('sidebar_conversation_forbidden',403);
+     await this.upstream.updateBot(bot.id,{name:title});
+    }
+   }finally{this.renamingBots.delete(intent.botId);}
+  }
+  const receipt={ok:true,roomId,title};this.store.setState(key,{fingerprint,receipt});return receipt;
+ }
  private deleted(roomId:string,key:string,fingerprint:string,result:any){this.store.setState('deleted-conversation:'+roomId,true);const receipt={...result,ok:true,roomId};this.store.setState(key,{fingerprint,receipt});return receipt;}
 }
