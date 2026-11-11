@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ generatedFiles(input:{roomId:string;cursor?:string}):Promise<any>;
  teamRecipeImports():Promise<any>;exportTeamRecipe(roomId:string):Promise<any>;previewTeamRecipe(input:any):Promise<any>;importTeamRecipe(input:any):Promise<any>;
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
  botToolScope(input:{botId:string;roomId?:string}):Promise<any>;saveBotToolScope(input:any):Promise<any>;
@@ -60,6 +61,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ generated_file_cursor_invalid:'文件分页位置无效，请重新读取',generated_file_receipt_invalid:'原工具文件回执不完整，不能据此打开文件',generated_file_receipt_changed:'文件回执存在冲突，请核对原工作记录',
  recipe_name_changed:'预览中的成员名已被占用，请重新预览后创建',
  recipe_invalid:'配方格式不正确，请检查成员、职责与例行任务',recipe_version_unsupported:'仅支持 KTeam 团队配方第 1 版',recipe_too_large:'配方最多 64 KiB、5 位成员和 20 项例行任务',recipe_sensitive_content:'配方包含疑似凭据，请删除后重新预览',recipe_preview_changed:'预览已变化或不存在，请重新审阅配方',recipe_preview_expired:'预览已过期，请重新预览后创建',recipe_import_busy:'这次导入正在核对，请稍后刷新回执',recipe_import_conflict:'这次导入编号对应其它预览，请核对已有导入',recipe_scope_changed:'成员或团队范围已变化，已停止导入或导出，请核对来源',recipe_profile_unknown:'成员资料写入结果尚未确认，已保留记录，不会自动重写',recipe_import_unknown:'导入结果待核对，请从最近的导入回执继续',recipe_client_forbidden:'请在 KTeam 主客户端管理团队配方',
  bot_question_changed:'问题状态已变化，请重新读取原会话',bot_question_expired:'原工作或问题已过期、暂停或离开等待阶段，请核对原工作',bot_question_answer_changed:'这道问题已有不同的回答，请查看原回答',bot_question_result_unknown:'回答发送结果待核对，不会自动重发',bot_question_source_changed:'无法核实原问题或回答来源，已停止自动接续',bot_question_invalid:'请检查问题与选项内容',bot_contact_result_unknown:'原联系发送结果待核对，不会重复发送',

@@ -24,6 +24,8 @@ KTeam 内置 Agent 使用原平台注册工厂、连续 Session、分层记忆�
 
 群详情可导出团队配方，在新建交流中选择配方文件、重新选择本机模型并审阅后，创建全新成员与团队。职责和负责人相对关系可保留，例行任务默认暂停；旧凭据、历史、私有记忆、工作目录设置和批准不迁移。重复点击复用原创建回执，未完成的导入可以审阅后核对继续。见[团队配方](docs/design/desktop/portable-team-recipes-20261111.md)；视觉与安装验收仍待完成。
 
+资料库中的“生成的文件”保留原文件工具及报告/演示文稿渲染器已确认的文件回执；工作中断或尚未交付，也可核对已生成的文件和来源工作。每次打开重新检查会话权限、实际文件和摘要。支持常见文档、图片和 HTML，单份最多 20 MiB；外部工具未上报的文件不补造回执。见[中断文件回执](docs/design/desktop/interrupted-artifact-receipts-20261111.md)；输入附件、视觉与安装验收仍待完成。
+
 ## 下载
 
 **[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)
