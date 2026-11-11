@@ -2,3 +2,4 @@ provider: github
 owner: kaisersong
 repo: KTeam
 releaseType: release
+updaterCacheDirName: kteam-updater
