@@ -127,6 +127,10 @@
     {
       "file": "docs/design/desktop/bot-memory-review-20261111.md",
       "sha256": "6bf8b72cd8a74cf9159d75fe3c363aae5cdc5d0be4e1e17621a9c18c1e8786ad"
+    },
+    {
+      "file": "docs/design/desktop/member-profile-workspace-20261111.md",
+      "sha256": "254313d07158f313ca460245683dd4d9fe260e64e5f466c2945f5cc191032fe7"
     }
   ],
   "productBaseline": {

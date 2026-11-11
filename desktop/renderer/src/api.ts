@@ -2,9 +2,10 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ memberWorkspace(input:{botId:string;roomId:string}):Promise<any>;memberLibrary(input:{botId:string;roomId:string}):Promise<any>;openMemberWorkspace(input:{botId:string;roomId:string;expectedProfileRevision:number}):Promise<any>;
  botMemory(input:any):Promise<any>;botMemoryDetail(input:any):Promise<any>;previewBotMemory(input:any):Promise<any>;changeBotMemory(input:any):Promise<any>;undoBotMemory(input:any):Promise<any>;
  cancelAttachmentSend(input:any):Promise<any>;composerAttachments(roomId:string):Promise<any>;stageAttachment(input:any):Promise<any>;cancelAttachment(input:any):Promise<any>;sendAttachments(input:any):Promise<any>;previewMessageAttachment(input:any):Promise<any>;
- generatedFiles(input:{roomId:string;cursor?:string}):Promise<any>;
+ generatedFiles(input:{roomId:string;cursor?:string;botId?:string}):Promise<any>;
  teamRecipeImports():Promise<any>;exportTeamRecipe(roomId:string):Promise<any>;previewTeamRecipe(input:any):Promise<any>;importTeamRecipe(input:any):Promise<any>;
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
  botToolScope(input:{botId:string;roomId?:string}):Promise<any>;saveBotToolScope(input:any):Promise<any>;

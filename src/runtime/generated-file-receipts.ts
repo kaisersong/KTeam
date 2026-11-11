@@ -20,8 +20,8 @@ export function backfillGeneratedFiles(store:TeamStore){
   store.transaction(()=>{for(const source of page){try{recordGeneratedFile(store,{id:source.id,roomId:source.room_id,createdAt:source.created_at,activeBotId:source.bot_id,task:{taskRef:source.task_ref}},source.event);}catch(error){if(!(error instanceof KTeamError)||!['generated_file_receipt_invalid','generated_file_receipt_changed'].includes(error.code))throw error;store.setState('generated-file-history-warning:'+source.room_id,true);}cursor={row:Number(source.source_row),index:Number(source.source_index)};}store.setState('generated-file-backfill:v1',cursor);});
  }
 }
-export function generatedFileRecords(store:TeamStore,roomId:string,cursor?:string){
+export function generatedFileRecords(store:TeamStore,roomId:string,cursor?:string,botId?:string){
  let before:{at:number;id:string}|undefined;if(cursor!==undefined){try{if(cursor.length>256)throw Error();const value=JSON.parse(Buffer.from(cursor,'base64url').toString('utf8'));if(!Number.isSafeInteger(value.at)||value.at<1||typeof value.id!=='string'||!/^generated-file:[a-f0-9]{64}$/.test(value.id))throw Error();before=value;}catch{throw new KTeamError('generated_file_cursor_invalid');}}
- backfillGeneratedFiles(store);const records=store.generatedFileRecords(roomId,before),page=records.slice(0,20),last=page.at(-1);
+ backfillGeneratedFiles(store);const records=store.generatedFileRecords(roomId,before,botId),page=records.slice(0,20),last=page.at(-1);
  return {ok:true,historyIncomplete:!!store.state('generated-file-history-warning:'+roomId),items:page.map(record=>{const job=store.job(record.facts.jobId),result=job?.results?.find((item:any)=>item.botId===record.botId);return {id:record.id,toolCallId:record.toolCallId,jobId:record.facts.jobId,botId:record.botId,taskRef:record.taskRef,name:record.facts.file.name,bytes:record.facts.file.bytes,sha256:record.facts.file.sha256,hostId:record.facts.file.hostId,createdAt:record.createdAt,workState:job?.state??'unknown',resultMessageId:result?.messageId};}),nextCursor:records.length>20&&last?Buffer.from(JSON.stringify({at:last.createdAt,id:last.id})).toString('base64url'):undefined};
 }
