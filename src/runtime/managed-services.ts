@@ -1,9 +1,10 @@
 import {createServer,connect} from 'node:net';
-import {join,dirname,resolve} from 'node:path';
-import {existsSync,writeFileSync,openSync,closeSync} from 'node:fs';
+import {join,dirname,resolve,sep} from 'node:path';
+import {existsSync,writeFileSync,openSync,closeSync,renameSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {ensurePrivateRoot,initConfig,privateRead,CLIENTS,loadConfig,type Config} from '../service/config.js';
+import {ensurePrivateRoot,initConfig,privateRead,CLIENTS,loadConfig,readRawConfig,isLegacySharedConfig,type Config} from '../service/config.js';
+import {recordLegacySharedServicesDropped} from '../service/legacy-notice.js';
 import {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
 import {writeServiceEndpoints,portOf} from '../service/service-endpoints.js';
@@ -11,8 +12,12 @@ export interface ServicePlan{version:1;broker:{cwd:string;env:Record<string,stri
 const freePort=()=>new Promise<number>((accept,reject)=>{const server=createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=(server.address() as any).port;server.close(error=>error?reject(error):accept(port));});});
 function clientCredentials(root:string){for(const name of CLIENTS){const file=join(root,name+'.token');if(existsSync(file)){if(privateRead(file).length<32)throw new KTeamError('client_credentials_invalid');}else writeFileSync(file,randomBytes(32).toString('base64url')+'\n',{mode:0o600,flag:'wx'});}}
 export async function initStandalone(root:string){
- ensurePrivateRoot(root);if(existsSync(join(root,'config.json'))){const config=loadConfig(root);clientCredentials(root);if(config.managedServiceConfig)recordEndpoints(root,config);return;}
- const serviceRoot=join(root,'services');ensurePrivateRoot(serviceRoot);const brokerRoot=join(serviceRoot,'broker'),kswarmRoot=join(serviceRoot,'kswarm');ensurePrivateRoot(brokerRoot);ensurePrivateRoot(kswarmRoot);
+ ensurePrivateRoot(root);const serviceRoot=join(root,'services');
+ if(existsSync(join(root,'config.json'))){
+  if(!legacySharedConfig(root,serviceRoot)){const config=loadConfig(root);clientCredentials(root);if(config.managedServiceConfig)recordEndpoints(root,config);return;}
+  archiveLegacySharedConfig(root,serviceRoot);
+ }
+ensurePrivateRoot(serviceRoot);const brokerRoot=join(serviceRoot,'broker'),kswarmRoot=join(serviceRoot,'kswarm');ensurePrivateRoot(brokerRoot);ensurePrivateRoot(kswarmRoot);
  const brokerTokenFile=join(serviceRoot,'broker.token'),kswarmTokenFile=join(serviceRoot,'kswarm.token'),managedServiceConfig=join(serviceRoot,'config.json');let plan:ServicePlan;
  if(existsSync(managedServiceConfig)){plan=readServicePlan(managedServiceConfig);}else{
   if(existsSync(join(brokerRoot,'broker.sqlite')))throw new KTeamError('managed_services_history_unconfigured');
@@ -27,14 +32,52 @@ export async function initStandalone(root:string){
  const config:Config={version:1,brokerUrl:'http://127.0.0.1:'+plan.broker.env.PORT,kswarmUrl:'http://127.0.0.1:'+plan.kswarm.env.KSWARM_PORT,brokerTokenFile,kswarmTokenFile,managedServiceConfig};
  clientCredentials(root);initConfig(root,config);recordEndpoints(root,config);
 }
+/** A 0.2 config ran KTeam on services shared with xiaok (its plan lived outside KTeam's data dir and carried no
+ * KTeam-owned credential files). It can never connect in 0.3, so it is detected here before anything else. */
+function legacySharedConfig(root:string,serviceRoot:string){
+ const raw=readRawConfig(root);if(isLegacySharedConfig(raw))return true;
+ const planFile=(raw as {managedServiceConfig?:unknown}).managedServiceConfig;if(typeof planFile!=='string'||!existsSync(planFile))return false;
+ // An unreadable plan is not evidence of a 0.2 config: leave it for the normal path to report.
+ let plan:ServicePlan;try{plan=readServicePlan(planFile);}catch{return false;}return [plan.broker.cwd,plan.kswarm.cwd].some(cwd=>!resolve(cwd).startsWith(serviceRoot+sep));
+}
+/** Move the 0.2 shared-service config (and the plan/connection files 0.2 kept in KTeam's services dir) into
+ * backups/, untouched, so a fresh KTeam-owned setup can be created. Nothing outside KTeam's data dir is read,
+ * moved or modified. Client credentials stay in place. The one-time 0.3 notice is recorded before the move. */
+function archiveLegacySharedConfig(root:string,serviceRoot:string){
+ recordLegacySharedServicesDropped(root);
+ const backups=join(root,'backups');ensurePrivateRoot(backups);
+ const target=join(backups,'legacy-0.2-shared-'+new Date().toISOString().replace(/[:.]/g,'-'));ensurePrivateRoot(target);
+ for(const [from,name] of [[join(serviceRoot,'config.json'),'services-config.json'],[join(serviceRoot,'shared-connection.json'),'services-shared-connection.json'],[join(root,'service-endpoints.json'),'service-endpoints.json']] as [string,string][])if(existsSync(from))renameSync(from,join(target,name));
+ // config.json moves last: until it is gone, a crash re-runs this same detection on the next start.
+ renameSync(join(root,'config.json'),join(target,'config.json'));
+ process.emitWarning('KTeam moved a 0.2 shared-service config to '+target+' and is creating its own services.',{code:'KTEAM_LEGACY_SHARED_CONFIG_ARCHIVED'});
+}
 /** Publish the ports KTeam's own services use to KTeam's discovery file for the CLI and clients. */
 function recordEndpoints(root:string,config:Config){writeServiceEndpoints(root,{broker:portOf(config.brokerUrl),kswarm:portOf(config.kswarmUrl)});}
 export function readServicePlan(path:string):ServicePlan{const plan=JSON.parse(privateRead(path));if(plan?.version!==1||!plan.broker||!plan.kswarm)throw new KTeamError('managed_services_config_invalid');for(const part of [plan.broker,plan.kswarm])if(typeof part.cwd!=='string'||!part.cwd.startsWith('/')||!part.env||Object.values(part.env).some(v=>typeof v!=='string'))throw new KTeamError('managed_services_config_invalid');return plan;}
 export async function portOccupied(url:string){const address=new URL(url);return new Promise<boolean>(accept=>{const socket=connect({host:address.hostname,port:Number(address.port)});socket.setTimeout(700);socket.once('connect',()=>{socket.destroy();accept(true);});socket.once('error',()=>accept(false));socket.once('timeout',()=>{socket.destroy();accept(true);});});}
 export async function ensureManagedServices(config:Config,options:ConstructorParameters<typeof Upstreams>[0],root:string){
- if((await new Upstreams(options).probe()).ready)return;
+ if(await ownServicesReady(options))return;
  if(!config.managedServiceConfig)throw new KTeamError('managed_services_config_missing');
  const entry=process.env.KTEAM_SERVICE_OWNER_ENTRY??resolve(dirname(process.argv[1]??'build/host.cjs'),'service-owner.cjs');if(!existsSync(entry))throw new KTeamError('managed_services_bundle_missing');
  const output=openSync(join(root,'services.log'),'a',0o600);try{const child=spawn(process.execPath,[entry],{detached:true,stdio:['ignore',output,output],env:{...process.env,ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root}});child.unref();child.once('error',()=>{});}finally{closeSync(output);}
- const deadline=Date.now()+12000;while(Date.now()<deadline){if((await new Upstreams(options).probe()).ready)return;await new Promise(r=>setTimeout(r,150));}throw new KTeamError('managed_services_start_timeout');
+ const deadline=Date.now()+12000;while(Date.now()<deadline){if(await ownServicesReady(options))return;await new Promise(r=>setTimeout(r,150));}
+ throw new KTeamError(await foreignServiceOnPort(options)?'managed_service_port_foreign':'managed_services_start_timeout',503);
+}
+/** A listener on KTeam's ports counts only if it accepts KTeam's own credentials: the broker probe is already
+ * authenticated, and KSwarm's /health is public, so KSwarm is also asked an authenticated read. Another app's
+ * services on the same ports are never used. */
+export async function ownServicesReady(options:ConstructorParameters<typeof Upstreams>[0]){
+ if(!(await new Upstreams(options).probe()).ready)return false;
+ return (await kswarmAcceptsToken(options))===true;
+}
+async function kswarmAcceptsToken(options:ConstructorParameters<typeof Upstreams>[0]):Promise<boolean|undefined>{
+ if(!options.kswarmToken)return false;
+ try{const response=await fetch(new URL('/projects/kteam-owner-check/activity-identity',options.kswarmUrl),{redirect:'error',signal:AbortSignal.timeout(3000),headers:{'x-kswarm-mutation-token':options.kswarmToken}});await response.body?.cancel();return response.status!==401&&response.status!==403;}catch{return undefined;}
+}
+async function foreignServiceOnPort(options:ConstructorParameters<typeof Upstreams>[0]){
+ for(const [url,header,token,route] of [[options.brokerUrl,'x-intent-broker-room-token',options.brokerToken,'/rooms/workspace-protocol'],[options.kswarmUrl,'x-kswarm-mutation-token',options.kswarmToken,'/projects/kteam-owner-check/activity-identity']] as [string,string,string|undefined,string][]){
+  try{const response=await fetch(new URL(route,url),{redirect:'error',signal:AbortSignal.timeout(3000),headers:token?{[header]:token}:{}});await response.body?.cancel();if(response.status===401||response.status===403)return true;}catch{}
+ }
+ return false;
 }
