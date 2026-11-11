@@ -59,6 +59,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ bot_question_changed:'问题状态已变化，请重新读取原会话',bot_question_expired:'原工作或问题已过期、暂停或离开等待阶段，请核对原工作',bot_question_answer_changed:'这道问题已有不同的回答，请查看原回答',bot_question_result_unknown:'回答发送结果待核对，不会自动重发',bot_question_source_changed:'无法核实原问题或回答来源，已停止自动接续',bot_question_invalid:'请检查问题与选项内容',bot_contact_result_unknown:'原联系发送结果待核对，不会重复发送',
  notification_desktop_unavailable:'当前环境无法显示原生通知，请在 KTeam 桌面版测试',notification_quiet:'当前通知已关闭或处于安静时段，未发送测试通知',notification_rate_limited:'测试或提醒过于频繁，请稍后再试',notification_settings_invalid:'请检查通知开关、时段和时区，开始与结束时间不能相同',notification_settings_changed:'通知设置已更新，请重新读取后保存',notification_client_forbidden:'请在 KTeam 桌面版管理系统通知',notification_source_changed:'原通知对应的事项已变化，请回原会话核对',notification_receipt_changed:'通知回执已变化，请刷新',
  internal_error:'服务暂时无法完成读取',
  work_input_invalid:'请检查补充内容与发送方式',work_input_target_changed:'原工作或执行会话已变化，请重新选择发送方式',work_input_id_conflict:'这次发送的内容或目标已变化，请核对已有消息后再发送',work_input_forbidden:'请在 KTeam 主客户端追加指令',work_input_not_found:'这条补充已不存在或不属于当前会话',work_input_changed:'补充状态已变化，请读取最新回执',work_input_delivery_unknown:'发送结果仍待核对，请读取原会话回执，不会自动重发',work_input_limit:'本轮最多接入两条补充，请等待本轮结束或另起工作',work_input_checkpoint_missing:'无法确认补充已进入原运行器，本轮已停止，请核对记录',work_input_source_changed:'补充消息或会话范围已变化，本轮已停止',

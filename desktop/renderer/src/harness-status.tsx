@@ -28,8 +28,8 @@ export function RuntimeMessageContent({text,cards=[]}:{text:string;cards?:any[]}
  return <>{parts}</>;
 }
 
-export function BotQuestionCard({question,onAnswer}:{question:any;onAnswer:(text:string)=>Promise<void>}){
+export function BotQuestionCard({question,onAnswer,onSource}:{question:any;onAnswer:(text:string)=>Promise<void>;onSource?:()=>void}){
  const[value,setValue]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const answer=async(text:string)=>{if(!text.trim())return;setBusy(true);try{await onAnswer(text);}catch(e){setError(explain(e));}finally{setBusy(false);}};
- return <section className="tool-approval" data-notification-target={question.id} tabIndex={-1} aria-label="私聊确认"><h3>需要你确认一件事</h3><p>{question.question}</p><small>来源群：{question.sourceRoomTitle??'原群'} · 回答后继续原来的工作</small>{(question.options??[]).length>0&&<div>{question.options.map((label:string)=><button className="secondary" disabled={busy} key={label} onClick={()=>void answer(label)}>{label}</button>)}</div>}<form onSubmit={e=>{e.preventDefault();void answer(value);}}><input aria-label="回答问题" value={value} onChange={e=>setValue(e.target.value)} placeholder="你的回答（请勿填写密码或验证码）"/><button className="primary" disabled={busy||!value.trim()}>发送回答</button></form>{error&&<p role="alert">{error}</p>}</section>;
+ return <section className="tool-approval" data-notification-target={question.id} tabIndex={-1} aria-label="私聊确认"><h3>需要你确认一件事</h3><p>{question.question}</p><small>来源：{question.sourceRoomTitle??'原会话'} · {question.durable?'原工作已保存，回答后接续同一工作':'回答后继续原来的工作'}</small>{onSource&&<button type="button" className="text-button" onClick={onSource}>查看发起工作</button>}{(question.options??[]).length>0&&<div>{question.options.map((label:string)=><button className="secondary" disabled={busy} key={label} onClick={()=>void answer(label)}>{label}</button>)}</div>}<form onSubmit={e=>{e.preventDefault();void answer(value);}}><input aria-label="回答问题" value={value} onChange={e=>setValue(e.target.value)} placeholder="你的回答（请勿填写密码或验证码）"/><button className="primary" disabled={busy||!value.trim()}>发送回答</button></form>{error&&<p role="alert">{error}</p>}</section>;
 }

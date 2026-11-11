@@ -107,6 +107,10 @@
     {
       "file": "docs/design/desktop/running-work-inputs-20261111.md",
       "sha256": "2ed5152c47a4d6a4bf4f7a65dc2080741b23e26a4f15c55b3b9858719d8da764"
+    },
+    {
+      "file": "docs/design/desktop/durable-work-questions-20261111.md",
+      "sha256": "64743fe3d412934ae5aaf4c2b8e3193049b8aad08fb2592558b640cf7f726402"
     }
   ],
   "productBaseline": {
@@ -116,7 +120,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "376e6614b4d0a213dced19f2dc5182f97d8b7ebf",
+    "revision": "1f323495856ca1731bb1ea4c76d24dacf32bd736",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

@@ -20,6 +20,8 @@ KTeam 内置 Agent 使用原平台注册工厂、连续 Session、分层记忆�
 
 工作进行中，可在发送前选择追加本轮要求，或等当前工作结束后处理。内置成员在完整工具批次后的模型边界接收补充，沿用同一任务、会话和工具批准；不支持的阶段会明确排队。回执可查看补充来源和修订答复，结果不明时不会自动重做。见[本轮补充要求](docs/design/desktop/running-work-inputs-20261111.md)；视觉与安装验收仍待完成。
 
+内置成员必须向本人澄清时，可将原工作保存并挂起，在私聊显示带来源的问题。重启保留问题，回答后核验原消息并接续同一任务；等待期间不调用模型，未知投递不重复发送，答案不替代工具批准。原会话和问题卡可互相定位。见[持久问题](docs/design/desktop/durable-work-questions-20261111.md)；执行批准的重启恢复、视觉与安装验收仍待完成。
+
 ## 下载
 
 **[下载 macOS Apple Silicon 安装包（v0.1.0-preview.15）](https://github.com/kaisersong/KTeam/releases/download/v0.1.0-preview.15/KTeam-0.1.0-preview.15-mac-arm64.zip)** · [版本说明与 SHA-256 校验文件](https://github.com/kaisersong/KTeam/releases/tag/v0.1.0-preview.15)
