@@ -57,9 +57,27 @@ function recordEndpoints(root:string,config:Config){writeServiceEndpoints(root,{
 export function readServicePlan(path:string):ServicePlan{const plan=JSON.parse(privateRead(path));if(plan?.version!==1||!plan.broker||!plan.kswarm)throw new KTeamError('managed_services_config_invalid');for(const part of [plan.broker,plan.kswarm])if(typeof part.cwd!=='string'||!part.cwd.startsWith('/')||!part.env||Object.values(part.env).some(v=>typeof v!=='string'))throw new KTeamError('managed_services_config_invalid');return plan;}
 export async function portOccupied(url:string){const address=new URL(url);return new Promise<boolean>(accept=>{const socket=connect({host:address.hostname,port:Number(address.port)});socket.setTimeout(700);socket.once('connect',()=>{socket.destroy();accept(true);});socket.once('error',()=>accept(false));socket.once('timeout',()=>{socket.destroy();accept(true);});});}
 export async function ensureManagedServices(config:Config,options:ConstructorParameters<typeof Upstreams>[0],root:string){
- if((await new Upstreams(options).probe()).ready)return;
+ if(await ownServicesReady(options))return;
  if(!config.managedServiceConfig)throw new KTeamError('managed_services_config_missing');
  const entry=process.env.KTEAM_SERVICE_OWNER_ENTRY??resolve(dirname(process.argv[1]??'build/host.cjs'),'service-owner.cjs');if(!existsSync(entry))throw new KTeamError('managed_services_bundle_missing');
  const output=openSync(join(root,'services.log'),'a',0o600);try{const child=spawn(process.execPath,[entry],{detached:true,stdio:['ignore',output,output],env:{...process.env,ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root}});child.unref();child.once('error',()=>{});}finally{closeSync(output);}
- const deadline=Date.now()+12000;while(Date.now()<deadline){if((await new Upstreams(options).probe()).ready)return;await new Promise(r=>setTimeout(r,150));}throw new KTeamError('managed_services_start_timeout');
+ const deadline=Date.now()+12000;while(Date.now()<deadline){if(await ownServicesReady(options))return;await new Promise(r=>setTimeout(r,150));}
+ throw new KTeamError(await foreignServiceOnPort(options)?'managed_service_port_foreign':'managed_services_start_timeout',503);
+}
+/** A listener on KTeam's ports counts only if it accepts KTeam's own credentials: the broker probe is already
+ * authenticated, and KSwarm's /health is public, so KSwarm is also asked an authenticated read. Another app's
+ * services on the same ports are never used. */
+export async function ownServicesReady(options:ConstructorParameters<typeof Upstreams>[0]){
+ if(!(await new Upstreams(options).probe()).ready)return false;
+ return (await kswarmAcceptsToken(options))===true;
+}
+async function kswarmAcceptsToken(options:ConstructorParameters<typeof Upstreams>[0]):Promise<boolean|undefined>{
+ if(!options.kswarmToken)return false;
+ try{const response=await fetch(new URL('/projects/kteam-owner-check/activity-identity',options.kswarmUrl),{redirect:'error',signal:AbortSignal.timeout(3000),headers:{'x-kswarm-mutation-token':options.kswarmToken}});await response.body?.cancel();return response.status!==401&&response.status!==403;}catch{return undefined;}
+}
+async function foreignServiceOnPort(options:ConstructorParameters<typeof Upstreams>[0]){
+ for(const [url,header,token,route] of [[options.brokerUrl,'x-intent-broker-room-token',options.brokerToken,'/rooms/workspace-protocol'],[options.kswarmUrl,'x-kswarm-mutation-token',options.kswarmToken,'/projects/kteam-owner-check/activity-identity']] as [string,string,string|undefined,string][]){
+  try{const response=await fetch(new URL(route,url),{redirect:'error',signal:AbortSignal.timeout(3000),headers:token?{[header]:token}:{}});await response.body?.cancel();if(response.status===401||response.status===403)return true;}catch{}
+ }
+ return false;
 }
