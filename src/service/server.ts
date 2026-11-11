@@ -1,3 +1,4 @@
+import {ConversationUpdates} from './conversation-updates.js';
 import {MemberWorkspace} from './member-workspace.js';
 import {BotMemory} from './bot-memory.js';
 import {ComposerAttachments} from './composer-attachments.js';
@@ -93,6 +94,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   let ensuringServices: Promise<void> | undefined;
   const notifications=new WorkNotifications(upstream,teamStore,coordinator,()=>automation.privateChats?.questions()??[],()=>approvals.list(),async job=>{await automation.routines.guard(job);await automation.handoffs?.guard(job);await automation.privateChats?.validatePeer(job);});
   const links=new AgentLinks(upstream,teamStore,coordinator);
+  const conversationUpdates=new ConversationUpdates(upstream,teamStore,conversations,automation,coordinator,approvals,links,workRecovery,teamRoles,String(owner.epoch));
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const instanceId = randomUUID();
   const directoryMembers=new Map<string,{revision:number;at:number;ids:string[]}>();
@@ -134,6 +136,16 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
+      if(url.pathname.startsWith('/v1/conversation-view/')){
+        if(client.id!=='kteam-main')throw new KTeamError('conversation_view_forbidden',403);
+        if(req.method!=='POST')throw new KTeamError('route_not_found',404);
+        const input=await body(req,96*1024);
+        if(url.pathname==='/v1/conversation-view/updates')return send(res,200,await conversationUpdates.read(input));
+        if(url.pathname==='/v1/conversation-view/history')return send(res,200,await conversationUpdates.history(input));
+        if(url.pathname==='/v1/conversation-view/records')return send(res,200,await conversationUpdates.records(input));
+        if(url.pathname==='/v1/conversation-view/detail')return send(res,200,await conversationUpdates.detail(input));
+        throw new KTeamError('route_not_found',404);
+      }
       if(url.pathname.startsWith('/v1/app/')){
         if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);
         if(url.pathname==='/v1/app/preferences'){
