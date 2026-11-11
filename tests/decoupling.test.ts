@@ -20,6 +20,8 @@ const code=(file:string)=>/\.(?:[cm]?[jt]sx?|json|ya?ml)$/.test(file);
 const INTEROP:Record<string,RegExp[]>={
  'src/runtime/local-agents.ts':[/'XIAOK_HOME'/g],
  'desktop/main.ts':[/'XIAOK_HOME'/g],
+ // The user-initiated 「从小K导入」 module: exactly these two full lines, once each (no /g, so a copy is still a hit).
+ 'src/service/installed-app-import.ts':[/^const xiaokConfigFile=\(\)=>join\(homedir\(\),'\.xiaok','config\.json'\);$/m,/^const xiaokKeychainService='com\.xiaok\.credentials\.v1';$/m],
 };
 // Persisted format identifiers inside KTeam's own files (config meta key, secret references, A2UI catalog).
 const FORMAT_IDS=/\$xiaokCredentials|xiaok-secret:v1:|xiaok-safe(?:\/1\.0)?/g;
@@ -67,7 +69,7 @@ test('runtime code has no xiaok default path, env var or keychain service outsid
  }
  assert.deepEqual(hits,[]);
  // Every declared interop pattern still exists, so the allowlist cannot silently grow stale.
- for(const [file,patterns] of Object.entries(INTEROP))for(const p of patterns)assert.match(read(file),new RegExp(p.source),file+' '+p);
+ for(const [file,patterns] of Object.entries(INTEROP))for(const p of patterns)assert.match(read(file),new RegExp(p.source,p.flags.replace('g','')),file+' '+p);
  // runtime-core mentions xiaok only through the persisted format identifiers.
  for(const file of tracked('runtime-core','desktop/core-ui'))assert.doesNotMatch(read(file).replace(FORMAT_IDS,''),/xiaok/i,file);
 });
@@ -77,7 +79,11 @@ test('KTeam source never reads xiaok config, the xiaok keychain or xiaok shared-
  // One narrowly scoped exception for the legacy *key name* only: src/service/config.ts names it once, in a
  // constant used solely to detect the dropped 0.2 key and show the one-time 0.3 notice (its value is never read).
  const LEGACY_KEY_FILE='src/service/config.ts',LEGACY_KEY_DECLARATION=/^const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';$/m;
- const ONLY_EXCEPTION="the only allowed exception is the single full line `const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';` in src/service/config.ts";
+ // One exception for the user-initiated, read-only 「从小K导入」: src/service/installed-app-import.ts names xiaok's config file and
+ // keychain service once each, in the two full lines below, and nothing else anywhere may.
+ const IMPORT_FILE='src/service/installed-app-import.ts',IMPORT_DECLARATIONS=[/^const xiaokConfigFile=\(\)=>join\(homedir\(\),'\.xiaok','config\.json'\);$/m,/^const xiaokKeychainService='com\.xiaok\.credentials\.v1';$/m];
+ const ONLY_EXCEPTION="the only allowed exceptions are the single full line `const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';` in src/service/config.ts and, for the click-only xiaok import, the two full lines `const xiaokConfigFile=()=>join(homedir(),'.xiaok','config.json');` and `const xiaokKeychainService='com.xiaok.credentials.v1';` in src/service/installed-app-import.ts";
+ for(const declaration of IMPORT_DECLARATIONS)assert.equal(read(IMPORT_FILE).split('\n').filter(line=>declaration.test(line)).length,1,ONLY_EXCEPTION+' (each must appear exactly once)');
  const declarations=read(LEGACY_KEY_FILE).split('\n').filter(line=>LEGACY_KEY_DECLARATION.test(line));
  assert.equal(declarations.length,1,ONLY_EXCEPTION+' (it must appear exactly once)');
  // The constant may only be used to test key presence: its declaration plus one Object.hasOwn check.
@@ -89,10 +95,23 @@ test('KTeam source never reads xiaok config, the xiaok keychain or xiaok shared-
  for(const file of tracked('src','desktop','runtime-core','scripts','electron-builder.yml','package.json').filter(f=>!f.startsWith('tests/'))){
   let text=read(file);
   if(file===LEGACY_KEY_FILE)text=text.replace(LEGACY_KEY_DECLARATION,'');
+  if(file===IMPORT_FILE)for(const declaration of IMPORT_DECLARATIONS)text=text.replace(declaration,'');
   for(const pattern of [XIAOK_CONFIG,XIAOK_KEYCHAIN,XIAOK_SHARED])for(const m of text.matchAll(pattern))hits.push(file+': '+m[0]);
  }
  assert.deepEqual(hits,[],ONLY_EXCEPTION+'; other references found: '+hits.join(', '));
- for(const file of ['src/service/model-settings.ts','src/service/server.ts','desktop/semantic-api.ts','desktop/semantic-methods.ts','desktop/renderer/src/api.ts','desktop/renderer/src/model-settings.tsx'])assert.doesNotMatch(read(file),/importXiaok|import-xiaok|importAvailable|小K导入/,file);
+ // The import stays click-only: no availability probe in any view, one module reads xiaok, one method calls it,
+ // one route calls that method, and the route is reached only through the 「从小K导入」 button's desktop method.
+ const importSources=tracked('src','desktop').filter(f=>/\.(?:[cm]?[jt]sx?)$/.test(f)),refsOf=(pattern:RegExp)=>importSources.flatMap(file=>[...read(file).matchAll(pattern)].map(()=>file));
+ assert.deepEqual(refsOf(/importAvailable/g),[],'no startup or view-time xiaok availability check');
+ assert.deepEqual(refsOf(/@napi-rs\/keyring/g),[IMPORT_FILE],'only the import module loads a keychain library outside runtime-core');
+ assert.deepEqual(refsOf(/installed-app-import\.js/g),['src/service/model-settings.ts'],'only ModelSettings imports the xiaok import module');
+ assert.deepEqual(refsOf(/\breadXiaokModels\(/g).sort(),[IMPORT_FILE,'src/service/model-settings.ts'].sort(),'readXiaokModels is defined once and called once');
+ assert.match(read('src/service/model-settings.ts'),/importXiaok\(value:unknown\)\{return this\.edit\(value,async\(core,config,input\)=>\{\n  fields\(input,\['expectedRevision'\]\);const imported=readXiaokModels\(core,this\.xiaokKeychain\)/,'readXiaokModels runs only inside importXiaok');
+ assert.deepEqual(refsOf(/\.importXiaok\(/g),['src/service/server.ts'],'importXiaok is called only by its route');
+ assert.match(read('src/service/server.ts'),/if\(action==='import-xiaok'\)return send\(res,200,await modelSettings\.importXiaok\(input\)\);/);
+ assert.deepEqual(refsOf(/import-xiaok/g).sort(),['desktop/semantic-api.ts','src/service/server.ts']);
+ assert.deepEqual(refsOf(/api\.importXiaokModels\(/g),['desktop/renderer/src/model-settings.tsx'],'only the 「从小K导入」 button calls the import');
+ assert.match(read('desktop/renderer/src/model-settings.tsx'),/onClick=\{\(\)=>void run\(\(\)=>api\.importXiaokModels\(\{expectedRevision:data\.revision\}\)\)\}><Download size=\{15\}\/>\{busy\?'正在导入…':'从小K导入'\}<\/button>/);
 });
 
 test('a legacy xiaok shared-service key in an existing config is ignored with one warning and never followed',async()=>{
