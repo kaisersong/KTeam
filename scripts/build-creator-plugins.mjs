@@ -3,19 +3,21 @@ import {cpSync,existsSync,mkdirSync,readFileSync,rmSync,writeFileSync,readdirSyn
 import {resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
+import {dirname} from 'node:path';
+import {extractPinnedArchive} from './pinned-archive.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const lock=JSON.parse(readFileSync(join(root,'sources.lock.json'),'utf8')).creatorPlugins;
 const target=process.env.KTEAM_PLUGIN_TARGET??`${process.platform}-${process.arch}`;
 const cache=join(root,'.sources','creator-plugins-'+lock.revision);
 const repository=process.env.KTEAM_PLUGINS_SOURCE??join(root,'.sources','creator-plugin-repository');
-const run=(command,args,cwd=cache)=>execFileSync(command,args,{cwd,stdio:'inherit',env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+const run=(command,args,cwd=cache)=>{const env={...process.env,PYTHONDONTWRITEBYTECODE:'1'};if(process.platform==='win32'){if(command==='npm'){args=[process.env.npm_execpath??join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'),...args];command=process.execPath;}const search=process.env.PATH??process.env.Path??'';for(const key of Object.keys(env))if(key.toUpperCase()==='PATH')delete env[key];env.PATH=join(process.env.SystemRoot??'C:\\Windows','System32')+';'+search;}return execFileSync(command,args,{cwd,stdio:'inherit',env});};
 mkdirSync(cache,{recursive:true});
 if(!existsSync(join(cache,'.source-ready'))){
  let repo=repository;
  if(!existsSync(join(repo,'.git'))){repo=join(root,'.sources','creator-plugin-repository');if(!existsSync(join(repo,'.git')))run('git',['clone',lock.repository,repo],root);}
  const archive=execFileSync('git',['archive',lock.revision],{cwd:repo,maxBuffer:128*1024*1024});
- execFileSync('tar',['-x','-C',cache],{input:archive});
+ extractPinnedArchive(archive,cache);
  writeFileSync(join(cache,'.source-ready'),lock.revision);
 }
 const out=join(root,'build/plugins');rmSync(out,{recursive:true,force:true});mkdirSync(out,{recursive:true});

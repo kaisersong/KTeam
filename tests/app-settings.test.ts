@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
@@ -12,7 +13,7 @@ import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
 
 test('preferences are bounded, versioned and durable; duplicate and stale writes do not override newer settings',()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-settings-'));let store=new TeamStore(root);
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-settings-')));let store=new TeamStore(root);
  try{
   assert.equal(appPreferences(store).theme,'system');
   const first=saveAppPreferences(store,{expectedRevision:0,theme:'dark',sendShortcut:'modifier-enter',disabledSkills:['proof']});assert.equal(first.revision,1);
@@ -27,7 +28,7 @@ test('preferences are bounded, versioned and durable; duplicate and stale writes
 });
 
 test('disabled skills are absent from catalog, executable skill and asset lookup; a live disable fences tools',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-skill-settings-')),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-skill-settings-'))),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;
  try{
   mkdirSync(join(root,'skills/proof/references'),{recursive:true});writeFileSync(join(root,'skills/proof/SKILL.md'),'---\nname: proof\ndescription: Settings proof\n---\nSECRET_SKILL_CANARY');writeFileSync(join(root,'skills/proof/references/proof.txt'),'SECRET_ASSET_CANARY');
   const core=await sharedRuntime();let current=true;const harness=await createHarness({workspace:root,disabledSkills:['proof'],assertSkillsCurrent:()=>{if(!current)throw Error('harness_skills_changed');},signal:AbortSignal.timeout(5000),assertCurrent:async()=>{}});
@@ -38,7 +39,7 @@ test('disabled skills are absent from catalog, executable skill and asset lookup
 });
 
 test('real host binds settings to KTeam client and semantic API; model failure leaves preferences available',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-settings-host-'));initConfig(root,{version:1,brokerUrl:'http://127.0.0.1:1',kswarmUrl:'http://127.0.0.1:1'});const host=await startHost({root,upstream:{brokerUrl:'http://127.0.0.1:1',kswarmUrl:'http://127.0.0.1:1'}});
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-settings-host-')));initConfig(root,{version:1,brokerUrl:'http://127.0.0.1:1',kswarmUrl:'http://127.0.0.1:1'});const host=await startHost({root,upstream:{brokerUrl:'http://127.0.0.1:1',kswarmUrl:'http://127.0.0.1:1'}});
  try{
   const api=createDesktopAPI((route,value)=>hostRequest(root,'kteam-main',route,value));const initial:any=await dispatchDesktop(api,'appPreferences',[]);assert.equal(initial.preferences.revision,0);
   const saved:any=await dispatchDesktop(api,'saveAppPreferences',[{expectedRevision:0,fontSize:16}]);assert.equal(saved.preferences.fontSize,16);

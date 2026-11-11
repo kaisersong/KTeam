@@ -1,3 +1,5 @@
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
@@ -16,7 +18,7 @@ function raw(root: string, headers: Record<string, string>, value?: unknown, pat
 }
 
 test('single durable host, two independently authenticated clients, incompatible version is read-only, restart fence rises', async () => {
-  const root = realpathSync(mkdtempSync('/tmp/kteam-service-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(),'kteam-service-')));
   initConfig(root, { version: 1, brokerUrl: 'http://127.0.0.1:1', kswarmUrl: 'http://127.0.0.1:1' });
   let host = await startHost({ root, upstream: { brokerUrl: 'http://127.0.0.1:1', kswarmUrl: 'http://127.0.0.1:1' } });
   try {

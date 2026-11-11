@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,realpathSync,readFileSync,writeFileSync,existsSync,rmSync} from 'node:fs';
@@ -9,7 +10,7 @@ import {appResources} from '../src/service/app-settings.js';
 import {creatorPluginRoot} from '../src/runtime/creator-plugins.js';
 
 test('bundled creators render real files through the KTeam registry, preserve approvals, fence private paths and reopen cleanly',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-creators-')),cwd=join(root,'workspace'),config=join(root,'config'),privateRoot=join(root,'private-host');mkdirSync(cwd);mkdirSync(config);mkdirSync(privateRoot);
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-creators-'))),cwd=join(root,'workspace'),config=join(root,'config'),privateRoot=join(root,'private-host');mkdirSync(cwd);mkdirSync(config);mkdirSync(privateRoot);
  const before=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=config;
  let owner:any,current=true,approve=true;const records:any[]=[],prompts:any[]=[],events:any[]=[];
  const open=async()=>{const h=await createHarness({scope:{root:privateRoot,botId:'creator',roomId:'creator-room',bindingRevision:1,fingerprint:'fixture',profileRevision:1},workspace:cwd,signal:AbortSignal.timeout(60000),assertCurrent:async()=>{if(!current)throw Error('creator_revoked');},onPrompt:async(name,args)=>{prompts.push({name,args});return approve;},onTool:e=>events.push(e),onProcess:r=>{records.push(r);}});return h.prepare!({getModelName:()=> 'fixture'},'fixture',h.system,[]);};

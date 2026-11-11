@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -7,7 +8,7 @@ import assert from 'node:assert/strict';
 import { hostRequest } from '../dist/src/service/client.js';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
-const root = realpathSync(mkdtempSync('/tmp/kteam-cli-'));
+const root = realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-')));
 const cli = join(project, 'dist/src/cli.js');
 const env = { ...process.env, KTEAM_DATA_DIR: root, KTEAM_BROKER_URL: 'http://127.0.0.1:1', KTEAM_KSWARM_URL: 'http://127.0.0.1:1' };
 delete env.KTEAM_BROKER_TOKEN_FILE; delete env.KTEAM_KSWARM_TOKEN_FILE;

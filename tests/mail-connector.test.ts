@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync,readFileSync} from 'node:fs';
@@ -7,7 +8,7 @@ import {promisify} from 'node:util';
 import tls from 'node:tls';
 
 test('mail connection check authenticates real TLS IMAP and SMTP servers without sending email',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-mail-')),key=join(root,'key.pem'),cert=join(root,'cert.pem');execFileSync('/usr/bin/openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=KTeam Fictional Test','-addext','subjectAltName=IP:127.0.0.1'],{stdio:'ignore'});
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-mail-'))),key=join(root,'key.pem'),cert=join(root,'cert.pem');execFileSync('/usr/bin/openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=KTeam Fictional Test','-addext','subjectAltName=IP:127.0.0.1'],{stdio:'ignore'});
  const commands:string[]=[],sockets=new Set<tls.TLSSocket>(),secure={key:readFileSync(key),cert:readFileSync(cert)};
  const imap=tls.createServer(secure,socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.write('* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR] KTeam fixture\r\n');let buffer='';socket.on('data',bytes=>{buffer+=bytes.toString();while(buffer.includes('\r\n')){const end=buffer.indexOf('\r\n'),line=buffer.slice(0,end);buffer=buffer.slice(end+2);const [tag,raw]=line.split(' '),command=raw?.toUpperCase();commands.push('imap:'+command);if(command==='CAPABILITY')socket.write('* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR\r\n');if(command==='LIST')socket.write('* LIST (\\HasNoChildren) "/" "INBOX"\r\n');if(command==='ID')socket.write('* ID NIL\r\n');if(command==='LOGOUT'){socket.end('* BYE closing\r\n'+tag+' OK logout\r\n');return;}socket.write(tag+' OK completed\r\n');}});});
  const smtp=tls.createServer(secure,socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.write('220 fixture ESMTP\r\n');let buffer='';socket.on('data',bytes=>{buffer+=bytes.toString();while(buffer.includes('\r\n')){const end=buffer.indexOf('\r\n'),line=buffer.slice(0,end);buffer=buffer.slice(end+2);const command=line.split(' ')[0]!.toUpperCase();commands.push('smtp:'+command);if(command==='EHLO')socket.write('250-fixture\r\n250 AUTH PLAIN\r\n');else if(command==='AUTH')socket.write('235 2.7.0 authenticated\r\n');else if(command==='QUIT')socket.end('221 bye\r\n');else socket.write('250 OK\r\n');}});});

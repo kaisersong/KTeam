@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,rmSync,realpathSync} from 'node:fs';
@@ -6,7 +7,7 @@ import {createServer} from 'node:http';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {systemOneChoice,kimJudgment,decisionModels} from '../src/runtime/decision.js';
 import {ModelSettings} from '../src/service/model-settings.js';
-async function fixture(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const root=realpathSync(mkdtempSync('/tmp/kteam-decision-')),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;const core=await sharedRuntime();const config=await core.loadConfig();const write=()=>writeFileSync(join(root,'config.json'),JSON.stringify(config));return {root,config,write,close(){if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}};}
+async function fixture(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-decision-'))),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;const core=await sharedRuntime();const config=await core.loadConfig();const write=()=>writeFileSync(join(root,'config.json'),JSON.stringify(config));return {root,config,write,close(){if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}};}
 test('configured original System One is a decision-only endpoint, validates choices, and checks source before sending',async()=>{
  const f=await fixture();let requests=0,chosen='pick';const bodies:any[]=[];const server=createServer(async(req,res)=>{requests++;let body='';for await(const c of req)body+=c;bodies.push(JSON.parse(body));assert.equal(req.url,'/v1/systemone');res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({model:'fixture-system-one',answers:{next:{type:'choice',choice:chosen}},usage:{input_tokens:3,output_tokens:1}}));});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
  try{f.config.systemOne={apiKey:'fixture-key',baseUrl:'http://127.0.0.1:'+(server.address() as any).port,model:'fixture-system-one'};f.write();let current=true,budget=0;const input={state:{message:'选择相关成员'},choices:[{id:'pick',description:'合适成员'},{id:'none',description:'保持安静'}],guard:async()=>{if(!current)throw Error('source_revoked');},signal:AbortSignal.timeout(5000),onRequest:()=>{budget++;}};

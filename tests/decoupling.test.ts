@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {chmodSync,cpSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {dataRoot,initConfig,loadConfig,upstreamOptions} from '../src/service/config.js';
 import {ensureSharedServices} from '../src/runtime/services.js';
 
@@ -121,7 +121,7 @@ test('default data, runtime config and keychain locations belong to KTeam',async
   process.env.XIAOK_CONFIG_DIR=join(home,'.xiaok');
   assert.equal(dataRoot(),join(home,'.kteam'));
   const entry=join(root,'build/shared/kteam-runtime.mjs');assert.ok(existsSync(entry),'runtime bundle built');
-  const core=await import(entry+'?decoupling');
+  const core=await import(pathToFileURL(entry).href+'?decoupling');
   assert.equal(core.getConfigDir(),join(home,'.kteam','runtime'));
   const bundle=readFileSync(entry,'utf8');
   assert.ok(/["']com\.kteam\.credentials\.v1["']/.test(bundle),'KTeam keychain service in bundle');

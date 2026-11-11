@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
@@ -21,7 +22,7 @@ async function stop(child: ChildProcess) {
 }
 
 test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retries/conflicts, reopening host recovers history', { timeout: 40_000 }, async () => {
-  const root = realpathSync(mkdtempSync('/tmp/kteam-e2e-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(),'kteam-e2e-')));
   const source = join(project, 'node_modules/kswarm');
   const home = join(root, 'home'); mkdirSync(home, { mode: 0o700 });
   const brokerToken = randomBytes(32).toString('hex'), kswarmToken = randomBytes(32).toString('hex');
