@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ cancelAttachmentSend(input:any):Promise<any>;composerAttachments(roomId:string):Promise<any>;stageAttachment(input:any):Promise<any>;cancelAttachment(input:any):Promise<any>;sendAttachments(input:any):Promise<any>;previewMessageAttachment(input:any):Promise<any>;
  generatedFiles(input:{roomId:string;cursor?:string}):Promise<any>;
  teamRecipeImports():Promise<any>;exportTeamRecipe(roomId:string):Promise<any>;previewTeamRecipe(input:any):Promise<any>;importTeamRecipe(input:any):Promise<any>;
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
@@ -61,6 +62,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ attachment_invalid:'附件信息无效，请重新选择文件',attachment_id_conflict:'这次发送内容已变化，请核对原发送回执后另起消息',attachment_not_found:'这份附件不属于当前会话或已不可用',attachment_changed:'附件内容已变化，请重新选择并发送',attachment_storage_invalid:'附件暂存位置不可用',attachment_read_failed:'无法读取这份文件，请重新选择',attachment_limit:'每条消息最多 4 份附件；未完成的暂存过多时请先处理原发送',attachment_already_used:'附件已属于一条发送，请查看原发送回执',attachment_not_ready:'附件尚未暂存完成，请核对后继续',attachment_duplicate:'同一条消息不能重复添加相同文件',attachment_message_invalid:'附件消息无法保存，请减少文字或附件后重试',attachment_registration_unknown:'资料登记结果待核对，不会重复登记；可停止尚未发出的消息',attachment_delivery_unknown:'消息发送结果待核对，不会自动重发',attachment_send_busy:'原发送正在处理，请稍后核对回执',attachment_send_cancelled:'这条消息已停止发送，请另起消息',attachment_already_sent:'原消息已经送达，请查看原消息',attachment_send_changed:'发送状态已变化，请重新核对',attachment_client_forbidden:'请在 KTeam 主界面添加或查看消息附件',attachment_message_changed:'原消息附件信息无法核对，已停止打开',attachment_owner_required:'当前会话只有资料管理者可以添加附件',attachment_finish_send:'请先核对原发送，或另起一条消息',
  generated_file_cursor_invalid:'文件分页位置无效，请重新读取',generated_file_receipt_invalid:'原工具文件回执不完整，不能据此打开文件',generated_file_receipt_changed:'文件回执存在冲突，请核对原工作记录',
  recipe_name_changed:'预览中的成员名已被占用，请重新预览后创建',
  recipe_invalid:'配方格式不正确，请检查成员、职责与例行任务',recipe_version_unsupported:'仅支持 KTeam 团队配方第 1 版',recipe_too_large:'配方最多 64 KiB、5 位成员和 20 项例行任务',recipe_sensitive_content:'配方包含疑似凭据，请删除后重新预览',recipe_preview_changed:'预览已变化或不存在，请重新审阅配方',recipe_preview_expired:'预览已过期，请重新预览后创建',recipe_import_busy:'这次导入正在核对，请稍后刷新回执',recipe_import_conflict:'这次导入编号对应其它预览，请核对已有导入',recipe_scope_changed:'成员或团队范围已变化，已停止导入或导出，请核对来源',recipe_profile_unknown:'成员资料写入结果尚未确认，已保留记录，不会自动重写',recipe_import_unknown:'导入结果待核对，请从最近的导入回执继续',recipe_client_forbidden:'请在 KTeam 主客户端管理团队配方',

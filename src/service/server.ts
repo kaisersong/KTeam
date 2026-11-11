@@ -1,3 +1,4 @@
+import {ComposerAttachments} from './composer-attachments.js';
 import {generatedFileRecords} from '../runtime/generated-file-receipts.js';
 import {generatedFilePath} from '../runtime/generated-files.js';
 import {TeamRecipes} from './team-recipes.js';
@@ -85,6 +86,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
+  const composerAttachments=new ComposerAttachments(options.root,upstream,teamStore,conversations,roomId=>automation.reconcileSubmissions(roomId));
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
   const notifications=new WorkNotifications(upstream,teamStore,coordinator,()=>automation.privateChats?.questions()??[],()=>approvals.list(),async job=>{await automation.routines.guard(job);await automation.handoffs?.guard(job);await automation.privateChats?.validatePeer(job);});
@@ -214,10 +216,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
         }
       }
+      if(url.pathname.startsWith('/v1/composer-attachments')){if(client.id!=='kteam-main')throw new KTeamError('attachment_client_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/composer-attachments')return send(res,200,await composerAttachments.view(url.searchParams.get('roomId')??''));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/upload')return send(res,201,await composerAttachments.stage(await body(req,8*1024*1024)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel')return send(res,200,await composerAttachments.cancel(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/send'){const result=await composerAttachments.send(await body(req));void automation.tick();return send(res,201,result);}if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel-send')return send(res,200,await composerAttachments.cancelSend(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/preview')return send(res,200,await composerAttachments.preview(await body(req)));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/work-inputs'||url.pathname==='/v1/work-inputs/release'){if(client.id!=='kteam-main')throw new KTeamError('work_input_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/work-inputs')return send(res,200,await automation.inputs!.view(url.searchParams.get('roomId')??''));if(req.method==='POST'){const result=url.pathname.endsWith('/release')?await automation.inputs!.release(await body(req)):await automation.inputs!.submit(await body(req));void automation.tick();return send(res,201,result);}throw new KTeamError('route_not_found',404);}
       if (url.pathname === '/v1/messages' && req.method === 'POST') {
         const input=validateL0(await body(req));
-        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);if(teamStore.operation('work-input:'+input.id))throw new KTeamError('work_input_id_conflict',409);
+        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);if(teamStore.operation('composer-send:'+input.id))throw new KTeamError('attachment_id_conflict',409);if(teamStore.operation('work-input:'+input.id))throw new KTeamError('work_input_id_conflict',409);
         await coordinator.guardConversation(input.room_id);
         const managed=!!teamStore.settings(input.room_id);
         const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);},snapshot=>coordinator.guardConversation(input.room_id,snapshot));

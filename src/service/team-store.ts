@@ -19,6 +19,7 @@ export class TeamStore {
    CREATE TABLE IF NOT EXISTS team_outbox(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,intent_hash TEXT NOT NULL,envelope_json TEXT,state TEXT NOT NULL,origin_id TEXT);
    CREATE TABLE IF NOT EXISTS product_state(key TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS product_operations(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,value_json TEXT NOT NULL);
+   CREATE INDEX IF NOT EXISTS composer_upload_scope ON product_operations(json_extract(value_json,'$.roomId'),json_extract(value_json,'$.createdAt')) WHERE id GLOB 'composer-upload:*';
    CREATE INDEX IF NOT EXISTS generated_file_scope ON product_operations(json_extract(value_json,'$.roomId'),json_extract(value_json,'$.createdAt'),id) WHERE id GLOB 'generated-file:*';
    CREATE INDEX IF NOT EXISTS work_input_scope ON product_operations(json_extract(value_json,'$.roomId'),json_extract(value_json,'$.createdAt')) WHERE id GLOB 'work-input:*';
    CREATE INDEX IF NOT EXISTS skill_learning_scope ON product_operations(json_extract(value_json,'$.botId'),json_extract(value_json,'$.roomId'),json_extract(value_json,'$.createdAt')) WHERE id GLOB 'skill-learning:*';
@@ -108,6 +109,11 @@ export class TeamStore {
  workInputCount(roomId:string,jobId:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'work-input:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.jobId')=? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected')").get(roomId,jobId)?.n??0);}
 
  submission(id:string):any{return this.db.prepare('SELECT id,room_id AS roomId,state,origin_id AS originId FROM team_outbox WHERE id=?').get(id);}
+ submissionEnvelope(id:string):any{const row=this.db.prepare('SELECT envelope_json FROM team_outbox WHERE id=?').get(id);return row?.envelope_json?JSON.parse(String(row.envelope_json)):undefined;}
+ composerUploads(roomId:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'composer-upload:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.status') NOT IN ('cancelled','attached') ORDER BY rowid DESC LIMIT 64").all(roomId).map(row=>JSON.parse(String(row.value_json)));}
+ composerUploadUsage(roomId:string){return this.db.prepare("SELECT count(*) AS totalCount,count(CASE WHEN json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.sendId') IS NULL THEN 1 END) AS roomCount,coalesce(sum(json_extract(value_json,'$.file.bytes')),0) AS totalBytes FROM product_operations WHERE id GLOB 'composer-upload:*' AND json_extract(value_json,'$.status') NOT IN ('cancelled','attached')").get(roomId) as {roomCount:number;totalCount:number;totalBytes:number};}
+ cancelComposerSubmission(id:string){const result=this.db.prepare("UPDATE team_outbox SET state='cancelled',envelope_json=NULL WHERE id=? AND state='pending'").run(id);if(!result.changes)throw new KTeamError('attachment_send_changed',409);}
+ composerSends(roomId:string):any[]{const pending=this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'composer-send:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.status') NOT IN ('complete','cancelled') ORDER BY rowid DESC LIMIT 64").all(roomId),recent=this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'composer-send:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.status') IN ('complete','cancelled') ORDER BY rowid DESC LIMIT 10").all(roomId);return [...pending,...recent].map(row=>JSON.parse(String(row.value_json)));}
  prepareSubmission(id:string,roomId:string,intentHash:string,envelope:unknown){
   const prior=this.db.prepare('SELECT intent_hash FROM team_outbox WHERE id=?').get(id);
   if(prior&&prior.intent_hash!==intentHash)throw new KTeamError('aimp_id_conflict',409);

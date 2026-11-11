@@ -119,6 +119,10 @@
     {
       "file": "docs/design/desktop/interrupted-artifact-receipts-20261111.md",
       "sha256": "fd8d29474561420f71b90777612f1a5e98ffd358b37d2d660e36062d3779d5bf"
+    },
+    {
+      "file": "docs/design/desktop/composer-attachments-20261111.md",
+      "sha256": "7ad5b64f9eb3c4e388fc72b1d88409baf2a5c8354c36025b13bf308efd03431c"
     }
   ],
   "productBaseline": {
