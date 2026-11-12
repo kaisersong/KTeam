@@ -7,7 +7,7 @@ if(process.platform==='win32'){
  if(!['x64','arm64'].includes(process.arch))throw Error('windows_absence_arch_unsupported');
  const root=resolve('.'),core=join(root,'runtime-core/native/windows-installation-absence-core.h');
  const header=readFileSync(core),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
- const programs=['windows-installation-absence','windows-credential-acl'].map(name=>({name,source:join(root,'runtime-core/native',name+'.c'),input:readFileSync(join(root,'runtime-core/native',name+'.c'))}));
+ const programs=['windows-installation-absence','windows-credential-acl','windows-process-observer'].map(name=>({name,source:join(root,'runtime-core/native',name+'.c'),input:readFileSync(join(root,'runtime-core/native',name+'.c'))}));
  const out=join(root,'build/shared/native','win32-'+process.arch);mkdirSync(out,{recursive:true});
  const stage=mkdtempSync(join(out,'.compile-'));
  try{

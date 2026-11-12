@@ -1,3 +1,4 @@
+import{windowsProcessObservation}from'./windows-process-observer.js';
 import{execFileSync,spawnSync}from'node:child_process';import{existsSync,readFileSync,statSync}from'node:fs';import{win32}from'node:path';
 /**
  * KTeam's process platform layer. POSIX keeps the exact process-group semantics KTeam has always used
@@ -5,8 +6,8 @@ import{execFileSync,spawnSync}from'node:child_process';import{existsSync,readFil
  * every live descendant (Win32_Process via PowerShell CIM, no wmic), and it is stopped with taskkill /T /F.
  */
 export interface ProcessMember{pid:number;pgid:number;uid?:number}
-export interface PlatformDeps{platform:NodeJS.Platform;exec:(file:string,args:string[],options:any)=>string;spawnSync:(file:string,args:string[],options:any)=>{status:number|null;error?:Error|undefined};env:NodeJS.ProcessEnv;selfPid:number;getuid:(()=>number)|undefined}
-export const defaultDeps=():PlatformDeps=>({platform:process.platform,exec:(file,args,options)=>String(execFileSync(file,args,options)),spawnSync:(file,args,options)=>spawnSync(file,args,options),env:process.env,selfPid:process.pid,getuid:process.getuid?.bind(process)});
+export interface PlatformDeps{nativeObservation?:boolean;platform:NodeJS.Platform;exec:(file:string,args:string[],options:any)=>string;spawnSync:(file:string,args:string[],options:any)=>{status:number|null;error?:Error|undefined};env:NodeJS.ProcessEnv;selfPid:number;getuid:(()=>number)|undefined}
+export const defaultDeps=():PlatformDeps=>({nativeObservation:true,platform:process.platform,exec:(file,args,options)=>String(execFileSync(file,args,options)),spawnSync:(file,args,options)=>spawnSync(file,args,options),env:process.env,selfPid:process.pid,getuid:process.getuid?.bind(process)});
 const posixCensus={encoding:'utf8' as const,timeout:2000,maxBuffer:4*1024*1024};
 // PowerShell starts slowly on a cold Windows machine; 2s (the ps budget) is not enough there.
 // stdin is closed: Windows PowerShell can wait forever on an open stdin pipe even with -Command.
@@ -29,7 +30,7 @@ export function parseWindowsTree(text:string,root:number):ProcessMember[]{
 }
 /** Live, non-zombie members of the group KTeam created with `pgid` as its leader. */
 export function processGroup(pgid:number,deps:PlatformDeps=defaultDeps()):ProcessMember[]{
- if(deps.platform==='win32')return parseWindowsTree(powershell(deps,WINDOWS_PROCESS_TABLE),pgid);
+ if(deps.platform==='win32')return parseWindowsTree((deps.nativeObservation?windowsProcessObservation([]):undefined)??powershell(deps,WINDOWS_PROCESS_TABLE),pgid);
  return parsePosixGroup(deps.exec('/bin/ps',['-axo','pid=,pgid=,uid=,stat='],posixCensus),pgid);
 }
 /** A member is ours when its uid matches; Windows lists only processes it can see and records no uid. */
@@ -37,7 +38,7 @@ export const ownedByCurrentUser=(member:ProcessMember,deps:Pick<PlatformDeps,'ge
 /** Process start identity used to detect pid reuse. Empty when the process is gone (Windows). */
 export function processBirth(pid:number,deps:PlatformDeps=defaultDeps()):string{
  if(!Number.isSafeInteger(pid)||pid<=0)throw new Error('invalid_pid');
- if(deps.platform==='win32')return powershell(deps,`$p = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { $p.CreationDate.ToUniversalTime().ToString('o') }`).trim();
+ if(deps.platform==='win32')return (deps.nativeObservation?windowsProcessObservation(['birth',String(pid)]):undefined)??powershell(deps,`$p = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { $p.CreationDate.ToUniversalTime().ToString('o') }`).trim();
  return deps.exec('/bin/ps',['-p',String(pid),'-o','lstart='],{encoding:'utf8',timeout:2000}).trim();
 }
 const missing=()=>Object.assign(new Error('process_group_missing'),{code:'ESRCH'});

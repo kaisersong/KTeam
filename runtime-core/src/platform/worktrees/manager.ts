@@ -8,6 +8,8 @@ import {
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, execFile } from '../../../../src/runtime/harness-child-process.js';
+import { processBirth } from '../../../../src/runtime/platform-process.js';
+import { windowsObservationCommand } from '../../../../src/runtime/windows-process-observer.js';
 import { join, relative, resolve, sep } from 'node:path';
 import { writeFileAtomicallySync } from '../../utils/atomic-file.js';
 
@@ -691,6 +693,17 @@ async function defaultInspectProcess(
 }
 
 async function defaultInspectPathUsage(path: string): Promise<PathUsage> {
+  if (process.platform === 'win32') {
+    try {
+      const command=windowsObservationCommand(['usage',path]);
+      if(!command)return 'unknown';
+      // This is part of the original Worktree operation: admission, ownership,
+      // process draining and scope checks remain with its owned execFile.
+      return await new Promise<PathUsage>(resolve=>execFile(command.file,[...command.args],{encoding:'utf8',env:{},windowsHide:true,timeout:5000,maxBuffer:4096},(error,stdout)=>{
+        try{command.verify();const value=stdout.trim();resolve(!error&&(value==='used'||value==='free')?value:'unknown');}catch{resolve('unknown');}
+      }));
+    }catch{return 'unknown';}
+  }
   if (process.platform !== 'darwin' && process.platform !== 'linux') {
     return 'unknown';
   }
@@ -708,16 +721,7 @@ function readProcessStartToken(pid: number): string | null {
   }
   if (process.platform === 'win32') {
     try {
-      return execFileSync(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CreationDate.ToUniversalTime().ToString("o")`,
-        ],
-        { encoding: 'utf8', windowsHide: true },
-      ).trim() || null;
+      return processBirth(pid) || null;
     } catch {
       return null;
     }
