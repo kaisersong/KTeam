@@ -5,7 +5,7 @@ import {parseToolScope,toolScopePolicy} from './tool-scope.js';
 import {scopedCatalog,skillBindingRoot,withSkillMutation,assertSkillPins,parseSkillPins,type SkillPin} from './skill-library.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {homedir,hostname} from 'node:os';
-import {resolve,join} from 'node:path';
+import {resolve,join,isAbsolute} from 'node:path';
 import {realpathSync,statSync,existsSync,readFileSync,mkdirSync} from 'node:fs';
 import {readIntegrations,runtimeIntegrationRevision} from '../service/integration-settings.js';
 import {sharedRuntime,runtimeArtifactRevision} from './native.js';
@@ -46,7 +46,7 @@ export async function createHarness(input:HarnessContext){
  const skill=core.createSkillTool(catalog),metadata=new Map();
  const native=core.buildToolList(skill,{cwd,allowOutsideCwd:false},[],metadata,{isYolo:()=>false}).filter((t:any)=>!['install_skill','uninstall_skill','render_ui','kim_judge_messages'].includes(t.definition.name));
  const boundSet=new WeakSet<object>();
- const privateFence=input.scope?core.createSandboxPolicy({pathAllowlist:[resolve('/')],pathDenylist:[input.scope.root],network:'allow'}):undefined;
+ const privateFence=input.scope?core.createSandboxPolicy({pathDenylist:[input.scope.root],network:'allow'}):undefined;
  const bindingRoot=input.scope?skillBindingRoot(input.scope):undefined;
  const bind=(source:any,toolCwd=cwd):any=>{if(boundSet.has(source))return source;let tool=source;const name=tool.definition.name;
  if(name==='web_search')tool=core.createWebSearchTool({registry:webRegistry});
@@ -61,7 +61,7 @@ export async function createHarness(input:HarnessContext){
   const name=tool.definition.name,args=normalize(name,raw,toolCwd);toolPolicy.assert(name,args,toolCwd);if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name)&&privateFence&&!privateFence.checkPath(String(args.output_path)).allowed)throw new KTeamError('harness_private_path_denied',403);
   if(privateFence){
    if(name==='render_ui'&&typeof args.output_path==='string'&&args.output_path.trim()&&!privateFence.checkPath(expand(args.output_path,toolCwd)).allowed)throw new KTeamError('harness_private_path_denied',403);
-   if(name==='install_skill'&&typeof args.source==='string'&&/^(?:\/|\.\.?\/|~\/)/.test(args.source)&&!privateFence.checkPath(expand(args.source,toolCwd)).allowed)throw new KTeamError('harness_private_path_denied',403);
+   if(name==='install_skill'&&typeof args.source==='string'&&(isAbsolute(args.source)||/^(?:\.{1,2}[\\/]|~[\\/])/.test(args.source))&&!privateFence.checkPath(expand(args.source,toolCwd)).allowed)throw new KTeamError('harness_private_path_denied',403);
    if(['install_skill','uninstall_skill'].includes(name)&&args.scope!=='global'&&!privateFence.checkPath(join(toolCwd,'.kteam','skills')).allowed)throw new KTeamError('harness_private_path_denied',403);
   }
   const eventId=randomUUID();input.onTool?.({id:eventId,name,state:'running',input:core.redactSecrets(JSON.stringify(args)).text.slice(0,8192),startedAt:new Date().toISOString()});

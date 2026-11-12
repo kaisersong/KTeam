@@ -1,3 +1,4 @@
+import {nodeFixtureCommand} from './helpers/node-command.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
@@ -64,8 +65,8 @@ test('revoked scope cannot launch a real plugin PreToolUse command before the to
 test('hook admission preserves a safe cause and a failed check does not consume a once-only hook',async()=>{
  const f=await fixture();let owner:any;try{
   const plugin=join(f.cwd,'.kteam/plugins/review');mkdirSync(plugin,{recursive:true});
-  const marker=join(f.root,'ran');
-  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',once:true,events:['PreToolUse'],matcher:'read',command:'printf checked >> '+marker}]}));
+  const marker=join(f.root,'ran'),script=join(plugin,'proof.cjs');writeFileSync(script,"require('node:fs').appendFileSync(process.argv[2],'checked')");
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',once:true,events:['PreToolUse'],matcher:'read',command:nodeFixtureCommand(script,marker)}]}));
   writeFileSync(join(f.cwd,'proof'),'read-only');let unavailable=false;
   const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{if(unavailable)throw new KTeamError('broker_unavailable',503);},onPrompt:async()=>true});
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);unavailable=true;
@@ -108,6 +109,7 @@ test('host-managed card and Skill tools cannot read or overwrite another private
   assert.match(await owner.registry.executeTool('install_skill',{source:'  '+skill+'  ',scope:'global'}),/harness_private_path_denied/);const scopeKey=createHash('sha256').update(f.scope.botId+'\n'+f.scope.roomId).digest('hex');assert.equal(existsSync(join(f.scope.root,'harness-assets',scopeKey,'skills/private-skill.md')),false);
   assert.match(await owner.registry.executeTool('render_ui',{title:'must fail',output_path:'  '+output+'  ',sections:[{kind:'text',content:'must not write'}]}),/harness_private_path_denied/);assert.equal(existsSync(output),false);
   assert.doesNotMatch(await owner.registry.executeTool('read',{file_path:skill}),/FOREIGN_PRIVATE_BODY/);
+  const publicSkill=join(f.cwd,'public-skill.md');writeFileSync(publicSkill,'---\nname: public-skill\ndescription: public source\n---\nPUBLIC_WORKSPACE_SKILL');assert.match(await owner.registry.executeTool('install_skill',{source:publicSkill,scope:'global'}),/已安装 skill "public-skill"/);assert.match(readFileSync(join(f.scope.root,'harness-assets',scopeKey,'skills/public-skill.md'),'utf8'),/PUBLIC_WORKSPACE_SKILL/);
  }finally{await owner?.close();f.close();}
 });
 
@@ -132,7 +134,7 @@ test('SIGKILL of a harness owner reaps its actual MCP provider through the IPC s
   const provider=Number((await import('node:fs')).readFileSync(join(f.root,'provider.pid'),'utf8'));assert.ok(provider);assert.ok(ready.records.some((r:any)=>r.state==='running'));
   const ended=new Promise(r=>parent.once('exit',r));parent.kill('SIGKILL');await ended;
   const alive=()=>{try{process.kill(provider,0);return true;}catch{return false;}};
-  const until=Date.now()+6000;while(alive()&&Date.now()<until)await new Promise(r=>setTimeout(r,30));assert.equal(alive(),false);
+  const pids=[...new Set<number>([provider,...ready.records.filter((record:any)=>record.state==='running').map((record:any)=>Number(record.pid))])];const live=()=>pids.filter(pid=>{try{process.kill(pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH')throw error;return false;}});const until=Date.now()+(process.platform==='win32'?10000:6000);while(live().length&&Date.now()<until)await new Promise(r=>setTimeout(r,30));assert.deepEqual(live(),[]);assert.equal(alive(),false);
  }finally{if(parent&&parent.exitCode===null&&parent.signalCode===null)parent.kill('SIGKILL');f.close();}
 });
 
