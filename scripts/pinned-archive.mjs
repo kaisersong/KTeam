@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,rmSync,mkdirSync,cpSync,lstatSync,realpathSync,existsSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,rmSync,mkdirSync,readFileSync,readdirSync,lstatSync,realpathSync,existsSync} from 'node:fs';
 import {join,posix,dirname,basename} from 'node:path';
 import {tmpdir} from 'node:os';
 import {list,extract} from 'tar';
@@ -27,10 +27,13 @@ export function extractPinnedArchiveWithoutLinks(archive,target){
   for(const [name,entry] of entries)if(entry.type==='SymbolicLink'){
    const source=join(folder,original(name)),stat=lstatSync(source);
    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw Error('pinned_archive_unsafe_link');
-   cpSync(source,join(folder,name),{errorOnExist:true,force:false});
+   writeFileSync(join(folder,name),readFileSync(source),{flag:'wx',mode:stat.mode&0o777});
   }
   const destination=existsSync(target)?realpathSync.native(target):join(realpathSync.native(dirname(target)),basename(target));
-  cpSync(folder,destination,{recursive:true,verbatimSymlinks:true});
+  // Use Node's wide-path file APIs for every byte. Node 22's native recursive
+  // copy is avoided here: Unicode-path fixtures failed only on that runtime.
+  const copy=(source,dest)=>{const stat=lstatSync(source);if(stat.isSymbolicLink())throw Error('pinned_archive_unsafe_link');if(stat.isDirectory()){if(existsSync(dest)){const current=lstatSync(dest);if(!current.isDirectory()||current.isSymbolicLink())throw Error('pinned_archive_unsafe_target');}else mkdirSync(dest,{mode:stat.mode&0o777});for(const name of readdirSync(source))copy(join(source,name),join(dest,name));}else{if(!stat.isFile()||stat.nlink!==1)throw Error('pinned_archive_unsafe_link');writeFileSync(dest,readFileSync(source),{flag:'wx',mode:stat.mode&0o777});}};
+  copy(folder,destination);
  }finally{rmSync(temporary,{recursive:true,force:true});}
 }
 

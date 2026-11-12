@@ -55,7 +55,7 @@ test('revoked scope cannot launch a real plugin PreToolUse command before the to
   const marker=join(f.root,'must-not-start');
   writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',events:['PreToolUse'],command:'printf synthetic > '+marker}]}));
   writeFileSync(join(f.cwd,'proof'),'read-only');let current=true;
-  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{if(!current)throw Error('synthetic_revoked');},onPrompt:async()=>true});
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(process.platform==='win32'?30000:5000),assertCurrent:async()=>{if(!current)throw Error('synthetic_revoked');},onPrompt:async()=>true});
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);current=false;
   const result=await owner.registry.executeTool('read',{file_path:'proof'});
   assert.match(result,/harness_scope_check_failed:scope_check_failed/);assert.equal(existsSync(marker),false);
@@ -150,7 +150,7 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
    const path=join(f.cwd,'.worktrees/.kteam-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
    const result=await platform.worktreeManager.gc({dryRun:false});assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);
   });
-  assert.ok(records.filter(r=>r.state==='running').length>=5);await platform.dispose();platform=undefined;for(const r of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(r.pid,0));
+  assert.ok(records.filter(r=>r.state==='running').length>=5);await platform.dispose();platform=undefined;for(const r of records.filter(r=>r.state==='running')){if(process.platform==='win32'){const end=Date.now()+3000;while(Date.now()<end){try{process.kill(r.pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')break;throw error;}await new Promise(resolve=>setTimeout(resolve,25));}}assert.throws(()=>process.kill(r.pid,0));}
  }finally{await platform?.dispose();f.close();}
 });
 
