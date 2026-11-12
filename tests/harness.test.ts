@@ -47,9 +47,9 @@ test('saved bash grant retains original blocks, mandatory prompts, sensitive tar
 
 test('install_skill treats every Windows local path form as a path for the private-scope fence',async()=>{
  const {localSkillSource}=await import('../src/runtime/harness.js');
- for(const source of ['C:\\Users\\a\\secret.md','c:/Users/a/secret.md','\\\\server\\share\\secret.md','.\\skills\\x.md','..\\another-bot\\secret.md','..\\..\\host-data\\x.md','~\\secret.md','  D:\\padded.md  '])assert.equal(localSkillSource(source,'win32'),true,source);
+ for(const source of ['C:\\Users\\a\\secret.md','c:/Users/a/secret.md','\\\\server\\share\\secret.md','.\\skills\\x.md','..\\another-bot\\secret.md','..\\..\\host-data\\x.md','~\\secret.md','  D:\\padded.md  ','\\Users\\x\\secret.md','\\another-bot\\secret.md','  \\Users\\padded.md'])assert.equal(localSkillSource(source,'win32'),true,source);
  for(const source of ['/abs/x.md','./x.md','../x.md','~/x.md'])for(const platform of ['win32','darwin','linux'] as const)assert.equal(localSkillSource(source,platform),true,platform+' '+source);
  // POSIX keeps its exact rule: a backslash or drive form is a file name there, not a path prefix.
- for(const source of ['C:\\x.md','..\\x.md'])assert.equal(localSkillSource(source,'linux'),false,source);
+ for(const source of ['C:\\x.md','..\\x.md','\\Users\\x.md'])assert.equal(localSkillSource(source,'linux'),false,source);
  for(const source of ['my-skill','https://example.invalid/skill.md'])assert.equal(localSkillSource(source,'win32'),false,source);
 });

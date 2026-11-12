@@ -10,6 +10,8 @@ export interface WindowsAbsenceDeps { platform: NodeJS.Platform; arch: string; m
     readFile: (path: string) => Buffer;
     run: (helper: string) => { error?: Error | undefined; status: number | null; signal?: NodeJS.Signals | null; stdout: Buffer };
     warn: (message: string) => void }
+/** The missing-helper warning is emitted once per process (it is checked on every profile read). */
+let absenceWarned = false;
 const defaultAbsenceDeps = (): WindowsAbsenceDeps => {
     const moduleDirectory = dirname(fileURLToPath(import.meta.url));
     // electron-builder explicitly unpacks this fixed native subtree. CLI and
@@ -17,7 +19,7 @@ const defaultAbsenceDeps = (): WindowsAbsenceDeps => {
     const root = moduleDirectory.split(sep).map(part => part === 'app.asar' ? 'app.asar.unpacked' : part).join(sep);
     return { platform: process.platform, arch: process.arch, machine: machine(), root, lstat: lstatSync, readFile: path => readFileSync(path),
         run: helper => spawnSync(win32.toNamespacedPath(helper), [], { cwd: win32.toNamespacedPath(dirname(helper)), env: {}, shell: false, windowsHide: true, timeout: 5000, maxBuffer: 4096 }) as any,
-        warn: message => process.emitWarning(message, { code: 'KTEAM_WINDOWS_ABSENCE_HELPER_MISSING' }) };
+        warn: message => { if (absenceWarned) return; absenceWarned = true; process.emitWarning(message, { code: 'windows_absence_helper_not_bundled' }); } };
 };
 const missingFile = (error: unknown) => (error as NodeJS.ErrnoException)?.code === 'ENOENT';
 /** Fixed client-bundled read-only helper. This is not a protected Windows
@@ -45,7 +47,7 @@ export function observeWindowsInstallationAbsence(deps: WindowsAbsenceDeps): Win
         const present = (path: string) => { try { deps.lstat(path); return true; } catch (error) { if (missingFile(error)) return false; throw error; } };
         const helperPresent = present(helper), manifestPresent = present(manifestPath);
         if (!helperPresent && !manifestPresent) {
-            deps.warn('windows-installation-absence helper is not bundled (' + helper + '); treating this client as an ordinary install (0.4 interim, see https://github.com/kaisersong/KTeam/issues/74)');
+            deps.warn('windows_absence_helper_not_bundled: windows-installation-absence helper is not bundled (' + helper + '); treating this client as an ordinary install (0.4 interim, see https://github.com/kaisersong/KTeam/issues/74)');
             return 'ordinary';
         }
         function read(path: string, limit: number): Buffer { const s = deps.lstat(path); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1 || s.size > limit)

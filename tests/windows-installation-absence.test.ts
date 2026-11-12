@@ -21,7 +21,7 @@ const manifest=(over:Record<string,unknown>={})=>Buffer.from(JSON.stringify({ver
 test('Windows absence helper not bundled (both files absent): ordinary install, with a warning, and nothing is run',async()=>{
  const {observeWindowsInstallationAbsence}=await runtime();
  const f=deps({});assert.equal(observeWindowsInstallationAbsence(f.deps),'ordinary');
- assert.equal(f.warnings.length,1);assert.match(f.warnings[0]!,/windows-installation-absence helper is not bundled/);assert.deepEqual(f.runs,[]);
+ assert.equal(f.warnings.length,1);assert.match(f.warnings[0]!,/^windows_absence_helper_not_bundled: windows-installation-absence helper is not bundled/);assert.match(f.warnings[0]!,/issues\/74/);assert.deepEqual(f.runs,[]);
 });
 
 test('Windows absence helper present but wrong or failing still denies fallback',async()=>{
