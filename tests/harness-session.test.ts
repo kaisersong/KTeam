@@ -1,3 +1,5 @@
+import {waitForProcessGone} from './helpers/process-gone.js';
+import {processBirth} from '../src/runtime/platform-process.js';
 import {nodeFixtureCommand} from './helpers/node-command.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
@@ -121,8 +123,8 @@ test('real MCP stdio is supervised, records ownership before payload, and closes
   assert.equal(existsSync(join(f.root,'provider.pid')),true);
   assert.match(await owner.registry.executeTool('mcp__owned__proof',{}),/MCP_REAL_PROCESS_92/);
   assert.ok(resources.some(r=>r.state==='preparing'&&r.pid));assert.ok(resources.some(r=>r.state==='running'&&r.birth));
-  const pids=resources.filter(r=>r.state==='running').map(r=>r.pid);await owner.close();owner=undefined;
-  for(const pid of pids)assert.throws(()=>process.kill(pid,0));
+  const owned=resources.filter(r=>r.state==='running'),providerPid=Number(readFileSync(join(f.root,'provider.pid'),'utf8')),provider={pid:providerPid,birth:processBirth(providerPid)};assert.ok(provider.birth);await owner.close();owner=undefined;
+  for(const record of [...owned,provider])await waitForProcessGone(record);
  }finally{await owner?.close();f.close();}
 });
 
@@ -150,7 +152,7 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
    const path=join(f.cwd,'.worktrees/.kteam-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
    const result=await platform.worktreeManager.gc({dryRun:false});assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);
   });
-  assert.ok(records.filter(r=>r.state==='running').length>=5);await platform.dispose();platform=undefined;for(const r of records.filter(r=>r.state==='running')){if(process.platform==='win32'){const end=Date.now()+3000;while(Date.now()<end){try{process.kill(r.pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')break;throw error;}await new Promise(resolve=>setTimeout(resolve,25));}}assert.throws(()=>process.kill(r.pid,0));}
+  assert.ok(records.filter(r=>r.state==='running').length>=5);await platform.dispose();platform=undefined;for(const r of records.filter(r=>r.state==='running'))await waitForProcessGone(r);
  }finally{await platform?.dispose();f.close();}
 });
 

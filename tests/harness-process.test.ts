@@ -1,3 +1,4 @@
+import {waitForProcessGone} from './helpers/process-gone.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
@@ -12,10 +13,10 @@ import {spawn,execFile,withHarnessProcessOwner} from '../src/runtime/harness-chi
 test('owned raw spawn preserves ordinary nonzero exit status and physically drains the supervisor',async()=>{
  const records:any[]=[];
  const child=withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>spawn(process.execPath,['-e','process.exit(2)']));
- child.stdout.resume();child.stderr.resume();
+ let stderr='';const exits:any[]=[],errors:string[]=[];child.stdout.resume();child.stderr.on('data',(data:Buffer)=>{stderr=(stderr+data).slice(-4000);});child.on('message',(message:any)=>{exits.push(message);});child.on('error',(error:Error)=>{errors.push(error.message);});
  const result=await new Promise(r=>child.once('close',(code:any,signal:any)=>r({code,signal})));
- assert.deepEqual(result,{code:2,signal:null});assert.ok(records.some(r=>r.state==='running'));
- assert.throws(()=>process.kill(child.pid!,0));
+ assert.equal(errors.length,0,JSON.stringify({stderr,exits,errors,records}));assert.deepEqual(result,{code:2,signal:null},JSON.stringify({stderr,exits,records}));assert.ok(records.some(r=>r.state==='running'));
+ await waitForProcessGone(records.find(record=>record.pid===child.pid&&record.state==='running')!);
 });
 
 test('caller shell options cannot apply to the ownership launcher or execute a path before admission',async()=>{
@@ -29,7 +30,7 @@ test('owned execFile limits retained bytes while an excessive writer is physical
  const records:any[]=[];
  const output:any=await withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>new Promise(resolve=>execFile(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>process.stdout.write(Buffer.alloc(65536)),1)"],{maxBuffer:1024,encoding:'buffer'},(error:any,stdout:Buffer,stderr:Buffer)=>resolve({error,stdout,stderr}))));
  assert.equal(output.error.code,'native_output_limit');assert.ok(output.stdout.length+output.stderr.length<=1024);
- for(const row of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(row.pid,0));
+ for(const row of records.filter(r=>r.state==='running'))await waitForProcessGone(row);
 });
 
 test('a PATH-supplied ps cannot bypass a revoked ownership guard or inject census options',async()=>{

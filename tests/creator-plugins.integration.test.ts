@@ -1,3 +1,4 @@
+import {waitForProcessGone} from './helpers/process-gone.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
@@ -41,7 +42,7 @@ test('bundled creators render real files through the KTeam registry, preserve ap
   const receipts=events.filter(e=>e.file);assert.ok(receipts.length>=2);assert.ok(receipts.every(e=>e.file.sha256&&e.file.roomId==='creator-room'&&e.state==='completed'));
   current=false;await assert.rejects(call('mcp__report-renderer__render_report',{ir_content:ir,output_path:'revoked.html'}),/creator_revoked/);assert.equal(existsSync(join(cwd,'revoked.html')),false);current=true;
   await owner.close();owner=undefined;
-  for(const pid of records.filter(r=>r.state==='running').map(r=>r.pid))assert.throws(()=>process.kill(pid,0));
+  for(const record of records.filter(r=>r.state==='running'))await waitForProcessGone(record);
   owner=await open();assert.match(await owner.registry.executeTool('mcp__report-renderer__list_themes',{}),/minimal/);
   assert.deepEqual((await import('node:fs')).readdirSync(cwd).sort(),existsSync(join(creatorPluginRoot(),'kai-slide-creator'))?['report.html','slides.html']:['report.html']);
  }finally{await owner?.close();if(before===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=before;rmSync(root,{recursive:true,force:true});}

@@ -10,3 +10,12 @@ export function assertProcessGone(record:{pid:number;birth?:string|undefined}){
  if(process.platform==='win32'&&record.birth){assert.notEqual(processBirth(record.pid),record.birth,JSON.stringify(record));return;}
  assert.throws(()=>process.kill(record.pid,0),JSON.stringify(record));
 }
+
+/** Observe a bounded Windows drain without killing anything or confusing a recycled PID with its old owner. */
+export async function waitForProcessGone(record:{pid:number;birth?:string|undefined},timeoutMs=3000){
+ if(process.platform==='win32'){
+  const alive=()=>{if(record.birth)return processBirth(record.pid)===record.birth;try{process.kill(record.pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}};
+  const end=Date.now()+timeoutMs;while(alive()&&Date.now()<end)await new Promise(resolve=>setTimeout(resolve,25));
+ }
+ assertProcessGone(record);
+}
