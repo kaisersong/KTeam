@@ -48,7 +48,7 @@ for(const scenario of ['allow_once','deny','allow_always','new-deny','profile','
    if(scenario==='new-deny')writeFileSync(join(configRoot,'settings.json'),JSON.stringify({permissions:{deny:['write'],allow:['write:'+first]}}));
    if(scenario==='profile')await api.saveBot({botId:member.bot.id,expectedRevision:1,description:'changed',instructions:'new scope',participation:'auto',workspace,followup:false});
    if(scenario==='pause')await api.pause(member.roomId);
-   if(scenario==='expiry'){const db=new DatabaseSync(join(root,'team-extensions.sqlite'));try{db.exec('PRAGMA busy_timeout=5000');db.prepare("UPDATE product_operations SET revision=revision+1,value_json=json_set(value_json,'$.revision',revision+1,'$.expiresAt',?) WHERE id=?").run(Date.now()-1,approval.id);}finally{db.close();}}
+   if(scenario==='expiry'){await host.close();const db=new DatabaseSync(join(root,'team-extensions.sqlite'));try{db.exec('PRAGMA busy_timeout=5000');db.prepare("UPDATE product_operations SET revision=revision+1,value_json=json_set(value_json,'$.revision',revision+1,'$.expiresAt',?) WHERE id=?").run(Date.now()-1,approval.id);}finally{db.close();}host=await proofHost(root,configRoot,f.upstream.options);}
    if(scenario==='model'){config.models.fixture.model='changed-model';writeFileSync(join(configRoot,'config.json'),JSON.stringify(config));}
    await assert.rejects(api.decideToolApproval({id:approval.id,expectedHash:approval.hash,decision:'allow_always'}),/tool_approval_changed|tool_approval_expired|handoff_scope_changed|model_binding_changed/);
    await host.close();host=await proofHost(root,configRoot,f.upstream.options);
