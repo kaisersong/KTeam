@@ -20,7 +20,7 @@
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
     "start": "node dist/src/cli.js start",
     "doctor": "node dist/src/cli.js doctor",
-    "test": "npm run build && node scripts/build-runtime.mjs && node scripts/build-service-bundles.mjs && node --preserve-symlinks --test dist/tests/*.test.js",
+    "test": "npm run build && node scripts/build-runtime.mjs && node scripts/build-service-bundles.mjs && node scripts/run-tests.mjs",
     "test:integration": "npm run build && node --preserve-symlinks --test dist/tests/upstream.integration.test.js",
     "verify:sources": "node scripts/verify-sources.mjs",
     "test:cli": "npm run build && node scripts/smoke-cli.mjs",

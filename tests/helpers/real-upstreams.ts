@@ -1,10 +1,14 @@
 import {tmpRoot} from './tmp-root.js';
 import {fork,type ChildProcess} from 'node:child_process';
+import {after} from 'node:test';
 import {mkdtempSync,realpathSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {Upstreams} from '../../src/adapters/upstream.js';
+// A test that throws before its own close() must not keep this file's process alive.
+const open=new Set<{close():Promise<void>}>();
+after(async()=>{for(const fixture of [...open])await fixture.close().catch(()=>{});});
 export async function realUpstreams(options:{agentClis?:string[]}={}){
  const project=fileURLToPath(new URL('../../../',import.meta.url));const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-coordination-'));
  const home=join(root,'home');mkdirSync(home,{mode:0o700});
@@ -18,5 +22,5 @@ export async function realUpstreams(options:{agentClis?:string[]}={}){
  // A failed start must not leave the broker listening: the test process would never exit.
  catch(error){child.kill('SIGKILL');broker.close();await server.close();rmSync(root,{recursive:true,force:true});throw error;}
  const upstream=new Upstreams({brokerUrl,kswarmUrl:'http://127.0.0.1:'+port,brokerToken:token,kswarmToken:mutation});
- return {root,upstream:upstream as any,broker,async close(){await new Promise<void>(resolve=>{if(child.exitCode!==null||child.signalCode!==null){resolve();return;}const timer=setTimeout(()=>child.kill('SIGKILL'),3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill('SIGTERM');});broker.close();await server.close();rmSync(root,{recursive:true,force:true});}};
+ let closing:Promise<void>|undefined;const fixture={root,upstream:upstream as any,broker,close(){return closing??=(async()=>{open.delete(fixture);await new Promise<void>(resolve=>{if(child.exitCode!==null||child.signalCode!==null){resolve();return;}const timer=setTimeout(()=>child.kill('SIGKILL'),3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill('SIGTERM');});broker.close();await server.close();rmSync(root,{recursive:true,force:true});})();}};open.add(fixture);return fixture;
 }
