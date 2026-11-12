@@ -8,6 +8,7 @@ import './settings.css';
 import {ModelSettingsPanel,DecisionModelSettings} from './model-settings';
 import {WebToolsSettings,MemorySettings,MCPSettings,CUASettings,MailSettings,VoiceSettings} from './integration-settings';
 import {ProfileSettings} from './profile-settings';
+import {UpdateCheckSettings} from './update-check';
 
 function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'appResources'|'localAgents'|'assistantState'){
  const [data,setData]=useState<T>(),[error,setError]=useState(''),[loading,setLoading]=useState(true),[generation,setGeneration]=useState(0);
@@ -75,7 +76,7 @@ function ResourcesPanel({kind,preferences,onSaved}:{kind:'skills';preferences?:A
 }
 
 function DataPanel(){const status=useResource('status'),[error,setError]=useState('');async function open(location:string){setError('');try{await api.openSettingsLocation({location});}catch(e){setError(explain(e));}}
- return <><Section title="数据与关于" description="会话、成员与工作记录保留在既有服务中。凭证由 KTeam 自己的安全存储管理。">{error&&<p className="settings-error" role="alert">{error}</p>}<div className="settings-list">{[['data','KTeam 数据目录','本地偏好、Bot 绑定与工作记录'],['config','模型配置目录','KTeam 的独立模型与安全凭证引用'],['skills','全局技能目录','KTeam 全局安装的技能'],['logs','主机运行日志','本机后台诊断日志']].map(([id,title,description])=><button key={id} className="settings-member" onClick={()=>void open(id)}><span><strong>{title}</strong><small>{description}</small></span><FolderOpen size={17}/></button>)}</div></Section><Section title="关于 KTeam"><div className="about-kteam"><img src="./icon.svg" alt=""/><div><h3>KTeam</h3><p>组建你的 AI 团队，让工作主动向前。</p></div></div>{status.loading?<Loading/>:status.error?<Failure error={status.error} retry={status.reload}/>:<><div className="settings-row"><span>版本</span><strong>{status.data?.desktop?.version??'开发预览版'}</strong></div>{status.data?.desktop?.revision&&<div className="settings-row"><span>构建</span><code>{status.data.desktop.revision.slice(0,12)}</code></div>}</>}<p className="settings-description">使用 KTeam 内置运行时、Intent Broker 消息服务与 KSwarm 成员服务。</p></Section></>;
+ return <><Section title="数据与关于" description="会话、成员与工作记录保留在既有服务中。凭证由 KTeam 自己的安全存储管理。">{error&&<p className="settings-error" role="alert">{error}</p>}<div className="settings-list">{[['data','KTeam 数据目录','本地偏好、Bot 绑定与工作记录'],['config','模型配置目录','KTeam 的独立模型与安全凭证引用'],['skills','全局技能目录','KTeam 全局安装的技能'],['logs','主机运行日志','本机后台诊断日志']].map(([id,title,description])=><button key={id} className="settings-member" onClick={()=>void open(id)}><span><strong>{title}</strong><small>{description}</small></span><FolderOpen size={17}/></button>)}</div></Section><Section title="关于 KTeam"><div className="about-kteam"><img src="./icon.svg" alt=""/><div><h3>KTeam</h3><p>组建你的 AI 团队，让工作主动向前。</p></div></div>{status.loading?<Loading/>:status.error?<Failure error={status.error} retry={status.reload}/>:<><div className="settings-row"><span>版本</span><strong>{status.data?.desktop?.version??'开发预览版'}</strong></div>{status.data?.desktop?.revision&&<div className="settings-row"><span>构建</span><code>{status.data.desktop.revision.slice(0,12)}</code></div>}</>}<UpdateCheckSettings currentVersion={status.data?.desktop?.version}/><p className="settings-description">使用 KTeam 内置运行时、Intent Broker 消息服务与 KSwarm 成员服务。</p></Section></>;
 }
 
 function AgentsPanel({bots,onBot,onCreate}:{bots:Bot[];onBot:(bot:Bot)=>void;onCreate:()=>void}){

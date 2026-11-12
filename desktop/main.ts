@@ -1,5 +1,5 @@
 import {initStandalone} from '../src/runtime/managed-services.js';
-import {app,BrowserWindow,dialog,ipcMain,Menu} from 'electron';
+import {app,BrowserWindow,dialog,ipcMain,Menu,shell} from 'electron';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {existsSync,openSync,closeSync,readFileSync,appendFileSync} from 'node:fs';
@@ -8,7 +8,8 @@ import {nativeActions} from './native-actions.js';
 import {dataRoot,initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
-import {createKTeamUpdater,defaultUpdaterEnvironment,redactUpdaterDiagnostic} from './updater.js';
+import {autoUpdateEnabledForChannel,createKTeamUpdater,defaultUpdaterEnvironment,PORTABLE_UPDATE_MESSAGE,redactUpdaterDiagnostic,UNSUPPORTED_UPDATE_MESSAGE,type KTeamUpdater} from './updater.js';
+import {KTEAM_RELEASES_URL} from './update-ui.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
@@ -20,12 +21,25 @@ const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([na
 function logUpdater(event:string,diagnostic?:string){try{appendFileSync(join(root,'updater.log'),`${new Date().toISOString()} ${event}${diagnostic?' '+redactUpdaterDiagnostic(diagnostic):''}\n`,{mode:0o600});}catch{}}
 const updater=createKTeamUpdater(defaultUpdaterEnvironment({isPackaged:app.isPackaged}),{onDownloaded:version=>void promptRestartForUpdate(version)});
 const updaterHandoff=updater.createHandoff();
+
+function projectUpdate(subject:KTeamUpdater){
+ const channel=subject.getChannel();
+ return {ok:true as const,channel,autoUpdateEnabled:autoUpdateEnabledForChannel(channel),currentVersion:app.getVersion(),status:subject.getStatus(),checked:subject.hasCompletedCheck()};
+}
+async function openKTeamReleases(){await shell.openExternal(KTEAM_RELEASES_URL);return {ok:true as const};}
 async function promptRestartForUpdate(version:string){
  const options={type:'info' as const,buttons:['立即重启并更新','稍后'],defaultId:0,cancelId:1,title:'KTeam 更新',message:`KTeam ${version} 已下载`,detail:'重启 KTeam 即可完成更新。选择「稍后」的话，下次退出 KTeam 时会自动安装。'};
  const picked=window&&!window.isDestroyed()?await dialog.showMessageBox(window,options):await dialog.showMessageBox(options);
  if(picked.response===0){const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
 }
 async function checkForUpdatesFromMenu(){
+ const channel=updater.getChannel();
+ if(channel==='portable'||channel==='unsupported'){
+  const message=channel==='portable'?PORTABLE_UPDATE_MESSAGE:UNSUPPORTED_UPDATE_MESSAGE;
+  const picked=await dialog.showMessageBox({type:'info',buttons:['打开 Releases','好'],defaultId:0,cancelId:1,title:'KTeam 更新',message,detail:KTEAM_RELEASES_URL});
+  if(picked.response===0)await openKTeamReleases();
+  return;
+ }
  await updater.checkForUpdates({requestSource:'user'});
  const status=updater.getStatus();
  if(status.downloaded&&status.version){await promptRestartForUpdate(status.version);return;}
@@ -66,7 +80,12 @@ if(locked){
  app.whenReady().then(async()=>{
   try{await ensureHost();}catch(error){console.error('KTeam host unavailable:',(error as {code?:string}).code??'startup_failed');}
   let buildInfo={version:app.getVersion()};try{buildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
-  const api=createDesktopAPI(async(route,value)=>{let result;try{result=await hostRequest(root,'kteam-main',route,value);}catch(error){if(value!==undefined||!['ENOENT','ECONNREFUSED','ECONNRESET'].includes((error as NodeJS.ErrnoException).code??''))throw error;await ensureHost();result=await hostRequest(root,'kteam-main',route);} return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:nativeActions(root,()=>window),agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  const api=createDesktopAPI(async(route,value)=>{let result;try{result=await hostRequest(root,'kteam-main',route,value);}catch(error){if(value!==undefined||!['ENOENT','ECONNREFUSED','ECONNRESET'].includes((error as NodeJS.ErrnoException).code??''))throw error;await ensureHost();result=await hostRequest(root,'kteam-main',route);} return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),
+   updateStatus:async()=>projectUpdate(updater),
+   checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},
+   installUpdate:async()=>{const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},
+   openKTeamReleases,
+  },agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}
