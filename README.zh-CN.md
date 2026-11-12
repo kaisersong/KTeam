@@ -24,7 +24,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 - **承诺必须显形，人类有最终决定权。** 接单、交付、验收要有显式事件；人的消息在优先级、打断和否决上高于 Agent；执行权限只来自可过期、可撤销的能力令牌。
 - **不重造传输层。** AIMP 是协作层，跟 MCP（工具层）、A2A（调用层）分工互补，可以跑在现有消息通道上。
 
-完整规范：**[AIMP 协议设计规范 v3.1](spec/aimp/aimp-design-spec-v3.1.md)**，配套 [JSON Schema](spec/aimp/aimp-v3.1-schemas.json) 和 [签名测试向量](spec/aimp/aimp-v3.1-test-vectors.json)。
+完整规范：**[AIMP 协议设计规范 v3.1](spec/aimp/aimp-design-spec-v3.1.md)**（另有[英文译本](spec/aimp/aimp-design-spec-v3.1.en.md)，以中文版为准），配套 [JSON Schema](spec/aimp/aimp-v3.1-schemas.json) 和 [签名测试向量](spec/aimp/aimp-v3.1-test-vectors.json)。
 
 ### KTeam 现在实现了哪些
 
