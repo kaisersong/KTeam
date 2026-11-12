@@ -1,5 +1,5 @@
 import {createServer,connect} from 'node:net';
-import {join,dirname,resolve,sep} from 'node:path';
+import {join,dirname,resolve,sep,isAbsolute} from 'node:path';
 import {existsSync,writeFileSync,openSync,closeSync,renameSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -54,13 +54,13 @@ function archiveLegacySharedConfig(root:string,serviceRoot:string){
 }
 /** Publish the ports KTeam's own services use to KTeam's discovery file for the CLI and clients. */
 function recordEndpoints(root:string,config:Config){writeServiceEndpoints(root,{broker:portOf(config.brokerUrl),kswarm:portOf(config.kswarmUrl)});}
-export function readServicePlan(path:string):ServicePlan{const plan=JSON.parse(privateRead(path));if(plan?.version!==1||!plan.broker||!plan.kswarm)throw new KTeamError('managed_services_config_invalid');for(const part of [plan.broker,plan.kswarm])if(typeof part.cwd!=='string'||!part.cwd.startsWith('/')||!part.env||Object.values(part.env).some(v=>typeof v!=='string'))throw new KTeamError('managed_services_config_invalid');return plan;}
+export function readServicePlan(path:string):ServicePlan{const plan=JSON.parse(privateRead(path));if(plan?.version!==1||!plan.broker||!plan.kswarm)throw new KTeamError('managed_services_config_invalid');for(const part of [plan.broker,plan.kswarm])if(typeof part.cwd!=='string'||!isAbsolute(part.cwd)||!part.env||Object.values(part.env).some(v=>typeof v!=='string'))throw new KTeamError('managed_services_config_invalid');return plan;}
 export async function portOccupied(url:string){const address=new URL(url);return new Promise<boolean>(accept=>{const socket=connect({host:address.hostname,port:Number(address.port)});socket.setTimeout(700);socket.once('connect',()=>{socket.destroy();accept(true);});socket.once('error',()=>accept(false));socket.once('timeout',()=>{socket.destroy();accept(true);});});}
 export async function ensureManagedServices(config:Config,options:ConstructorParameters<typeof Upstreams>[0],root:string){
  if(await ownServicesReady(options))return;
  if(!config.managedServiceConfig)throw new KTeamError('managed_services_config_missing');
  const entry=process.env.KTEAM_SERVICE_OWNER_ENTRY??resolve(dirname(process.argv[1]??'build/host.cjs'),'service-owner.cjs');if(!existsSync(entry))throw new KTeamError('managed_services_bundle_missing');
- const output=openSync(join(root,'services.log'),'a',0o600);try{const child=spawn(process.execPath,[entry],{detached:true,stdio:['ignore',output,output],env:{...process.env,ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root}});child.unref();child.once('error',()=>{});}finally{closeSync(output);}
+ const output=openSync(join(root,'services.log'),'a',0o600);try{const child=spawn(process.execPath,[entry],{detached:true,windowsHide:true,stdio:['ignore',output,output],env:{...process.env,ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root}});child.unref();child.once('error',()=>{});}finally{closeSync(output);}
  const deadline=Date.now()+12000;while(Date.now()<deadline){if(await ownServicesReady(options))return;await new Promise(r=>setTimeout(r,150));}
  throw new KTeamError(await foreignServiceOnPort(options)?'managed_service_port_foreign':'managed_services_start_timeout',503);
 }
