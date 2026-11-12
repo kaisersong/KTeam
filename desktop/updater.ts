@@ -233,6 +233,8 @@ export interface KTeamUpdater {
   createHandoff(platform?: NodeJS.Platform): UpdaterHandoffStateMachine;
   /** Called only after the real before-quit transition, never by the install request. */
   completeHandoff(): void;
+  /** Cancel startup/periodic update checks. Windows last-window quit calls this; macOS quit/update paths do not. */
+  stopPolling(): void;
   quitAndInstall(context: UpdaterRequestContext): ReturnType<UpdaterHandoffStateMachine['begin']>;
 }
 
@@ -250,9 +252,20 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
   let notifiedVersion: string | undefined;
   let completedCheck = false;
   let logUpdater: UpdaterLogger = () => {};
+  let startupTimer: unknown;
+  let periodicTimer: unknown;
+  let pollingStopped = false;
 
   const attemptLocked = () => Boolean(handoff?.hasPendingIntent || handoff?.snapshot().kind === 'handed_off');
   const clearObservation = () => { if (observationTimer !== undefined) environment.clearTimer(observationTimer); observationTimer = undefined; };
+  function stopPolling(): void {
+    pollingStopped = true;
+    if (startupTimer !== undefined) environment.clearTimer(startupTimer);
+    startupTimer = undefined;
+    if (periodicTimer !== undefined) environment.clearTimer(periodicTimer);
+    periodicTimer = undefined;
+    clearObservation();
+  }
   const currentChannel = () => resolveAutoUpdateChannel(environment.platform, environment.env);
   const resolveInactiveReason = (): 'portable' | 'unsupported' | 'env' | 'dev' | undefined => {
     const channel = currentChannel();
@@ -388,15 +401,18 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
       if (!(await loadAutoUpdater())) return false;
       registerAutoUpdaterEvents();
       logUpdater('setup', `${KTEAM_UPDATE_FEED.owner}/${KTEAM_UPDATE_FEED.repo}`);
-      environment.setTimer(() => {
+      startupTimer = environment.setTimer(() => {
+        startupTimer = undefined;
+        if (pollingStopped) return;
         void runStartupUpdateCheck(autoUpdater, {
           retryDelayMs: STARTUP_UPDATE_RETRY_DELAY_MS,
           setTimer: (callback, delayMs) => environment.setTimer(() => { void callback(); }, delayMs),
-          shouldCheck: () => !attemptLocked(),
-          onError: error => { if (!attemptLocked()) reportUpdaterError(error); },
+          shouldCheck: () => !pollingStopped && !attemptLocked(),
+          onError: error => { if (!pollingStopped && !attemptLocked()) reportUpdaterError(error); },
         });
       }, STARTUP_UPDATE_DELAY_MS);
-      environment.setRepeating(() => {
+      periodicTimer = environment.setRepeating(() => {
+        if (pollingStopped) return;
         if (autoUpdater && !attemptLocked()) {
           Promise.resolve().then(() => autoUpdater.checkForUpdates()).catch((error: unknown) => {
             try { logUpdater('error', redactUpdaterDiagnostic(toError(error).message)); } catch { /* diagnostic sink */ }
@@ -404,6 +420,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
           });
         }
       }, PERIODIC_UPDATE_INTERVAL_MS);
+      if (pollingStopped) stopPolling();
       return true;
     });
     updaterSetup = attempt;
@@ -448,6 +465,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     hasCompletedCheck: () => completedCheck,
     createHandoff,
     completeHandoff: () => { clearObservation(); logUpdater('before-quit'); },
+    stopPolling,
     quitAndInstall: context => createHandoff().begin(context),
   };
 }
