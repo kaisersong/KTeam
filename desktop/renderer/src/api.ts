@@ -67,6 +67,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ agent_link_windows_unsupported:'当前服务暂不能链接这个本机 Agent，请检查服务版本与检测结果',
  host_operation_unknown:'请求结果待核对，请先核对原记录',
  tool_output_not_saved:'原工作没有可核验的完整输出，仅保留记录预览',tool_output_changed:'完整输出已变化或不可用，无法核验原始字节',tool_output_scope_changed:'成员或会话范围已变化，请重新核对来源',tool_output_invalid:'输出读取位置无效，请重新打开',
  conversation_history_limit:'本次无法读完原记录，结果仍待核对',conversation_view_forbidden:'请在 KTeam 主界面查看会话记录',conversation_projection_too_large:'记录超出单次预览范围，请分段查看',conversation_window_scope:'消息范围无法核对，请重新读取会话',conversation_cursor_invalid:'读取位置已失效，请重新打开会话',conversation_cursor_scope:'请从原会话重新打开记录',work_record_not_found:'原工作记录已不可用，请核对来源',work_event_not_recorded:'原工作未保存这条事件',work_record_changed:'原工作有了新记录，请重新读取',

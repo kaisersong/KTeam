@@ -7,6 +7,9 @@ import {TeamStore} from './team-store.js';
 import {TeamCoordinator} from './coordination.js';
 import {modelIdentity} from '../runtime/native.js';
 import {CollaborationService} from './collaboration.js';
+/** The pinned KSwarm now detects Windows CLIs via PATH/PATHEXT. Installation,
+ * external-message capability and explicit candidate approval are still checked below. */
+export const agentLinkSupported=(driver:string,_platform:NodeJS.Platform=process.platform)=>['xiaok','codex','kimi','zcode','other'].includes(driver);
 export const AGENT_DRIVERS=['xiaok','codex','kimi','zcode','other'] as const;
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const same=(a:string,b:string)=>a.length===b.length&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -27,7 +30,7 @@ export class AgentLinks{
  forBot(botId:string){const ref=this.store.state<any>('external-bot:'+botId);return ref?this.view(ref.linkId):null;}
  forRoom(roomId:string){const ref=this.store.state<any>('external-room:'+roomId);return ref?this.forBot(ref.botId):null;}
  list(){return this.store.operationsWithPrefix('agent-link:').map(row=>this.view(row.linkId));}
- async invite(value:unknown){const input=record(value);fields(input,['name','driver','requestId','botId']);const name=text(input.name,'name',60).trim(),driver=text(input.driver,'driver'),requestId=text(input.requestId,'request_id');if(!(AGENT_DRIVERS as readonly string[]).includes(driver))throw new KTeamError('agent_driver_invalid');const status=await this.upstream.probe();if(!status.ready||!status.broker.externalAgentMessages)throw new KTeamError('agent_service_upgrade_required',503);
+ async invite(value:unknown){const input=record(value);fields(input,['name','driver','requestId','botId']);const name=text(input.name,'name',60).trim(),driver=text(input.driver,'driver'),requestId=text(input.requestId,'request_id');if(!(AGENT_DRIVERS as readonly string[]).includes(driver))throw new KTeamError('agent_driver_invalid');if(input.botId===undefined&&!agentLinkSupported(driver))throw new KTeamError('agent_link_windows_unsupported',501);const status=await this.upstream.probe();if(!status.ready||!status.broker.externalAgentMessages)throw new KTeamError('agent_service_upgrade_required',503);
   if(input.botId!==undefined){const botId=text(input.botId,'bot_id');if(!this.store.binding(botId)&&!this.store.state('external-bot:'+botId))throw new KTeamError('bot_not_managed',403);const bot=((await this.upstream.listBots()).agents as any[]).find(a=>a.id===botId&&!a.archivedAt);if(!bot)throw new KTeamError('agent_not_found',404);}
   const id='invite-'+hash(requestId).slice(0,32),prior=this.store.operation('agent-link:'+id),intent=hash({name,driver,botId:input.botId??null});if(prior){if(prior.intent!==intent)throw new KTeamError('agent_invite_conflict',409);return this.view(id);}if(this.list().filter(v=>['issued','candidate','confirming'].includes(v.status)).length>=20)throw new KTeamError('agent_invite_limit',409);
   this.store.saveOperation({id:'agent-link:'+id,linkId:id,name,driver,intent,status:'issued',expiresAt:this.now()+15*60000,...(input.botId?{existingBotId:input.botId}:{})},0);return this.view(id);

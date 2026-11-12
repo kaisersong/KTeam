@@ -60,3 +60,14 @@
 .settings-block>.settings-row:last-of-type{border-bottom:0}
 
 .notification-settings h2{display:flex;align-items:center;gap:8px}.notification-options{border:0;padding:0;margin:18px 0;min-width:0}.notification-options legend{font-size:12px;color:var(--text-secondary);margin-bottom:12px}.notification-options>label{display:flex;align-items:center;gap:9px;margin:12px 0;font-size:13px}.notification-options input[type=checkbox],.notification-settings .settings-field>input[type=checkbox]{width:16px;height:16px;accent-color:var(--green)}.notification-hours{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}.notification-hours label{display:flex;flex-direction:column;gap:7px;font-size:12px;min-width:112px;flex:1}.notification-hours label:last-child{flex:2;min-width:150px}.notification-hours input{min-width:0;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface-panel);padding:8px;color:var(--text-primary)}.notification-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0}.notification-actions small,.notification-receipt{font-size:11px;color:var(--text-secondary)}.notification-receipt{margin-top:10px}.notification-settings details{margin-top:22px}.notification-settings summary{font-size:12px;color:var(--text-secondary)}
+
+.settings-content select,.settings-content input{border:1px solid var(--line,#dfe5d9);background:var(--settings-surface,#fff);border-radius:7px;padding:10px 12px;font-size:12px;min-height:39px;color:inherit}
+/* Checkboxes keep their native box; the text-field sizing above must not stretch them. */
+.settings-content input[type=checkbox]{width:auto;min-height:0;padding:0;border:0;background:none}.settings-content .secondary{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 13px;font-size:12px;border:1px solid var(--line,#dfe5d9);border-radius:7px;min-height:36px}.settings-content .primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:10px 16px;font-size:12px;border-radius:7px;background:var(--green);color:#fff}
+
+/* Recovery actions and narrow action rows keep visible separation. */
+.settings-error>.secondary+.secondary{margin-left:10px}
+.settings-actions,.profile-picture-actions{flex-wrap:wrap}
+/* Integration toggles are block rows so a following button never sits flush against them. */
+.integration-panel .model-default{display:flex;align-items:center;gap:9px}
+.integration-panel .model-default input{flex:none}

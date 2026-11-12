@@ -12,6 +12,7 @@ import { processBirth } from '../../../../src/runtime/platform-process.js';
 import { windowsObservationCommand } from '../../../../src/runtime/windows-process-observer.js';
 import { join, relative, resolve, sep } from 'node:path';
 import { writeFileAtomicallySync } from '../../utils/atomic-file.js';
+import { processBirth } from '../../../../src/runtime/platform-process.js';
 
 export type WorktreeCleanupPolicy = 'keep' | 'delete';
 export type WorktreeLeaseState = 'allocating' | 'active' | 'released' | 'orphaned';
@@ -559,6 +560,10 @@ async function listGitWorktrees(
 function sameWorktreePath(left: string, right: string): boolean {
   if (resolve(left) === resolve(right)) return true;
   try {
+    // Windows: git reports long names with forward slashes (C:/Users/runneradmin/...), while a temp path can carry
+    // an 8.3 short name (C:\Users\RUNNER~1\...). Only the native realpath expands short names; NTFS paths are
+    // case-insensitive.
+    if (process.platform === 'win32') return realpathSync.native(left).toLowerCase() === realpathSync.native(right).toLowerCase();
     return realpathSync(left) === realpathSync(right);
   } catch {
     return false;
@@ -720,6 +725,7 @@ function readProcessStartToken(pid: number): string | null {
     return null;
   }
   if (process.platform === 'win32') {
+    // Shared Windows process layer: absolute powershell.exe, closed stdin, bounded time, CreationDate as FILETIME.
     try {
       return processBirth(pid) || null;
     } catch {

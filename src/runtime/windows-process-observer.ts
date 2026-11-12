@@ -36,6 +36,6 @@ export function windowsProcessObservation(args:readonly string[]):string|undefin
  const result=spawnSync(command.file,[...command.args],{env:{},shell:false,stdio:['ignore','pipe','pipe'],windowsHide:true,encoding:'utf8',timeout:5000,maxBuffer:16*1024*1024});
  command.verify();if(result.error||result.status!==0||result.signal)throw Error('windows_process_observation_unavailable');
  const text=result.stdout.trim();
- if(args.length?text!==''&&!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{7}Z$/.test(text):text.split(/\r?\n/).some(line=>!/^\d+ \d+$/.test(line)))throw Error('windows_process_observation_unavailable');
+ if(args.length?text!==''&&!/^\d+$/.test(text):text.split(/\r?\n/).some(line=>!/^\d+ \d+ \d+$/.test(line)))throw Error('windows_process_observation_unavailable');
  return text;
 }

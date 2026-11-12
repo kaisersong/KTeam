@@ -29,7 +29,7 @@ test('Windows census lists the root and every live descendant via PowerShell CIM
  const call=calls[0]!;assert.equal(call.file,powershellPath(deps.env));assert.equal(call.file,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
  assert.ok(call.args.includes('-NoProfile')&&call.args.includes('-NonInteractive'));assert.equal(call.args.at(-1),WINDOWS_PROCESS_TABLE);
  assert.match(WINDOWS_PROCESS_TABLE,/Get-CimInstance -ClassName Win32_Process/);assert.match(WINDOWS_PROCESS_TABLE,/-ne \$PID/);assert.doesNotMatch(JSON.stringify(calls),/wmic/i);
- assert.equal(call.options.windowsHide,true);assert.deepEqual(call.options.stdio,['ignore','pipe','pipe']);assert.match(WINDOWS_PROCESS_TABLE,/conhost\.exe/);
+ assert.equal(call.options.windowsHide,true);assert.deepEqual(call.options.stdio,['ignore','pipe','pipe']);assert.equal(call.options.env.SystemRoot,'C:\\Windows');assert.equal(call.options.env.windir,'C:\\Windows');assert.match(WINDOWS_PROCESS_TABLE,/conhost\.exe/);
  assert.equal(ownedByCurrentUser(processGroup(100,deps)[0]!,{getuid:undefined}),true);
 });
 
@@ -40,24 +40,49 @@ test('Windows census still finds orphans after the root exits, and nothing for a
  assert.deepEqual(parseWindowsTree('garbage\n\n0 0\n',0).map(m=>m.pid),[0]);
 });
 
-test('Windows birth reads CreationDate for exactly one numeric pid',()=>{
- const {deps,calls}=fake('win32','2026-11-12T01:00:00.0000000Z\r\n');
- assert.equal(processBirth(321,deps),'2026-11-12T01:00:00.0000000Z');assert.match(calls[0]!.args.at(-1)!,/ProcessId = 321"/);
+test('Windows birth reads CreationDate (FILETIME ticks) for exactly one numeric pid',()=>{
+ const {deps,calls}=fake('win32','134077284000000000\r\n');
+ assert.equal(processBirth(321,deps),'134077284000000000');assert.match(calls[0]!.args.at(-1)!,/ProcessId = 321"/);assert.match(calls[0]!.args.at(-1)!,/ToFileTimeUtc\(\)/);
  assert.throws(()=>processBirth(Number.NaN,deps));assert.throws(()=>processBirth(-1,deps));
 });
 
-test('Windows kill force-stops the whole tree with taskkill /T /F and reports ESRCH when nothing is left',()=>{
- const {deps,calls}=fake('win32','100 1\n101 100\n');
+test('Windows kill stops exactly the verified members (no taskkill /T) and reports ESRCH when nothing is left',()=>{
+ const {deps,calls}=fake('win32','100 1 1000\n101 100 1001\n');
  killGroup(100,'SIGTERM',deps);
- // Live leader: one taskkill /T on the leader, no census needed.
- assert.deepEqual(calls.map(c=>c.kind),['spawn']);
- const kill=calls[0]!;assert.equal(kill.file,taskkillPath(deps.env));assert.equal(kill.file,'C:\\Windows\\System32\\taskkill.exe');
- assert.deepEqual(kill.args,['/T','/F','/PID','100']);assert.equal(kill.options.windowsHide,true);
- // Leader already gone (taskkill 128): orphans found through the census are stopped together.
- const orphan=fake('win32','101 100\n102 101\n',128);killGroup(100,'SIGTERM',orphan.deps);
- assert.deepEqual(orphan.calls.map(c=>c.kind),['spawn','exec','spawn']);assert.deepEqual(orphan.calls[2]!.args,['/T','/F','/PID','101','/PID','102']);
- const self=fake('win32','100 1\n101 100\n');killGroup(100,'SIGKILL',self.deps,{exclude:[100]});assert.deepEqual(self.calls.find(c=>c.kind==='spawn')!.args,['/T','/F','/PID','101']);
- const gone=fake('win32','7 1\n',128);assert.throws(()=>killGroup(100,'SIGTERM',gone.deps),(e:any)=>e.code==='ESRCH');assert.equal(gone.calls.filter(c=>c.kind==='spawn').length,1);
+ assert.deepEqual(calls.map(c=>c.kind),['exec','spawn']);
+ const kill=calls[1]!;assert.equal(kill.file,taskkillPath(deps.env));assert.equal(kill.file,'C:\\Windows\\System32\\taskkill.exe');
+ assert.deepEqual(kill.args,['/F','/PID','100','/PID','101']);assert.equal(kill.options.windowsHide,true);
+ assert.doesNotMatch(JSON.stringify(calls.filter(c=>c.kind==='spawn')),/\/T/);
+ // Leader already gone: its orphans are still found through the census and stopped together.
+ const orphan=fake('win32','101 100 1001\n102 101 1002\n');killGroup(100,'SIGTERM',orphan.deps,{birth:'1000'});
+ assert.deepEqual(orphan.calls.map(c=>c.kind),['exec','spawn']);assert.deepEqual(orphan.calls[1]!.args,['/F','/PID','101','/PID','102']);
+ const self=fake('win32','100 1 1000\n101 100 1001\n');killGroup(100,'SIGKILL',self.deps,{exclude:[100]});assert.deepEqual(self.calls.find(c=>c.kind==='spawn')!.args,['/F','/PID','101']);
+ const gone=fake('win32','7 1 5\n');assert.throws(()=>killGroup(100,'SIGTERM',gone.deps),(e:any)=>e.code==='ESRCH');assert.equal(gone.calls.filter(c=>c.kind==='spawn').length,0);
+});
+
+test('Windows pid reuse: a child older than its parent is not adopted, and a reused leader is never killed',()=>{
+ // 101 claims parent 100 but was created before 100 existed: it is a stale ParentProcessId from an older process.
+ const stale=fake('win32','100 1 2000\n101 100 1500\n102 100 2001\n103 102 2002\n104 102 1999\n');
+ assert.deepEqual(processGroup(100,stale.deps).map(m=>m.pid),[100,102,103]);
+ // The recorded leader (born 1000) died; pid 100 now belongs to a stranger born 3000 with its own child 302.
+ // Orphans of ours (201, born 1100, and its child 202) are still stopped; the stranger and its child are not.
+ const warnings:string[]=[];const reused=fake('win32','100 1 3000\n302 100 3001\n201 100 1100\n202 201 1101\n');reused.deps.warn=m=>warnings.push(m);
+ assert.deepEqual(processGroup(100,reused.deps,{birth:'1000'}).map(m=>m.pid),[201,202]);
+ assert.match(warnings[0]!,/process 100 was started at 3000, not at the recorded 1000/);
+ killGroup(100,'SIGKILL',reused.deps,{birth:'1000'});assert.deepEqual(reused.calls.find(c=>c.kind==='spawn')!.args,['/F','/PID','201','/PID','202']);
+ // Only the stranger is left: nothing of ours, so no taskkill at all.
+ const only=fake('win32','100 1 3000\n302 100 3001\n');only.deps.warn=()=>{};
+ assert.throws(()=>killGroup(100,'SIGTERM',only.deps,{birth:'1000'}),(e:any)=>e.code==='ESRCH');assert.equal(only.calls.filter(c=>c.kind==='spawn').length,0);
+ // The same leader identity is accepted as ours.
+ const same=fake('win32','100 1 1000\n101 100 1001\n');assert.deepEqual(processGroup(100,same.deps,{birth:'1000'}).map(m=>m.pid),[100,101]);
+});
+
+test('Windows census is reused for a moment and dropped by any kill',()=>{
+ let now=0;const {deps,calls}=fake('win32','100 1 1000\n');deps.now=()=>now;
+ processGroup(100,deps);processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,1);
+ now=1000;processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,2);
+ killGroup(100,'SIGTERM',deps);processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,4);
+ assert.match(WINDOWS_PROCESS_TABLE,/CreationDate/);assert.match(WINDOWS_PROCESS_TABLE,/-Property ProcessId,ParentProcessId,CreationDate,Name/);
 });
 
 test('POSIX kill is still kill(-pgid, signal)',()=>{
@@ -65,6 +90,12 @@ test('POSIX kill is still kill(-pgid, signal)',()=>{
  (process as any).kill=(pid:number,signal:string)=>{seen.push([pid,signal]);return true;};
  try{killGroup(123,'SIGTERM',deps);killGroup(123,'SIGKILL',deps);}finally{(process as any).kill=original;}
  assert.deepEqual(seen,[[-123,'SIGTERM'],[-123,'SIGKILL']]);assert.equal(calls.length,0);
+});
+
+test('Windows process creation identity accepts exact legacy ISO tokens and refuses unknown timestamps',()=>{
+ const actual='134389152000000000';const same=fake('win32','100 1 '+actual+'\n101 100 134389152000000010\n');
+ assert.deepEqual(processGroup(100,same.deps,{birth:'2026-11-12T00:00:00.0000000Z'}).map(member=>member.pid),[100,101]);
+ const unknown=fake('win32','100 1 '+actual+'\n101 100 0\n');assert.throws(()=>killGroup(100,'SIGKILL',unknown.deps,{birth:actual}),/process_identity_unconfirmed/);assert.equal(unknown.calls.filter(call=>call.kind==='spawn').length,0);
 });
 
 test('group spawn options: private IPC launcher survives host death on each platform and stays hidden',()=>{
@@ -104,4 +135,10 @@ test('host address: unix socket in the data dir on POSIX, one named pipe per dat
   if(real.value==='win32')assert.equal(a,b);
   assert.notEqual(a,c);
  }finally{Object.defineProperty(process,'platform',real);}
+});
+
+test('Agent environment keeps the Windows system variables PowerShell/CIM and CLIs need (paths only)',{skip:process.platform!=='win32'?'only meaningful where process.env carries Windows system variables':false},async()=>{
+ const {nativeEnvironment,WINDOWS_SYSTEM_ENV}=await import('../src/runtime/local-agents.js');const env=nativeEnvironment();
+ for(const name of ['windir','SystemDrive','ComSpec','PATHEXT','SystemRoot'])if(process.env[name])assert.equal(env[name],process.env[name],name);
+ assert.ok(WINDOWS_SYSTEM_ENV.every(name=>!/token|key|secret|pass/i.test(name)));
 });

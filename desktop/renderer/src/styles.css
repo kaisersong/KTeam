@@ -100,3 +100,15 @@
 .history-window-note{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;color:var(--text-secondary);font-size:12px}.history-window-note button{font-size:12px}.history-version pre{white-space:pre-wrap;overflow-wrap:anywhere}
 
 .full-tool-output{min-width:0}.full-tool-output .text-button{width:auto;padding:6px 0;font-size:12px}.full-tool-output .activity-pager{display:flex;justify-content:flex-end;align-items:center;gap:18px}.full-tool-output .muted{margin:8px 0;line-height:1.8}
+
+
+/* Bare modal fields (Bot 设置 · Agent、群名称) keep the same stacked layout as form fields. */
+.agent-source>label,.modal>label{display:flex;flex-direction:column;font-size:12px;font-weight:550;gap:9px;margin-bottom:20px}
+.modal .full{display:flex}
+/* Opened advanced sections separate their summary from the first control. */
+.modal .advanced[open]>summary{margin-bottom:16px}
+/* Connection-flow actions never touch the preceding field or copy. */
+.connect-steps textarea{display:block}
+.connect-steps textarea+.secondary{margin-top:16px}
+.connection-candidate>.primary{margin-top:16px}
+.connection-ready>.primary{margin-top:20px}

@@ -1,5 +1,5 @@
-import {pathToFileURL} from 'node:url';
 import {writeFileSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
 import {resolve,join} from 'node:path';
 const {createHarness}=await import(pathToFileURL(resolve('dist/src/runtime/harness.js')).href);
 const root=process.env.KTEAM_TEST_ROOT,records=[];

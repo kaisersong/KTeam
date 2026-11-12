@@ -13,7 +13,6 @@ static int birth(const wchar_t *text) {
     unsigned long pid;
     HANDLE process;
     FILETIME created, exited, kernel, user;
-    SYSTEMTIME time;
     ULARGE_INTEGER ticks;
     const wchar_t *p;
     if (!*text) return 2;
@@ -24,13 +23,9 @@ static int birth(const wchar_t *text) {
     if (process == NULL) return GetLastError() == ERROR_INVALID_PARAMETER ? 0 : 2;
     if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) { CloseHandle(process); return 2; }
     CloseHandle(process);
-    if (!FileTimeToSystemTime(&created, &time)) return 2;
     ticks.LowPart = created.dwLowDateTime; ticks.HighPart = created.dwHighDateTime;
-    /* Win32_Process CreationDate has microsecond precision. Keep its ISO token format. */
-    printf("%04u-%02u-%02uT%02u:%02u:%02u.%07lluZ\n", (unsigned)time.wYear,
-        (unsigned)time.wMonth, (unsigned)time.wDay, (unsigned)time.wHour,
-        (unsigned)time.wMinute, (unsigned)time.wSecond,
-        (unsigned long long)((ticks.QuadPart % 10000000ULL) / 10ULL * 10ULL));
+    /* Match Win32_Process CreationDate.ToFileTimeUtc(), including microsecond precision. */
+    printf("%llu\n", (unsigned long long)(ticks.QuadPart / 10ULL * 10ULL));
     return 0;
 }
 static int census(void) {
@@ -43,8 +38,20 @@ static int census(void) {
     do {
         if (++count > 100000) { CloseHandle(snapshot); return 2; }
         if (entry.th32ProcessID != 0 && entry.th32ProcessID != GetCurrentProcessId() &&
-            _wcsicmp(entry.szExeFile, L"conhost.exe") != 0)
-            printf("%lu %lu\n", entry.th32ProcessID, entry.th32ParentProcessID);
+            _wcsicmp(entry.szExeFile, L"conhost.exe") != 0) {
+            HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID);
+            FILETIME created, exited, kernel, user;
+            ULARGE_INTEGER ticks;
+            ticks.QuadPart = 0;
+            if (process != NULL) {
+                if (GetProcessTimes(process, &created, &exited, &kernel, &user)) {
+                    ticks.LowPart = created.dwLowDateTime; ticks.HighPart = created.dwHighDateTime;
+                }
+                CloseHandle(process);
+            }
+            printf("%lu %lu %llu\n", entry.th32ProcessID, entry.th32ParentProcessID,
+                (unsigned long long)(ticks.QuadPart / 10ULL * 10ULL));
+        }
     } while (Process32NextW(snapshot, &entry));
     error = GetLastError(); CloseHandle(snapshot);
     return error == ERROR_NO_MORE_FILES ? 0 : 2;
