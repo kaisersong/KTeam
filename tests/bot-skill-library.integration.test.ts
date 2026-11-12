@@ -1,7 +1,8 @@
+import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join,resolve} from 'node:path';
-import {mkdirSync,writeFileSync,unlinkSync,symlinkSync,linkSync,existsSync} from 'node:fs';
+import {mkdirSync,writeFileSync,unlinkSync,linkSync,existsSync} from 'node:fs';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';

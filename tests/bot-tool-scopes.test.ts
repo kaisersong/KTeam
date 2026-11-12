@@ -1,8 +1,9 @@
+import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync,symlinkSync,renameSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync,renameSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {createServer} from 'node:http';
 import {createHarness} from '../src/runtime/harness.js';

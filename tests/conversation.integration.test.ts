@@ -1,8 +1,9 @@
+import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
-import {existsSync,writeFileSync,unlinkSync,symlinkSync} from 'node:fs';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';

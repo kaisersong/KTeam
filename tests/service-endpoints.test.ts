@@ -1,9 +1,10 @@
+import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
 import {assertPrivateMode} from './helpers/private-temp.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile,execFileSync} from 'node:child_process';
-import {chmodSync,readFileSync,realpathSync,rmSync,statSync,symlinkSync,writeFileSync,existsSync} from 'node:fs';
+import {chmodSync,readFileSync,realpathSync,rmSync,statSync,writeFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';

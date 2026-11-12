@@ -50,6 +50,9 @@ for(const name of names){
   const wheels=join(source,'bundled-wheels');const selected=readdirSync(wheels).filter(file=>file.endsWith('-none-any.whl')||(target==='darwin-arm64'?file.endsWith('-macosx_11_0_arm64.whl'):target==='win32-x64'?file.endsWith('-win_amd64.whl'):false));
   if(target!==`${process.platform}-${process.arch}`)throw Error('creator_cross_build_not_supported:'+target);
   run(join(runtime,runtimeTarget.launcherRelativePath),['-I','-B','-c',"import sys,zipfile;[zipfile.ZipFile(p).extractall(sys.argv[1]) for p in sys.argv[2:]]",packages,...selected.map(file=>join(wheels,file))]);
+  // Probe the actual isolated MCP import closure, not just python --version.
+  // In particular, Windows needs pywin32 plus its pinned package .pth paths.
+  run(join(runtime,runtimeTarget.launcherRelativePath),['-I','-B','-c',"import site,sys;site.addsitedir(sys.argv[1]);from mcp.server.mcpserver import MCPServer;import bs4,jsonschema;print('Bundled slide MCP dependency closure verified')",packages]);
   writeFileSync(join(dest,'runtime.json'),JSON.stringify({target,launcher:join('bundled-python',target,runtimeTarget.launcherRelativePath)}));
  }
  // The upstream planners refer to plugin-level references. Make those assets
