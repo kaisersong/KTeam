@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs,{mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,statSync,existsSync} from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {join} from 'node:path';
+import {join,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createElement,isValidElement,type ReactElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -113,7 +113,7 @@ test('the dropped legacy key\'s value is never accessed, and the notice path tou
   assert.ok(probe.seen.includes(join(root,'config.json')),'config.json read observed');
   assert.ok(probe.seen.some(path=>path.startsWith(join(root,'notices.json'))),'notices.json write observed');
   assert.deepEqual(probe.seen.filter(path=>path.includes(target)||path.includes(xiaok)||/[/\\]\.xiaok\b/.test(path)),[],'legacy value or any .xiaok path accessed');
-  assert.deepEqual(probe.seen.filter(path=>path!==root&&!path.startsWith(root+'/')),[],'notice logic only touches KTeam\'s data dir');
+  assert.deepEqual(probe.seen.filter(path=>path!==root&&!path.startsWith(root+sep)),[],'notice logic only touches KTeam\'s data dir');
   assert.deepEqual([...new Set(probe.seen.map(path=>path.slice(root.length+1).replace(/\.\d+\.tmp$/,'.tmp')))].sort(),['config.json','notices.json','notices.json.tmp']);
  }finally{rmSync(root,{recursive:true,force:true});rmSync(home,{recursive:true,force:true});}
 });

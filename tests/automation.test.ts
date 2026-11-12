@@ -1,3 +1,4 @@
+import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync} from 'node:fs';
@@ -10,7 +11,7 @@ import {KTeamError} from '../src/errors.js';
 
 const user={sessionId:'test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};
 test('startup reconciliation is a barrier for concurrent work and close',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-start-barrier-'));const store=new TeamStore(root);
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-start-barrier-'));const store=new TeamStore(root);
  let release!:()=>void;const gate=new Promise<void>(r=>{release=r;});
  store.prepareSubmission('pending','room','hash',{});store.enqueue('new','room','origin');
  const upstream={getTeam:async()=>{await gate;return {messages:[]};}} as unknown as Upstreams;
@@ -19,7 +20,7 @@ test('startup reconciliation is a barrier for concurrent work and close',async()
  finally{release();await automation.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 test('budget rollback restores memory and persistent call count before any new request',()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-budget-'));const store=new TeamStore(root),fault=new DatabaseSync(join(root,'team-extensions.sqlite'));
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-budget-'));const store=new TeamStore(root),fault=new DatabaseSync(join(root,'team-extensions.sqlite'));
  try{
   const team=store.configure({roomId:'room',goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
   store.enqueue('job','room','origin');const job=store.claim();
@@ -29,7 +30,7 @@ test('budget rollback restores memory and persistent call count before any new r
  }finally{fault.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-unconfirmed'])test('controller reconciles '+loss+' receipt with real broker facts without repeating inference',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-receipt-'));
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-receipt-'));
  const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
  const broker=createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});
  const roomId=broker.room.createRoom({title:'receipt',memberAgentIds:['a']},user).room.roomId;
@@ -53,10 +54,10 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
   await automation.tick();const job=store.jobs()[0];assert.equal(inferences,1,JSON.stringify(job));assert.equal(job.calls,1);
   if(loss==='chat-unconfirmed'){assert.equal(job.state,'unknown');assert.ok(job.answerDraft);assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');}
   else{assert.equal(job.state,'delivered');assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].artifactVerification.verified,true);assert.equal(broker.room.getCollaborationRoom({roomId},user).messages.length,2);}
- }finally{await automation.close();store.close();broker.close();rmSync(root,{recursive:true,force:true});}
+ }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
 test('crash between broker receipt and local job: read-only reconciliation recovers one job without resending',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-outbox-'));let store=new TeamStore(root);
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-outbox-'));let store=new TeamStore(root);
  try{
   store.configure({roomId:'room',goal:'draft',mode:'auto',paused:true,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
   store.prepareSubmission('id','room','hash',{body:'sent'});store.prepareSubmission('missing','room','other',{body:'not confirmed'});
@@ -71,7 +72,7 @@ test('crash between broker receipt and local job: read-only reconciliation recov
  }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
 test('pause holds unstarted messages; explicit resume releases only held work, never unknown/stopped',()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-pause-'));let store=new TeamStore(root);
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-pause-'));let store=new TeamStore(root);
  try{
   store.configure({roomId:'room',goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
   store.enqueue('old','room','message');store.pause('room');store.enqueue('during','room','later');
@@ -85,7 +86,7 @@ test('pause holds unstarted messages; explicit resume releases only held work, n
 });
 for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stopFailure:false},{hold:'begin-execution',stopFailure:false},{hold:'event',stopFailure:true}])test('pause during '+scenario.hold+' late receipt reports fence '+(scenario.stopFailure?'unknown':'persisted'),async()=>{
  const {hold,stopFailure}=scenario;
- const root=realpathSync(mkdtempSync('/tmp/kteam-race-'));
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-race-'));
  const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
  const broker=createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});
  const roomId=broker.room.createRoom({title:'test',memberAgentIds:['a']},user).room.roomId;
@@ -114,5 +115,5 @@ for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stop
   await completion;
   if(!stopFailure)assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');
   assert.equal(store.jobs(roomId)[0].state,'stopped');
- }finally{await automation.close();store.close();broker.close();rmSync(root,{recursive:true,force:true});}
+ }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });

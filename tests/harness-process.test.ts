@@ -1,3 +1,4 @@
+import {tmpRoot} from './helpers/tmp-root.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,chmodSync,existsSync,rmSync,copyFileSync} from 'node:fs';
@@ -15,7 +16,7 @@ test('owned raw spawn preserves ordinary nonzero exit status and physically drai
 });
 
 test('caller shell options cannot apply to the ownership launcher or execute a path before admission',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-launcher-shell-')),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,'child; touch bypass; #.mjs');copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);process.env.KTEAM_NATIVE_CHILD=launcher;
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-launcher-shell-')),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,'child; touch bypass; #.mjs');copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);process.env.KTEAM_NATIVE_CHILD=launcher;
  try{const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();let error:any;child.once('error',(e:any)=>{error=e;});child.once('close',()=>resolve(error));}));assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
   const result=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();child.once('error',()=>{});child.once('close',(code:any,signal:any)=>resolve({code,signal}));}));assert.deepEqual(result,{code:2,signal:null});assert.equal(existsSync(marker),false);
  }finally{if(before===undefined)delete process.env.KTEAM_NATIVE_CHILD;else process.env.KTEAM_NATIVE_CHILD=before;rmSync(root,{force:true,recursive:true});}
@@ -29,7 +30,7 @@ test('owned execFile limits retained bytes while an excessive writer is physical
 });
 
 test('a PATH-supplied ps cannot bypass a revoked ownership guard or inject census options',async()=>{
- const root=realpathSync(mkdtempSync('/tmp/kteam-ps-')),bin=join(root,'bin'),marker=join(root,'marker');mkdirSync(bin);writeFileSync(join(bin,'ps'),'#!/bin/sh\nprintf bypass > '+marker);chmodSync(join(bin,'ps'),0o700);
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-ps-')),bin=join(root,'bin'),marker=join(root,'marker');mkdirSync(bin);writeFileSync(join(bin,'ps'),'#!/bin/sh\nprintf bypass > '+marker);chmodSync(join(bin,'ps'),0o700);
  try{
   const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(6000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('ps',['-p','1','-o','lstart='],{env:{PATH:bin}});child.stdout.resume();child.stderr.resume();let failure:any;child.once('error',(e:any)=>{failure=e;});child.once('close',()=>resolve(failure));}));
   assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
