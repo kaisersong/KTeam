@@ -16,6 +16,7 @@ import { powershellPath, taskkillPath, type PlatformDeps } from '../src/runtime/
 
 export const HOST_STOP_TIMEOUT_MS = 4_000;
 export const HOST_STOP_LEADER_GONE = 'host-stop-skipped-leader-gone';
+export const HOST_STOP_RESIDUAL = 'host-stop-residual';
 export const WINDOWS_HOST_PROCESS_TABLE = "Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId,CreationDate,Name | Where-Object { $_.ProcessId -ne $PID -and $_.Name -ne 'conhost.exe' } | ForEach-Object { [string]$_.ProcessId + ' ' + [string]$_.ParentProcessId + ' ' + $(if ($_.CreationDate) { [string]$_.CreationDate.ToFileTimeUtc() } else { '0' }) }";
 
 export interface WindowsHostIdentity { pid: number; birth: string }
@@ -29,7 +30,7 @@ export interface WindowsHostProcessLayer {
   spawnAsync?: (file: string, args: string[], options: WindowsHostExecOptions) => Promise<{ status: number | null; error?: Error }>;
   now?: () => number;
   wait?: (ms: number) => Promise<void>;
-  log?: (event: string, diagnostic?: string) => void;
+  log?: (event: string, diagnostic?: string, level?: 'warn' | 'error') => void;
 }
 export interface VerifiedMember { pid: number; birth: string }
 export interface SkippedMember { pid: number; reason: string }
@@ -109,6 +110,22 @@ export function parseVerifiedHostTree(text: string, identity: WindowsHostIdentit
   return { verified, skipped };
 }
 
+/** Residual poll: a snapshot member is still alive only if the same pid has the same CreationDate. A reused pid is gone. */
+export function residualAliveMembers(snapshot: readonly VerifiedMember[], census: string): VerifiedMember[] {
+  const birthOf = new Map<number, string>();
+  for (const line of census.split(/\r?\n/)) {
+    const [a, , c] = line.trim().split(/\s+/);
+    const pid = Number(a);
+    if (!Number.isInteger(pid) || !a) continue;
+    if (c && /^\d+$/.test(c)) birthOf.set(pid, c);
+  }
+  return snapshot.filter(member => {
+    const current = filetimeTicks(birthOf.get(member.pid));
+    const recorded = filetimeTicks(member.birth);
+    return current !== undefined && recorded !== undefined && current === recorded;
+  });
+}
+
 export async function stopWindowsHostTree(identity: WindowsHostIdentity | undefined, layer: WindowsHostProcessLayer, options: { timeoutMs?: number } = {}): Promise<HostStopResult> {
   if (layer.platform !== 'win32') return { ok: true, killed: [], skipped: [] };
   if (!identity) return { ok: true, killed: [], skipped: [] };
@@ -148,15 +165,19 @@ export async function stopWindowsHostTree(identity: WindowsHostIdentity | undefi
       }
       killed.push(member.pid);
     }
+    // Recheck the pre-kill snapshot by pid + CreationDate; do not re-walk the tree (leader may already be gone).
+    const snapshot = ordered.map(member => ({ pid: member.pid, birth: member.birth }));
+    const leftoversFrom = (censusText: string) => residualAliveMembers(snapshot, censusText);
     while (remaining() > 0) {
-      const leftover = parseVerifiedHostTree(await runExec(layer, powershellPath(layer.env), powershellArgs(WINDOWS_HOST_PROCESS_TABLE), remaining()), identity).verified;
+      const leftover = leftoversFrom(await runExec(layer, powershellPath(layer.env), powershellArgs(WINDOWS_HOST_PROCESS_TABLE), remaining()));
       if (!leftover.length) return { ok: true, killed, skipped: listed.skipped };
       await wait(Math.min(150, remaining()));
     }
-    const leftover = parseVerifiedHostTree(await runExec(layer, powershellPath(layer.env), powershellArgs(WINDOWS_HOST_PROCESS_TABLE), Math.max(1, remaining())), identity).verified;
+    const leftover = leftoversFrom(await runExec(layer, powershellPath(layer.env), powershellArgs(WINDOWS_HOST_PROCESS_TABLE), Math.max(1, remaining())));
     if (!leftover.length) return { ok: true, killed, skipped: listed.skipped };
-    const error = `host still running after ${timeoutMs}ms: ${leftover.map(member => member.pid).join(',')}`;
-    log('host-stop-failed', error);
+    const pids = leftover.map(member => member.pid).join(',');
+    const error = `host still running after ${timeoutMs}ms: ${pids}`;
+    log(HOST_STOP_RESIDUAL, pids, 'warn');
     return { ok: false, killed, skipped: listed.skipped, error };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

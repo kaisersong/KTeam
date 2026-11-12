@@ -5,16 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { taskkillPath } from '../src/runtime/platform-process.js';
 import {
-  HOST_STOP_LEADER_GONE, captureWindowsHostIdentity, filetimeTicks, parseVerifiedHostTree, stopWindowsHostTree,
+  HOST_STOP_LEADER_GONE, HOST_STOP_RESIDUAL, captureWindowsHostIdentity, filetimeTicks, parseVerifiedHostTree, residualAliveMembers, stopWindowsHostTree,
   type WindowsHostProcessLayer,
 } from '../desktop/windows-host-shutdown.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const identity = { pid: 100, birth: '1000' };
 
-function fakeLayer(platform: NodeJS.Platform, census: string, options: { birth?: string; linger?: boolean } = {}) {
+function fakeLayer(platform: NodeJS.Platform, census: string, options: { birth?: string; linger?: boolean; lingerPids?: number[]; reuseAfterKill?: Record<number, string> } = {}) {
   const calls: Array<{ kind: 'exec' | 'spawn'; file: string; args: string[]; timeout?: number }> = [];
-  const logs: Array<[string, string?]> = [];
+  const logs: Array<[string, string?, string?]> = [];
   let table = census;
   let now = 0;
   const env = { SystemRoot: 'C:\\Windows' };
@@ -25,10 +25,23 @@ function fakeLayer(platform: NodeJS.Platform, census: string, options: { birth?:
   };
   const spawnImpl = (file: string, args: string[], timeout?: number) => {
     calls.push({ kind: 'spawn', file, args: [...args], timeout });
-    if (!options.linger) {
-      const killed = new Set<number>();
-      for (let i = 0; i < args.length; i++) if (args[i] === '/PID') killed.add(Number(args[i + 1]));
-      table = table.split(/\n/).filter(line => !killed.has(Number(line.trim().split(/\s+/)[0]))).join('\n');
+    const lingerAll = options.linger === true;
+    const linger = new Set(options.lingerPids ?? []);
+    const killed = new Set<number>();
+    for (let i = 0; i < args.length; i++) if (args[i] === '/PID') killed.add(Number(args[i + 1]));
+    if (!lingerAll) {
+      table = table.split(/\n/).filter(line => {
+        const pid = Number(line.trim().split(/\s+/)[0]);
+        return !killed.has(pid) || linger.has(pid);
+      }).join('\n');
+    }
+    for (const pid of killed) {
+      const replacement = options.reuseAfterKill?.[pid];
+      if (replacement) {
+        const lines = table.split(/\n/).filter(line => Number(line.trim().split(/\s+/)[0]) !== pid);
+        lines.push(replacement);
+        table = lines.filter(Boolean).join('\n');
+      }
     }
     return { status: 0 as number | null };
   };
@@ -41,7 +54,7 @@ function fakeLayer(platform: NodeJS.Platform, census: string, options: { birth?:
     spawnAsync: async (file, args, options) => spawnImpl(file, args, options.timeout),
     now: () => now,
     wait: async (ms) => { now += ms; },
-    log: (event, diagnostic) => { logs.push([event, diagnostic]); },
+    log: (event, diagnostic, level) => { logs.push([event, diagnostic, level]); },
   };
   return { layer, calls, logs, env };
 }
@@ -75,6 +88,12 @@ describe('windows host tree identity', () => {
     const listed = parseVerifiedHostTree('100 1 1000\n101 100 900\n102 100 0\n103 100\n', identity);
     assert.deepEqual(listed.verified.map(m => m.pid), [100]);
     assert.deepEqual(listed.skipped.map(s => s.reason).sort(), ['birth_before_parent', 'birth_missing', 'birth_missing']);
+  });
+
+  it('residual poll matches snapshot members by pid and CreationDate and treats a reused pid as gone', () => {
+    const snapshot = [{ pid: 100, birth: '1000' }, { pid: 101, birth: '1001' }];
+    assert.deepEqual(residualAliveMembers(snapshot, '101 1 1001\n').map(m => m.pid), [101]);
+    assert.deepEqual(residualAliveMembers(snapshot, '100 1 2000\n101 1 9000\n').map(m => m.pid), []);
   });
 });
 
@@ -137,8 +156,27 @@ describe('stopWindowsHostTree', () => {
     const result = await stopWindowsHostTree(identity, layer, { timeoutMs: 400 });
     assert.equal(result.ok, false);
     assert.match(result.error ?? '', /host still running after 400ms: 100/);
-    assert.ok(logs.some(entry => entry[0] === 'host-stop-failed'));
+    assert.ok(logs.some(entry => entry[0] === HOST_STOP_RESIDUAL && entry[1] === '100' && entry[2] === 'warn'));
     for (const call of calls) assert.ok((call.timeout ?? 0) <= 400);
+  });
+
+  it('returns ok:false and warns host-stop-residual when the host is gone but a descendant survives', async () => {
+    const { layer, logs, calls } = fakeLayer('win32', '100 1 1000\n101 100 1001\n', { lingerPids: [101] });
+    const result = await stopWindowsHostTree(identity, layer, { timeoutMs: 400 });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.killed, [100, 101]);
+    assert.match(result.error ?? '', /host still running after 400ms: 101/);
+    assert.ok(logs.some(entry => entry[0] === HOST_STOP_RESIDUAL && entry[1] === '101' && entry[2] === 'warn'));
+    assert.equal(logs.some(entry => entry[0] === 'host-stop-failed'), false);
+    for (const call of calls) assert.ok((call.timeout ?? 0) <= 400);
+  });
+
+  it('treats a snapshot pid reused with a different CreationDate as gone', async () => {
+    const { layer, logs } = fakeLayer('win32', '100 1 1000\n101 100 1001\n', { reuseAfterKill: { 101: '101 1 9000' } });
+    const result = await stopWindowsHostTree(identity, layer);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.killed, [100, 101]);
+    assert.equal(logs.some(entry => entry[0] === HOST_STOP_RESIDUAL), false);
   });
 });
 
