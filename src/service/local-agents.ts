@@ -43,6 +43,9 @@ export class LocalAgents{
 }
 function existsPrivate(path:string){try{return lstatSync(path);}catch{return undefined;}}
 
-function privateFile(path:string,content:string){const fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|constants.O_NOFOLLOW,0o600);try{const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1||(process.platform!=='win32'&&stat.uid!==process.getuid?.()))throw new KTeamError('native_workspace_changed',409);ftruncateSync(fd,0);writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}}
+/** Windows has no O_NOFOLLOW (the constant is undefined, so open() follows links): refuse a link at the path before
+ * opening, and after opening confirm the path still names the very file that was opened. */
+const windowsLinkAt=(path:string)=>process.platform==='win32'&&existsPrivate(path)?.isSymbolicLink()===true;
+function privateFile(path:string,content:string){if(windowsLinkAt(path))throw new KTeamError('native_workspace_changed',409);const fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|(constants.O_NOFOLLOW??0),0o600);try{const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1||(process.platform!=='win32'&&stat.uid!==process.getuid?.()))throw new KTeamError('native_workspace_changed',409);if(process.platform==='win32'){const now=existsPrivate(path);if(!now||now.isSymbolicLink()||now.ino!==stat.ino||now.dev!==stat.dev)throw new KTeamError('native_workspace_changed',409);}ftruncateSync(fd,0);writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}}
 
 function groupAlive(pid:number|undefined,birth?:string){if(!pid)return false;const rows=processGroup(pid,undefined,{birth});if(rows.some(member=>!ownedByCurrentUser(member)))throw new KTeamError('native_stop_unconfirmed',503);return rows.length>0;}

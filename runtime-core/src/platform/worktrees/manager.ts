@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync, execFile } from '../../../../src/runtime/harness-child-process.js';
 import { join, relative, resolve, sep } from 'node:path';
 import { writeFileAtomicallySync } from '../../utils/atomic-file.js';
+import { processBirth } from '../../../../src/runtime/platform-process.js';
 
 export type WorktreeCleanupPolicy = 'keep' | 'delete';
 export type WorktreeLeaseState = 'allocating' | 'active' | 'released' | 'orphaned';
@@ -707,17 +708,9 @@ function readProcessStartToken(pid: number): string | null {
     return null;
   }
   if (process.platform === 'win32') {
+    // Shared Windows process layer: absolute powershell.exe, closed stdin, bounded time, CreationDate as FILETIME.
     try {
-      return execFileSync(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CreationDate.ToUniversalTime().ToString("o")`,
-        ],
-        { encoding: 'utf8', windowsHide: true },
-      ).trim() || null;
+      return processBirth(pid) || null;
     } catch {
       return null;
     }
