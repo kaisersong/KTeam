@@ -120,7 +120,8 @@
     "extractPdfText"
   ],
   "src/utils/credential-store.ts": [
-    "CredentialStore"
+    "CredentialStore",
+    "protectCredentialPath"
   ],
   "src/utils/system-credentials.ts": [
     "getCredentialStore",
@@ -166,5 +167,9 @@
     "writeDesktopServicePorts",
     "desktopServiceUrl",
     "configuredDesktopServicePorts"
+  ],
+  "src/runtime/verification/windows-installation-absence.ts": [
+    "observeWindowsInstallationAbsence",
+    "readWindowsInstallationAbsence"
   ]
 }

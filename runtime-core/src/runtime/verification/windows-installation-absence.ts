@@ -5,30 +5,61 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from '../../../../src/runtime/harness-child-process.js';
 import { machine } from 'node:os';
 type WindowsInstallationObservation = 'ordinary' | 'installed' | 'unavailable';
+export interface WindowsAbsenceDeps { platform: NodeJS.Platform; arch: string; machine: string; root: string;
+    lstat: (path: string) => { isFile(): boolean; isSymbolicLink(): boolean; nlink: number; size: number };
+    readFile: (path: string) => Buffer;
+    run: (helper: string) => { error?: Error | undefined; status: number | null; signal?: NodeJS.Signals | null; stdout: Buffer };
+    warn: (message: string) => void }
+/** The missing-helper warning is emitted once per process (it is checked on every profile read). */
+let absenceWarned = false;
+const defaultAbsenceDeps = (): WindowsAbsenceDeps => {
+    const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+    // electron-builder explicitly unpacks this fixed native subtree. CLI and
+    // Desktop development builds use the same relative tsc output location.
+    const root = moduleDirectory.split(sep).map(part => part === 'app.asar' ? 'app.asar.unpacked' : part).join(sep);
+    return { platform: process.platform, arch: process.arch, machine: machine(), root, lstat: lstatSync, readFile: path => readFileSync(path),
+        run: helper => spawnSync(win32.toNamespacedPath(helper), [], { cwd: win32.toNamespacedPath(dirname(helper)), env: {}, shell: false, windowsHide: true, timeout: 5000, maxBuffer: 4096 }) as any,
+        warn: message => { if (absenceWarned) return; absenceWarned = true; process.emitWarning(message, { code: 'windows_absence_helper_not_bundled' }); } };
+};
+const missingFile = (error: unknown) => (error as NodeJS.ErrnoException)?.code === 'ENOENT';
 /** Fixed client-bundled read-only helper. This is not a protected Windows
- * controller or a qualification receipt. Missing build artifacts deny fallback. */
+ * controller or a qualification receipt.
+ *
+ * 0.4 interim rule (CTO-approved, follow-up: https://github.com/kaisersong/KTeam/issues/74): the helper's source is not in this repository, so it cannot be built or
+ * bundled yet. When the helper AND its manifest are both simply absent, the client is treated as an ordinary
+ * install and a warning is emitted. Anything that is present but wrong still denies fallback ('unavailable'):
+ * only one of the two files present, a non-regular/linked/oversized file, a bad manifest, a hash mismatch, a
+ * failed or non-zero helper run, or an unexpected answer. */
 export function readWindowsInstallationAbsence(): WindowsInstallationObservation {
-    if (arguments.length || process.platform !== 'win32' || !['x64', 'arm64'].includes(process.arch))
+    if (arguments.length || process.platform !== 'win32')
+        return 'unavailable';
+    try { return observeWindowsInstallationAbsence(defaultAbsenceDeps()); }
+    catch { return 'unavailable'; }
+}
+export function observeWindowsInstallationAbsence(deps: WindowsAbsenceDeps): WindowsInstallationObservation {
+    if (deps.platform !== 'win32' || !['x64', 'arm64'].includes(deps.arch))
         return 'unavailable';
     try {
-        const system = machine().toLowerCase();
+        const system = deps.machine.toLowerCase();
         const nativeArch = ['amd64', 'x86_64'].includes(system) ? 'x64' : ['arm64', 'aarch64'].includes(system) ? 'arm64' : undefined;
-        if (nativeArch !== process.arch) return 'unavailable';
-        const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-        // electron-builder explicitly unpacks this fixed native subtree. CLI and
-        // Desktop development builds use the same relative tsc output location.
-        const root = moduleDirectory.split(sep).map(part => part === 'app.asar' ? 'app.asar.unpacked' : part).join(sep);
-        const helper = join(root, 'native', 'win32-' + process.arch, 'windows-installation-absence.exe'), manifestPath = join(root, 'native', 'win32-' + process.arch, 'windows-installation-absence.json');
-        function read(path: string, limit: number): Buffer { const s = lstatSync(path); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1 || s.size > limit)
-            throw Error('windows_absence_file'); const b = readFileSync(path); if (b.length > limit)
+        if (nativeArch !== deps.arch) return 'unavailable';
+        const helper = join(deps.root, 'native', 'win32-' + deps.arch, 'windows-installation-absence.exe'), manifestPath = join(deps.root, 'native', 'win32-' + deps.arch, 'windows-installation-absence.json');
+        const present = (path: string) => { try { deps.lstat(path); return true; } catch (error) { if (missingFile(error)) return false; throw error; } };
+        const helperPresent = present(helper), manifestPresent = present(manifestPath);
+        if (!helperPresent && !manifestPresent) {
+            deps.warn('windows_absence_helper_not_bundled: windows-installation-absence helper is not bundled (' + helper + '); treating this client as an ordinary install (0.4 interim, see https://github.com/kaisersong/KTeam/issues/74)');
+            return 'ordinary';
+        }
+        function read(path: string, limit: number): Buffer { const s = deps.lstat(path); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1 || s.size > limit)
+            throw Error('windows_absence_file'); const b = deps.readFile(path); if (b.length > limit)
             throw Error('windows_absence_file'); return b; }
         const manifestBytes = read(manifestPath, 4096), manifest = JSON.parse(manifestBytes.toString('utf8'));
-        if (!manifest || Object.keys(manifest).sort().join(',') !== 'coreSha256,sha256,sourceSha256,target,version' || manifest.version !== 1 || manifest.target !== 'win32-' + process.arch || !['sourceSha256', 'coreSha256'].every(key => typeof manifest[key] === 'string' && /^[a-f0-9]{64}$/.test(manifest[key])) || typeof manifest.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.sha256))
+        if (!manifest || Object.keys(manifest).sort().join(',') !== 'coreSha256,sha256,sourceSha256,target,version' || manifest.version !== 1 || manifest.target !== 'win32-' + deps.arch || !['sourceSha256', 'coreSha256'].every(key => typeof manifest[key] === 'string' && /^[a-f0-9]{64}$/.test(manifest[key])) || typeof manifest.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.sha256))
             return 'unavailable';
         function helperCurrent(): void { if (!read(manifestPath, 4096).equals(manifestBytes) || createHash('sha256').update(read(helper, 2 * 1024 ** 2)).digest('hex') !== manifest.sha256)
             throw Error('windows_absence_changed'); }
         helperCurrent();
-        const result = spawnSync(win32.toNamespacedPath(helper), [], { cwd: win32.toNamespacedPath(dirname(helper)), env: {}, shell: false, windowsHide: true, timeout: 5000, maxBuffer: 4096 });
+        const result = deps.run(helper);
         if (result.error || result.status !== 0 || result.signal)
             return 'unavailable';
         helperCurrent();

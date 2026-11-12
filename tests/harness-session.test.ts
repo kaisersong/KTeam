@@ -1,4 +1,4 @@
-import {tmpRoot} from './helpers/tmp-root.js';
+import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {join,resolve} from 'node:path';
 import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
+import {assertProcessGone} from './helpers/process-gone.js';
 
 async function fixture(){
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
@@ -16,7 +17,7 @@ async function fixture(){
  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'text',delta:'done'};yield {type:'done'};}};
  const scope={root:join(root,'host-data'),botId:'bot-a',roomId:'room-a',bindingRevision:1,fingerprint:'fp-a',profileRevision:1};
  const open=async(extra={})=>{const h=await createHarness({scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
- return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
+ return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;removeTempRoot(root);}};
 }
 test('production platform factory preserves complete tool history and project instructions across runs, with room/binding isolation',async()=>{
  const f=await fixture();let owner:any;try{
@@ -88,8 +89,8 @@ test('real MCP stdio is supervised, records ownership before payload, and closes
   assert.equal(existsSync(join(f.root,'provider.pid')),true);
   assert.match(await owner.registry.executeTool('mcp__owned__proof',{}),/MCP_REAL_PROCESS_92/);
   assert.ok(resources.some(r=>r.state==='preparing'&&r.pid));assert.ok(resources.some(r=>r.state==='running'&&r.birth));
-  const pids=resources.filter(r=>r.state==='running').map(r=>r.pid);await owner.close();owner=undefined;
-  for(const pid of pids)assert.throws(()=>process.kill(pid,0));
+  const running=resources.filter(r=>r.state==='running');await owner.close();owner=undefined;
+  for(const r of running)assertProcessGone(r);
  }finally{await owner?.close();f.close();}
 });
 
@@ -109,14 +110,17 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
  const f=await fixture(),records:any[]=[];let platform:any;try{
   const git=(args:string[])=>execFileSync('git',args,{cwd:f.cwd,encoding:'utf8'});
   git(['init','-q']);git(['config','user.email','fixture@localhost']);git(['config','user.name','Fixture']);writeFileSync(join(f.cwd,'source.txt'),'fixture');git(['add','source.txt']);git(['commit','-qm','fixture']);
-  const processOwner={cwd:f.cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},record:(r:any)=>{records.push(r);}};
+  /* Windows: every owned process costs two PowerShell CIM queries (start identity before ownership, drain proof after exit, ~0.5s each on windows-2022), so this ~15-process Git sequence needs more than the POSIX 20s. Follow-up: persistent census to cut the per-process cost. */const processOwner={cwd:f.cwd,signal:AbortSignal.timeout(process.platform==='win32'?60000:20000),assertCurrent:async()=>{},record:(r:any)=>{records.push(r);}};
   await f.core.withHarnessProcessOwner(processOwner,async()=>{
    platform=await f.core.createPlatformRuntimeContext({cwd:f.cwd,builtinCommands:[],assertCurrent:processOwner.assertCurrent,stateRootDir:join(f.root,'platform-state'),teamService:{}});await platform.mcpReady;
    const first=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-release',branch:'fixture-release',cleanup:'delete'});assert.equal(existsSync(first.path),true);await platform.worktreeManager.release(first.path);assert.equal(existsSync(first.path),false);
    const second=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-gc',branch:'fixture-gc',cleanup:'delete'});
    const path=join(f.cwd,'.worktrees/.kteam-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
-   const result=await platform.worktreeManager.gc({dryRun:false});assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);
+   const result=await platform.worktreeManager.gc({dryRun:false});
+   // GC removes a released worktree only after `lsof +D` proves no process uses it. lsof is POSIX-only (/usr/sbin/lsof, /usr/bin/lsof), so on Windows usage is unknown and GC must fail closed: keep the worktree and say why.
+   if(process.platform==='win32'){assert.deepEqual(result.removed,[],JSON.stringify(result));assert.deepEqual(result.skipped,[{branch:'fixture-gc',reason:'path_unknown'}],JSON.stringify(result));assert.equal(existsSync(second.path),true);}
+   else{assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);}
   });
-  assert.ok(records.filter(r=>r.state==='running').length>=5);for(const r of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(r.pid,0));
+  assert.ok(records.filter(r=>r.state==='running').length>=5);for(const r of records.filter(r=>r.state==='running'))assertProcessGone(r);
  }finally{await platform?.dispose();f.close();}
 });

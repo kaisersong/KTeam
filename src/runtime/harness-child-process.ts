@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
 import {resolve} from 'node:path';
 import {harnessGroup} from './harness-process.js';
-import {groupSpawnOptions,processBirth,shellInvocation} from './platform-process.js';
+import {groupSpawnOptions,processBirth,shellInvocation,killGroup} from './platform-process.js';
 import {nativeEnvironment} from './local-agents.js';
 import {KTeamError} from '../errors.js';
 interface ProcessOwner {cwd:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;record:(value:any)=>void|Promise<void>}
@@ -32,7 +32,10 @@ export function spawn(command:string,argsOrOptions:any[]=[],maybeOptions:any={})
   if(!child.connected)throw new KTeamError('native_start_failed');
   started=true;const shell=options.shell?shellInvocation([command,...args].join(' ')):undefined;child.send({type:'start',command:shell?shell.command:command,args:shell?shell.args:args,cwd:options.cwd??owner.cwd,env:{...nativeEnvironment(),...(options.env??{})},inheritStdin:tuple[0]!=='ignore'});
  }catch(error){stop();child.emit('error',error);}})();});
- child.once('close',()=>{owner.signal.removeEventListener('abort',stop);void(async()=>{let stopped=false;try{stopped=!child.pid||harnessGroup(child.pid).length===0;}catch{}await owner.record({...identity,invocationId,state:stopped?'stopped':'unknown',stopConfirmed:stopped,started});})().catch(()=>{});});
+ child.once('close',()=>{owner.signal.removeEventListener('abort',stop);void(async()=>{let stopped=false;try{stopped=!child.pid||harnessGroup(child.pid,identity?.birth).length===0;
+  // Windows: the launcher exits without its own census; the host drains leftovers of the recorded tree here.
+  if(!stopped&&process.platform==='win32'&&child.pid&&identity?.birth){try{killGroup(child.pid,'SIGKILL',undefined,{birth:identity.birth});}catch{}const end=Date.now()+3000;while(harnessGroup(child.pid,identity.birth).length&&Date.now()<end)await new Promise(r=>setTimeout(r,50));stopped=harnessGroup(child.pid,identity.birth).length===0;}
+ }catch{}await owner.record({...identity,invocationId,state:stopped?'stopped':'unknown',stopConfirmed:stopped,started});})().catch(()=>{});});
  return child;
 }
 export function execFile(file:string,argsOrOptions:any[]=[],optionsOrCallback:any={},maybeCallback?:any):any{
