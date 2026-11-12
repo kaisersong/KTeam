@@ -1,4 +1,4 @@
-import {tmpRoot} from './helpers/tmp-root.js';
+import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,realpathSync} from 'node:fs';
@@ -54,7 +54,7 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
   await automation.tick();const job=store.jobs()[0];assert.equal(inferences,1,JSON.stringify(job));assert.equal(job.calls,1);
   if(loss==='chat-unconfirmed'){assert.equal(job.state,'unknown');assert.ok(job.answerDraft);assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');}
   else{assert.equal(job.state,'delivered');assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].artifactVerification.verified,true);assert.equal(broker.room.getCollaborationRoom({roomId},user).messages.length,2);}
- }finally{await automation.close();store.close();broker.close();rmSync(root,{recursive:true,force:true});}
+ }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
 test('crash between broker receipt and local job: read-only reconciliation recovers one job without resending',async()=>{
  const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-outbox-'));let store=new TeamStore(root);
@@ -115,5 +115,5 @@ for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stop
   await completion;
   if(!stopFailure)assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');
   assert.equal(store.jobs(roomId)[0].state,'stopped');
- }finally{await automation.close();store.close();broker.close();rmSync(root,{recursive:true,force:true});}
+ }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
