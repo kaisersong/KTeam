@@ -2,6 +2,7 @@ import {
   A2UI_LIMITS,
   A2UI_V1_CATALOG_ID,
   SAFE_A2UI_CATALOG_ID,
+  isAcceptedA2uiVersion,
   type A2UIComponent,
   type A2UIMessage,
   type ValidationResult,
@@ -74,15 +75,31 @@ function resolveComponent(
   }
   return result as unknown as A2UIComponent;
 }
+
+function foldLegacySurface(messages: A2UIMessage[]): A2UIMessage[] {
+  let live = false;
+  for (const message of messages) {
+    if ('createSurface' in message) live = true;
+    if ('deleteSurface' in message || 'destroySurface' in message) live = false;
+  }
+  return live ? messages.filter((message) => !('deleteSurface' in message) && !('destroySurface' in message)) : [];
+}
 /** Normalize both wire generations to one validated literal-only render model. */
 export function normalizeA2uiMessages(input: unknown): A2UIMessage[] {
   assertJsonBudget(input);
   if (!Array.isArray(input) || input.length === 0 || input.length > A2UI_LIMITS.maxMessages)
     throw Error('消息数量超限');
+  for (const message of input) {
+    if (!record(message)) throw Error('message 必须是对象');
+    if (!isAcceptedA2uiVersion(message.version)) throw Error('未知协议版本');
+  }
   if (input.every((message) => record(message) && message.version === 1)) {
     const check = validateLegacyA2uiMessages(input);
     if (!check.ok) throw Error(check.reason);
-    return input as A2UIMessage[];
+    return foldLegacySurface(input as A2UIMessage[]);
+  }
+  if (!input.every((message) => record(message) && message.version === '1.0')) {
+    throw Error('未知协议版本');
   }
   let surfaceId: string | null = null;
   let data: Record<string, unknown> = {};
@@ -123,8 +140,9 @@ export function normalizeA2uiMessages(input: unknown): A2UIMessage[] {
       'updateComponents',
       'updateDataModel',
       'deleteSurface',
+      'destroySurface',
     ]);
-    if (message.version !== '1.0') throw Error('未知或混合协议版本');
+    if (message.version !== '1.0') throw Error('未知协议版本');
     const operations = Object.keys(message).filter((key) => key !== 'version');
     if (operations.length !== 1) throw Error('message 必须且只能包含一个操作');
     const operation = operations[0]!;
