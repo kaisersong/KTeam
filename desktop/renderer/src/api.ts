@@ -58,6 +58,8 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ host_operation_unknown:'操作回执暂未收到，结果待核对。当前内容已保留，核对后可重试。',
+ message_send_receipt_unknown:'暂未收到发送回执，消息可能已送达。草稿已保留；再次发送相同内容会沿用同一编号。',
  memory_scope_forbidden:'此成员不在当前会话中，无法查看记忆',memory_embedding_dimensions:'向量服务返回的维度与配置不一致，请检查模型和维度',
  tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',

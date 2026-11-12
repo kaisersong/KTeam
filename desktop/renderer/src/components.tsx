@@ -1,6 +1,6 @@
 import {VoiceInput} from './voice-input';
 import React,{memo,useEffect,useRef,useState} from 'react';
-import {MessageCircle,Users,CheckSquare,Plus,Settings,Send,Pause,Play,ChevronDown,X,Check,RefreshCw,Search,Inbox,ArrowUp,MoreHorizontal,Pin,Pencil,Trash2,Mail,Reply,Copy,Volume2,Code,RotateCcw,Smile,CheckSquare as PinnedIcon} from 'lucide-react';
+import {MessageCircle,Users,CheckSquare,Plus,Settings,Send,Pause,Play,ChevronDown,X,Check,RefreshCw,Search,Inbox,ArrowUp,LoaderCircle,MoreHorizontal,Pin,Pencil,Trash2,Mail,Reply,Copy,Volume2,Code,RotateCcw,Smile,CheckSquare as PinnedIcon} from 'lucide-react';
 import type {Bot,Room,Message} from './api';
 import {api,explain} from './api';
 import {Markdown} from './Markdown';
@@ -63,7 +63,7 @@ export const MessageRow=memo(function MessageRow({message,bots,onAction,state,sp
 
 });
 export function Composer({value,setValue,onSend,busy,placeholder='给小K发消息…',reply,onCancelReply,sendShortcut='enter',contextKey=''}:{contextKey?:string;value:string;setValue:(v:string)=>void;onSend:()=>void;busy:boolean;placeholder?:string;reply?:Message;onCancelReply?:()=>void;sendShortcut?:'enter'|'modifier-enter'}){
- return <><div className="composer-reply" hidden={!reply}><Reply size={14}/><span>回复：{reply?.text?.slice(0,120)}</span><button className="icon-button" type="button" aria-label="取消回复" onClick={onCancelReply}><X size={15}/></button></div><form className="composer" onSubmit={event=>{event.preventDefault();if(value.trim()&&!busy)onSend();}}><textarea aria-label="发送消息" placeholder={placeholder} value={value} rows={1} onChange={event=>setValue(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing&&(sendShortcut==='enter'||event.metaKey||event.ctrlKey)){event.preventDefault();if(value.trim()&&!busy)onSend();}}}/><VoiceInput key={contextKey} disabled={busy} onText={text=>setValue(value+(value?'\n':'')+text)}/><button className="send-button" disabled={!value.trim()||busy} aria-label="发送消息"><ArrowUp size={20}/></button></form></>;
+ return <><div className="composer-reply" hidden={!reply}><Reply size={14}/><span>回复：{reply?.text?.slice(0,120)}</span><button className="icon-button" type="button" aria-label="取消回复" onClick={onCancelReply}><X size={15}/></button></div><form className="composer" onSubmit={event=>{event.preventDefault();if(value.trim()&&!busy)onSend();}}><textarea aria-label="发送消息" placeholder={placeholder} value={value} rows={1} onChange={event=>setValue(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing&&(sendShortcut==='enter'||event.metaKey||event.ctrlKey)){event.preventDefault();if(value.trim()&&!busy)onSend();}}}/><VoiceInput key={contextKey} disabled={busy} onText={text=>setValue(value+(value?'\n':'')+text)}/><button className="send-button" disabled={!value.trim()||busy} aria-label={busy?'正在发送消息':'发送消息'}>{busy?<LoaderCircle size={20} className="spinner"/>:<ArrowUp size={20}/>}</button></form></>;
 }
 export function Inspector({room,bots,settings,tasks,jobs,onReview,onPause,onBot,onRoutines}:{room:Room;bots:Bot[];settings:any;tasks:any[];jobs:any[];onReview:(task:any)=>void;onPause:()=>void;onBot:(bot:Bot)=>void;onRoutines?:()=>void}){
  const job=jobs.find(job=>['routing','running','stopping'].includes(job.state));
