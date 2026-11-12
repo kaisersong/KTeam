@@ -4,11 +4,16 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
+import {verifiedPlatform} from './release-platform.mjs';
 const root=join(process.cwd(),'node_modules','electron');
 const {version}=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
-const binary='Electron.app/Contents/MacOS/Electron';
-if(process.platform!=='darwin'||process.arch!=='arm64')throw Error('desktop_platform_not_verified');
-if(!existsSync(join(root,'dist',binary))||!existsSync(join(root,'path.txt'))){
+const {key,electronBinary:binary}=verifiedPlatform('desktop_platform_not_verified');
+const ready=()=>existsSync(join(root,'dist',binary))&&existsSync(join(root,'path.txt'))&&readFileSync(join(root,'path.txt'),'utf8').trim()===binary;
+if(key==='win32-x64'){
+ // Electron's own installer downloads electron-v<version>-win32-x64.zip and checks it against checksums.json.
+ if(!ready())execFileSync(process.execPath,[join(root,'install.js')],{stdio:'inherit',cwd:root});
+ if(!ready())throw Error('electron_binary_not_ready');
+}else if(!existsSync(join(root,'dist',binary))||!existsSync(join(root,'path.txt'))){
  const name=`electron-v${version}-darwin-arm64.zip`;
  const expected=JSON.parse(readFileSync(join(root,'checksums.json'),'utf8'))[name];
  const cache=join(homedir(),'Library','Caches','electron');

@@ -49,13 +49,27 @@ mac:
     NSMicrophoneUsageDescription: KTeam 在你点击语音输入后使用麦克风，将录音转为文字。
 dmg:
   artifactName: ${productName}-${version}-${arch}-mac.${ext}
+# Windows x64: NSIS installer (auto-update via latest.yml + blockmap from the publish feed above)
+# plus a portable exe (no auto-update). Unsigned: no Windows code signing yet (SmartScreen will warn).
 win:
   icon: desktop/assets/icon.ico
   target:
-    - nsis
-  artifactName: ${productName}-setup-${version}.${ext}
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}-win.${ext}
+  forceCodeSigning: false
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  differentialPackage: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: KTeam
   artifactName: ${productName}-setup-${version}.${ext}
+portable:
+  artifactName: ${productName}-portable-${version}.${ext}
