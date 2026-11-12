@@ -8,7 +8,7 @@ import {spawn,execFile,withHarnessProcessOwner} from '../src/runtime/harness-chi
 
 test('owned raw spawn preserves ordinary nonzero exit status and physically drains the supervisor',async()=>{
  const records:any[]=[];
- const child=withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(6000),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>spawn('/bin/sh',['-c','exit 2']));
+ const child=withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(6000),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>spawn(process.execPath,['-e','process.exit(2)']));
  child.stdout.resume();child.stderr.resume();
  const result=await new Promise(r=>child.once('close',(code:any,signal:any)=>r({code,signal})));
  assert.deepEqual(result,{code:2,signal:null});assert.ok(records.some(r=>r.state==='running'));
@@ -16,7 +16,9 @@ test('owned raw spawn preserves ordinary nonzero exit status and physically drai
 });
 
 test('caller shell options cannot apply to the ownership launcher or execute a path before admission',async()=>{
- const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-launcher-shell-')),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,'child; touch bypass; #.mjs');copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);process.env.KTEAM_NATIVE_CHILD=launcher;
+ const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-launcher-shell-')),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,'child; touch bypass; #.mjs');copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);
+ // The launcher loads its Windows platform layer from beside itself (ESM, like dist).
+ copyFileSync(new URL('../src/runtime/platform-process.js',import.meta.url),join(root,'platform-process.js'));writeFileSync(join(root,'package.json'),'{"type":"module"}');process.env.KTEAM_NATIVE_CHILD=launcher;
  try{const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();let error:any;child.once('error',(e:any)=>{error=e;});child.once('close',()=>resolve(error));}));assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
   const result=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();child.once('error',()=>{});child.once('close',(code:any,signal:any)=>resolve({code,signal}));}));assert.deepEqual(result,{code:2,signal:null});assert.equal(existsSync(marker),false);
  }finally{if(before===undefined)delete process.env.KTEAM_NATIVE_CHILD;else process.env.KTEAM_NATIVE_CHILD=before;rmSync(root,{force:true,recursive:true});}
@@ -29,7 +31,7 @@ test('owned execFile limits retained bytes while an excessive writer is physical
  for(const row of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(row.pid,0));
 });
 
-test('a PATH-supplied ps cannot bypass a revoked ownership guard or inject census options',async()=>{
+test('a PATH-supplied ps cannot bypass a revoked ownership guard or inject census options',{skip:process.platform==='win32'?'POSIX only: the /bin/ps census and a PATH-supplied ps do not exist on Windows (Windows census is covered in platform-process.test)':false},async()=>{
  const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-ps-')),bin=join(root,'bin'),marker=join(root,'marker');mkdirSync(bin);writeFileSync(join(bin,'ps'),'#!/bin/sh\nprintf bypass > '+marker);chmodSync(join(bin,'ps'),0o700);
  try{
   const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(6000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('ps',['-p','1','-o','lstart='],{env:{PATH:bin}});child.stdout.resume();child.stderr.resume();let failure:any;child.once('error',(e:any)=>{failure=e;});child.once('close',()=>resolve(failure));}));
