@@ -115,7 +115,10 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
    const first=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-release',branch:'fixture-release',cleanup:'delete'});assert.equal(existsSync(first.path),true);await platform.worktreeManager.release(first.path);assert.equal(existsSync(first.path),false);
    const second=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-gc',branch:'fixture-gc',cleanup:'delete'});
    const path=join(f.cwd,'.worktrees/.kteam-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
-   const result=await platform.worktreeManager.gc({dryRun:false});assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);
+   const result=await platform.worktreeManager.gc({dryRun:false});
+   // GC removes a released worktree only after `lsof +D` proves no process uses it. lsof is POSIX-only (/usr/sbin/lsof, /usr/bin/lsof), so on Windows usage is unknown and GC must fail closed: keep the worktree and say why.
+   if(process.platform==='win32'){assert.deepEqual(result.removed,[],JSON.stringify(result));assert.deepEqual(result.skipped,[{branch:'fixture-gc',reason:'path_unknown'}],JSON.stringify(result));assert.equal(existsSync(second.path),true);}
+   else{assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);}
   });
   assert.ok(records.filter(r=>r.state==='running').length>=5);for(const r of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(r.pid,0));
  }finally{await platform?.dispose();f.close();}
