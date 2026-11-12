@@ -1,4 +1,4 @@
-import {tmpRoot} from './helpers/tmp-root.js';
+import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
@@ -112,6 +112,6 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
   } finally {
     await host?.close(); await stop(child); broker.close(); await server.close();
     assert.ok(child.exitCode !== null || child.signalCode !== null, 'own upstream process must be reaped');
-    rmSync(root, { recursive: true, force: true });
+    removeTempRoot(root);
   }
 });

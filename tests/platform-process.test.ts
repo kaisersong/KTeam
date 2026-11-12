@@ -49,10 +49,15 @@ test('Windows birth reads CreationDate for exactly one numeric pid',()=>{
 test('Windows kill force-stops the whole tree with taskkill /T /F and reports ESRCH when nothing is left',()=>{
  const {deps,calls}=fake('win32','100 1\n101 100\n');
  killGroup(100,'SIGTERM',deps);
- const kill=calls.find(c=>c.kind==='spawn')!;assert.equal(kill.file,taskkillPath(deps.env));assert.equal(kill.file,'C:\\Windows\\System32\\taskkill.exe');
- assert.deepEqual(kill.args,['/T','/F','/PID','100','/PID','101']);assert.equal(kill.options.windowsHide,true);
+ // Live leader: one taskkill /T on the leader, no census needed.
+ assert.deepEqual(calls.map(c=>c.kind),['spawn']);
+ const kill=calls[0]!;assert.equal(kill.file,taskkillPath(deps.env));assert.equal(kill.file,'C:\\Windows\\System32\\taskkill.exe');
+ assert.deepEqual(kill.args,['/T','/F','/PID','100']);assert.equal(kill.options.windowsHide,true);
+ // Leader already gone (taskkill 128): orphans found through the census are stopped together.
+ const orphan=fake('win32','101 100\n102 101\n',128);killGroup(100,'SIGTERM',orphan.deps);
+ assert.deepEqual(orphan.calls.map(c=>c.kind),['spawn','exec','spawn']);assert.deepEqual(orphan.calls[2]!.args,['/T','/F','/PID','101','/PID','102']);
  const self=fake('win32','100 1\n101 100\n');killGroup(100,'SIGKILL',self.deps,{exclude:[100]});assert.deepEqual(self.calls.find(c=>c.kind==='spawn')!.args,['/T','/F','/PID','101']);
- const gone=fake('win32','7 1\n');assert.throws(()=>killGroup(100,'SIGTERM',gone.deps),(e:any)=>e.code==='ESRCH');assert.ok(!gone.calls.some(c=>c.kind==='spawn'));
+ const gone=fake('win32','7 1\n',128);assert.throws(()=>killGroup(100,'SIGTERM',gone.deps),(e:any)=>e.code==='ESRCH');assert.equal(gone.calls.filter(c=>c.kind==='spawn').length,1);
 });
 
 test('POSIX kill is still kill(-pgid, signal)',()=>{

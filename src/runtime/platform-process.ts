@@ -48,8 +48,12 @@ const missing=()=>Object.assign(new Error('process_group_missing'),{code:'ESRCH'
  */
 export function killGroup(pgid:number,signal:NodeJS.Signals,deps:PlatformDeps=defaultDeps(),options:{exclude?:number[]}={}){
  if(deps.platform!=='win32'){process.kill(-pgid,signal);return;}
+ const taskkill=(pids:number[])=>deps.spawnSync(taskkillPath(deps.env),['/T','/F',...pids.flatMap(pid=>['/PID',String(pid)])],{stdio:'ignore',windowsHide:true,timeout:20000});
+ // Fast path (no census): the leader is alive, so /T reaches every descendant still parented under it.
+ if(!options.exclude?.length){const direct=taskkill([pgid]);if(direct.error)throw Object.assign(new Error('process_kill_failed'),{code:'EPERM',cause:direct.error});if(direct.status===0)return;}
+ // Leader gone (or must be spared): find orphans by their recorded parent chain.
  const members=processGroup(pgid,deps).filter(m=>!options.exclude?.includes(m.pid));if(!members.length)throw missing();
- const result=deps.spawnSync(taskkillPath(deps.env),['/T','/F',...members.flatMap(m=>['/PID',String(m.pid)])],{stdio:'ignore',windowsHide:true,timeout:20000});
+ const result=taskkill(members.map(m=>m.pid));
  if(result.error)throw Object.assign(new Error('process_kill_failed'),{code:'EPERM',cause:result.error});
  // Nonzero also covers members that exited between census and taskkill; the caller re-checks the group.
 }
