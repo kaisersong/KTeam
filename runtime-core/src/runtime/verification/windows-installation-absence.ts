@@ -23,7 +23,7 @@ const missingFile = (error: unknown) => (error as NodeJS.ErrnoException)?.code =
 /** Fixed client-bundled read-only helper. This is not a protected Windows
  * controller or a qualification receipt.
  *
- * 0.4 interim rule (CTO-approved): the helper's source is not in this repository, so it cannot be built or
+ * 0.4 interim rule (CTO-approved, follow-up: https://github.com/kaisersong/KTeam/issues/74): the helper's source is not in this repository, so it cannot be built or
  * bundled yet. When the helper AND its manifest are both simply absent, the client is treated as an ordinary
  * install and a warning is emitted. Anything that is present but wrong still denies fallback ('unavailable'):
  * only one of the two files present, a non-regular/linked/oversized file, a bad manifest, a hash mismatch, a
@@ -45,7 +45,7 @@ export function observeWindowsInstallationAbsence(deps: WindowsAbsenceDeps): Win
         const present = (path: string) => { try { deps.lstat(path); return true; } catch (error) { if (missingFile(error)) return false; throw error; } };
         const helperPresent = present(helper), manifestPresent = present(manifestPath);
         if (!helperPresent && !manifestPresent) {
-            deps.warn('windows-installation-absence helper is not bundled (' + helper + '); treating this client as an ordinary install');
+            deps.warn('windows-installation-absence helper is not bundled (' + helper + '); treating this client as an ordinary install (0.4 interim, see https://github.com/kaisersong/KTeam/issues/74)');
             return 'ordinary';
         }
         function read(path: string, limit: number): Buffer { const s = deps.lstat(path); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1 || s.size > limit)

@@ -12,7 +12,7 @@ import {persistentToolEligible,type ToolPermissions} from '../service/tool-permi
 import {KTeamError} from '../errors.js';
 import {openHarnessSession,type HarnessSessionScope} from './harness-session.js';
 /** A Skill source that names a local path (anything else is a registry name/URL). Windows also has drive and UNC paths and backslash-relative forms. */
-const localSkillSource=(source:string)=>/^(?:\/|\.\.?\/|~\/)/.test(source)||(process.platform==='win32'&&(/^(?:\.\.?\\|~\\|\\\\)/.test(source)||/^[A-Za-z]:[\\/]/.test(source)));
+export const localSkillSource=(raw:string,platform:NodeJS.Platform=process.platform)=>{const source=raw.trim();return /^(?:\/|\.\.?\/|~\/)/.test(source)||(platform==='win32'&&(/^(?:\.\.?\\|~\\|\\\\)/.test(source)||/^[A-Za-z]:[\\/]/.test(source)));};
 
 export function harnessWorkspace(configured=''){try{const path=realpathSync(configured||homedir());if(!statSync(path).isDirectory())throw Error();return path;}catch{throw new KTeamError('bot_workspace_invalid');}}
 const expand=(value:string,cwd:string)=>resolve(cwd,value==='~'?homedir():value.startsWith('~/')||(process.platform==='win32'&&value.startsWith('~\\'))?resolve(homedir(),value.slice(2)):value);
