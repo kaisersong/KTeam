@@ -11,9 +11,11 @@ import {nativeEnvironment} from './local-agents.js';
 import {persistentToolEligible,type ToolPermissions} from '../service/tool-permissions.js';
 import {KTeamError} from '../errors.js';
 import {openHarnessSession,type HarnessSessionScope} from './harness-session.js';
+/** A Skill source that names a local path (anything else is a registry name/URL). Windows also has drive and UNC paths and backslash-relative forms. */
+const localSkillSource=(source:string)=>/^(?:\/|\.\.?\/|~\/)/.test(source)||(process.platform==='win32'&&(/^(?:\.\.?\\|~\\|\\\\)/.test(source)||/^[A-Za-z]:[\\/]/.test(source)));
 
 export function harnessWorkspace(configured=''){try{const path=realpathSync(configured||homedir());if(!statSync(path).isDirectory())throw Error();return path;}catch{throw new KTeamError('bot_workspace_invalid');}}
-const expand=(value:string,cwd:string)=>resolve(cwd,value==='~'?homedir():value.startsWith('~/')?resolve(homedir(),value.slice(2)):value);
+const expand=(value:string,cwd:string)=>resolve(cwd,value==='~'?homedir():value.startsWith('~/')||(process.platform==='win32'&&value.startsWith('~\\'))?resolve(homedir(),value.slice(2)):value);
 export interface HarnessContext {permissions?:{store:ToolPermissions;botId:string;bindingRevision?:number};disabledSkills?:string[];assertSkillsCurrent?:()=>void;scope?:HarnessSessionScope;onCloseFailure?:()=>void;onPrepared?:(facts:any)=>void;workspace?:string;signal:AbortSignal;assertCurrent:()=>Promise<void>;onPrompt?:(name:string,input:Record<string,unknown>,meta?:any)=>Promise<boolean>;onTool?:(event:any)=>void;onProcess?:(process:any)=>void|Promise<void>}
 /** Original first-party tool implementations and permission rules; KTeam binds actor, cwd and lifecycle. */
 export async function createHarness(input:HarnessContext){
@@ -51,7 +53,7 @@ export async function createHarness(input:HarnessContext){
   const name=tool.definition.name,args=normalize(name,raw,toolCwd);
   if(privateFence){
    if(name==='render_ui'&&typeof args.output_path==='string'&&args.output_path.trim()&&!privateFence.checkPath(expand(args.output_path,toolCwd)).allowed)throw new KTeamError('harness_private_path_denied',403);
-   if(name==='install_skill'&&typeof args.source==='string'&&/^(?:\/|\.\.?\/|~\/)/.test(args.source)&&!privateFence.checkPath(expand(args.source,toolCwd)).allowed)throw new KTeamError('harness_private_path_denied',403);
+   if(name==='install_skill'&&typeof args.source==='string'&&localSkillSource(args.source)&&!privateFence.checkPath(expand(args.source,toolCwd)).allowed)throw new KTeamError('harness_private_path_denied',403);
    if(['install_skill','uninstall_skill'].includes(name)&&args.scope!=='global'&&!privateFence.checkPath(join(toolCwd,'.kteam','skills')).allowed)throw new KTeamError('harness_private_path_denied',403);
   }
   const eventId=randomUUID();input.onTool?.({id:eventId,name,state:'running',input:core.redactSecrets(JSON.stringify(args)).text.slice(0,8192),startedAt:new Date().toISOString()});

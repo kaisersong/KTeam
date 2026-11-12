@@ -1,3 +1,4 @@
+import {assertWindowsPrivate} from './helpers/private-path.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -41,11 +42,6 @@ test('real Windows ACL: only the current user, SYSTEM and Administrators keep ac
  try{
   const dir=join(root,'credentials');mkdirSync(dir);const file=join(dir,'store.json');writeFileSync(file,'{}');
   protectCredentialPath(dir,true);protectCredentialPath(file,false);
-  for(const path of [dir,file]){
-   const out=execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','$a=Get-Acl -LiteralPath $env:T; "protected=$($a.AreAccessRulesProtected)"; $a.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value }; "me=$([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value)"'],{env:{...process.env,T:path},encoding:'utf8',stdio:['ignore','pipe','pipe']});
-   const lines=out.trim().split(/\r?\n/),me=lines.at(-1)!.slice(3);
-   assert.equal(lines[0],'protected=True');
-   assert.deepEqual([...new Set(lines.slice(1,-1))].sort(),[me,'S-1-5-18','S-1-5-32-544'].sort());
-  }
+  for(const path of [dir,file])assertWindowsPrivate(path);
  }finally{rmSync(root,{recursive:true,force:true});}
 });
