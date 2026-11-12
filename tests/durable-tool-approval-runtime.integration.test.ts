@@ -1,10 +1,12 @@
+import {processGroup} from '../src/runtime/platform-process.js';
 import {nodeFixtureCommand} from './helpers/node-command.js';
 import {DatabaseSync} from 'node:sqlite';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join,resolve} from 'node:path';
 import {mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
+import {powershellPath} from '../src/runtime/platform-process.js';
 import {createServer} from 'node:http';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {sharedRuntime,modelIdentity} from '../src/runtime/native.js';
@@ -23,7 +25,7 @@ for(const scenario of ['allow_once','deny','allow_always','new-deny','profile','
  for(const path of [root,configRoot,workspace])mkdirSync(path,{mode:0o700});
  const previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=configRoot;
  const first=join(workspace,'first.txt'),second=join(workspace,'second.txt'),hooks=join(workspace,'hooks.txt');
- let requests=0,history='',host:{close:()=>Promise<void>;crash:()=>Promise<void>}|undefined;
+ let failure:unknown;let requests=0,history='',host:{close:()=>Promise<void>;crash:()=>Promise<void>}|undefined;
  const provider=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;requests++;history=raw;
   const call=(index:number,id:string,file_path:string,content:string)=>({index,id,type:'function',function:{name:'write',arguments:JSON.stringify({file_path,content})}});
   const delta=requests===1?{role:'assistant',tool_calls:[call(0,'first',first,'ACTUAL_FIRST'),call(1,'second',second,'ACTUAL_SECOND')]}:{role:'assistant',content:'已核对实际工具结果。'};
@@ -59,7 +61,10 @@ for(const scenario of ['allow_once','deny','allow_always','new-deny','profile','
   if(scenario==='crash'){
    await until(async()=>existsSync(hooks)&&readFileSync(hooks,'utf8')==='PA');
    const before=new DatabaseSync(join(root,'team-extensions.sqlite'),{readOnly:true});try{assert.equal(before.prepare("SELECT json_extract(value_json,'$.status') AS status FROM product_operations WHERE id=?").get(approval.id)?.status,'executing');}finally{before.close();}
-   await host.crash();host=await proofHost(root,configRoot,f.upstream.options);
+   const processes=new DatabaseSync(join(root,'team-extensions.sqlite'),{readOnly:true});let ownedPids:number[]=[];try{const rows=processes.prepare("SELECT value_json FROM product_operations WHERE id LIKE 'harness-process:%'").all();const running=rows.map((row:any)=>JSON.parse(row.value_json)).filter((item:any)=>item.state==='running');assert.ok(running.length,'executing permission hook must have a recorded original process owner');ownedPids=[...new Set<number>(running.flatMap((item:any)=>processGroup(item.pid).map(member=>member.pid)))];assert.ok(ownedPids.length);}finally{processes.close();}
+   await host.crash();
+   const drained=Date.now()+10000;let remaining:number[]=[];do{remaining=ownedPids.filter(pid=>{try{process.kill(pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH')throw error;return false;}});if(!remaining.length)break;await new Promise(resolve=>setTimeout(resolve,50));}while(Date.now()<drained);if(remaining.length&&process.platform==='win32'){const facts=execFileSync(powershellPath(),['-NoProfile','-NonInteractive','-Command',`Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in @(${remaining.join(',')}) } | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress`],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:15000});assert.fail('host crash must physically reap the recorded hook tree: '+facts);}assert.deepEqual(remaining,[],'host crash must physically reap the recorded hook tree');
+   host=await proofHost(root,configRoot,f.upstream.options);
    const job=await until(async()=>{const value=(await api.work(member.roomId)).jobs.find((j:any)=>j.id===approval.jobId);return value?.state==='unknown'?value:undefined;});
    assert.equal(job.reason,'host_restarted_result_unknown');assert.equal(requests,1);assert.equal(existsSync(second),false);assert.equal(readFileSync(hooks,'utf8'),'PA');assert.equal((await api.toolApprovals()).approvals.length,0);return;
   }
@@ -67,5 +72,5 @@ for(const scenario of ['allow_once','deny','allow_always','new-deny','profile','
   assert.equal(requests,2);assert.equal(readFileSync(first,'utf8'),'ACTUAL_FIRST');assert.equal(existsSync(second),decision!=='deny');if(decision!=='deny')assert.equal(readFileSync(second,'utf8'),'ACTUAL_SECOND');assert.equal(readFileSync(hooks,'utf8'),decision==='deny'?'P':decision==='allow_always'?'PP':'PAP');
   const tasks=(await f.upstream.aimp(member.roomId,'tasks')).tasks;assert.equal(tasks.length,1);assert.equal(tasks[0].taskRef,taskRef);assert.match(history,/ACTUAL_FIRST|写入|wrote|成功/i);assert.equal((await api.toolApprovals()).approvals.length,0);
   await host.close();host=await proofHost(root,configRoot,f.upstream.options);assert.equal(requests,2);assert.equal(readFileSync(hooks,'utf8'),decision==='deny'?'P':decision==='allow_always'?'PP':'PAP');
- }finally{await host?.close();provider.closeAllConnections();await new Promise<void>(resolve=>provider.close(()=>resolve()));if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}
+ }catch(error){failure=error;throw error;}finally{try{await host?.close();provider.closeAllConnections();await new Promise<void>(resolve=>provider.close(()=>resolve()));if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}catch(cleanup){if(failure)throw new AggregateError([failure,cleanup],'artifact_test_and_cleanup_failed');throw cleanup;}}
 });

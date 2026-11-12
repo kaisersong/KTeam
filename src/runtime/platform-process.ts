@@ -57,8 +57,12 @@ export function killGroup(pgid:number,signal:NodeJS.Signals,deps:PlatformDeps=de
  if(result.error)throw Object.assign(new Error('process_kill_failed'),{code:'EPERM',cause:result.error});
  // Nonzero also covers members that exited between census and taskkill; the caller re-checks the group.
 }
-/** spawn() options for a launcher that must own its descendants: a new POSIX group; Windows has none. */
-export const groupSpawnOptions=(platform:NodeJS.Platform=process.platform)=>platform==='win32'?{detached:false,windowsHide:true}:{detached:true,windowsHide:true};
+/** Keep the private IPC launcher alive long enough to reap its original tree after host death.
+ * libuv otherwise puts Windows children in a kill-on-parent-exit Job, terminating the
+ * launcher before its disconnect handler can reap shell grandchildren that escaped that Job.
+ * https://github.com/libuv/libuv/blob/v1.x/src/win/process.c
+ */
+export const groupSpawnOptions=(platform:NodeJS.Platform=process.platform)=>({detached:true,windowsHide:true});
 export interface ShellInvocation{command:string;args:string[];windowsVerbatimArguments?:boolean}
 /** The system shell for one command line. Windows mirrors Node's own `shell:true` (cmd /d /s /c "..."). */
 export function shellInvocation(commandLine:string,platform:NodeJS.Platform=process.platform,env:NodeJS.ProcessEnv=process.env):ShellInvocation{

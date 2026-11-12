@@ -67,10 +67,10 @@ test('POSIX kill is still kill(-pgid, signal)',()=>{
  assert.deepEqual(seen,[[-123,'SIGTERM'],[-123,'SIGKILL']]);assert.equal(calls.length,0);
 });
 
-test('group spawn options: detached POSIX group, no detached on Windows, always hidden',()=>{
+test('group spawn options: private IPC launcher survives host death on each platform and stays hidden',()=>{
  assert.deepEqual(groupSpawnOptions('darwin'),{detached:true,windowsHide:true});
  assert.deepEqual(groupSpawnOptions('linux'),{detached:true,windowsHide:true});
- assert.deepEqual(groupSpawnOptions('win32'),{detached:false,windowsHide:true});
+ assert.deepEqual(groupSpawnOptions('win32'),{detached:true,windowsHide:true});
 });
 
 test('shell: /bin/sh -c on POSIX, cmd /d /s /c with verbatim quoting on Windows',()=>{
