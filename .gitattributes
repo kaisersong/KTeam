@@ -1,0 +1,27 @@
+# Keep working-tree text as LF on every platform, including Windows CI.
+# Windows runners default to core.autocrlf=true; without this, locked
+# sources such as src/vendor/kswarm/runtime-capabilities.js check out as
+# CRLF and fail verify:sources with source_digest_mismatch.
+* text=auto eol=lf
+
+# Binary assets must not be line-ending converted. text=auto can mis-detect
+# formats whose headers contain CR/LF (PNG starts with \x89PNG\r\n\x1a\n).
+# `binary` is -text -diff -merge; also unset eol so the * rule cannot
+# re-enable conversion. Rules cover types present in the repo (png/ico/icns)
+# and other common binaries so a later add is not rewritten on checkout.
+*.png binary -eol
+*.ico binary -eol
+*.icns binary -eol
+*.jpg binary -eol
+*.jpeg binary -eol
+*.gif binary -eol
+*.webp binary -eol
+*.dmg binary -eol
+*.zip binary -eol
+*.woff binary -eol
+*.woff2 binary -eol
+*.ttf binary -eol
+*.otf binary -eol
+*.node binary -eol
+*.wasm binary -eol
+*.pdf binary -eol
