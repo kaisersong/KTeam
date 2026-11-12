@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {join,resolve} from 'node:path';
 import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
-import {processBirth} from '../src/runtime/platform-process.js';
+import {assertProcessGone} from './helpers/process-gone.js';
 
 async function fixture(){
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
@@ -89,8 +89,8 @@ test('real MCP stdio is supervised, records ownership before payload, and closes
   assert.equal(existsSync(join(f.root,'provider.pid')),true);
   assert.match(await owner.registry.executeTool('mcp__owned__proof',{}),/MCP_REAL_PROCESS_92/);
   assert.ok(resources.some(r=>r.state==='preparing'&&r.pid));assert.ok(resources.some(r=>r.state==='running'&&r.birth));
-  const pids=resources.filter(r=>r.state==='running').map(r=>r.pid);await owner.close();owner=undefined;
-  for(const pid of pids)assert.throws(()=>process.kill(pid,0));
+  const running=resources.filter(r=>r.state==='running');await owner.close();owner=undefined;
+  for(const r of running)assertProcessGone(r);
  }finally{await owner?.close();f.close();}
 });
 
@@ -121,6 +121,6 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
    if(process.platform==='win32'){assert.deepEqual(result.removed,[],JSON.stringify(result));assert.deepEqual(result.skipped,[{branch:'fixture-gc',reason:'path_unknown'}],JSON.stringify(result));assert.equal(existsSync(second.path),true);}
    else{assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);}
   });
-  assert.ok(records.filter(r=>r.state==='running').length>=5);/* Windows recycles pids quickly (CI saw a recorded leader pid answer kill(pid,0) after its drain proof), so the check there is identity-based like production: the recorded (pid, CreationDate) must no longer exist. POSIX unchanged. */for(const r of records.filter(r=>r.state==='running')){if(process.platform==='win32'){assert.ok(r.birth,JSON.stringify(r));assert.notEqual(processBirth(r.pid),r.birth,JSON.stringify(r));}else assert.throws(()=>process.kill(r.pid,0));}
+  assert.ok(records.filter(r=>r.state==='running').length>=5);for(const r of records.filter(r=>r.state==='running'))assertProcessGone(r);
  }finally{await platform?.dispose();f.close();}
 });
