@@ -8,6 +8,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const lock = JSON.parse(readFileSync(join(root, 'sources.lock.json'), 'utf8'));
 // The design docs live in the separate mydocs checkout. Build and tests never read them;
 // when the docs link is present it must still point at mydocs/kteam and match the pinned digests.
+// The public AIMP v3.1 spec, schemas and test vectors live in spec/aimp/ and are always verified.
 const docs = join(root, 'docs');
 const docsLinked = (() => { try { lstatSync(docs); } catch { return false; } return existsSync(docs); })();
 if (docsLinked && (!lstatSync(docs).isSymbolicLink() || readlinkSync(docs) !== '../mydocs/kteam'

@@ -1,3 +1,4 @@
+import {removeTempRoot} from './helpers/tmp-root.js';
 import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import { test } from 'node:test';
@@ -5,7 +6,7 @@ import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
 import {realpathSync, rmSync, mkdirSync, writeFileSync} from 'node:fs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { initConfig } from '../src/service/config.js';
 import { startHost } from '../src/service/server.js';
@@ -35,7 +36,7 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
   const brokerUrl = 'http://127.0.0.1:' + server.address().port;
   let logs = '';
   const child = fork(join(source, 'src/server/index.js'), [], {
-    cwd: root, silent: true, execArgv: ['--preserve-symlinks', '--preserve-symlinks-main', '--import', join(project, 'tests/loopback-test-host.mjs')],
+    cwd: root, silent: true, execArgv: ['--preserve-symlinks', '--preserve-symlinks-main', '--import', pathToFileURL(join(project, 'tests/loopback-test-host.mjs')).href],
     env: { ...process.env, HOME: home, USERPROFILE: home, KSWARM_PORT: '0', KSWARM_DATA_ROOT: join(home, '.kswarm'),
       BROKER_URL: brokerUrl, KSWARM_DESKTOP_MUTATION_TOKEN: kswarmToken, KSWARM_RUNTIME_TOKEN: '',
       INTENT_BROKER_KSWARM_TOKEN: '', PATH: dirname(process.execPath) + ':/usr/bin:/bin', ENABLE_HUMAN_ESCALATION: '0' },
@@ -113,6 +114,6 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
   } finally {
     await host?.close(); await stop(child); broker.close(); await server.close();
     assert.ok(child.exitCode !== null || child.signalCode !== null, 'own upstream process must be reaped');
-    rmSync(root, { recursive: true, force: true });
+    removeTempRoot(root);
   }
 });

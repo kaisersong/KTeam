@@ -1,8 +1,8 @@
 import {initStandalone} from '../src/runtime/managed-services.js';
-import {app,BrowserWindow,ipcMain,Menu,Notification} from 'electron';
+import {app,BrowserWindow,dialog,ipcMain,Menu,Notification} from 'electron';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
-import {existsSync,openSync,closeSync,readFileSync} from 'node:fs';
+import {existsSync,openSync,closeSync,readFileSync,appendFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {nativeActions} from './native-actions.js';
 import {dataRoot,initConfig} from '../src/service/config.js';
@@ -10,6 +10,7 @@ import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
 import {NotificationDelivery} from './notification-delivery.js';
 import {hostConnection} from './host-connection.js';
+import {createKTeamUpdater,defaultUpdaterEnvironment,redactUpdaterDiagnostic} from './updater.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
@@ -17,6 +18,22 @@ if(!locked)app.quit();
 let window:BrowserWindow|undefined;let pendingNotificationNavigation:any;let notificationDelivery:NotificationDelivery|undefined;let notificationTimer:NodeJS.Timeout|undefined;
 const root=dataRoot();
 const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
+// Auto-update: KTeam's own GitHub Releases only (see desktop/updater.ts). Log lives in KTeam's data dir.
+function logUpdater(event:string,diagnostic?:string){try{appendFileSync(join(root,'updater.log'),`${new Date().toISOString()} ${event}${diagnostic?' '+redactUpdaterDiagnostic(diagnostic):''}\n`,{mode:0o600});}catch{}}
+const updater=createKTeamUpdater(defaultUpdaterEnvironment({isPackaged:app.isPackaged}),{onDownloaded:version=>void promptRestartForUpdate(version)});
+const updaterHandoff=updater.createHandoff();
+async function promptRestartForUpdate(version:string){
+ const options={type:'info' as const,buttons:['立即重启并更新','稍后'],defaultId:0,cancelId:1,title:'KTeam 更新',message:`KTeam ${version} 已下载`,detail:'重启 KTeam 即可完成更新。选择「稍后」的话，下次退出 KTeam 时会自动安装。'};
+ const picked=window&&!window.isDestroyed()?await dialog.showMessageBox(window,options):await dialog.showMessageBox(options);
+ if(picked.response===0){const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
+}
+async function checkForUpdatesFromMenu(){
+ await updater.checkForUpdates({requestSource:'user'});
+ const status=updater.getStatus();
+ if(status.downloaded&&status.version){await promptRestartForUpdate(status.version);return;}
+ const message=status.error?`检查更新失败：${redactUpdaterDiagnostic(status.error)}`:status.available?`正在后台下载 KTeam ${status.version??''}，下载完成后会提示你重启。`:`KTeam ${app.getVersion()} 已是最新版本。`;
+ await dialog.showMessageBox({type:status.error?'warning':'info',buttons:['好'],title:'KTeam 更新',message});
+}
 function resources(){return app.getAppPath().endsWith('.asar')?app.getAppPath()+'.unpacked':app.getAppPath();}
 let ensuringHost:Promise<void>|undefined;
 function ensureHost(){return ensuringHost??=(ensureHostBody().finally(()=>{ensuringHost=undefined;}));}
@@ -28,7 +45,7 @@ async function ensureHostBody(){
  }
  const output=openSync(join(root,'host.log'),'a',0o600);
  let child;
- try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','kteam-runtime.mjs')}});}finally{closeSync(output);}
+ try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,windowsHide:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','kteam-runtime.mjs')}});}finally{closeSync(output);}
  child.unref();
  const deadline=Date.now()+15000;
  let failed:Error|undefined;child.once('error',error=>{failed=error;});
@@ -61,8 +78,11 @@ if(locked){
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}
   });
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'KTeam',submenu:[{label:'关于 KTeam',role:'about'},{type:'separator'},{label:'隐藏 KTeam',role:'hide'},{type:'separator'},{label:'退出 KTeam（后台继续工作）',accelerator:'Command+Q',click:()=>app.quit()}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'窗口',submenu:[{role:'minimize'},{role:'zoom'}]}]));
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'KTeam',submenu:[{label:'关于 KTeam',role:'about'},{label:'检查更新…',click:()=>void checkForUpdatesFromMenu()},{type:'separator'},{label:'隐藏 KTeam',role:'hide'},{type:'separator'},{label:'退出 KTeam（后台继续工作）',accelerator:'Command+Q',click:()=>app.quit()}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'窗口',submenu:[{role:'minimize'},{role:'zoom'}]}]));
   await show();app.on('activate',()=>void show());
+  void updater.setup(logUpdater,{requestSource:'scheduler'}).catch(error=>logUpdater('setup-failed',String(error)));
  });
+ // The only place an install handoff is committed: the real before-quit (see desktop/updater-handoff.ts).
+ app.on('before-quit',()=>{if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();});
  app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 }

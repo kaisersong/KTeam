@@ -15,6 +15,7 @@ import {SkillLearning} from './skill-learning.js';
 import {WorkNotifications,saveNotificationPreferences} from './work-notifications.js';
 import {BotCapabilities} from './bot-capabilities.js';
 import {Followups} from './followups.js';
+import {legacySharedNoticeView,dismissLegacySharedNotice} from './legacy-notice.js';
 import {ensureSharedServices} from '../runtime/services.js';
 import {WorkRecovery} from './work-recovery.js';
 import {TeamRoles} from './team-roles.js';
@@ -162,6 +163,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});
         }
+        if(url.pathname==='/v1/app/notices/legacy-shared-services'&&req.method==='GET')return send(res,200,legacySharedNoticeView(options.root));
+        if(url.pathname==='/v1/app/notices/legacy-shared-services/dismiss'&&req.method==='POST'){fields(record(await body(req)),[]);return send(res,200,dismissLegacySharedNotice(options.root));}
         if(url.pathname==='/v1/app/voice/transcribe'&&req.method==='POST')return send(res,200,await transcribeAudio(await body(req,12*1024*1024)));
         if(url.pathname==='/v1/app/tool-permissions'&&req.method==='GET')return send(res,200,{ok:true,permissions:approvals.permissions.list()});
         if(url.pathname==='/v1/app/tool-permissions/revoke'&&req.method==='POST')return send(res,200,approvals.permissions.revoke(await body(req)));
@@ -224,7 +227,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
       if(url.pathname==='/v1/proposals/accept'&&req.method==='POST'){const input=record(await body(req));if(typeof input.roomId!=='string'||typeof input.proposalId!=='string'||typeof input.expectedHash!=='string')throw new KTeamError('invalid_input');const result=await coordinator.accept(input as any,{requestSource:'user'});void automation.tick();return send(res,200,{ok:true,...result});}
       if(url.pathname==='/v1/model-settings'&&req.method==='GET')return send(res,200,await modelSettings.view());
-      if(req.method==='POST'&&url.pathname.startsWith('/v1/model-settings/')){const action=url.pathname.slice('/v1/model-settings/'.length),input=await body(req,2*1024*1024);if(action==='model')return send(res,200,await modelSettings.save(input));if(action==='storage')return send(res,200,await modelSettings.storage(input));if(action==='decision')return send(res,200,await modelSettings.decision(input));if(action==='import-provider')return send(res,200,await modelSettings.importProvider(input));throw new KTeamError('route_not_found',404);}
+      if(req.method==='POST'&&url.pathname.startsWith('/v1/model-settings/')){const action=url.pathname.slice('/v1/model-settings/'.length),input=await body(req,2*1024*1024);if(action==='model')return send(res,200,await modelSettings.save(input));if(action==='storage')return send(res,200,await modelSettings.storage(input));if(action==='decision')return send(res,200,await modelSettings.decision(input));if(action==='import-xiaok')return send(res,200,await modelSettings.importXiaok(input));if(action==='import-provider')return send(res,200,await modelSettings.importProvider(input));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/services/ensure'&&req.method==='POST'){await (ensuringServices??=(ensureSharedServices(loadConfig(options.root),options.root).finally(()=>{ensuringServices=undefined;})));return send(res,200,{ok:true,upstream:await upstream.probe()});}
       if (url.pathname === '/v1/models' && req.method === 'GET') return send(res,200,{ok:true,...await modelCatalog()});
       if (url.pathname === '/v1/bot-create' && req.method === 'POST') {

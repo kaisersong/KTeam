@@ -2,10 +2,11 @@ import {assertWindowsPrivate,assertWindowsPrivateMany} from './windows-security.
 import { mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync,existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { KTeamError, fields, record } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { loopbackUrl, type UpstreamOptions } from '../adapters/upstream.js';
+import { recordLegacySharedServicesDropped } from './legacy-notice.js';
 
 export const CLIENTS = ['kteam-main','kteam-companion'] as const;
 export type ClientId = typeof CLIENTS[number];
@@ -48,15 +49,28 @@ export function validateConfig(value: unknown): Config {
   for (const key of ['brokerTokenFile','kswarmTokenFile','managedServiceConfig']) if (config[key] !== undefined && (typeof config[key] !== 'string' || !config[key])) throw new KTeamError('invalid_token_reference');
   return config as unknown as Config;
 }
+// 0.2 configs pointed KTeam at services shared with xiaok. The value is never read; only the key's presence
+// is used to show the one-time 0.3 notice. This is the single allowlisted literal in tests/decoupling.test.ts.
+const LEGACY_SHARED_SERVICE_KEY='xiaokActivityConfig';
 let legacyWarned=false;
 /** Keys an older KTeam wrote but this version no longer uses are ignored (never read, never followed),
- * with one warning per process. New configs are still validated strictly by initConfig. */
-function dropLegacyKeys(value: unknown): unknown {
+ * with one warning per process. The config file itself is never rewritten here; the notice state is
+ * persisted separately so it survives restarts even if the file is later rewritten without the key. New configs are still validated strictly by initConfig. */
+function dropLegacyKeys(value: unknown, root: string): unknown {
   const config = record(value), legacy = Object.keys(config).filter(key => !CONFIG_KEYS.includes(key));
   if (!legacy.length) return config;
+  if (Object.hasOwn(config, LEGACY_SHARED_SERVICE_KEY)) recordLegacySharedServicesDropped(root);
   if (!legacyWarned) { legacyWarned = true; process.emitWarning(`KTeam config.json: ignoring ${legacy.length} legacy key(s) no longer used: ${legacy.slice(0, 8).map(key => JSON.stringify(key.slice(0, 64))).join(', ')}`, { code: 'KTEAM_CONFIG_LEGACY_KEYS' }); }
   return Object.fromEntries(Object.entries(config).filter(([key]) => CONFIG_KEYS.includes(key)));
 }
+/** True for a config an older KTeam (0.2) wrote to run on shared services: it points at a managed service plan
+ * without KTeam-owned credential files. Such a config can never connect in 0.3, so standalone init archives it
+ * and creates KTeam's own services. Explicitly external configs (no managed plan) are left alone. */
+export function isLegacySharedConfig(value: unknown): boolean {
+  const config = record(value);
+  return typeof config.managedServiceConfig === 'string' && (typeof config.brokerTokenFile !== 'string' || typeof config.kswarmTokenFile !== 'string');
+}
+export function readRawConfig(root: string): unknown { return parseJson(privateRead(join(root, 'config.json'))); }
 const warmedWindowsRoots=new Set<string>();
 function warmWindowsRoot(root:string){
  if(process.platform!=='win32')return;
@@ -68,7 +82,7 @@ function warmWindowsRoot(root:string){
 }
 export function loadConfig(root: string): Config {
  warmWindowsRoot(root);
-  return validateConfig(dropLegacyKeys(parseJson(privateRead(join(root, 'config.json')))));
+  return validateConfig(dropLegacyKeys(parseJson(privateRead(join(root, 'config.json'))), root));
 }
 export function upstreamOptions(config: Config): UpstreamOptions {
   return { ...config, brokerToken: config.brokerTokenFile ? privateRead(resolve(config.brokerTokenFile)) : undefined,
@@ -79,7 +93,8 @@ export function clientToken(root: string, client: ClientId): string {
   return privateRead(join(root, client + '.token'));
 }
 export function socketPath(root: string): string {
-  if (process.platform === 'win32') throw new KTeamError('windows_host_not_verified');
+  // Windows has no unix sockets for this: one named pipe per KTeam data dir (case-insensitive paths).
+  if (process.platform === 'win32') return '\\\\.\\pipe\\kteam-host-' + createHash('sha256').update(resolve(root).toLowerCase()).digest('hex').slice(0, 32);
   const path = join(root, 'host.sock');
   if (Buffer.byteLength(path) > 100) throw new KTeamError('socket_path_too_long');
   return path;

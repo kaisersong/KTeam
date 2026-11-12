@@ -1,7 +1,7 @@
 import {NotificationSettings} from './notification-settings';
 import {settingsAutosave} from './autosave-api';
 import React,{useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Monitor,Palette,RefreshCw,Search,Settings,Shield,SlidersHorizontal,Sparkles,Users} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Monitor,Palette,RefreshCw,Search,Server,Settings,Shield,SlidersHorizontal,Sparkles,Users} from 'lucide-react';
 import {api,explain,type Bot} from './api';
 import type {AppPreferences} from '../../../src/service/app-preferences';
 import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
@@ -18,7 +18,7 @@ function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'ap
 function Loading(){return <p className="settings-loading" role="status"><LoaderCircle size={17} className="spinner"/>正在读取…</p>;}
 function Failure({error,retry}:{error:string;retry:()=>void}){return <div className="settings-error" role="alert"><p>{error}</p><button className="secondary" onClick={retry}><RefreshCw size={14}/>重新读取</button></div>;}
 function Section({title,description,children}:{title:string;description?:string;children:React.ReactNode}){return <section className="settings-block"><h2>{title}</h2>{description&&<p className="settings-description">{description}</p>}{children}</section>;}
-const sections=[['general','通用设置',SlidersHorizontal],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','Search / Fetch',Search],['mcp','MCP 服务器',Shield],['cua','电脑操作 CUA',Monitor],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
+const sections=[['general','通用设置',SlidersHorizontal],['services','服务',Server],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','Search / Fetch',Search],['mcp','MCP 服务器',Shield],['cua','电脑操作 CUA',Monitor],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
 type Page=typeof sections[number][0];
 
 export function SettingsWorkspace({initialPage='general',preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
@@ -26,6 +26,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229&&!e.defaultPrevented){if(document.activeElement instanceof HTMLElement)document.activeElement.blur();onClose();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[onClose]);
  return <div className="settings-workspace"><aside className="settings-nav"><button className="settings-back" onClick={onClose}><ArrowLeft size={17}/>返回会话</button><h1>设置</h1><nav aria-label="设置分类">{sections.map(([id,label,Icon])=><button key={id} aria-current={page===id?'page':undefined} onClick={()=>setPage(id)}><Icon size={18}/><span>{label}</span></button>)}</nav><p>KTeam<span>你的本地 AI 工作空间</span></p></aside><div className="settings-content" key={page} tabIndex={-1}>
  {page==='general'&&<><ProfileSettings preferences={preferences} onSaved={onPreferences}/><PreferencesPanel kind="general" preferences={preferences} onSaved={onPreferences}/><NotificationSettings/><Services/><Section title="你的 AI 团队" description="创建成员后，在 Bot 设置中选择模型、职责与工作目录。"><button className="secondary" onClick={onCreate}>创建 Bot / 接入 Agent<ArrowRight size={15}/></button></Section></>}
+ {page==='services'&&<Services/>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved}/>}
  {page==='decision'&&<DecisionPanel/>}
  {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/></>}
