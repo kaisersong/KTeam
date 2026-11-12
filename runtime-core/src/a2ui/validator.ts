@@ -1,5 +1,5 @@
 import { assertJsonBudget } from './json-budget.js';
-import { A2UI_LIMITS, SAFE_A2UI_CATALOG_ID, type A2UIComponent, type ValidationResult } from './protocol.js';
+import { A2UI_LIMITS, SAFE_A2UI_CATALOG_ID, isAcceptedA2uiVersion, type A2UIComponent, type ValidationResult } from './protocol.js';
 import { FORBIDDEN_KEYS, byteLength, containsDangerousPrototypeKey, fail, isRecord, validateChart } from './validation-helpers.js';
 export { assertRenderUiInput, normalizeRenderUiInput, validateRenderUiInput } from './input-validator.js';
 
@@ -42,17 +42,18 @@ export function validateLegacyA2uiMessages(messages: unknown): ValidationResult 
   let createCount = 0;
   let components: A2UIComponent[] = [];
   let dataModel: unknown = {};
+  let deleted = false;
 
   for (const raw of messages) {
     if (!isRecord(raw)) return fail('message 必须是对象');
-    if (raw.version !== 1) return fail('未知协议版本');
-    if (Object.keys(raw).some(key => !['version','createSurface','updateComponents','updateDataModel','destroySurface'].includes(key))) return fail('未知 message 字段');
-    const operations = ['createSurface', 'updateComponents', 'updateDataModel', 'destroySurface']
+    if (!isAcceptedA2uiVersion(raw.version)) return fail('未知协议版本');
+    const messageKeys = ['version','createSurface','updateComponents','updateDataModel','destroySurface','deleteSurface'];
+    if (Object.keys(raw).some(key => !messageKeys.includes(key))) return fail('未知 message 字段');
+    const operations = ['createSurface', 'updateComponents', 'updateDataModel', 'destroySurface', 'deleteSurface']
       .filter((key) => Object.prototype.hasOwnProperty.call(raw, key));
     if (operations.length !== 1) return fail('message 必须且只能包含一个操作');
     const operation = operations[0];
-    if (operation === 'destroySurface') return fail('不允许的操作: destroySurface');
-    if (operation !== 'createSurface' && operation !== 'updateComponents' && operation !== 'updateDataModel') return fail(`不允许的操作: ${operation}`);
+    if (operation !== 'createSurface' && operation !== 'updateComponents' && operation !== 'updateDataModel' && operation !== 'destroySurface' && operation !== 'deleteSurface') return fail(`不允许的操作: ${operation}`);
 
     if (operation === 'createSurface') {
       createCount++;
@@ -85,6 +86,25 @@ export function validateLegacyA2uiMessages(messages: unknown): ValidationResult 
       continue;
     }
 
+    if (operation === 'destroySurface' || operation === 'deleteSurface') {
+      const body = operation === 'deleteSurface' ? raw.deleteSurface : raw.destroySurface;
+      if (!isRecord(body)) return fail(`${operation} 无效`);
+      for (const key of Object.keys(body)) {
+        if (key !== 'surfaceId') {
+          if (FORBIDDEN_KEYS.has(key)) return fail(`禁止的 prop: ${operation}.${key}`);
+          return fail(`未知 prop: ${operation}.${key}`);
+        }
+      }
+      if (typeof body.surfaceId !== 'string' || !body.surfaceId) return fail('surfaceId 无效');
+      if (!surfaceMatches(surfaceId, body.surfaceId)) return fail('surfaceId 不一致');
+      surfaceId = '';
+      rootId = '';
+      components = [];
+      dataModel = {};
+      deleted = true;
+      continue;
+    }
+
     const updateData = raw.updateDataModel;
     if (!isRecord(updateData) || !surfaceId) return fail('updateDataModel 无效');
     for (const key of Object.keys(updateData)) {
@@ -100,6 +120,10 @@ export function validateLegacyA2uiMessages(messages: unknown): ValidationResult 
     dataModel = updateData.value ?? {};
   }
 
+  if (!surfaceId) {
+    if (deleted && createCount >= 1) return { ok: true };
+    return fail('必须包含一个 createSurface');
+  }
   if (createCount !== 1) return fail('必须包含一个 createSurface');
   if (!rootId) return fail('root surface 缺失');
   if (components.length === 0) return fail('components 为空');

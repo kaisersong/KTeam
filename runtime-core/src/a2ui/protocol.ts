@@ -3,6 +3,11 @@ export const SAFE_A2UI_CATALOG_ID = 'xiaok-safe';
 export const A2UI_PROTOCOL_VERSION = '1.0';
 export const A2UI_V1_CATALOG_ID = 'xiaok-safe/1.0';
 
+/** v1.0 wire version, plus the legacy numeric 1 used by earlier messages. */
+export function isAcceptedA2uiVersion(version: unknown): version is 1 | '1.0' {
+  return version === 1 || version === '1.0';
+}
+
 export type ValidationResult = { ok: true } | { ok: false; reason: string };
 
 export const RENDER_UI_SECTION_KINDS = ['heading', 'text', 'metric', 'table', 'list', 'divider', 'chart'] as const;
@@ -68,6 +73,18 @@ export type A2UIMessage =
         surfaceId: string;
         path: '';
         value: Record<string, unknown>;
+      };
+    }
+  | {
+      version: 1;
+      destroySurface: {
+        surfaceId: string;
+      };
+    }
+  | {
+      version: 1;
+      deleteSurface: {
+        surfaceId: string;
       };
     };
 
@@ -145,4 +162,5 @@ export type A2UIV1Message =
   | { version: '1.0'; createSurface: { surfaceId: string; catalogId: string; components?: A2UIV1Component[]; dataModel?: Record<string, unknown> } }
   | { version: '1.0'; updateComponents: { surfaceId: string; components: A2UIV1Component[] } }
   | { version: '1.0'; updateDataModel: { surfaceId: string; path?: string; value: unknown } }
-  | { version: '1.0'; deleteSurface: { surfaceId: string } };
+  | { version: '1.0'; deleteSurface: { surfaceId: string } }
+  | { version: '1.0'; destroySurface: { surfaceId: string } };
