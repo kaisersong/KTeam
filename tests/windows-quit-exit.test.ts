@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { WINDOWS_QUIT_FORCE_EXIT, WINDOWS_QUIT_FORCE_EXIT_MS, quitWindowsDesktop } from '../desktop/windows-desktop-quit.js';
+import { WINDOWS_QUIT_FORCE_EXIT, WINDOWS_QUIT_FORCE_EXIT_DEFERRED, WINDOWS_QUIT_FORCE_EXIT_MS, quitWindowsDesktop, scheduleUnrefTimer } from '../desktop/windows-desktop-quit.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -51,6 +51,35 @@ describe('quitWindowsDesktop', () => {
     assert.deepEqual(events, ['stopPolling', 'stopHostTree', 'quit']);
     assert.equal(scheduled()?.delayMs, WINDOWS_QUIT_FORCE_EXIT_MS);
   });
+
+  it('does not force-exit while an update install handoff is pending and uncommitted', async () => {
+    const { events, hooks: input, logs, scheduled } = hooks();
+    let pending = true;
+    await quitWindowsDesktop({ ...input, canForceExit: () => !pending });
+    scheduled()!.callback();
+    assert.equal(events.includes('exit:0'), false);
+    assert.ok(logs.some(entry => entry[0] === WINDOWS_QUIT_FORCE_EXIT_DEFERRED && entry[2] === 'warn'));
+    pending = false;
+    scheduled()!.callback();
+    assert.equal(events.at(-1), 'exit:0');
+  });
+
+  it('the default fallback timer is unref\'d so it never keeps the process alive by itself', () => {
+    let fired = false;
+    const timer = scheduleUnrefTimer(() => { fired = true; }, 60_000);
+    try {
+      assert.equal(timer.hasRef(), false);
+    } finally {
+      clearTimeout(timer);
+    }
+    assert.equal(fired, false);
+  });
+
+  it('uses the unref\'d default timer when no scheduler is injected', () => {
+    const src = readFileSync(join(repoRoot, 'desktop', 'windows-desktop-quit.ts'), 'utf8');
+    assert.match(src, /else scheduleUnrefTimer\(fire, forceAfter\);/);
+    assert.doesNotMatch(src, /else setTimeout\(fire/);
+  });
 });
 
 describe('main.ts gates the last-window forced quit on win32 and leaves the macOS path unchanged', () => {
@@ -58,7 +87,7 @@ describe('main.ts gates the last-window forced quit on win32 and leaves the macO
     const main = readFileSync(join(repoRoot, 'desktop', 'main.ts'), 'utf8');
     assert.match(main, /app\.on\('window-all-closed',\(\)=>\{if\(process\.platform==='win32'\)\{void quitWindowsOnLastWindow\(\);return;\}if\(process\.platform!=='darwin'\)app\.quit\(\);\}\);/);
     assert.match(main, /if\(process\.platform!=='win32'\)return;\n if\(windowsDesktopQuitStarted\)return;/);
-    assert.match(main, /stopPolling:\(\)=>updater\.stopPolling\(\),stopHostTree:stopWindowsHostIfNeeded,quit:\(\)=>app\.quit\(\),exit:code=>app\.exit\(code\),log:logUpdater/);
+    assert.match(main, /stopPolling:\(\)=>updater\.stopPolling\(\),stopHostTree:stopWindowsHostIfNeeded,quit:\(\)=>app\.quit\(\),exit:code=>app\.exit\(code\),log:logUpdater,canForceExit:\(\)=>!updaterHandoff\.hasPendingIntent/);
     assert.match(main, /if\(updaterHandoff\.commitHandoffOnBeforeQuit\(\)\.committed\)updater\.completeHandoff\(\);/);
     assert.match(main, /if\(updaterHandoff\.commitHandoffOnBeforeQuit\(\)\.committed\)updater\.completeHandoff\(\);app\.quit\(\);/);
     assert.doesNotMatch(main, /Tray/);

@@ -9,6 +9,19 @@
  */
 export const WINDOWS_QUIT_FORCE_EXIT_MS = 3_000;
 export const WINDOWS_QUIT_FORCE_EXIT = 'windows-quit-forced-exit';
+export const WINDOWS_QUIT_FORCE_EXIT_DEFERRED = 'windows-quit-forced-exit-deferred';
+
+/**
+ * Default fallback timer. It is unref'd so it never keeps the event loop alive on
+ * its own: a clean quit exits immediately instead of lingering 3s and always
+ * taking the app.exit(0) path. It still fires if something else keeps the
+ * process alive, which is exactly the hang it guards against.
+ */
+export function scheduleUnrefTimer(callback: () => void, delayMs: number): ReturnType<typeof setTimeout> {
+  const timer = setTimeout(callback, delayMs);
+  timer.unref?.();
+  return timer;
+}
 
 export interface WindowsDesktopQuitHooks {
   stopPolling: () => void | Promise<void>;
@@ -20,6 +33,8 @@ export interface WindowsDesktopQuitHooks {
   wait?: (ms: number) => Promise<void>;
   schedule?: (callback: () => void, delayMs: number) => void;
   forceExitAfterMs?: number;
+  /** Return false while an update install handoff is pending but not yet committed, so it is not cut off. */
+  canForceExit?: () => boolean;
 }
 
 export async function quitWindowsDesktop(hooks: WindowsDesktopQuitHooks): Promise<void> {
@@ -29,12 +44,16 @@ export async function quitWindowsDesktop(hooks: WindowsDesktopQuitHooks): Promis
   } finally {
     const forceAfter = hooks.forceExitAfterMs ?? WINDOWS_QUIT_FORCE_EXIT_MS;
     const fire = () => {
+      if (hooks.canForceExit && !hooks.canForceExit()) {
+        hooks.log(WINDOWS_QUIT_FORCE_EXIT_DEFERRED, 'update install handoff pending and not committed; not forcing exit', 'warn');
+        return;
+      }
       hooks.log(WINDOWS_QUIT_FORCE_EXIT, `process still alive ${forceAfter}ms after app.quit`, 'warn');
       hooks.exit(0);
     };
     if (hooks.schedule) hooks.schedule(fire, forceAfter);
     else if (hooks.wait) void hooks.wait(forceAfter).then(fire);
-    else setTimeout(fire, forceAfter);
+    else scheduleUnrefTimer(fire, forceAfter);
     hooks.quit();
   }
 }

@@ -42,7 +42,7 @@ async function quitWindowsOnLastWindow(){
  if(process.platform!=='win32')return;
  if(windowsDesktopQuitStarted)return;
  windowsDesktopQuitStarted=true;
- try{await quitWindowsDesktop({stopPolling:()=>updater.stopPolling(),stopHostTree:stopWindowsHostIfNeeded,quit:()=>app.quit(),exit:code=>app.exit(code),log:logUpdater});}catch(error){logUpdater('windows-quit-failed',String(error));}
+ try{await quitWindowsDesktop({stopPolling:()=>updater.stopPolling(),stopHostTree:stopWindowsHostIfNeeded,quit:()=>app.quit(),exit:code=>app.exit(code),log:logUpdater,canForceExit:()=>!updaterHandoff.hasPendingIntent});}catch(error){logUpdater('windows-quit-failed',String(error));}
 }
 
 
