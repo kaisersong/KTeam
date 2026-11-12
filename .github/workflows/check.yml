@@ -9,9 +9,8 @@ jobs:
         node: ['22.22.0', '24.16.0']
     runs-on: ${{ matrix.os }}
     # A hung test process must not hold a runner for the 6h default.
-    timeout-minutes: 30
-    # 0.3 Windows port in progress: Windows results are visible but not yet blocking.
-    # Remove this line once the Windows port lands and Windows is green.
+    timeout-minutes: 40
+    # All platforms are blocking, including Windows.
     env:
       KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
     defaults:
@@ -67,7 +66,8 @@ jobs:
         timeout-minutes: 5
         working-directory: kteam
       - run: npm run check
-        # Measured Windows ACL/TLS fixture setup exceeds ten minutes; keep a finite full-suite deadline.
+        # Node 22 on Windows was still passing cases at the measured 25 minute cutoff.
+        # Keep a finite 35 minute suite budget within the 40 minute job watchdog.
         # Every original matrix job and assertion still runs, and any failed test remains a failure.
-        timeout-minutes: ${{ runner.os == 'Windows' && 25 || 10 }}
+        timeout-minutes: ${{ runner.os == 'Windows' && 35 || 10 }}
         working-directory: kteam
