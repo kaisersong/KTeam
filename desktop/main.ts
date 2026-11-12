@@ -8,8 +8,10 @@ import {nativeActions} from './native-actions.js';
 import {dataRoot,initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
-import {autoUpdateEnabledForChannel,createKTeamUpdater,defaultUpdaterEnvironment,PORTABLE_UPDATE_MESSAGE,redactUpdaterDiagnostic,UNSUPPORTED_UPDATE_MESSAGE,type KTeamUpdater} from './updater.js';
-import {KTEAM_RELEASES_URL} from './update-ui.js';
+import {autoUpdateEnabledForChannel,createKTeamUpdater,defaultUpdaterEnvironment,redactUpdaterDiagnostic,type KTeamUpdater} from './updater.js';
+import {KTEAM_RELEASES_URL,showPortableOrUnsupportedUpdateDialog} from './update-ui.js';
+import {defaultDeps} from '../src/runtime/platform-process.js';
+import {captureWindowsHostIdentity,stopWindowsHostTree,type WindowsHostIdentity} from './windows-host-shutdown.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
@@ -21,6 +23,20 @@ const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([na
 function logUpdater(event:string,diagnostic?:string){try{appendFileSync(join(root,'updater.log'),`${new Date().toISOString()} ${event}${diagnostic?' '+redactUpdaterDiagnostic(diagnostic):''}\n`,{mode:0o600});}catch{}}
 const updater=createKTeamUpdater(defaultUpdaterEnvironment({isPackaged:app.isPackaged}),{onDownloaded:version=>void promptRestartForUpdate(version)});
 const updaterHandoff=updater.createHandoff();
+let windowsHost:WindowsHostIdentity|undefined;
+let windowsHostStop:Promise<void>|undefined;
+let windowsHostQuitStarted=false;
+function windowsHostLayer(){const deps=defaultDeps();return {platform:process.platform,env:process.env,exec:deps.exec,spawnSync:deps.spawnSync,log:logUpdater,now:Date.now,wait:(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms))};}
+async function stopWindowsHostIfNeeded(){
+ if(process.platform!=='win32')return;
+ if(!windowsHost)return;
+ if(!windowsHostStop){
+  const identity=windowsHost;
+  windowsHostStop=stopWindowsHostTree(identity,windowsHostLayer()).then(result=>{if(!result.ok)logUpdater('host-stop-failed',result.error);windowsHost=undefined;}).catch(error=>{logUpdater('host-stop-failed',String(error));windowsHost=undefined;});
+ }
+ await windowsHostStop;
+}
+
 
 function projectUpdate(subject:KTeamUpdater){
  const channel=subject.getChannel();
@@ -30,14 +46,12 @@ async function openKTeamReleases(){await shell.openExternal(KTEAM_RELEASES_URL);
 async function promptRestartForUpdate(version:string){
  const options={type:'info' as const,buttons:['立即重启并更新','稍后'],defaultId:0,cancelId:1,title:'KTeam 更新',message:`KTeam ${version} 已下载`,detail:'重启 KTeam 即可完成更新。选择「稍后」的话，下次退出 KTeam 时会自动安装。'};
  const picked=window&&!window.isDestroyed()?await dialog.showMessageBox(window,options):await dialog.showMessageBox(options);
- if(picked.response===0){const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
+ if(picked.response===0){if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
 }
 async function checkForUpdatesFromMenu(){
  const channel=updater.getChannel();
  if(channel==='portable'||channel==='unsupported'){
-  const message=channel==='portable'?PORTABLE_UPDATE_MESSAGE:UNSUPPORTED_UPDATE_MESSAGE;
-  const picked=await dialog.showMessageBox({type:'info',buttons:['打开 Releases','好'],defaultId:0,cancelId:1,title:'KTeam 更新',message,detail:KTEAM_RELEASES_URL});
-  if(picked.response===0)await openKTeamReleases();
+  await showPortableOrUnsupportedUpdateDialog({channel,showMessageBox:options=>dialog.showMessageBox(options),openReleases:openKTeamReleases});
   return;
  }
  await updater.checkForUpdates({requestSource:'user'});
@@ -59,6 +73,7 @@ async function ensureHostBody(){
  let child;
  try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,windowsHide:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','kteam-runtime.mjs')}});}finally{closeSync(output);}
  child.unref();
+ if(process.platform==='win32'&&child.pid)windowsHost=captureWindowsHostIdentity(child.pid,windowsHostLayer());
  const deadline=Date.now()+15000;
  let failed:Error|undefined;child.once('error',error=>{failed=error;});
  while(Date.now()<deadline){if(failed)throw failed;try{await hostRequest(root,'kteam-main','/v1/handshake');return;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
@@ -83,7 +98,7 @@ if(locked){
   const api=createDesktopAPI(async(route,value)=>{let result;try{result=await hostRequest(root,'kteam-main',route,value);}catch(error){if(value!==undefined||!['ENOENT','ECONNREFUSED','ECONNRESET'].includes((error as NodeJS.ErrnoException).code??''))throw error;await ensureHost();result=await hostRequest(root,'kteam-main',route);} return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),
    updateStatus:async()=>projectUpdate(updater),
    checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},
-   installUpdate:async()=>{const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},
+   installUpdate:async()=>{if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},
    openKTeamReleases,
   },agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
@@ -95,6 +110,14 @@ if(locked){
   void updater.setup(logUpdater,{requestSource:'scheduler'}).catch(error=>logUpdater('setup-failed',String(error)));
  });
  // The only place an install handoff is committed: the real before-quit (see desktop/updater-handoff.ts).
- app.on('before-quit',()=>{if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();});
+ app.on('before-quit',(event)=>{
+  if(process.platform==='win32'&&windowsHost&&!windowsHostQuitStarted){
+   event.preventDefault();
+   windowsHostQuitStarted=true;
+   void stopWindowsHostIfNeeded().finally(()=>{if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();app.quit();});
+   return;
+  }
+  if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();
+ });
  app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 }

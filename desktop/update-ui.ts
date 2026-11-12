@@ -73,3 +73,36 @@ export function presentUpdateCheck(input: UpdateSnapshot): UpdateCheckView {
   }
   return { ...base, statusText: '', tone: 'idle' };
 }
+
+export interface UpdateMenuDialogOptions {
+  type: 'info';
+  buttons: string[];
+  defaultId: number;
+  cancelId: number;
+  title: string;
+  message: string;
+  detail: string;
+}
+
+/** Actual portable / unsupported menu behaviour: the message, the Releases URL in the detail, and opening it when the first button is chosen. */
+export async function showPortableOrUnsupportedUpdateDialog(input: {
+  channel: 'portable' | 'unsupported';
+  showMessageBox: (options: UpdateMenuDialogOptions) => Promise<{ response: number }>;
+  openReleases: () => Promise<unknown>;
+}): Promise<'opened-releases' | 'dismissed'> {
+  const message = input.channel === 'portable' ? PORTABLE_UPDATE_MESSAGE : UNSUPPORTED_UPDATE_MESSAGE;
+  const picked = await input.showMessageBox({
+    type: 'info',
+    buttons: ['打开 Releases', '好'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'KTeam 更新',
+    message,
+    detail: KTEAM_RELEASES_URL,
+  });
+  if (picked.response === 0) {
+    await input.openReleases();
+    return 'opened-releases';
+  }
+  return 'dismissed';
+}

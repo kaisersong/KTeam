@@ -9,7 +9,7 @@ import {
   autoUpdateDisabledByEnv, autoUpdateEnabledForChannel, configureAutoUpdater, createKTeamUpdater,
   isPortableBuild, resolveAutoUpdateChannel, type UpdaterEnvironment,
 } from '../desktop/updater.js';
-import { KTEAM_RELEASES_URL, presentUpdateCheck } from '../desktop/update-ui.js';
+import { KTEAM_RELEASES_URL, presentUpdateCheck, showPortableOrUnsupportedUpdateDialog } from '../desktop/update-ui.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -234,12 +234,41 @@ describe('settings 检查更新 presentation', () => {
     assert.match(main, /updateStatus/);
     assert.match(main, /openKTeamReleases/);
     assert.match(main, /KTEAM_RELEASES_URL/);
-    assert.match(main, /PORTABLE_UPDATE_MESSAGE/);
+    assert.match(main, /showPortableOrUnsupportedUpdateDialog/);
     const ui = readFileSync(join(repoRoot, 'desktop', 'update-ui.ts'), 'utf8');
     const updater = readFileSync(join(repoRoot, 'desktop', 'updater.ts'), 'utf8');
     assert.doesNotMatch(ui, /xiaok/i);
     assert.doesNotMatch(updater, /xiaok/i);
     assert.doesNotMatch(panel, /xiaok/i);
     assert.match(ui, /kaisersong\/KTeam\/releases/);
+    assert.match(panel, /\.catch\(e=>\{if\(alive\.current\)setError\(explain\(e\)\);\}\)/);
+  });
+
+  it('shows the portable menu dialog message and opens the Releases link when chosen', async () => {
+    const boxes: unknown[] = [];
+    let opened = 0;
+    const openedResult = await showPortableOrUnsupportedUpdateDialog({
+      channel: 'portable',
+      showMessageBox: async options => { boxes.push(options); return { response: 0 }; },
+      openReleases: async () => { opened += 1; },
+    });
+    assert.equal(openedResult, 'opened-releases');
+    assert.equal(opened, 1);
+    assert.deepEqual(boxes, [{
+      type: 'info',
+      buttons: ['打开 Releases', '好'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'KTeam 更新',
+      message: PORTABLE_UPDATE_MESSAGE,
+      detail: 'https://github.com/kaisersong/KTeam/releases',
+    }]);
+    const dismissed = await showPortableOrUnsupportedUpdateDialog({
+      channel: 'portable',
+      showMessageBox: async options => { boxes.push(options); return { response: 1 }; },
+      openReleases: async () => { opened += 1; },
+    });
+    assert.equal(dismissed, 'dismissed');
+    assert.equal(opened, 1);
   });
 });

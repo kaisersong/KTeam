@@ -12,7 +12,7 @@ export function UpdateCheckSettings({currentVersion}:{currentVersion?:string}){
   const alive=useRef(true);
   useEffect(()=>{alive.current=true;void api.updateStatus().then(value=>{if(alive.current)setSnapshot(value);}).catch(e=>{if(alive.current)setError(explain(e));});return()=>{alive.current=false;};},[]);
   const inFlight=Boolean(snapshot?.status.checking||snapshot?.status.downloading||snapshot?.status.installing);
-  useEffect(()=>{if(!inFlight)return;const id=window.setInterval(()=>{void api.updateStatus().then(value=>{if(alive.current)setSnapshot(value);});},750);return()=>window.clearInterval(id);},[inFlight]);
+  useEffect(()=>{if(!inFlight)return;const id=window.setInterval(()=>{void api.updateStatus().then(value=>{if(alive.current)setSnapshot(value);}).catch(e=>{if(alive.current)setError(explain(e));});},750);return()=>window.clearInterval(id);},[inFlight]);
   const view=presentUpdateCheck({channel:snapshot?.channel??'unsupported',status:snapshot?.status??emptyStatus().status,currentVersion:currentVersion??snapshot?.currentVersion,checked:snapshot?.checked});
   async function check(){setBusy(true);setError('');try{const result=await api.checkForUpdates();if(alive.current)setSnapshot(result);}catch(e){if(alive.current)setError(explain(e));}finally{if(alive.current)setBusy(false);}}
   async function install(){setBusy(true);setError('');try{const result=await api.installUpdate();if(alive.current)setSnapshot(result);}catch(e){if(alive.current)setError(explain(e));}finally{if(alive.current)setBusy(false);}}
