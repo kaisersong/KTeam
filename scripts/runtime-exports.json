@@ -120,7 +120,8 @@
     "extractPdfText"
   ],
   "src/utils/credential-store.ts": [
-    "CredentialStore"
+    "CredentialStore",
+    "protectCredentialPath"
   ],
   "src/utils/system-credentials.ts": [
     "getCredentialStore",
