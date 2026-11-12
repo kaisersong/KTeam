@@ -52,7 +52,7 @@ for(const name of names){
   run(join(runtime,runtimeTarget.launcherRelativePath),['-I','-B','-c',"import sys,zipfile;[zipfile.ZipFile(p).extractall(sys.argv[1]) for p in sys.argv[2:]]",packages,...selected.map(file=>join(wheels,file))]);
   // Probe the actual isolated MCP import closure, not just python --version.
   // In particular, Windows needs pywin32 plus its pinned package .pth paths.
-  run(join(runtime,runtimeTarget.launcherRelativePath),['-I','-B','-c',"import site,sys;site.addsitedir(sys.argv[1]);from mcp.server.mcpserver import MCPServer;import bs4,jsonschema;print('Bundled slide MCP dependency closure verified')",packages]);
+  run(join(runtime,runtimeTarget.launcherRelativePath),['-I','-B','-X','utf8','-c',"import site,sys,runpy;site.addsitedir(sys.argv[1]);from mcp.server.mcpserver import MCPServer;import bs4,jsonschema;namespace=runpy.run_path(sys.argv[2],run_name='bundled_build_probe');assert namespace['get_model_context']('Swiss Modern')['preset']=='Swiss Modern';print('Bundled slide MCP dependency closure and UTF-8 context verified')",packages,join(server,'server.py')]);
   writeFileSync(join(dest,'runtime.json'),JSON.stringify({target,launcher:join('bundled-python',target,runtimeTarget.launcherRelativePath)}));
  }
  // The upstream planners refer to plugin-level references. Make those assets

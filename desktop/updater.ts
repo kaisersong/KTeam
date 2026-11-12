@@ -1,13 +1,15 @@
 /**
- * KTeam desktop auto-update (macOS first; Windows NSIS reuses the same flow later).
+ * KTeam desktop auto-update (macOS and Windows NSIS).
  *
  * KTeam owns this file. It started as a copy of another desktop app's updater and
  * is now maintained here only. Updates come only from KTeam's own GitHub Releases
  * (`KTEAM_UPDATE_FEED`), never from any other product's feed.
  *
  * Behaviour:
- *  - Packaged builds only. Dev / unpackaged builds, builds without
- *    `Resources/app-update.yml`, and `KTEAM_DISABLE_AUTO_UPDATE=1` never check.
+ *  - Packaged macOS and Windows NSIS builds only. Dev / unpackaged builds, builds
+ *    without `Resources/app-update.yml`, Linux and other platforms,
+ *    `KTEAM_DISABLE_AUTO_UPDATE=1`, and Windows portable builds
+ *    (`PORTABLE_EXECUTABLE_DIR` set) never start the updater and never download.
  *  - Check shortly after startup (one retry after a minute on failure), then every 4 hours.
  *  - Download in the background; once downloaded the user is asked to restart, and
  *    the update is also installed on the next normal quit.
@@ -28,6 +30,33 @@ export const PERIODIC_UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 export const INSTALL_OBSERVATION_MS = 30_000;
 export const DEV_MODE_MESSAGE = '开发模式下无法检查更新';
 export const DISABLED_MESSAGE = '自动更新已关闭（KTEAM_DISABLE_AUTO_UPDATE）';
+export const PORTABLE_UPDATE_MESSAGE = '便携版不会自动更新，请到 Releases 下载新版本';
+export const UNSUPPORTED_UPDATE_MESSAGE = '此版本不支持自动更新';
+
+/** electron-builder sets this for portable executables. Any non-empty value means portable. */
+export function isPortableBuild(env: NodeJS.ProcessEnv): boolean {
+  const value = env.PORTABLE_EXECUTABLE_DIR;
+  return value !== undefined && value !== '';
+}
+
+export type AutoUpdateChannel = 'mac' | 'nsis' | 'portable' | 'unsupported';
+
+export function resolveAutoUpdateChannel(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): AutoUpdateChannel {
+  if (platform === 'darwin') return 'mac';
+  if (platform === 'win32') return isPortableBuild(env) ? 'portable' : 'nsis';
+  return 'unsupported';
+}
+
+export function autoUpdateEnabledForChannel(channel: AutoUpdateChannel): boolean {
+  return channel === 'mac' || channel === 'nsis';
+}
+
+export function inactiveUpdateMessage(reason: 'portable' | 'unsupported' | 'env' | 'dev'): string {
+  if (reason === 'portable') return PORTABLE_UPDATE_MESSAGE;
+  if (reason === 'unsupported') return UNSUPPORTED_UPDATE_MESSAGE;
+  if (reason === 'env') return DISABLED_MESSAGE;
+  return DEV_MODE_MESSAGE;
+}
 
 export interface UpdateStatus {
   checking: boolean;
@@ -173,6 +202,14 @@ export function isDevelopmentMode(environment: Pick<UpdaterEnvironment, 'env' | 
   return !environment.fileExists(join(environment.resourcesPath, 'app-update.yml'));
 }
 
+/** No-op verifier: 0.4 Windows builds are unsigned, and electron-updater would
+ * reject them if a publisherName were present. Returning null means "accept".
+ * When publisherName is absent, NsisUpdater already skips verification; this
+ * keeps that skip explicit if a verifier is installed on the instance. */
+export async function skipUpdateCodeSignature(_publisherNames: string[], _file: string): Promise<string | null> {
+  return null;
+}
+
 /** Stable builds never move to a prerelease or an older version. */
 export function configureAutoUpdater(updater: Record<string, unknown>): void {
   updater.autoDownload = true;
@@ -181,6 +218,8 @@ export function configureAutoUpdater(updater: Record<string, unknown>): void {
   updater.allowDowngrade = false;
   updater.channel = 'latest';
   if (typeof updater.setFeedURL === 'function') (updater.setFeedURL as (feed: unknown) => void)({ ...KTEAM_UPDATE_FEED });
+  // Only NsisUpdater exposes this setter. MacUpdater is left unchanged.
+  if ('verifyUpdateCodeSignature' in updater) updater.verifyUpdateCodeSignature = skipUpdateCodeSignature;
 }
 
 function toError(error: unknown): Error {
@@ -203,6 +242,8 @@ export interface KTeamUpdater {
   setup(logger: UpdaterLogger | undefined, context: UpdaterRequestContext): Promise<void>;
   checkForUpdates(context: UpdaterRequestContext): Promise<void>;
   getStatus(): UpdateStatus;
+  getChannel(): AutoUpdateChannel;
+  hasCompletedCheck(): boolean;
   createHandoff(platform?: NodeJS.Platform): UpdaterHandoffStateMachine;
   /** Called only after the real before-quit transition, never by the install request. */
   completeHandoff(): void;
@@ -212,7 +253,7 @@ export interface KTeamUpdater {
 export function createKTeamUpdater(environment: UpdaterEnvironment, events: UpdaterEvents = {}): KTeamUpdater {
   let updateStatus: UpdateStatus = { checking: false, available: false, downloading: false, downloaded: false, progress: 0 };
   let isDevMode = false;
-  let disabled = false;
+  let inactiveReason: 'portable' | 'unsupported' | 'env' | 'dev' | undefined;
   let autoUpdater: any = null;
   let autoUpdaterEventsRegistered = false;
   let updaterSetup: Promise<boolean> | undefined;
@@ -221,11 +262,20 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
   let wrapperInProgress = false;
   let syncWrapperError: Error | undefined;
   let notifiedVersion: string | undefined;
+  let completedCheck = false;
   let logUpdater: UpdaterLogger = () => {};
 
   const attemptLocked = () => Boolean(handoff?.hasPendingIntent || handoff?.snapshot().kind === 'handed_off');
   const clearObservation = () => { if (observationTimer !== undefined) environment.clearTimer(observationTimer); observationTimer = undefined; };
-  const inactive = () => disabled || isDevMode || isDevelopmentMode(environment) || autoUpdateDisabledByEnv(environment.env);
+  const currentChannel = () => resolveAutoUpdateChannel(environment.platform, environment.env);
+  const resolveInactiveReason = (): 'portable' | 'unsupported' | 'env' | 'dev' | undefined => {
+    const channel = currentChannel();
+    if (channel === 'portable') return 'portable';
+    if (channel === 'unsupported') return 'unsupported';
+    if (autoUpdateDisabledByEnv(environment.env)) return 'env';
+    if (isDevMode || isDevelopmentMode(environment)) return 'dev';
+    return undefined;
+  };
 
   function sendUpdateStatus(): void {
     try { events.onStatus?.(captureUpdateStatus(updateStatus)); } catch { /* a closing window cannot throw back into the SDK dispatcher */ }
@@ -250,6 +300,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     if (wrapperInProgress) syncWrapperError = toError(error);
     else handoff?.observeAsyncUpdaterError(error);
     clearObservation();
+    completedCheck = true;
     setUpdateStatus({ checking: false, downloading: false, installing: false, error: message }, true);
   }
 
@@ -273,10 +324,11 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     autoUpdater.on('update-available', sdkEvent(info => {
       const version = sdkScalar(info, 'version');
       if (typeof version !== 'string') throw Error('updater_projection_unavailable');
+      completedCheck = true;
       logUpdater('update-available', version);
       setUpdateStatus({ checking: false, available: true, installing: false, version });
     }));
-    autoUpdater.on('update-not-available', () => setUpdateStatus({ checking: false, available: false, installing: false }));
+    autoUpdater.on('update-not-available', () => { completedCheck = true; setUpdateStatus({ checking: false, available: false, installing: false }); });
     autoUpdater.on('download-progress', sdkEvent(progress => {
       const percent = sdkScalar(progress, 'percent');
       if (typeof percent !== 'number' || !Number.isFinite(percent)) throw Error('updater_projection_unavailable');
@@ -339,16 +391,12 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     if (logger) logUpdater = logger;
     if (updaterSetup) { await updaterSetup; return; }
     const attempt = Promise.resolve().then(async () => {
-      if (autoUpdateDisabledByEnv(environment.env)) {
-        disabled = true;
-        updateStatus.error = DISABLED_MESSAGE;
-        logUpdater('disabled', 'KTEAM_DISABLE_AUTO_UPDATE');
-        return true;
-      }
-      isDevMode = isDevelopmentMode(environment);
-      if (isDevMode) {
-        updateStatus.error = DEV_MODE_MESSAGE;
-        logUpdater('skipped', 'development build');
+      const reason = resolveInactiveReason();
+      if (reason === 'portable' || reason === 'unsupported' || reason === 'env' || reason === 'dev') {
+        inactiveReason = reason;
+        isDevMode = reason === 'dev';
+        updateStatus.error = inactiveUpdateMessage(reason);
+        logUpdater(reason === 'dev' ? 'skipped' : 'disabled', reason === 'env' ? 'KTEAM_DISABLE_AUTO_UPDATE' : reason === 'dev' ? 'development build' : reason);
         return true;
       }
       if (!(await loadAutoUpdater())) return false;
@@ -378,11 +426,9 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
   }
 
   function getStatus(): UpdateStatus {
-    if (disabled || autoUpdateDisabledByEnv(environment.env)) {
-      return { checking: false, available: false, downloading: false, downloaded: false, installing: false, progress: 0, error: DISABLED_MESSAGE };
-    }
-    if (isDevMode || isDevelopmentMode(environment)) {
-      return { checking: false, available: false, downloading: false, downloaded: false, installing: false, progress: 0, error: DEV_MODE_MESSAGE };
+    const reason = inactiveReason ?? resolveInactiveReason();
+    if (reason) {
+      return { checking: false, available: false, downloading: false, downloaded: false, installing: false, progress: 0, error: inactiveUpdateMessage(reason) };
     }
     return captureUpdateStatus(updateStatus);
   }
@@ -390,8 +436,9 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
   async function checkForUpdates(context: UpdaterRequestContext): Promise<void> {
     assertUpdaterSource(context, 'user');
     if (attemptLocked()) return;
-    if (inactive()) {
-      setUpdateStatus({ checking: false, error: autoUpdateDisabledByEnv(environment.env) ? DISABLED_MESSAGE : DEV_MODE_MESSAGE });
+    const reason = inactiveReason ?? resolveInactiveReason();
+    if (reason) {
+      setUpdateStatus({ checking: false, error: inactiveUpdateMessage(reason) });
       return;
     }
     setUpdateStatus({ checking: true, error: undefined });
@@ -399,8 +446,10 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     registerAutoUpdaterEvents();
     try {
       const result = await autoUpdater.checkForUpdates();
+      completedCheck = true;
       if (result === null) setUpdateStatus({ checking: false, error: '更新器未激活' });
     } catch (error) {
+      completedCheck = true;
       setUpdateStatus({ checking: false, downloading: false, error: toError(error).message });
     }
   }
@@ -409,6 +458,8 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     setup,
     checkForUpdates,
     getStatus,
+    getChannel: currentChannel,
+    hasCompletedCheck: () => completedCheck,
     createHandoff,
     completeHandoff: () => { clearObservation(); logUpdater('before-quit'); },
     quitAndInstall: context => createHandoff().begin(context),

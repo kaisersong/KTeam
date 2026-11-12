@@ -1,5 +1,5 @@
 import {initStandalone} from '../src/runtime/managed-services.js';
-import {app,BrowserWindow,dialog,ipcMain,Menu,Notification} from 'electron';
+import {app,BrowserWindow,dialog,ipcMain,Menu,Notification,shell} from 'electron';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {existsSync,openSync,closeSync,readFileSync,appendFileSync} from 'node:fs';
@@ -10,24 +10,53 @@ import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
 import {NotificationDelivery} from './notification-delivery.js';
 import {hostConnection} from './host-connection.js';
-import {createKTeamUpdater,defaultUpdaterEnvironment,redactUpdaterDiagnostic} from './updater.js';
+import {KTEAM_RELEASES_URL,showPortableOrUnsupportedUpdateDialog} from './update-ui.js';
+import {defaultDeps} from '../src/runtime/platform-process.js';
+import {WINDOWS_SYSTEM_ENV} from '../src/runtime/local-agents.js';
+import {captureWindowsHostIdentity,stopWindowsHostTree,type WindowsHostIdentity} from './windows-host-shutdown.js';
+import {autoUpdateEnabledForChannel,createKTeamUpdater,defaultUpdaterEnvironment,redactUpdaterDiagnostic,type KTeamUpdater} from './updater.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
 if(!locked)app.quit();
 let window:BrowserWindow|undefined;let pendingNotificationNavigation:any;let notificationDelivery:NotificationDelivery|undefined;let notificationTimer:NodeJS.Timeout|undefined;
 const root=dataRoot();
-const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
+const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','SystemRoot','APPDATA','LOCALAPPDATA','USERPROFILE',...(process.platform==='win32'?WINDOWS_SYSTEM_ENV:[]),'NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
 // Auto-update: KTeam's own GitHub Releases only (see desktop/updater.ts). Log lives in KTeam's data dir.
 function logUpdater(event:string,diagnostic?:string){try{appendFileSync(join(root,'updater.log'),`${new Date().toISOString()} ${event}${diagnostic?' '+redactUpdaterDiagnostic(diagnostic):''}\n`,{mode:0o600});}catch{}}
 const updater=createKTeamUpdater(defaultUpdaterEnvironment({isPackaged:app.isPackaged}),{onDownloaded:version=>void promptRestartForUpdate(version)});
 const updaterHandoff=updater.createHandoff();
+let windowsHost:WindowsHostIdentity|undefined;
+let windowsHostStop:Promise<void>|undefined;
+let windowsHostQuitStarted=false;
+function windowsHostLayer(){const deps=defaultDeps();return {platform:process.platform,env:process.env,exec:deps.exec,spawnSync:deps.spawnSync,log:logUpdater,now:Date.now,wait:(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms))};}
+async function stopWindowsHostIfNeeded(){
+ if(process.platform!=='win32')return;
+ if(!windowsHost)return;
+ if(!windowsHostStop){
+  const identity=windowsHost;
+  windowsHostStop=(async()=>{try{await hostRequest(root,'kteam-main','/v1/stop',{});}catch(error){logUpdater('host-graceful-stop-unconfirmed',String(error));}return process.platform==='win32'?stopWindowsHostTree(identity,windowsHostLayer()):{ok:true,killed:[],skipped:[],error:undefined};})().then(result=>{if(!result.ok)logUpdater('host-stop-failed',result.error);windowsHost=undefined;}).catch(error=>{logUpdater('host-stop-failed',String(error));windowsHost=undefined;});
+ }
+ await windowsHostStop;
+}
+
+
+function projectUpdate(subject:KTeamUpdater){
+ const channel=subject.getChannel();
+ return {ok:true as const,channel,autoUpdateEnabled:autoUpdateEnabledForChannel(channel),currentVersion:app.getVersion(),status:subject.getStatus(),checked:subject.hasCompletedCheck()};
+}
+async function openKTeamReleases(){await shell.openExternal(KTEAM_RELEASES_URL);return {ok:true as const};}
 async function promptRestartForUpdate(version:string){
  const options={type:'info' as const,buttons:['立即重启并更新','稍后'],defaultId:0,cancelId:1,title:'KTeam 更新',message:`KTeam ${version} 已下载`,detail:'重启 KTeam 即可完成更新。选择「稍后」的话，下次退出 KTeam 时会自动安装。'};
  const picked=window&&!window.isDestroyed()?await dialog.showMessageBox(window,options):await dialog.showMessageBox(options);
- if(picked.response===0){const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
+ if(picked.response===0){if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
 }
 async function checkForUpdatesFromMenu(){
+ const channel=updater.getChannel();
+ if(channel==='portable'||channel==='unsupported'){
+  await showPortableOrUnsupportedUpdateDialog({channel,showMessageBox:options=>dialog.showMessageBox(options),openReleases:openKTeamReleases});
+  return;
+ }
  await updater.checkForUpdates({requestSource:'user'});
  const status=updater.getStatus();
  if(status.downloaded&&status.version){await promptRestartForUpdate(status.version);return;}
@@ -47,6 +76,7 @@ async function ensureHostBody(){
  let child;
  try{child=spawn(process.execPath,[join(resources(),'build','host.cjs')],{detached:true,windowsHide:true,stdio:['ignore',output,output],env:{...environment(),ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_SKILLS_ROOT:join(process.resourcesPath,'skills'),KTEAM_NATIVE_CHILD:join(resources(),'build','native-child.cjs'),KTEAM_RUNTIME_ENTRY:join(resources(),'build','shared','kteam-runtime.mjs')}});}finally{closeSync(output);}
  child.unref();
+ if(process.platform==='win32'&&child.pid)windowsHost=captureWindowsHostIdentity(child.pid,windowsHostLayer());
  const deadline=Date.now()+15000;
  let failed:Error|undefined;child.once('error',error=>{failed=error;});
  while(Date.now()<deadline){if(failed)throw failed;try{await hostRequest(root,'kteam-main','/v1/handshake');return;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
@@ -73,7 +103,7 @@ if(locked){
   if(process.platform==='darwin')void Notification.getHistory().then(history=>{for(const notice of history.slice(-100))notificationDelivery?.retain(notice.id,notice);}).catch(()=>{});
   notificationTimer=setInterval(()=>void notificationDelivery?.poll(),2000);notificationTimer.unref();
   app.once('before-quit',()=>{if(notificationTimer)clearInterval(notificationTimer);notificationDelivery?.close();});
-  const api=createDesktopAPI(async(route,value)=>{const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  const api=createDesktopAPI(async(route,value)=>{const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),updateStatus:async()=>projectUpdate(updater),checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},installUpdate:async()=>{if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},openKTeamReleases,takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}
@@ -83,6 +113,14 @@ if(locked){
   void updater.setup(logUpdater,{requestSource:'scheduler'}).catch(error=>logUpdater('setup-failed',String(error)));
  });
  // The only place an install handoff is committed: the real before-quit (see desktop/updater-handoff.ts).
- app.on('before-quit',()=>{if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();});
+ app.on('before-quit',(event)=>{
+  if(process.platform==='win32'&&windowsHost&&!windowsHostQuitStarted){
+   event.preventDefault();
+   windowsHostQuitStarted=true;
+   void stopWindowsHostIfNeeded().finally(()=>{if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();app.quit();});
+   return;
+  }
+  if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();
+ });
  app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 }

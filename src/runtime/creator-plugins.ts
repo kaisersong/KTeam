@@ -10,6 +10,6 @@ export function bindCreatorPlugin(plugin:any){
  return {...plugin,hooks:[],mcpServers:plugin.mcpServers.map((server:any)=>{
   if(plugin.name==='kai-report-creator')return {...server,command:process.execPath,env:{...server.env,ELECTRON_RUN_AS_NODE:'1'}};
   const runtime=JSON.parse(readFileSync(join(plugin.rootDir,'runtime.json'),'utf8'));
-  return {...server,command:join(plugin.rootDir,runtime.launcher),args:['-I','-B','-c',"import runpy,site,sys;site.addsitedir(sys.argv[1]);runpy.run_path(sys.argv[2],run_name='__main__')",join(plugin.rootDir,'python-packages'),join(plugin.rootDir,'mcp-servers/slide-renderer/server.py')]};
+  return {...server,command:join(plugin.rootDir,runtime.launcher),args:['-I','-B','-X','utf8','-c',"import runpy,site,sys;site.addsitedir(sys.argv[1]);runpy.run_path(sys.argv[2],run_name='__main__')",join(plugin.rootDir,'python-packages'),join(plugin.rootDir,'mcp-servers/slide-renderer/server.py')]};
  })};
 }
