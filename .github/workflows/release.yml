@@ -56,7 +56,7 @@ jobs:
           KTeam 桌面安装包（草稿，待验收后手动发布）。
 
           - macOS Apple Silicon：Developer ID 签名，已公证并装订；提供 dmg 与 zip（zip 供自动更新使用）。
-          - Windows x64：NSIS 安装包（当前未签名），附带 latest.yml 与 blockmap。
+          - Windows x64：NSIS 安装包与便携版 exe（当前均未签名，首次运行会有 SmartScreen 提示）；NSIS 附带 latest.yml 与 blockmap 供自动更新使用，便携版不自动更新。
           - 自动更新只认 KTeam 自己的 GitHub Releases（kaisersong/KTeam）。
           - 本工作流只创建或更新草稿，不会自动正式发布。质量书面通过后，由发布负责人执行：
             `gh release edit <tag> --draft=false [--prerelease | --latest] --notes-file <final notes>`
@@ -403,8 +403,34 @@ jobs:
       - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
         run: node node_modules/electron/install.js
       - run: npm run build:desktop
-      - name: Package unsigned Windows NSIS installer
-        run: node node_modules/electron-builder/out/cli/cli.js --config electron-builder.yml --win nsis --x64 --publish never
+      - name: Package unsigned Windows NSIS installer and portable exe
+        # Targets, x64 and artifact names come from electron-builder.yml (win/nsis/portable).
+        # latest.yml and the NSIS .blockmap are written from its publish block (kaisersong/KTeam).
+        run: node node_modules/electron-builder/out/cli/cli.js --config electron-builder.yml --win nsis portable --x64 --publish never
+      - name: Verify latest.yml matches the NSIS installer
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const crypto = require("node:crypto");
+          const yaml = require("js-yaml");
+          const version = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+          const setup = `KTeam-setup-${version}.exe`;
+          const doc = yaml.load(fs.readFileSync(path.join("release", "latest.yml"), "utf8"));
+          const digest = (file) => crypto.createHash("sha512").update(fs.readFileSync(file)).digest("base64");
+          if (String(doc.version) !== version) throw new Error(`latest.yml version ${doc.version} != package ${version}`);
+          if (doc.path !== setup) throw new Error(`latest.yml path must be ${setup}, got ${doc.path}`);
+          if (!Array.isArray(doc.files) || doc.files.length === 0) throw new Error("latest.yml has no files");
+          for (const entry of doc.files) {
+            const file = path.join("release", entry.url);
+            if (!fs.existsSync(file)) throw new Error(`latest.yml references missing file ${entry.url}`);
+            if (entry.sha512 !== digest(file) || entry.size !== fs.statSync(file).size) throw new Error(`${entry.url} does not match latest.yml`);
+          }
+          if (doc.sha512 !== digest(path.join("release", setup))) throw new Error("latest.yml top-level sha512 does not match the installer");
+          if (!fs.existsSync(path.join("release", `${setup}.blockmap`))) throw new Error(`missing ${setup}.blockmap`);
+          JS
+          cat release/latest.yml
       - name: Upload Windows artifacts to draft release
         env:
           GH_REPO: ${{ github.repository }}
@@ -416,14 +442,16 @@ jobs:
           release = Path("release")
           listing = "\n".join(sorted(p.name for p in release.iterdir())) if release.exists() else "(missing release dir)"
           required = {
-              "exe": [p for p in release.glob("KTeam-setup-*.exe") if not p.name.endswith(".blockmap")],
+              "setup exe": list(release.glob("KTeam-setup-*.exe")),
+              "setup blockmap": list(release.glob("KTeam-setup-*.exe.blockmap")),
+              "portable exe": list(release.glob("KTeam-portable-*.exe")),
               "latest.yml": list(release.glob("latest.yml")),
           }
           missing = [name for name, files in required.items() if len(files) != 1]
           if missing:
               raise SystemExit(f"Required Windows artifacts missing or duplicated: {missing}\n{listing}")
           Path(".artifacts").mkdir(parents=True, exist_ok=True)
-          uploads = [required["exe"][0], required["latest.yml"][0], *sorted(release.glob("KTeam-setup-*.exe.blockmap"))]
+          uploads = [files[0] for files in required.values()]
           Path(".artifacts/windows-upload.txt").write_text("\n".join(str(p) for p in uploads) + "\n")
           PY
           gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
@@ -436,6 +464,12 @@ jobs:
 
   finalize-release:
     needs: [create-release, build-mac, build-windows]
+    # Run after both platform jobs finish, including when one failed, so a failed
+    # platform shows up as a red finalize step. Skip if the workflow was cancelled.
+    # Any SHA256SUMS already on the draft is deleted first so a re-run cannot leave a
+    # stale checksum file. SHA256SUMS is rewritten only when every platform succeeded;
+    # the release stays a draft either way.
+    if: ${{ !cancelled() && needs.create-release.result == 'success' }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -445,6 +479,26 @@ jobs:
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Drop stale SHA256SUMS from the draft
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
+            gh release delete-asset "$RELEASE_TAG" SHA256SUMS --yes
+            echo "Removed stale SHA256SUMS from $RELEASE_TAG."
+          else
+            echo "No SHA256SUMS on $RELEASE_TAG yet."
+          fi
+      - name: Require every platform job to succeed
+        env:
+          MAC_RESULT: ${{ needs.build-mac.result }}
+          WINDOWS_RESULT: ${{ needs.build-windows.result }}
+        run: |
+          echo "build-mac: $MAC_RESULT, build-windows: $WINDOWS_RESULT"
+          if [[ "$MAC_RESULT" != success || "$WINDOWS_RESULT" != success ]]; then
+            echo "::error::Not finalizing $RELEASE_TAG: build-mac=$MAC_RESULT build-windows=$WINDOWS_RESULT. The draft keeps whatever platform artifacts were uploaded and has no SHA256SUMS; fix and re-run the failed job(s)."
+            exit 1
+          fi
       - name: Write SHA256SUMS and confirm the release stays a draft
         run: |
           set -euo pipefail
@@ -461,8 +515,9 @@ jobs:
           missing_exact = sorted(required_exact - set(names))
           has_dmg = any(name.endswith(".dmg") for name in names)
           has_zip = any(name.endswith("-mac.zip") for name in names)
-          has_exe = any(name.endswith(".exe") and not name.endswith(".blockmap") for name in names)
-          has_blockmap = any(name.endswith(".blockmap") for name in names)
+          has_exe = any(name.startswith("KTeam-setup-") and name.endswith(".exe") for name in names)
+          has_portable = any(name.startswith("KTeam-portable-") and name.endswith(".exe") for name in names)
+          has_blockmap = any(name.startswith("KTeam-setup-") and name.endswith(".exe.blockmap") for name in names)
           problems = []
           if missing_exact:
               problems.append("missing " + ", ".join(missing_exact))
@@ -472,8 +527,10 @@ jobs:
               problems.append("missing mac zip")
           if not has_exe:
               problems.append("missing NSIS exe")
+          if not has_portable:
+              problems.append("missing portable exe")
           if not has_blockmap:
-              problems.append("missing blockmap")
+              problems.append("missing NSIS blockmap")
           if problems:
               raise SystemExit("Draft assets incomplete: " + "; ".join(problems) + "\n" + "\n".join(names))
           lines = []

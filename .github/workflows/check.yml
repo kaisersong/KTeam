@@ -8,6 +8,8 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-2022]
         node: ['22.22.0', '24.16.0']
     runs-on: ${{ matrix.os }}
+    # A hung test process must not hold a runner for the 6h default.
+    timeout-minutes: 30
     # 0.3 Windows port in progress: Windows results are visible but not yet blocking.
     # Remove this line once the Windows port lands and Windows is green.
     continue-on-error: ${{ matrix.os == 'windows-2022' }}
