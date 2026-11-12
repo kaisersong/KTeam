@@ -4,7 +4,7 @@ import {execFile,execFileSync} from 'node:child_process';
 import {chmodSync,mkdtempSync,readFileSync,realpathSync,rmSync,statSync,symlinkSync,writeFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
 import {readServiceEndpoints,writeServiceEndpoints,serviceEndpointsFile,discoveredServiceUrls} from '../src/service/service-endpoints.js';
 import {initStandalone} from '../src/runtime/managed-services.js';
@@ -33,7 +33,7 @@ test('discovery file round-trips privately between KTeam and its runtime, and re
  assert.deepEqual(readServiceEndpoints(dir),{broker:41001,kswarm:41002});
  // runtime-core reads and writes the same file and format.
  process.env.KTEAM_DATA_DIR=dir;
- const core=await import(join(root,'build/shared/kteam-runtime.mjs')+'?endpoints');
+ const core=await import(pathToFileURL(join(root,'build/shared/kteam-runtime.mjs')).href+'?endpoints');
  assert.equal(core.desktopServiceDiscoveryFile(),file);
  assert.deepEqual(core.readDesktopServicePorts(file),{broker:41001,kswarm:41002});
  assert.equal(core.desktopServiceUrl('broker'),'http://127.0.0.1:41001');

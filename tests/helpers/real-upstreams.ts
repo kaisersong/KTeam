@@ -1,3 +1,4 @@
+import {tmpRoot} from './tmp-root.js';
 import {fork,type ChildProcess} from 'node:child_process';
 import {mkdtempSync,realpathSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -5,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {Upstreams} from '../../src/adapters/upstream.js';
 export async function realUpstreams(options:{agentClis?:string[]}={}){
- const project=fileURLToPath(new URL('../../../',import.meta.url));const root=realpathSync(mkdtempSync('/tmp/kteam-coordination-'));
+ const project=fileURLToPath(new URL('../../../',import.meta.url));const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-coordination-'));
  const home=join(root,'home');mkdirSync(home,{mode:0o700});
  // Isolated stub CLIs so KSwarm runtime detection never depends on what the developer machine or CI runner has installed.
  const cliEnv:Record<string,string>={};if(options.agentClis?.length){const bin=join(root,'agent-cli-bin');mkdirSync(bin,{mode:0o700});for(const name of options.agentClis){const file=join(bin,name);writeFileSync(file,'#!/bin/sh\necho '+name+'-fixture 1.0\n',{mode:0o700});cliEnv['KSWARM_'+name.toUpperCase()+'_PATH']=file;}}const token=randomBytes(32).toString('hex'),mutation=randomBytes(32).toString('hex');

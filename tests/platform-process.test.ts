@@ -87,3 +87,16 @@ test('Windows command lookup follows PATHEXT and resolves npm .cmd shims to thei
  assert.equal(findWindowsCommand('C:\\none','codex',env,exists,read),undefined);
  assert.equal(npmShimEntry('C:\\x\\a.cmd',()=>'"%~dp0\\node_modules\\a\\cli.mjs" %*'),'C:\\x\\node_modules\\a\\cli.mjs');
 });
+
+test('host address: unix socket in the data dir on POSIX, one named pipe per data dir on Windows',async()=>{
+ const {socketPath}=await import('../src/service/config.js');
+ const real=Object.getOwnPropertyDescriptor(process,'platform')!;
+ if(process.platform!=='win32')assert.equal(socketPath('/tmp/kteam-a'),'/tmp/kteam-a/host.sock');
+ Object.defineProperty(process,'platform',{...real,value:'win32'});
+ try{
+  const a=socketPath('C:\\Users\\me\\.kteam'),b=socketPath('c:\\users\\ME\\.kteam'),c=socketPath('C:\\Users\\other\\.kteam');
+  assert.match(a,/^\\\\\.\\pipe\\kteam-host-[a-f0-9]{32}$/);
+  if(real.value==='win32')assert.equal(a,b);
+  assert.notEqual(a,c);
+ }finally{Object.defineProperty(process,'platform',real);}
+});

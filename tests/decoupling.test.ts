@@ -1,3 +1,4 @@
+import {pathToFileURL} from 'node:url';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -138,15 +139,16 @@ test('a legacy xiaok shared-service key in an existing config is ignored with on
 });
 
 test('default data, runtime config and keychain locations belong to KTeam',async()=>{
- const before={HOME:process.env.HOME,KTEAM_DATA_DIR:process.env.KTEAM_DATA_DIR,KTEAM_MODEL_CONFIG_DIR:process.env.KTEAM_MODEL_CONFIG_DIR,XIAOK_CONFIG_DIR:process.env.XIAOK_CONFIG_DIR};
+ const before={HOME:process.env.HOME,USERPROFILE:process.env.USERPROFILE,KTEAM_DATA_DIR:process.env.KTEAM_DATA_DIR,KTEAM_MODEL_CONFIG_DIR:process.env.KTEAM_MODEL_CONFIG_DIR,XIAOK_CONFIG_DIR:process.env.XIAOK_CONFIG_DIR};
  const home=realpathSync(mkdtempSync(join(tmpdir(),'kteam-home-')));
  try{
-  process.env.HOME=home;delete process.env.KTEAM_DATA_DIR;delete process.env.KTEAM_MODEL_CONFIG_DIR;
+  // os.homedir() reads USERPROFILE on Windows and HOME elsewhere.
+  process.env.HOME=home;process.env.USERPROFILE=home;delete process.env.KTEAM_DATA_DIR;delete process.env.KTEAM_MODEL_CONFIG_DIR;
   // A stray xiaok variable must not redirect KTeam.
   process.env.XIAOK_CONFIG_DIR=join(home,'.xiaok');
   assert.equal(dataRoot(),join(home,'.kteam'));
   const entry=join(root,'build/shared/kteam-runtime.mjs');assert.ok(existsSync(entry),'runtime bundle built');
-  const core=await import(entry+'?decoupling');
+  const core=await import(pathToFileURL(entry).href+'?decoupling');
   assert.equal(core.getConfigDir(),join(home,'.kteam','runtime'));
   const bundle=readFileSync(entry,'utf8');
   assert.ok(/["']com\.kteam\.credentials\.v1["']/.test(bundle),'KTeam keychain service in bundle');

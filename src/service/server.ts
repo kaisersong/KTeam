@@ -253,12 +253,13 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   server.maxHeadersCount = 32;
   try {
     // Only the exclusive owner may remove a socket left by its crashed predecessor.
-    if (existsSync(path)) {
+    // A Windows named pipe disappears with its owner and has no file mode; the client tokens still gate every request.
+    if (process.platform !== 'win32' && existsSync(path)) {
       if (!lstatSync(path).isSocket()) throw new KTeamError('host_socket_path_occupied');
       unlinkSync(path);
     }
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(path, resolve); });
-    chmodSync(path, 0o600);
+    if (process.platform !== 'win32') chmodSync(path, 0o600);
     automation.start();
   } catch (error) { server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
