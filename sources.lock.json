@@ -4,7 +4,7 @@
     {
       "name": "kswarm",
       "repository": "https://github.com/kaisersong/kswarm",
-      "revision": "5c64da71305e69cbec72ec68debfad14cd59b099",
+      "revision": "ebcbedd121c4bef381df744943914a85fe963880",
       "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     },
     {

@@ -1,7 +1,7 @@
 import {creatorSkillRoots} from './creator-plugins.js';
 import {createHash} from 'node:crypto';
 import {existsSync,realpathSync,statSync,openSync,closeSync,fstatSync,readSync,constants} from 'node:fs';
-import {join,resolve,relative,isAbsolute,dirname} from 'node:path';
+import {join,resolve,relative,isAbsolute,dirname,sep} from 'node:path';
 import {KTeamError} from '../errors.js';
 
 export interface SkillScope {root:string;botId:string;roomId:string}
@@ -13,7 +13,7 @@ export function scopedCatalog(core:any,cwd:string,scope?:SkillScope,onIssue?:(is
  const allowed=(skill:any)=>{if(!scope)return true;try{const paths=[skill.path,...[...(skill.referencesManifest??[]),...(skill.scriptsManifest??[]),...(skill.assetsManifest??[])].map(file=>file.absolutePath)],valid=paths.every(path=>{const actual=realpathSync(path),stat=statSync(actual);return stat.isFile()&&stat.nlink===1&&(!within(resolve(scope.root),actual)||within(join(skillBindingRoot(scope),'skills'),actual)||within(join(core.getConfigDir(),'skills'),actual));});if(valid)return true;}catch{}if(!reported.has(skill.path)){reported.add(skill.path);onIssue?.({kind:'skill_read_unavailable',path:skill.path});}return false;};
  return {...original,reload:async()=>{reported.clear();await original.reload();return original.list().filter(allowed);},list:()=>original.list().filter(allowed),get:(name:string)=>{const skill=original.get(name);return skill&&allowed(skill)?skill:undefined;},resolve:(names:string[])=>original.resolve(names).filter(allowed)};
 }
-const within=(root:string,path:string)=>{const part=relative(root,path);return !isAbsolute(part)&&part!=='..'&&!part.startsWith('../');};
+const within=(root:string,path:string)=>{const part=relative(root,path);return !isAbsolute(part)&&part!=='..'&&!part.startsWith('..'+sep);};
 /** Bounds reads and rejects path substitution; versions include all declared resources. */
 function bytes(path:string,root:string,max:number){
  if(!within(root,path)||realpathSync(path)!==resolve(path)||!within(realpathSync(root),realpathSync(path)))throw new KTeamError('skill_source_unavailable',409);
