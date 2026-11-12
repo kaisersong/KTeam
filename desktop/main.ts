@@ -12,6 +12,7 @@ import {autoUpdateEnabledForChannel,createKTeamUpdater,defaultUpdaterEnvironment
 import {KTEAM_RELEASES_URL,showPortableOrUnsupportedUpdateDialog} from './update-ui.js';
 import {defaultDeps} from '../src/runtime/platform-process.js';
 import {captureWindowsHostIdentity,stopWindowsHostTree,type WindowsHostIdentity} from './windows-host-shutdown.js';
+import {quitWindowsDesktop} from './windows-desktop-quit.js';
 
 app.setName('KTeam');
 const locked=app.requestSingleInstanceLock();
@@ -35,6 +36,13 @@ async function stopWindowsHostIfNeeded(){
   windowsHostStop=stopWindowsHostTree(identity,windowsHostLayer()).then(result=>{if(!result.ok)logUpdater('host-stop-failed',result.error);windowsHost=undefined;}).catch(error=>{logUpdater('host-stop-failed',String(error));windowsHost=undefined;});
  }
  await windowsHostStop;
+}
+let windowsDesktopQuitStarted=false;
+async function quitWindowsOnLastWindow(){
+ if(process.platform!=='win32')return;
+ if(windowsDesktopQuitStarted)return;
+ windowsDesktopQuitStarted=true;
+ try{await quitWindowsDesktop({stopPolling:()=>updater.stopPolling(),stopHostTree:stopWindowsHostIfNeeded,quit:()=>app.quit(),exit:code=>app.exit(code),log:logUpdater});}catch(error){logUpdater('windows-quit-failed',String(error));}
 }
 
 
@@ -119,5 +127,5 @@ if(locked){
   }
   if(updaterHandoff.commitHandoffOnBeforeQuit().committed)updater.completeHandoff();
  });
- app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
+ app.on('window-all-closed',()=>{if(process.platform==='win32'){void quitWindowsOnLastWindow();return;}if(process.platform!=='darwin')app.quit();});
 }

@@ -221,6 +221,18 @@ describe('KTeam updater gating', () => {
     assert.equal(updater.checkForUpdates.calls.length, 2);
   });
 
+  it('stopPolling cancels the startup check and the periodic interval', async () => {
+    const updater = fakeAutoUpdater();
+    const { environment, clock } = fakeEnvironment({}, updater);
+    const subject = createKTeamUpdater(environment);
+    await subject.setup(undefined, { requestSource: 'scheduler' });
+    subject.stopPolling();
+    await clock.advance(STARTUP_UPDATE_DELAY_MS);
+    await clock.advance(PERIODIC_UPDATE_INTERVAL_MS * 2);
+    assert.equal(updater.checkForUpdatesAndNotify.calls.length, 0);
+    assert.equal(updater.checkForUpdates.calls.length, 0);
+  });
+
   it('requires scheduler context for setup and user context for manual checks and installs', async () => {
     const { environment } = fakeEnvironment({}, fakeAutoUpdater());
     const subject = createKTeamUpdater(environment);
