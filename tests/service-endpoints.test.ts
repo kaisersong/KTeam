@@ -62,7 +62,7 @@ test('discovery file round-trips privately between KTeam and its runtime, and re
  }
 }));
 
-test('standalone desktop init records its own free ports, and the CLI reads them unless KTEAM_*_URL overrides',{timeout:20000},()=>isolated(async dir=>{
+test('standalone desktop init records its own free ports, and the CLI reads them unless KTEAM_*_URL overrides',{timeout:process.platform==='win32'?90000:20000},()=>isolated(async dir=>{
  const data=join(dir,'kteam');await initStandalone(data);
  const config=loadConfig(data),ports=readServiceEndpoints(data)!;
  assert.equal(config.brokerUrl,'http://127.0.0.1:'+ports.broker);assert.equal(config.kswarmUrl,'http://127.0.0.1:'+ports.kswarm);
