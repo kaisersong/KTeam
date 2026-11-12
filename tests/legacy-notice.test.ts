@@ -1,6 +1,8 @@
+import {assertPrivateMode} from './helpers/private-temp.js';
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import fs,{mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,statSync,existsSync} from 'node:fs';
+import fs,{mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,statSync,existsSync} from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {join,sep} from 'node:path';
@@ -28,7 +30,7 @@ test('notice is pending only when the legacy shared-service key was dropped, and
   assert.equal(legacySharedNoticeView(root).show,false);
   assert.deepEqual(loadConfig(root),base);
   assert.equal(legacySharedNoticeView(root).show,true);
-  if(process.platform!=='win32')assert.equal(statSync(join(root,'notices.json')).mode&0o777,0o600);
+  assertPrivateMode(join(root,'notices.json'),0o600);
   // A restart that finds a config already rewritten without the key still shows the pending notice.
   writeConfig(root,base);loadConfig(root);
   assert.equal(legacySharedNoticeView(root).show,true);

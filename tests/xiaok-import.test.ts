@@ -1,6 +1,7 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import fs,{mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,readdirSync,statSync,existsSync} from 'node:fs';
+import fs,{mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,readdirSync,statSync,existsSync} from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';

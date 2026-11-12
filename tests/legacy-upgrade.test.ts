@@ -1,6 +1,8 @@
+import {assertPrivateMode} from './helpers/private-temp.js';
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,readdirSync,existsSync,statSync} from 'node:fs';
+import {mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,readdirSync,existsSync,statSync} from 'node:fs';
 import {join,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createServer,type Server} from 'node:http';
@@ -55,7 +57,7 @@ for(const withLegacyKey of [true,false])test(`a 0.2 shared-service install ${wit
   assert.equal(readFileSync(join(archive,'services-config.json'),'utf8'),before['services/config.json']);
   assert.equal(readFileSync(join(archive,'services-shared-connection.json'),'utf8'),before['services/shared-connection.json']);
   assert.equal(readFileSync(join(archive,'service-endpoints.json'),'utf8'),before['service-endpoints.json']);
-  if(process.platform!=='win32')assert.equal(statSync(archive).mode&0o777,0o700);
+  assertPrivateMode(archive,0o700);
   // Nothing outside KTeam's data dir is touched; the client credential is kept; the one-time notice is pending.
   assert.equal(readFileSync(join(other,'marker'),'utf8'),'other app data');assert.deepEqual(readdirSync(other),['marker']);
   assert.equal(readFileSync(join(root,'kteam-main.token'),'utf8'),client);
