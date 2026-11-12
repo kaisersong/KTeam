@@ -452,11 +452,13 @@ jobs:
               raise SystemExit(f"Required Windows artifacts missing or duplicated: {missing}\n{listing}")
           Path(".artifacts").mkdir(parents=True, exist_ok=True)
           uploads = [files[0] for files in required.values()]
-          Path(".artifacts/windows-upload.txt").write_text("\n".join(str(p) for p in uploads) + "\n")
+          with open(".artifacts/windows-upload.txt", "w", encoding="utf-8", newline="\n") as handle:
+              handle.write("\n".join(str(p) for p in uploads) + "\n")
           PY
           gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
           uploads=()
           while IFS= read -r line || [[ -n "$line" ]]; do
+            line=${line%$'\r'}
             [[ -z "$line" ]] && continue
             uploads+=("$line")
           done < .artifacts/windows-upload.txt
