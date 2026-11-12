@@ -34,3 +34,7 @@ KTeam bundles kai-report-creator and kai-slide-creator from kai-xiaok-plugins
 (https://github.com/kaisersong/kai-xiaok-plugins), Apache-2.0. The pinned revision
 and host adaptations are recorded in sources.lock.json under creatorPlugins.
 Their Python interpreter and dependency licenses ship inside build/plugins.
+
+KTeam's Windows installation-absence diagnostic in runtime-core/native derives
+from xiaok-cli f8728a34 (Apache-2.0). It is maintained as KTeam code and probes
+only KTeam's installation namespace; source is compiled with the current build.

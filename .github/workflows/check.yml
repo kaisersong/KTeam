@@ -60,7 +60,8 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           npm run build
-          node --test dist/tests/windows-private-host.test.js
+          node scripts/build-runtime.mjs
+          node --test dist/tests/windows-private-host.test.js dist/tests/windows-runtime-security.test.js
           node scripts/smoke-cli.mjs
         timeout-minutes: 5
         working-directory: kteam

@@ -8,6 +8,7 @@ import {resolve,join} from 'node:path';
 execFileSync(process.execPath,['scripts/build-creator-plugins.mjs'],{stdio:'inherit'});
 const root=fileURLToPath(new URL('../',import.meta.url));
 const source=join(root,'runtime-core');
+execFileSync(process.execPath,['scripts/build-windows-absence.mjs'],{stdio:'inherit'});
 const modules=JSON.parse(readFileSync(join(root,'scripts/runtime-exports.json'),'utf8'));
 const entry=`export {withHarnessProcessOwner} from ${JSON.stringify(join(root,'src/runtime/harness-child-process.ts'))};\n`+Object.entries(modules).map(([file,names])=>`export {${names.join(',')}} from ${JSON.stringify(join(source,file))};`).join('\n');
 mkdirSync(join(root,'build/shared'),{recursive:true});
