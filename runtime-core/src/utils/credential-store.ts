@@ -1,8 +1,7 @@
 import {constants,existsSync,lstatSync,realpathSync,mkdirSync,openSync,closeSync,fstatSync,fchmodSync,readFileSync,writeFileSync,renameSync,rmSync,fsyncSync,type Stats} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
-// Trusted credential hardening uses fixed source below; it is never a model/tool command.
-import {spawnSync} from 'node:child_process';
+import {protectWindowsCredentialPath} from './windows-credential-acl.js';
 import type {CredentialBackend} from './system-credentials.js';
 
 export type CredentialStoreKind='file'|'keychain';
@@ -18,11 +17,8 @@ function owned(stat:Stats):void{
 }
 
 /** Restrict the dedicated Windows bucket even for a custom config directory. */
-export function protectCredentialPath(path:string,directory:boolean,platform:NodeJS.Platform=process.platform,run:typeof spawnSync=spawnSync):void{
-  if(platform!=='win32')return;
-  const script=`$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $target=$env:KTEAM_CREDENTIAL_ACL_PATH; $item=Get-Item -LiteralPath $target -Force; if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'unsafe'}; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; $owner=(Get-Acl -LiteralPath $target).GetOwner([System.Security.Principal.SecurityIdentifier]).Value; if($owner -ne $sid.Value -and $owner -ne 'S-1-5-32-544'){throw 'owner'}; if($env:KTEAM_CREDENTIAL_ACL_DIRECTORY -eq '1'){$acl=New-Object System.Security.AccessControl.DirectorySecurity; $inherit=[System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{$acl=New-Object System.Security.AccessControl.FileSecurity; $inherit=[System.Security.AccessControl.InheritanceFlags]::None}; $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false); foreach($principal in @($sid.Value,'S-1-5-18','S-1-5-32-544')){$principalSid=New-Object System.Security.Principal.SecurityIdentifier($principal); $rule=New-Object System.Security.AccessControl.FileSystemAccessRule($principalSid,'FullControl',$inherit,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow); $acl.AddAccessRule($rule)}; Set-Acl -LiteralPath $target -AclObject $acl; $check=Get-Acl -LiteralPath $target; if(-not $check.AreAccessRulesProtected){throw 'inheritance'}; foreach($rule in $check.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])){if($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @($sid.Value,'S-1-5-18','S-1-5-32-544')){throw 'access'}}`;
-  const result=run(join(process.env.SystemRoot??'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe'),['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{env:{...process.env,KTEAM_CREDENTIAL_ACL_PATH:path,KTEAM_CREDENTIAL_ACL_DIRECTORY:directory?'1':'0'},stdio:['ignore','pipe','pipe'],shell:false,windowsHide:true,timeout:15000,maxBuffer:256*1024});
-  if(result.error||result.status!==0)fail('path_unsafe');
+export function protectCredentialPath(path:string,directory:boolean,platform:NodeJS.Platform=process.platform):void{
+  if(platform==='win32')protectWindowsCredentialPath(path,directory);
 }
 
 const protectedWindowsPaths=new Map<string,string>();
