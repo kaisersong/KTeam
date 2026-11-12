@@ -1,8 +1,8 @@
 import {canonical} from '../src/protocol/json.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {join,resolve} from 'node:path';
-import {mkdirSync,writeFileSync,readFileSync,unlinkSync,linkSync,symlinkSync} from 'node:fs';
+import {join,resolve,dirname} from 'node:path';
+import {mkdirSync,writeFileSync,readFileSync,unlinkSync,linkSync,symlinkSync,renameSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:http';
 import {realUpstreams} from './helpers/real-upstreams.js';
@@ -34,7 +34,14 @@ test('original runtime output is hash verified, paged without Unicode damage, sc
   await host.close();host=await proofHost(root,configRoot,f.upstream.options);assert.match((await api.toolOutput(first)).text,/SYNTHETIC_FULL_a/);assert.equal(requests,2);
   const second=await send('b');assert.equal(requests,4);assert.match((await api.toolOutput(second)).text,/SYNTHETIC_FULL_b/);assert.match((await api.toolOutput(first)).text,/SYNTHETIC_FULL_a/);
   const small=await send('c');assert.equal(requests,6);assert.match((await api.toolOutput(small)).text,/END_c/);
-  const inspect=new TeamStore(root),saved=inspect.job(first.jobId)!,ref=saved.toolTrace.find((event:any)=>event.id===first.eventId).output;inspect.close();const spill=join(location.directory,'spill',ref.sessionId,ref.key+'.txt'),original=readFileSync(spill);writeFileSync(spill,Buffer.alloc(original.length,120));await assert.rejects(api.toolOutput(first),/tool_output_changed/);writeFileSync(spill,original);const hardlink=join(f.root,'linked-output');linkSync(spill,hardlink);await assert.rejects(api.toolOutput(first),/tool_output_changed/);unlinkSync(hardlink);unlinkSync(spill);symlinkSync(file,spill);await assert.rejects(api.toolOutput(first),/tool_output_changed/);
+  const inspect=new TeamStore(root),saved=inspect.job(first.jobId)!,ref=saved.toolTrace.find((event:any)=>event.id===first.eventId).output;inspect.close();const spill=join(location.directory,'spill',ref.sessionId,ref.key+'.txt'),original=readFileSync(spill);writeFileSync(spill,Buffer.alloc(original.length,120));await assert.rejects(api.toolOutput(first),/tool_output_changed/);writeFileSync(spill,original);const hardlink=join(f.root,'linked-output');linkSync(spill,hardlink);await assert.rejects(api.toolOutput(first),/tool_output_changed/);unlinkSync(hardlink);
+  if(process.platform==='win32'){
+   // A junction in the ancestor preserves a regular, byte-identical leaf and
+   // exercises the same no-follow boundary without enabling OS symlink privileges.
+   const directory=dirname(spill),saved=directory+'-original',foreign=join(f.root,'foreign-output');mkdirSync(foreign);writeFileSync(join(foreign,ref.key+'.txt'),original);renameSync(directory,saved);symlinkSync(foreign,directory,'junction');
+   try{await assert.rejects(api.toolOutput(first),/tool_output_changed/);}finally{unlinkSync(directory);renameSync(saved,directory);}
+   assert.match((await api.toolOutput(first)).text,/SYNTHETIC_FULL_a/);
+  }else{unlinkSync(spill);symlinkSync(file,spill);await assert.rejects(api.toolOutput(first),/tool_output_changed/);}
   const archived=await f.broker.room.archiveRoom({roomId:member.roomId},{sessionId:'output-fixture',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(archived.ok,true);await assert.rejects(api.toolOutput(second),/skill_room_denied|tool_output_scope_changed/);assert.equal(requests,6);
  }finally{await host?.close();provider.closeAllConnections();await new Promise<void>(resolve=>provider.close(()=>resolve()));for(const [key,value] of Object.entries({KTEAM_MODEL_CONFIG_DIR:previous.config,KTEAM_DISABLE_GLOBAL_PLUGINS:previous.plugins}))if(value===undefined)delete process.env[key];else process.env[key]=value;await f.close();}
 });
