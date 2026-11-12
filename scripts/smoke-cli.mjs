@@ -3,11 +3,12 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { hostRequest } from '../dist/src/service/client.js';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
-const root = realpathSync(mkdtempSync('/tmp/kteam-cli-'));
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'kteam-cli-')));
 const cli = join(project, 'dist/src/cli.js');
 const env = { ...process.env, KTEAM_DATA_DIR: root, KTEAM_BROKER_URL: 'http://127.0.0.1:1', KTEAM_KSWARM_URL: 'http://127.0.0.1:1' };
 delete env.KTEAM_BROKER_TOKEN_FILE; delete env.KTEAM_KSWARM_TOKEN_FILE;
@@ -50,9 +51,20 @@ try {
   assert.equal(diagnosis.status.upstream.ready, false);
   assert.equal(diagnosis.handshake.aimp.executionEnabled, false);
   report.assertions.push('doctor returns explicit upstream absence and no execution admission');
-  await exited(second, 'SIGTERM');
-  assert.equal(second.exitCode, 0);
-  report.assertions.push('graceful CLI shutdown exits successfully');
+  if (process.platform === 'win32') {
+    // Windows has no POSIX SIGTERM delivery: child.kill('SIGTERM') is TerminateProcess, so the CLI's SIGTERM handler
+    // cannot run. Check the forced stop instead: the process is gone and the next owner starts cleanly.
+    await exited(second, 'SIGTERM');
+    assert.ok(second.exitCode !== null || second.signalCode !== null);
+    const third = start(); const three = await ready(third);
+    assert.ok(three.ownerEpoch > two.ownerEpoch);
+    await exited(third, 'SIGTERM');
+    report.assertions.push('Windows: a terminated CLI owner releases the lock and the next owner advances epoch (graceful SIGTERM is POSIX-only)');
+  } else {
+    await exited(second, 'SIGTERM');
+    assert.equal(second.exitCode, 0);
+    report.assertions.push('graceful CLI shutdown exits successfully');
+  }
 } finally {
   for (const child of children) await exited(child, 'SIGKILL');
   report.remainingOwnProcesses = children.filter(child => child.exitCode === null && child.signalCode === null).length;
