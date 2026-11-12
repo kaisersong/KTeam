@@ -1,8 +1,9 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import {realpathSync, rmSync, mkdirSync, writeFileSync} from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';

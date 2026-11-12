@@ -1,8 +1,9 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtempSync,readFileSync,existsSync,rmSync,realpathSync} from 'node:fs';
+import {readFileSync,existsSync,rmSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 test('a caller that leaves an upstream fixture before finally does not leave its original servers or private directory alive',async()=>{

@@ -1,7 +1,8 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
+import {realpathSync,rmSync,readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import http from 'node:http';
 import {IntegrationSettings,integrationDefaults,readIntegrations} from '../src/service/integration-settings.js';

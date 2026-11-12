@@ -1,6 +1,7 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,writeFileSync,rmSync,linkSync,unlinkSync} from 'node:fs';
+import {realpathSync,writeFileSync,rmSync,linkSync,unlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {runtimeOutputPage} from '../src/runtime/runtime-output.js';

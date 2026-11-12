@@ -1,3 +1,4 @@
+import {localRequest} from './windows-transport.js';
 import http from 'node:http';
 import { KTeamError, record } from '../errors.js';
 import { parseDataJson } from '../protocol/json.js';
@@ -8,7 +9,7 @@ import { versionHeaders } from './api-version.js';
 export async function hostRequest(root: string, client: ClientId, route: string, value?: unknown) {
   const token = clientToken(root, client);
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const req = http.request({ socketPath: socketPath(root), path: route, agent: false, method: value === undefined ? 'GET' : 'POST',
+    const req = localRequest(root,{ path: route, agent: false, method: value === undefined ? 'GET' : 'POST',
       headers: { authorization: 'Bearer ' + token, ...versionHeaders(), ...(value !== undefined ? { 'content-type': 'application/json' } : {}) },
     }, res => {
       const chunks: Buffer[] = []; let size = 0;

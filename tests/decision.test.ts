@@ -1,7 +1,8 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,rmSync,realpathSync} from 'node:fs';
+import {writeFileSync,rmSync,realpathSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {createServer} from 'node:http';
 import {sharedRuntime} from '../src/runtime/native.js';

@@ -11,6 +11,7 @@ const help = `KTeam 0.1 开发版 — 组建你的 AI 团队，让工作主动�
 
 kteam init                          初始化专用目录与两个客户端凭据
 kteam start                         前台启动共享 host（关闭客户端不影响 host）
+kteam stop                         停止本机共享 host，保留待处理工作
 kteam status | doctor                版本握手、owner 与上游健康
 kteam bots | runtimes | teams        读取现有 Agent、运行时与团队
 kteam team-create --title 名称 --goal 目标 --members agent1,agent2 --id 请求ID
@@ -59,6 +60,7 @@ async function main() {
     process.once('SIGINT', close); process.once('SIGTERM', close); return;
   }
   const request = (route: string, value?: unknown) => hostRequest(root, 'kteam-main', route, value);
+  if(command==='stop'){print(await request('/v1/host/stop',{}));return;}
   if (command === 'doctor') {
     const handshake = await request('/v1/handshake');
     const status = await request('/v1/status');

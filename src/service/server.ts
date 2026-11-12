@@ -1,3 +1,6 @@
+import https from 'node:https';
+import {join} from 'node:path';
+import {windowsCertificate,windowsEndpointPath,publishWindowsEndpoint} from './windows-transport.js';
 import {ToolOutput} from './tool-output.js';
 import {originalSequences} from './room-reads.js';
 import {ConversationUpdates} from './conversation-updates.js';
@@ -75,7 +78,9 @@ function page(value: string | null, fallback: number, max: number): number {
 }
 export async function startHost(options: { root: string; upstream: UpstreamOptions }) {
   ensurePrivateRoot(options.root);
-  const path = socketPath(options.root);
+  const windows=process.platform==='win32';
+  const path = windows?windowsEndpointPath(options.root):socketPath(options.root);
+  const certificate=windows?windowsCertificate():undefined;
   const tokens = CLIENTS.map(id => ({ id, token: clientToken(options.root, id) }));
   if (tokens.some(v => v.token.length < 32) || new Set(tokens.map(v => v.token)).size !== tokens.length) throw new KTeamError('client_credentials_invalid');
   const upstream = new Upstreams(options.upstream);
@@ -105,7 +110,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   // A previous process's gate cannot outlive its fenced model calls.
   teamStore.resetSourceGates();
 
-  const server = http.createServer(async (req, res) => {
+  let shutdown:(()=>Promise<void>)|undefined;
+  const handler=async(req:IncomingMessage,res:ServerResponse)=>{
     try {
       // Even a local browser with a stolen URL gets no access; there is no CORS surface.
       if (req.headers.origin !== undefined) throw new KTeamError('browser_origin_forbidden', 403);
@@ -138,6 +144,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
+      if(url.pathname==='/v1/host/stop'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('host_stop_forbidden',403);fields(record(await body(req)),[]);if(!shutdown)throw new KTeamError('host_starting',503);send(res,200,{ok:true,stopping:true});setImmediate(()=>{void shutdown!().catch(()=>{process.exitCode=1;});});return;}
       if(url.pathname.startsWith('/v1/conversation-view/')){
         if(client.id!=='kteam-main')throw new KTeamError('conversation_view_forbidden',403);
         if(req.method!=='POST')throw new KTeamError('route_not_found',404);
@@ -305,33 +312,38 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       const known = error instanceof KTeamError;
       send(res, known ? error.status : 500, { ok: false, code: known ? error.code : 'internal_error', ...(known && error.details ? { details: error.details } : {}) });
     }
-  });
+  };
+  const server=certificate?https.createServer({pfx:certificate.pfx,passphrase:certificate.passphrase,minVersion:'TLSv1.2'},handler):http.createServer(handler);
   server.requestTimeout = 20_000;
   server.headersTimeout = 5_000;
   server.maxHeadersCount = 32;
   try {
     // Only the exclusive owner may remove a socket left by its crashed predecessor.
-    if (existsSync(path)) {
+    if (!windows&&existsSync(path)) {
       if (!lstatSync(path).isSocket()) throw new KTeamError('host_socket_path_occupied');
       unlinkSync(path);
     }
-    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(path, resolve); });
-    chmodSync(path, 0o600);
+    await new Promise<void>((resolve, reject) => { server.once('error', reject); if(windows)server.listen(0,'127.0.0.1',resolve);else server.listen(path, resolve); });
+    if(windows){const address=server.address();if(!address||typeof address==='string')throw new KTeamError('host_endpoint_invalid');publishWindowsEndpoint(options.root,address.port,certificate!.ca,owner.epoch);}
+    else chmodSync(path, 0o600);
     automation.start();
   } catch (error) { server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
-  return { epoch: owner.epoch, instanceId, path,
+  const host={ epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
         links.close();approvals.close();
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+        if(windows&&existsSync(path))unlinkSync(path);
         teamStore.close();
         owner.release();
       })();
       return closePromise;
     },
   };
+  shutdown=()=>host.close();
+  return host;
 }
 
 

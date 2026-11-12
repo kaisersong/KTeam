@@ -56,6 +56,14 @@ jobs:
         if: runner.os == 'macOS'
         run: node node_modules/electron/install.js
         working-directory: kteam
+      - name: Verify private Windows host transport and independent CLI lifecycle
+        if: runner.os == 'Windows'
+        run: |
+          npm run build
+          node --test dist/tests/windows-private-host.test.js
+          node scripts/smoke-cli.mjs
+        timeout-minutes: 5
+        working-directory: kteam
       - run: npm run check
         timeout-minutes: 10
         working-directory: kteam

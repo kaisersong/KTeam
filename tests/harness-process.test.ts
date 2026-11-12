@@ -1,7 +1,8 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,chmodSync,existsSync,rmSync,copyFileSync} from 'node:fs';
+import {realpathSync,mkdirSync,writeFileSync,chmodSync,existsSync,rmSync,copyFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {promisify} from 'node:util';
 import {spawn,execFile,withHarnessProcessOwner} from '../src/runtime/harness-child-process.js';

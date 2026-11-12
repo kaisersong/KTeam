@@ -1,7 +1,8 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {chmodSync,cpSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,existsSync,writeFileSync} from 'node:fs';
+import {chmodSync,cpSync,mkdirSync,readFileSync,realpathSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';

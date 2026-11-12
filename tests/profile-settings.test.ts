@@ -1,10 +1,11 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {nameImeActive,validProfileName} from '../desktop/renderer/src/profile-name.js';
 import {systemDisplayName} from '../src/service/user-defaults.js';
 import {parseSystemVoices} from '../desktop/system-voices.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
+import {realpathSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {deflateSync} from 'node:zlib';

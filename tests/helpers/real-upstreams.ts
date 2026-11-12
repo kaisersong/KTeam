@@ -1,7 +1,8 @@
+import {privateTempDir as mkdtempSync} from './private-temp.js';
 import {after} from 'node:test';
 import {tmpdir} from 'node:os';
 import {fork,type ChildProcess} from 'node:child_process';
-import {mkdtempSync,realpathSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {realpathSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';

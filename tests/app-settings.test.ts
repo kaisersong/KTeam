@@ -1,7 +1,8 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {realpathSync,rmSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {TeamStore} from '../src/service/team-store.js';
 import {appPreferences,saveAppPreferences} from '../src/service/app-preferences.js';
