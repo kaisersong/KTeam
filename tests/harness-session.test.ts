@@ -1,4 +1,4 @@
-import {tmpRoot} from './helpers/tmp-root.js';
+import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
@@ -16,7 +16,7 @@ async function fixture(){
  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'text',delta:'done'};yield {type:'done'};}};
  const scope={root:join(root,'host-data'),botId:'bot-a',roomId:'room-a',bindingRevision:1,fingerprint:'fp-a',profileRevision:1};
  const open=async(extra={})=>{const h=await createHarness({scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
- return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
+ return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;removeTempRoot(root);}};
 }
 test('production platform factory preserves complete tool history and project instructions across runs, with room/binding isolation',async()=>{
  const f=await fixture();let owner:any;try{
