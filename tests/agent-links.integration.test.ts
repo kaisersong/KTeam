@@ -1,5 +1,6 @@
+import {readFileSync} from 'node:fs';
 import {KSWARM_WHICH_ON_WINDOWS} from './helpers/platform-skips.js';
-import{test}from'node:test';import assert from'node:assert/strict';import{randomBytes}from'node:crypto';import{realUpstreams}from'./helpers/real-upstreams.js';import{TeamStore}from'../src/service/team-store.js';import{TeamCoordinator,normalizeTeamTitle}from'../src/service/coordination.js';import{AgentLinks}from'../src/service/agent-links.js';import{OnboardingService}from'../src/service/onboarding.js';import{CollaborationService,LOCAL_HUMAN}from'../src/service/collaboration.js';import{KTeamError}from'../src/errors.js';
+import{test}from'node:test';import assert from'node:assert/strict';import{randomBytes}from'node:crypto';import{realUpstreams}from'./helpers/real-upstreams.js';import{TeamStore}from'../src/service/team-store.js';import{TeamCoordinator,normalizeTeamTitle}from'../src/service/coordination.js';import{AgentLinks,agentLinkSupported}from'../src/service/agent-links.js';import{OnboardingService}from'../src/service/onboarding.js';import{CollaborationService,LOCAL_HUMAN}from'../src/service/collaboration.js';import{KTeamError}from'../src/errors.js';
 const user={requestSource:'user'},identity=async()=>({model:'fixture-model',fingerprint:'fixture'}),models={catalog:async()=>({defaultModelId:'fixture'}),identity};
 async function setup(){const f=await realUpstreams({agentClis:['codex']}),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),links=new AgentLinks(f.upstream,store,coordinator,Date.now,identity);return{...f,store,coordinator,links,async close(){links.close();store.close();await f.close();}};}
 async function candidate(f:Awaited<ReturnType<typeof setup>>,name='原会话',botId?:string){const invitation=await f.links.invite({name,driver:'codex',requestId:randomBytes(16).toString('hex'),...(botId?{botId}:{})}),credential={id:invitation.id,token:randomBytes(32).toString('hex')},claim={clientId:randomBytes(16).toString('hex'),token:credential.token,workspace:f.root};const view=f.links.claim(invitation.id,claim);return{invitation,credential,claim,view};}
@@ -19,3 +20,11 @@ test('pause withholds external work and fences a reply suspended during scope re
 test('canary: the pinned KSwarm resolves an external CLI on macOS/Linux and cannot on Windows (/usr/bin/which)',async()=>{const f=await realUpstreams({agentClis:['codex']});try{const body={id:'kteam-canary-'+randomBytes(8).toString('hex'),name:'外部探针',description:'KTeam 团队成员',runtimeType:'codex',runtimeSource:'kteam-external-agent',capabilities:[],maxConcurrentTasks:1};
  if(process.platform==='win32'){await assert.rejects(f.upstream.createBot(body),(e:any)=>e.code==='upstream_rejected'&&e.status===400);return;}
  const created=await f.upstream.createBot(body) as any;assert.equal(created.agent.runtimeType,'codex');}finally{await f.close();}});
+test('Windows refuses to link a local Agent CLI with a readable reason before any write; other platforms are unchanged',async()=>{
+ for(const driver of ['codex','kimi','zcode'])assert.equal(agentLinkSupported(driver,'win32'),false,driver);
+ for(const driver of ['other','xiaok'])assert.equal(agentLinkSupported(driver,'win32'),true,driver);
+ for(const platform of ['darwin','linux'] as const)for(const driver of ['codex','kimi','zcode','other','xiaok'])assert.equal(agentLinkSupported(driver,platform),true,platform+' '+driver);
+ assert.match(readFileSync('desktop/renderer/src/api.ts','utf8'),/agent_link_windows_unsupported:'Windows 版暂不支持链接本机 Agent，将在 0\.5 支持'/);
+ if(process.platform!=='win32')return;
+ const f=await setup();try{const before=(await f.upstream.listBots()).agents.length;await assert.rejects(f.links.invite({name:'本机 Codex',driver:'codex',requestId:randomBytes(16).toString('hex')}),(e:any)=>e.code==='agent_link_windows_unsupported');assert.equal((await f.upstream.listBots()).agents.length,before);}finally{await f.close();}
+});
