@@ -5,11 +5,13 @@ import assert from 'node:assert/strict';
 import {realpathSync,mkdirSync,writeFileSync,chmodSync,existsSync,rmSync,copyFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {promisify} from 'node:util';
+import {processBirth} from '../src/runtime/platform-process.js';
+const processDeadline=process.platform==='win32'?30000:6000;
 import {spawn,execFile,withHarnessProcessOwner} from '../src/runtime/harness-child-process.js';
 
 test('owned raw spawn preserves ordinary nonzero exit status and physically drains the supervisor',async()=>{
  const records:any[]=[];
- const child=withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(6000),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>spawn('/bin/sh',['-c','exit 2']));
+ const child=withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>spawn(process.execPath,['-e','process.exit(2)']));
  child.stdout.resume();child.stderr.resume();
  const result=await new Promise(r=>child.once('close',(code:any,signal:any)=>r({code,signal})));
  assert.deepEqual(result,{code:2,signal:null});assert.ok(records.some(r=>r.state==='running'));
@@ -17,15 +19,15 @@ test('owned raw spawn preserves ordinary nonzero exit status and physically drai
 });
 
 test('caller shell options cannot apply to the ownership launcher or execute a path before admission',async()=>{
- const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-launcher-shell-'))),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,'child; touch bypass; #.mjs');copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);process.env.KTEAM_NATIVE_CHILD=launcher;
- try{const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();let error:any;child.once('error',(e:any)=>{error=e;});child.once('close',()=>resolve(error));}));assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
-  const result=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();child.once('error',()=>{});child.once('close',(code:any,signal:any)=>resolve({code,signal}));}));assert.deepEqual(result,{code:2,signal:null});assert.equal(existsSync(marker),false);
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-launcher-shell-'))),before=process.env.KTEAM_NATIVE_CHILD,marker=join(root,'bypass'),launcher=join(root,process.platform==='win32'?'child& mkdir bypass &.mjs':'child; touch bypass; #.mjs');if(process.platform==='win32')copyFileSync(new URL('../src/runtime/platform-process.js',import.meta.url),join(root,'platform-process.js'));copyFileSync(new URL('../src/runtime/native-child.js',import.meta.url),launcher);process.env.KTEAM_NATIVE_CHILD=launcher;
+ try{const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();let error:any;child.once('error',(e:any)=>{error=e;});child.once('close',()=>resolve(error));}));assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
+  const result=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('exit',['2'],{shell:true});child.stdout.resume();child.stderr.resume();child.once('error',()=>{});child.once('close',(code:any,signal:any)=>resolve({code,signal}));}));assert.deepEqual(result,{code:2,signal:null});assert.equal(existsSync(marker),false);
  }finally{if(before===undefined)delete process.env.KTEAM_NATIVE_CHILD;else process.env.KTEAM_NATIVE_CHILD=before;rmSync(root,{force:true,recursive:true});}
 });
 
 test('owned execFile limits retained bytes while an excessive writer is physically stopped',async()=>{
  const records:any[]=[];
- const output:any=await withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(6000),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>new Promise(resolve=>execFile(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>process.stdout.write(Buffer.alloc(65536)),1)"],{maxBuffer:1024,encoding:'buffer'},(error:any,stdout:Buffer,stderr:Buffer)=>resolve({error,stdout,stderr}))));
+ const output:any=await withHarnessProcessOwner({cwd:process.cwd(),signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{},record:r=>{records.push(r);}},()=>new Promise(resolve=>execFile(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>process.stdout.write(Buffer.alloc(65536)),1)"],{maxBuffer:1024,encoding:'buffer'},(error:any,stdout:Buffer,stderr:Buffer)=>resolve({error,stdout,stderr}))));
  assert.equal(output.error.code,'native_output_limit');assert.ok(output.stdout.length+output.stderr.length<=1024);
  for(const row of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(row.pid,0));
 });
@@ -33,9 +35,10 @@ test('owned execFile limits retained bytes while an excessive writer is physical
 test('a PATH-supplied ps cannot bypass a revoked ownership guard or inject census options',async()=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-ps-'))),bin=join(root,'bin'),marker=join(root,'marker');mkdirSync(bin);writeFileSync(join(bin,'ps'),'#!/bin/sh\nprintf bypass > '+marker);chmodSync(join(bin,'ps'),0o700);
  try{
-  const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(6000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('ps',['-p','1','-o','lstart='],{env:{PATH:bin}});child.stdout.resume();child.stderr.resume();let failure:any;child.once('error',(e:any)=>{failure=e;});child.once('close',()=>resolve(failure));}));
+  const error:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>new Promise(resolve=>{const child=spawn('ps',['-p','1','-o','lstart='],{env:{PATH:bin}});child.stdout.resume();child.stderr.resume();let failure:any;child.once('error',(e:any)=>{failure=e;});child.once('close',()=>resolve(failure));}));
   assert.match(error.message,/synthetic_revoked/);assert.equal(existsSync(marker),false);
-  const result:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(6000),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>promisify(execFile as any)('/bin/ps',['-p',String(process.pid),'-o','lstart='],{env:{PATH:bin},shell:true}));
+  if(process.platform==='win32'){const path=process.env.PATH;writeFileSync(join(bin,'powershell.cmd'),'@echo off\r\nmkdir marker\r\n');try{process.env.PATH=bin;assert.ok(processBirth(process.pid));assert.equal(existsSync(marker),false);}finally{if(path===undefined)delete process.env.PATH;else process.env.PATH=path;}return;}
+  const result:any=await withHarnessProcessOwner({cwd:root,signal:AbortSignal.timeout(processDeadline),assertCurrent:async()=>{throw Error('synthetic_revoked');},record:()=>{}},()=>promisify(execFile as any)('/bin/ps',['-p',String(process.pid),'-o','lstart='],{env:{PATH:bin},shell:true}));
   assert.ok(result.stdout.trim());assert.equal(existsSync(marker),false);
  }finally{rmSync(root,{recursive:true,force:true});}
 });

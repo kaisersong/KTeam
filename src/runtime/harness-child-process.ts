@@ -24,6 +24,15 @@ export function spawn(command:string,argsOrOptions:any[]=[],maybeOptions:any={})
  const tuple=stdio==='pipe'?['pipe','pipe','pipe']:stdio;
  const launcher=process.env.KTEAM_NATIVE_CHILD??resolve('dist/src/runtime/native-child.js');
  const child=childProcess.spawn(process.execPath,[launcher],{...options,shell:false,cwd:options.cwd??owner.cwd,env:{...nativeEnvironment(),...(process.versions.electron?{ELECTRON_RUN_AS_NODE:'1'}:{})},...groupSpawnOptions(),stdio:[...tuple,'ipc']});
+ // Windows terminates a Node child immediately on SIGTERM. Ask the owned
+ // launcher over its private IPC channel so it can reap its original tree first.
+ if(process.platform==='win32'){
+  const kill=child.kill.bind(child);
+  child.kill=((signal:NodeJS.Signals|number='SIGTERM')=>{
+   if((signal==='SIGTERM'||signal==='SIGINT')&&child.connected){try{child.send({type:'stop'},error=>{if(error)kill(signal);});return true;}catch{}}
+   return kill(signal);
+  }) as typeof child.kill;
+ }
  const invocationId='platform-'+randomUUID();let identity:any,started=false;
  const stop=()=>{child.kill('SIGTERM');};owner.signal.addEventListener('abort',stop,{once:true});
  child.once('spawn',()=>{void(async()=>{try{
