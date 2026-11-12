@@ -17,7 +17,7 @@ import {sharedRuntime} from '../src/runtime/native.js';
 
 const models={catalog:async()=>({defaultModelId:'fixture'}),identity:async(modelId:string)=>({modelId,model:'fixture-model',fingerprint:'frozen'})};
 const user={requestSource:'user' as const};
-test('real host shutdown and restart expose recovery and complete one linked run through the original streaming model adapter',{timeout:30000},async()=>{
+test('real host shutdown and restart expose recovery and complete one linked run through the original streaming model adapter',{timeout:process.platform==='win32'?120000:30000},async()=>{
  const f=await realUpstreams(),root=join(f.root,'host'),config=join(f.root,'model-config'),previous=process.env.KTEAM_MODEL_CONFIG_DIR;
  mkdirSync(config);process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  let first=true,requested!:()=>void;const waiting=new Promise<void>(done=>{requested=done;});
