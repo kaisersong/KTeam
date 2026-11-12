@@ -17,7 +17,9 @@ const windowsCensus={encoding:'utf8' as const,timeout:20000,maxBuffer:16*1024*10
 const systemRoot=(env:NodeJS.ProcessEnv)=>env.SystemRoot??env.SYSTEMROOT??'C:\\Windows';
 export const powershellPath=(env:NodeJS.ProcessEnv=process.env)=>win32.join(systemRoot(env),'System32','WindowsPowerShell','v1.0','powershell.exe');
 export const taskkillPath=(env:NodeJS.ProcessEnv=process.env)=>win32.join(systemRoot(env),'System32','taskkill.exe');
-const powershell=(deps:PlatformDeps,script:string)=>deps.exec(powershellPath(deps.env),['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],windowsCensus);
+/** The census must not inherit a reduced Agent environment: CIM without SystemRoot/windir is very slow on Windows. */
+const censusEnv=(env:NodeJS.ProcessEnv)=>({...env,SystemRoot:systemRoot(env),windir:env.windir??env.WINDIR??systemRoot(env)});
+const powershell=(deps:PlatformDeps,script:string)=>deps.exec(powershellPath(deps.env),['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{...windowsCensus,env:censusEnv(deps.env)});
 /**
  * `pid ppid creation` for every process except the PowerShell doing the census and console hosts (conhost.exe
  * belongs to a console, not to the work, and exits with it). creation is CreationDate as UTC FILETIME ticks (0 when

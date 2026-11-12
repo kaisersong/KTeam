@@ -29,7 +29,7 @@ test('Windows census lists the root and every live descendant via PowerShell CIM
  const call=calls[0]!;assert.equal(call.file,powershellPath(deps.env));assert.equal(call.file,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
  assert.ok(call.args.includes('-NoProfile')&&call.args.includes('-NonInteractive'));assert.equal(call.args.at(-1),WINDOWS_PROCESS_TABLE);
  assert.match(WINDOWS_PROCESS_TABLE,/Get-CimInstance -ClassName Win32_Process/);assert.match(WINDOWS_PROCESS_TABLE,/-ne \$PID/);assert.doesNotMatch(JSON.stringify(calls),/wmic/i);
- assert.equal(call.options.windowsHide,true);assert.deepEqual(call.options.stdio,['ignore','pipe','pipe']);assert.match(WINDOWS_PROCESS_TABLE,/conhost\.exe/);
+ assert.equal(call.options.windowsHide,true);assert.deepEqual(call.options.stdio,['ignore','pipe','pipe']);assert.equal(call.options.env.SystemRoot,'C:\\Windows');assert.equal(call.options.env.windir,'C:\\Windows');assert.match(WINDOWS_PROCESS_TABLE,/conhost\.exe/);
  assert.equal(ownedByCurrentUser(processGroup(100,deps)[0]!,{getuid:undefined}),true);
 });
 
@@ -129,4 +129,10 @@ test('host address: unix socket in the data dir on POSIX, one named pipe per dat
   if(real.value==='win32')assert.equal(a,b);
   assert.notEqual(a,c);
  }finally{Object.defineProperty(process,'platform',real);}
+});
+
+test('Agent environment keeps the Windows system variables PowerShell/CIM and CLIs need (paths only)',{skip:process.platform!=='win32'?'only meaningful where process.env carries Windows system variables':false},async()=>{
+ const {nativeEnvironment,WINDOWS_SYSTEM_ENV}=await import('../src/runtime/local-agents.js');const env=nativeEnvironment();
+ for(const name of ['windir','SystemDrive','ComSpec','PATHEXT','SystemRoot'])if(process.env[name])assert.equal(env[name],process.env[name],name);
+ assert.ok(WINDOWS_SYSTEM_ENV.every(name=>!/token|key|secret|pass/i.test(name)));
 });
