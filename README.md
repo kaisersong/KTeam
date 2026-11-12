@@ -24,7 +24,7 @@ Most multi-agent tools treat collaboration as a chain of function calls or as fr
 - **Commitments are explicit, and humans have the final say.** Accepting, delivering and approving work need explicit events. Human messages outrank agents for priority, interruption and veto. Execution rights come only from capability tokens that can expire and be revoked.
 - **No new transport.** AIMP is a collaboration layer that complements MCP (tools) and A2A (calls) and runs on existing messaging channels.
 
-Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spec-v3.1.md)** (Chinese), with its [JSON Schemas](spec/aimp/aimp-v3.1-schemas.json) and [signature test vectors](spec/aimp/aimp-v3.1-test-vectors.json).
+Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spec-v3.1.en.md)** (English translation; the [Chinese original](spec/aimp/aimp-design-spec-v3.1.md) is authoritative), with its [JSON Schemas](spec/aimp/aimp-v3.1-schemas.json) and [signature test vectors](spec/aimp/aimp-v3.1-test-vectors.json).
 
 ### What KTeam implements today
 
