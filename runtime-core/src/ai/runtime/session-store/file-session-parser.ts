@@ -1,3 +1,4 @@
+import {validateToolBatchCheckpoint} from '../tool-batch-checkpoint.js';
 import {isDeepStrictEqual} from 'node:util';
 import {validateCompoundOperationLedger} from '../../../runtime/sol-pi/compound-operation.js';
 import {validateSemanticCompactionLedger} from '../../../runtime/sol-pi/semantic-compaction-ledger.js';
@@ -28,7 +29,7 @@ export function parseFileSessionSnapshot(raw: string, sessionId: string, preserv
     } = parsed as PersistedSessionDocument;
     return {
       ...snapshot,
-      compoundOperations: snapshot.compoundOperations === undefined ? undefined : validateCompoundOperationLedger(snapshot.compoundOperations),
+    toolBatch:snapshot.toolBatch===undefined?undefined:validateToolBatchCheckpoint(snapshot.toolBatch),      compoundOperations: snapshot.compoundOperations === undefined ? undefined : validateCompoundOperationLedger(snapshot.compoundOperations),
       semanticCompaction: snapshot.semanticCompaction === undefined ? undefined : validateSemanticCompactionLedger(snapshot.semanticCompaction),
       protectedObservationClosure: mergeProtectedObservationClosures(undefined, snapshot.protectedObservationClosure),
       lineage: snapshot.lineage

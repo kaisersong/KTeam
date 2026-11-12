@@ -177,5 +177,11 @@
   ],
   "src/ai/memory/file-management.ts": [
     "FileMemoryReview"
+  ],
+  "src/ai/runtime/tool-batch-checkpoint.ts": [
+    "validateToolBatchCheckpoint",
+    "toolBatchCompletedCount",
+    "toolApprovalPause",
+    "isToolApprovalPause"
   ]
 }

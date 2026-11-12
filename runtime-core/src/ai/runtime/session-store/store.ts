@@ -1,3 +1,4 @@
+import {validateToolBatchCheckpoint} from '../tool-batch-checkpoint.js';
 import { isKimiCodingModel, type KimiCodingModel } from '../../providers/kimi-models.js';
 import type { StoredSessionSnapshot } from './stored-snapshot-types.js';
 export type { StoredSessionSnapshot } from './stored-snapshot-types.js';
@@ -72,7 +73,7 @@ export function toDurableSessionSnapshot(snapshot: StoredSessionSnapshot): Store
 
   return {
     ...snapshot,
-    compoundOperations: snapshot.compoundOperations === undefined ? undefined : validateCompoundOperationLedger(snapshot.compoundOperations),
+    toolBatch:snapshot.toolBatch===undefined?undefined:validateToolBatchCheckpoint(snapshot.toolBatch),    compoundOperations: snapshot.compoundOperations === undefined ? undefined : validateCompoundOperationLedger(snapshot.compoundOperations),
     semanticCompaction: snapshot.semanticCompaction === undefined ? undefined : validateSemanticCompactionLedger(snapshot.semanticCompaction),
     protectedObservationClosure: mergeProtectedObservationClosures(undefined, snapshot.protectedObservationClosure),
     messages: messages.map((message) => ({

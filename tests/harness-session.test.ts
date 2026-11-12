@@ -150,3 +150,18 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
   assert.ok(records.filter(r=>r.state==='running').length>=5);await platform.dispose();platform=undefined;for(const r of records.filter(r=>r.state==='running'))assert.throws(()=>process.kill(r.pid,0));
  }finally{await platform?.dispose();f.close();}
 });
+
+test('closing a failed checkpoint preserves its unknown tool batch instead of repairing it into replayable history',async()=>{
+ const f=await fixture();let owner:any;try{
+  writeFileSync(join(f.cwd,'proof'),'ACTUAL_READ_RESULT');
+  const port={ownerId:'checkpoint-owner',async prepare(){return undefined;}};
+  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000}),async*stream(){yield {type:'tool_use',id:'read-proof',name:'read',input:{file_path:join(f.cwd,'proof')}};yield {type:'done'};}};
+  const h=await createHarness({scope:f.scope,toolApprovalPort:port,workspace:f.cwd,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{},onPrompt:async()=>true});
+  owner=await h.prepare!(adapter,'fixture','verify saved result',[]);
+  const runtime=new f.core.AgentRuntime({toolApprovalPort:port,adapter,registry:owner.registry,session:owner.session,controller:new f.core.AgentRunController(),systemPrompt:owner.system,checkpoint:async()=>{await owner.persist();if(owner.session.getToolBatch()?.results.length)throw Error('synthetic_checkpoint_loss');},maxIterations:2});
+  await assert.rejects(owner.runOwned(()=>runtime.run('read actual synthetic file',()=>{})),/synthetic_checkpoint_loss/);
+  assert.match(owner.session.getToolBatch().results[0].content,/ACTUAL_READ_RESULT/);
+  await owner.close();owner=undefined;
+  await assert.rejects(h.prepare!(adapter,'fixture','must not replay',[]),/tool_batch_execution_unknown/);
+ }finally{await owner?.close();f.close();}
+});

@@ -1,3 +1,4 @@
+import type {ToolBatchCheckpoint} from './tool-batch-checkpoint.js';
 import type { ProtectedObservationClosure, ProtectedObservationReference } from './protected-observation-closure.js';
 import { computeSessionHistoryDigest } from './session-store/store.js';
 import type { Message, MessageBlock, UsageStats } from '../../types.js';
@@ -71,6 +72,9 @@ export class AgentSessionState {
     return this.graph.getProtectedObservationClosure();
   }
 
+  getToolBatch(){return this.graph.getToolBatch();}
+  setToolBatch(batch:ToolBatchCheckpoint|undefined){this.graph.setToolBatch(batch);}
+
   getMessages(): Message[] {
     return this.graph.getMessages();
   }
@@ -108,7 +112,9 @@ export class AgentSessionState {
   }
 
   /** Call only at settled run boundaries, never while a tool is still executing. */
-  repairIncompleteToolCalls(): void {
+  repairIncompleteToolCalls(options:{preserveToolBatch?:boolean}={}): void {
+    if(options.preserveToolBatch&&this.graph.getToolBatch())return;
+    if(this.graph.getToolBatch())this.graph.setToolBatch(undefined);
     const messages = this.getMessages();
     const repaired: Message[] = [];
     let changed = false;
