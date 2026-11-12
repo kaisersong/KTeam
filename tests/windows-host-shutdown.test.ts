@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { taskkillPath } from '../src/runtime/platform-process.js';
 import {
-  captureWindowsHostIdentity, filetimeTicks, parseVerifiedHostTree, stopWindowsHostTree,
+  HOST_STOP_LEADER_GONE, captureWindowsHostIdentity, filetimeTicks, parseVerifiedHostTree, stopWindowsHostTree,
   type WindowsHostProcessLayer,
 } from '../desktop/windows-host-shutdown.js';
 
@@ -13,28 +13,32 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const identity = { pid: 100, birth: '1000' };
 
 function fakeLayer(platform: NodeJS.Platform, census: string, options: { birth?: string; linger?: boolean } = {}) {
-  const calls: Array<{ kind: 'exec' | 'spawn'; file: string; args: string[] }> = [];
+  const calls: Array<{ kind: 'exec' | 'spawn'; file: string; args: string[]; timeout?: number }> = [];
   const logs: Array<[string, string?]> = [];
   let table = census;
   let now = 0;
   const env = { SystemRoot: 'C:\\Windows' };
+  const execImpl = (file: string, args: string[], timeout?: number) => {
+    calls.push({ kind: 'exec', file, args: [...args], timeout });
+    if (options.birth !== undefined && String(args.at(-1) ?? '').includes('ProcessId =')) return options.birth;
+    return table;
+  };
+  const spawnImpl = (file: string, args: string[], timeout?: number) => {
+    calls.push({ kind: 'spawn', file, args: [...args], timeout });
+    if (!options.linger) {
+      const killed = new Set<number>();
+      for (let i = 0; i < args.length; i++) if (args[i] === '/PID') killed.add(Number(args[i + 1]));
+      table = table.split(/\n/).filter(line => !killed.has(Number(line.trim().split(/\s+/)[0]))).join('\n');
+    }
+    return { status: 0 as number | null };
+  };
   const layer: WindowsHostProcessLayer = {
     platform,
     env,
-    exec: (file, args) => {
-      calls.push({ kind: 'exec', file, args: [...args] });
-      if (options.birth !== undefined && String(args.at(-1) ?? '').includes('ProcessId =')) return options.birth;
-      return table;
-    },
-    spawnSync: (file, args) => {
-      calls.push({ kind: 'spawn', file, args: [...args] });
-      if (!options.linger) {
-        const killed = new Set<number>();
-        for (let i = 0; i < args.length; i++) if (args[i] === '/PID') killed.add(Number(args[i + 1]));
-        table = table.split(/\n/).filter(line => !killed.has(Number(line.trim().split(/\s+/)[0]))).join('\n');
-      }
-      return { status: 0 };
-    },
+    exec: (file, args) => execImpl(file, args),
+    spawnSync: (file, args) => spawnImpl(file, args),
+    execAsync: async (file, args, options) => execImpl(file, args, options.timeout),
+    spawnAsync: async (file, args, options) => spawnImpl(file, args, options.timeout),
     now: () => now,
     wait: async (ms) => { now += ms; },
     log: (event, diagnostic) => { logs.push([event, diagnostic]); },
@@ -50,16 +54,21 @@ describe('windows host tree identity', () => {
     assert.ok((filetimeTicks('1001') ?? 0n) >= (filetimeTicks('1000') ?? 1n));
   });
 
-  it('does not select a reused leader pid or processes that belong to the stranger', () => {
+  it('does not walk the tree when the recorded leader pid has been reused', () => {
     const mismatches: string[] = [];
-    // 100 was reused at 2000; 101 is an orphan from our host (birth 1100); 102 was started by the stranger.
     const listed = parseVerifiedHostTree('100 1 2000\n101 100 1100\n102 100 2001\n', identity, message => mismatches.push(message));
-    assert.deepEqual(listed.verified.map(m => m.pid), [101]);
-    assert.deepEqual(listed.skipped.map(s => [s.pid, s.reason]), [
-      [100, 'pid_reused'],
-      [102, 'belongs_to_reused_pid'],
-    ]);
+    assert.deepEqual(listed.verified, []);
+    assert.deepEqual(listed.skipped, [{ pid: 100, reason: 'pid_reused' }]);
     assert.match(mismatches[0]!, /process 100 was started at 2000, not at the recorded 1000/);
+  });
+
+  it('does not walk the tree when the recorded host is dead and a reused pid parents an unrelated tree', () => {
+    const mismatches: string[] = [];
+    // 客服 repro: host 1234 born 100 is gone; 2000/2001 only share the old pid as ParentProcessId.
+    const listed = parseVerifiedHostTree('2000 1234 300\n2001 2000 310\n', { pid: 1234, birth: '100' }, message => mismatches.push(message));
+    assert.deepEqual(listed.verified, []);
+    assert.deepEqual(listed.skipped, [{ pid: 1234, reason: 'leader_gone' }]);
+    assert.match(mismatches[0]!, /process 1234 is no longer running at the recorded birth 100/);
   });
 
   it('does not select a child whose CreationDate is earlier than its parent or that has no birth', () => {
@@ -78,49 +87,58 @@ describe('stopWindowsHostTree', () => {
     assert.equal(captureWindowsHostIdentity(100, layer), undefined);
   });
 
-  it('stops the verified host tree on win32 with taskkill /F /PID per member and never /T', async () => {
+  it('kills the live verified host first, then descendants, with taskkill /F /PID and never /T, within the overall deadline', async () => {
     const { layer, calls, env } = fakeLayer('win32', '100 1 1000\n101 100 1001\n102 101 1002\n');
     const events: string[] = [];
-    const originalSpawn = layer.spawnSync;
-    layer.spawnSync = (file, args, options) => {
+    const original = layer.spawnAsync!;
+    layer.spawnAsync = async (file, args, options) => {
       events.push('kill');
-      return originalSpawn(file, args, options);
+      return original(file, args, options);
     };
-    const result = await stopWindowsHostTree(identity, layer);
+    const result = await stopWindowsHostTree(identity, layer, { timeoutMs: 4000 });
     events.push('begin');
     assert.equal(result.ok, true);
-    assert.deepEqual(result.killed, [101, 102, 100]);
+    assert.deepEqual(result.killed, [100, 101, 102]);
     const kills = calls.filter(c => c.kind === 'spawn');
     assert.equal(kills.length, 3);
     for (const kill of kills) {
       assert.equal(kill.file, taskkillPath(env));
       assert.deepEqual(kill.args.slice(0, 2), ['/F', '/PID']);
       assert.equal(kill.args.includes('/T'), false);
+      assert.ok((kill.timeout ?? 0) <= 4000);
+      assert.ok((kill.timeout ?? 0) > 0);
     }
-    assert.deepEqual(kills.map(k => k.args[2]), ['101', '102', '100']);
+    assert.deepEqual(kills.map(k => k.args[2]), ['100', '101', '102']);
     assert.deepEqual(events, ['kill', 'kill', 'kill', 'begin']);
+    for (const call of calls) assert.ok((call.timeout ?? 0) <= 4000);
   });
 
-  it('does not kill an unverified or reused pid, then still allows quitAndInstall to begin', async () => {
+  it('kills nothing when the recorded host is dead and a reused pid parents an unrelated tree', async () => {
+    const { layer, calls, logs } = fakeLayer('win32', '2000 1234 300\n2001 2000 310\n');
+    const result = await stopWindowsHostTree({ pid: 1234, birth: '100' }, layer);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.killed, []);
+    assert.equal(calls.filter(c => c.kind === 'spawn').length, 0);
+    assert.equal(calls.some(c => c.args.includes('2000') || c.args.includes('2001') || c.args.includes('1234') && c.kind === 'spawn'), false);
+    assert.ok(logs.some(entry => entry[0] === HOST_STOP_LEADER_GONE && entry[1]?.includes('no longer running at the recorded birth 100')));
+  });
+
+  it('kills nothing when the recorded host pid has been reused, including former orphans', async () => {
     const { layer, calls, logs } = fakeLayer('win32', '100 1 2000\n101 100 1100\n102 100 2001\n');
     const result = await stopWindowsHostTree(identity, layer);
-    const begin: string[] = ['stopped'];
-    begin.push('begin');
     assert.equal(result.ok, true);
-    assert.deepEqual(result.killed, [101]);
-    const kills = calls.filter(c => c.kind === 'spawn');
-    assert.deepEqual(kills.map(k => k.args), [['/F', '/PID', '101']]);
-    assert.equal(kills.some(k => k.args.includes('100') || k.args.includes('102') || k.args.includes('/T')), false);
-    assert.ok(logs.some(entry => entry[0] === 'host-stop-mismatch' && entry[1]?.includes('not at the recorded 1000')));
-    assert.deepEqual(begin, ['stopped', 'begin']);
+    assert.deepEqual(result.killed, []);
+    assert.equal(calls.filter(c => c.kind === 'spawn').length, 0);
+    assert.ok(logs.some(entry => entry[0] === HOST_STOP_LEADER_GONE && entry[1]?.includes('not at the recorded 1000')));
   });
 
-  it('logs and returns ok:false when the verified tree is still running after the timeout', async () => {
-    const { layer, logs } = fakeLayer('win32', '100 1 1000\n', { linger: true });
+  it('logs and returns ok:false when the verified tree is still running after the overall timeout', async () => {
+    const { layer, logs, calls } = fakeLayer('win32', '100 1 1000\n', { linger: true });
     const result = await stopWindowsHostTree(identity, layer, { timeoutMs: 400 });
     assert.equal(result.ok, false);
     assert.match(result.error ?? '', /host still running after 400ms: 100/);
     assert.ok(logs.some(entry => entry[0] === 'host-stop-failed'));
+    for (const call of calls) assert.ok((call.timeout ?? 0) <= 400);
   });
 });
 
@@ -135,7 +153,6 @@ describe('main.ts keeps the macOS quit and update path and only stops the host o
     assert.match(main, /if\(process\.platform==='win32'&&windowsHost&&!windowsHostQuitStarted\)/);
     assert.match(main, /if\(updaterHandoff\.commitHandoffOnBeforeQuit\(\)\.committed\)updater\.completeHandoff\(\);/);
     assert.match(main, /await updater\.checkForUpdates\(\{requestSource:'user'\}\);/);
-    // Every host-stop *call* is behind an explicit win32 gate (imports are excluded).
     for (const pattern of [/stopWindowsHostIfNeeded\(/g, /captureWindowsHostIdentity\(/g, /stopWindowsHostTree\(/g]) {
       for (const site of main.matchAll(pattern)) {
         const around = main.slice(Math.max(0, site.index! - 220), site.index! + 80);
