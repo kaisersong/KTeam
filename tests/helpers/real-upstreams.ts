@@ -1,3 +1,4 @@
+import {after} from 'node:test';
 import {tmpdir} from 'node:os';
 import {fork,type ChildProcess} from 'node:child_process';
 import {mkdtempSync,realpathSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
@@ -5,6 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {Upstreams} from '../../src/adapters/upstream.js';
+const remainingFixtures=new Set<()=>Promise<void>>();after(async()=>{for(const close of [...remainingFixtures])await close();});
 export async function realUpstreams(options:{agentClis?:string[]}={}){
  const project=fileURLToPath(new URL('../../../',import.meta.url));const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-coordination-')));
  const home=join(root,'home');mkdirSync(home,{mode:0o700});
@@ -14,7 +16,9 @@ export async function realUpstreams(options:{agentClis?:string[]}={}){
  const broker=createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});const server=createServer({broker,roomService:broker.room,roomDesktopToken:token});await server.listen(0,'127.0.0.1');broker.attachWebSocket(server.raw());const brokerUrl='http://127.0.0.1:'+server.address().port;
  const child=fork(join(project,'node_modules/kswarm/src/server/index.js'),[],{cwd:root,silent:true,execArgv:['--preserve-symlinks','--preserve-symlinks-main','--import',pathToFileURL(join(project,'tests/loopback-test-host.mjs')).href],env:{...process.env,HOME:home,USERPROFILE:home,KSWARM_PORT:'0',KSWARM_DATA_ROOT:join(home,'.kswarm'),BROKER_URL:brokerUrl,KSWARM_DESKTOP_MUTATION_TOKEN:mutation,KSWARM_RUNTIME_TOKEN:'',INTENT_BROKER_KSWARM_TOKEN:'',ENABLE_HUMAN_ESCALATION:'0',...cliEnv}});
  child.stdout!.resume();child.stderr!.resume();
- const port=await new Promise<number>((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('upstream_timeout')),10000);child.once('message',(m:any)=>{clearTimeout(timer);resolve(m.address.port);});child.once('exit',()=>{clearTimeout(timer);reject(Error('upstream_exit'));});});
+ let closing:Promise<void>|undefined;const close=()=>closing??=Promise.resolve().then(async()=>{try{await new Promise<void>(resolve=>{if(child.exitCode!==null||child.signalCode!==null){resolve();return;}const timer=setTimeout(()=>child.kill('SIGKILL'),3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill('SIGTERM');});broker.close();await server.close();}finally{rmSync(root,{recursive:true,force:true});remainingFixtures.delete(close);}});remainingFixtures.add(close);
+ const port=await new Promise<number>((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('upstream_timeout')),10000);child.once('message',(m:any)=>{clearTimeout(timer);resolve(m.address.port);});child.once('error',()=>{clearTimeout(timer);reject(Error('upstream_start_failed'));});child.once('exit',()=>{clearTimeout(timer);reject(Error('upstream_exit'));});}).catch(async(error)=>{await close();throw error;});
  const upstream=new Upstreams({brokerUrl,kswarmUrl:'http://127.0.0.1:'+port,brokerToken:token,kswarmToken:mutation});
- return {root,upstream:upstream as any,broker,async close(){await new Promise<void>(resolve=>{if(child.exitCode!==null||child.signalCode!==null){resolve();return;}const timer=setTimeout(()=>child.kill('SIGKILL'),3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill('SIGTERM');});broker.close();await server.close();rmSync(root,{recursive:true,force:true});}};
+
+ return {root,upstream:upstream as any,broker,close};
 }

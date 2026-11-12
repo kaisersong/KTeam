@@ -57,4 +57,5 @@ jobs:
         run: node node_modules/electron/install.js
         working-directory: kteam
       - run: npm run check
+        timeout-minutes: 10
         working-directory: kteam
