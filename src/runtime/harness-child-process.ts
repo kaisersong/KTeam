@@ -32,7 +32,7 @@ export function spawn(command:string,argsOrOptions:any[]=[],maybeOptions:any={})
   if(!child.connected)throw new KTeamError('native_start_failed');
   started=true;const shell=options.shell?shellInvocation([command,...args].join(' ')):undefined;child.send({type:'start',command:shell?shell.command:command,args:shell?shell.args:args,cwd:options.cwd??owner.cwd,env:{...nativeEnvironment(),...(options.env??{})},inheritStdin:tuple[0]!=='ignore'});
  }catch(error){stop();child.emit('error',error);}})();});
- child.once('close',()=>{owner.signal.removeEventListener('abort',stop);void(async()=>{let stopped=false;try{stopped=!child.pid||harnessGroup(child.pid).length===0;}catch{}await owner.record({...identity,invocationId,state:stopped?'stopped':'unknown',stopConfirmed:stopped,started});})().catch(()=>{});});
+ child.once('close',()=>{owner.signal.removeEventListener('abort',stop);void(async()=>{let stopped=false;try{stopped=!child.pid||harnessGroup(child.pid,identity?.birth).length===0;}catch{}await owner.record({...identity,invocationId,state:stopped?'stopped':'unknown',stopConfirmed:stopped,started});})().catch(()=>{});});
  return child;
 }
 export function execFile(file:string,argsOrOptions:any[]=[],optionsOrCallback:any={},maybeCallback?:any):any{
