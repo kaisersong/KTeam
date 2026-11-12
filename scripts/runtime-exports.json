@@ -167,5 +167,9 @@
     "writeDesktopServicePorts",
     "desktopServiceUrl",
     "configuredDesktopServicePorts"
+  ],
+  "src/runtime/verification/windows-installation-absence.ts": [
+    "observeWindowsInstallationAbsence",
+    "readWindowsInstallationAbsence"
   ]
 }
