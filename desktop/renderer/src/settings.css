@@ -68,3 +68,4 @@
 /* Integration toggles are block rows so a following button never sits flush against them. */
 .integration-panel .model-default{display:flex;align-items:center;gap:9px}
 .integration-panel .model-default input{flex:none}
+.update-check{align-items:flex-start}.update-check-actions{display:flex;flex-direction:column;gap:8px;align-items:flex-end}.update-check .settings-description a{color:var(--green);text-decoration:underline;overflow-wrap:anywhere}
