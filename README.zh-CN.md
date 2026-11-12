@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.3.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。0.3 是第一个经过苹果签名和公证的版本，仅支持 macOS Apple 芯片（arm64），并带有自动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.4.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。0.4 开始支持 Windows（x64），加上 macOS Apple 芯片（arm64），两个平台都带自动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -38,6 +38,13 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 ---
 
+## 0.4 有什么
+
+- **Windows（x64）。** 提供安装版（`KTeam-setup-0.4.0.exe`）和便携版（`KTeam-portable-0.4.0.exe`）。进程管理、凭据存储（Windows 凭据管理器）都已适配 Windows。
+- **Windows 自动更新。** 安装版和 Mac 版一样自动更新：只接收正式版，安装包校验不通过会拒绝更新。便携版不自动更新，点「检查更新」会引导你去 Releases 下载。
+- **设置里检查更新。** 设置 ▸ 数据与关于 里显示当前版本，可以手动检查更新。
+- **Windows 关窗即退出。** 关闭窗口后 KTeam 完全退出，后台不留进程。
+
 ## 0.3 有什么
 
 - **与小K完全解耦。** KTeam 有自己的应用名、Bundle ID（`com.kteam.desktop`）、数据目录 `~/.kteam/`；内置服务的端口由系统分配，记在 `~/.kteam/service-endpoints.json`，不会和小K抢端口；凭据默认存在 KTeam 自己的私有文件里，主动切换到 Mac 钥匙串时也只用 KTeam 自己的条目。启动和后台运行都不读小K的任何文件。
@@ -50,7 +57,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 - 按名字创建长期的 Bot 成员，每个成员可以单独配置职责、主动性和模型。
 - 建群聊，让多名成员讨论；KTeam 会挑选和话题相关的成员发言（也可以都不发言），讨论共识随时记到共享纪要。
-- 单成员私聊、组队方案卡片、暂停 / 继续、用户验收。窗口关闭后，后台工作继续进行。
+- 单成员私聊、组队方案卡片、暂停 / 继续、用户验收。在 macOS 上关闭窗口后，后台工作继续进行；在 Windows 上关闭窗口会退出 KTeam。
 - 接入本机已有的 Agent：自动探测本机安装的 xiaok CLI、Codex、Kimi、ZCode，沿用它们自己的配置和登录。
 
 ---
@@ -59,13 +66,26 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 ### 下载
 
-1. 打开 [KTeam Releases](https://github.com/kaisersong/KTeam/releases/latest)，在 Assets 里下载 0.3.0 的 macOS arm64 `.dmg`。
+打开 [KTeam Releases](https://github.com/kaisersong/KTeam/releases/latest)，在 Assets 里下载对应系统的安装包。
+
+**macOS（Apple 芯片）**
+
+1. 下载 macOS arm64 的 `.dmg`。
 2. 打开 dmg，把 `KTeam.app` 拖进「应用程序」。
 3. 第一次打开时，macOS 会提示这是从互联网下载的应用，点「打开」即可。
 
-只支持 Apple 芯片（M 系列）的 Mac，Intel Mac 暂不支持。0.3 没有正式的 Windows 版本，Windows 计划在 0.4 提供。
+Intel Mac 暂不支持。已经装了 0.3.x 的 Mac 会自动更新到 0.4。
 
-可选校验：把 Release 里的 `SHA256SUMS` 和安装包放在同一个文件夹，运行 `shasum -a 256 -c SHA256SUMS`。
+**Windows（x64）**
+
+- **安装版（推荐）：** 下载 `KTeam-setup-0.4.0.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.4.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+
+Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。签名会在后续 0.4.x 补上。
+
+Windows 上的已知限制：暂时不能把本机的 Codex 等 Agent 链接成协作成员（仍能正常探测到），计划在 0.5 支持。
+
+可选校验：把 Release 里的 `SHA256SUMS` 和安装包放在同一个文件夹，运行 `shasum -a 256 -c SHA256SUMS`。Windows 上可以在 PowerShell 里运行 `Get-FileHash <文件名> -Algorithm SHA256`，和 `SHA256SUMS` 里的值对照。
 
 ### 从 0.2 升级
 
@@ -113,6 +133,18 @@ node dist/src/cli.js teams
 
 ## 版本日志
 
+### v0.4.0
+
+- 支持 Windows x64：安装版和便携版（暂未签名）。
+- Windows 自动更新（仅安装版）。
+- 设置里显示当前版本，可以「检查更新」。
+- Windows 上关闭窗口后完全退出。
+- 调整桌面端各流程里下拉框、输入框和按钮的间距。
+
+### v0.3.1
+
+见 [v0.3.1 发布页](https://github.com/kaisersong/KTeam/releases/tag/v0.3.1)。
+
 ### v0.3.0
 
 - 与小K完全解耦：独立的数据目录、端口和凭据。
@@ -127,7 +159,7 @@ node dist/src/cli.js teams
 
 ## 反馈
 
-遇到问题请到 [Issues](https://github.com/kaisersong/KTeam/issues) 反馈，附上 macOS 版本和截图。
+遇到问题请到 [Issues](https://github.com/kaisersong/KTeam/issues) 反馈，附上系统版本（macOS 或 Windows）和截图。
 
 ## 许可
 
