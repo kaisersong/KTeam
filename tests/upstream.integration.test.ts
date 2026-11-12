@@ -12,6 +12,10 @@ import { hostRequest } from '../src/service/client.js';
 import { LOCAL_HUMAN } from '../src/service/collaboration.js';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
+// Windows budget, from the phase timings this test reports: the 'history' phase (105 synchronous intent-broker
+// room writes to its SQLite store, all upstream code) took 10.4s (Node 22) and 23.0s (Node 24) on windows-2022
+// versus 0.17s on Linux; every other phase stays under ~3.5s. macOS/Linux keep 40s.
+const E2E_TIMEOUT_MS = process.platform === 'win32' ? 90_000 : 40_000;
 async function importSource(name: string) { return import(name); }
 async function stop(child: ChildProcess) {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -21,7 +25,7 @@ async function stop(child: ChildProcess) {
   });
 }
 
-test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retries/conflicts, reopening host recovers history', { timeout: 40_000 }, async (t) => {
+test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retries/conflicts, reopening host recovers history', { timeout: E2E_TIMEOUT_MS }, async (t) => {
   // Phase timings go to the test report so a slow platform shows where the time goes (no behavior change).
   const began = Date.now(), phases: string[] = [], mark = (name: string) => phases.push(name + '=' + (Date.now() - began) + 'ms');
   const root = realpathSync(mkdtempSync(tmpRoot+'/kteam-e2e-'));

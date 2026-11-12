@@ -109,7 +109,7 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
  const f=await fixture(),records:any[]=[];let platform:any;try{
   const git=(args:string[])=>execFileSync('git',args,{cwd:f.cwd,encoding:'utf8'});
   git(['init','-q']);git(['config','user.email','fixture@localhost']);git(['config','user.name','Fixture']);writeFileSync(join(f.cwd,'source.txt'),'fixture');git(['add','source.txt']);git(['commit','-qm','fixture']);
-  const processOwner={cwd:f.cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},record:(r:any)=>{records.push(r);}};
+  /* Windows: every owned process costs two PowerShell CIM queries (start identity before ownership, drain proof after exit, ~0.5s each on windows-2022), so this ~15-process Git sequence needs more than the POSIX 20s. Follow-up: persistent census to cut the per-process cost. */const processOwner={cwd:f.cwd,signal:AbortSignal.timeout(process.platform==='win32'?60000:20000),assertCurrent:async()=>{},record:(r:any)=>{records.push(r);}};
   await f.core.withHarnessProcessOwner(processOwner,async()=>{
    platform=await f.core.createPlatformRuntimeContext({cwd:f.cwd,builtinCommands:[],assertCurrent:processOwner.assertCurrent,stateRootDir:join(f.root,'platform-state'),teamService:{}});await platform.mcpReady;
    const first=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-release',branch:'fixture-release',cleanup:'delete'});assert.equal(existsSync(first.path),true);await platform.worktreeManager.release(first.path);assert.equal(existsSync(first.path),false);
