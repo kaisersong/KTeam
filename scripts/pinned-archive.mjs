@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,rmSync,mkdirSync,cpSync,lstatSync} from 'node:fs';
-import {join,posix} from 'node:path';
+import {mkdtempSync,writeFileSync,rmSync,mkdirSync,cpSync,lstatSync,realpathSync,existsSync} from 'node:fs';
+import {join,posix,dirname,basename} from 'node:path';
 import {tmpdir} from 'node:os';
 import {list,extract} from 'tar';
 
@@ -9,7 +9,7 @@ import {list,extract} from 'tar';
 // depend on the machine's symlink privilege. Materialize only aliases of regular
 // files from this same archive; never follow a filesystem link or leave the root.
 export function extractPinnedArchiveWithoutLinks(archive,target){
- const temporary=mkdtempSync(join(tmpdir(),'kteam-source-archive-'));
+ const temporary=realpathSync.native(mkdtempSync(join(tmpdir(),'kteam-source-archive-')));
  try{
   const file=join(temporary,'source.tar'),folder=join(temporary,'extracted');
   writeFileSync(file,archive,{mode:0o600});mkdirSync(folder);
@@ -29,7 +29,8 @@ export function extractPinnedArchiveWithoutLinks(archive,target){
    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw Error('pinned_archive_unsafe_link');
    cpSync(source,join(folder,name),{errorOnExist:true,force:false});
   }
-  cpSync(folder,target,{recursive:true,verbatimSymlinks:true});
+  const destination=existsSync(target)?realpathSync.native(target):join(realpathSync.native(dirname(target)),basename(target));
+  cpSync(folder,destination,{recursive:true,verbatimSymlinks:true});
  }finally{rmSync(temporary,{recursive:true,force:true});}
 }
 
