@@ -9,13 +9,15 @@ export interface PlatformDeps{platform:NodeJS.Platform;exec:(file:string,args:st
 export const defaultDeps=():PlatformDeps=>({platform:process.platform,exec:(file,args,options)=>String(execFileSync(file,args,options)),spawnSync:(file,args,options)=>spawnSync(file,args,options),env:process.env,selfPid:process.pid,getuid:process.getuid?.bind(process)});
 const posixCensus={encoding:'utf8' as const,timeout:2000,maxBuffer:4*1024*1024};
 // PowerShell starts slowly on a cold Windows machine; 2s (the ps budget) is not enough there.
-const windowsCensus={encoding:'utf8' as const,timeout:20000,maxBuffer:16*1024*1024,windowsHide:true};
+// stdin is closed: Windows PowerShell can wait forever on an open stdin pipe even with -Command.
+const windowsCensus={encoding:'utf8' as const,timeout:20000,maxBuffer:16*1024*1024,windowsHide:true,stdio:['ignore','pipe','pipe']};
 const systemRoot=(env:NodeJS.ProcessEnv)=>env.SystemRoot??env.SYSTEMROOT??'C:\\Windows';
 export const powershellPath=(env:NodeJS.ProcessEnv=process.env)=>win32.join(systemRoot(env),'System32','WindowsPowerShell','v1.0','powershell.exe');
 export const taskkillPath=(env:NodeJS.ProcessEnv=process.env)=>win32.join(systemRoot(env),'System32','taskkill.exe');
 const powershell=(deps:PlatformDeps,script:string)=>deps.exec(powershellPath(deps.env),['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],windowsCensus);
-/** `pid ppid` for every process except the PowerShell doing the census. */
-export const WINDOWS_PROCESS_TABLE="Get-CimInstance -ClassName Win32_Process | Where-Object { $_.ProcessId -ne $PID } | ForEach-Object { [string]$_.ProcessId + ' ' + [string]$_.ParentProcessId }";
+/** `pid ppid` for every process except the PowerShell doing the census and console hosts (conhost.exe belongs
+ * to a console, not to the work, and exits with it). */
+export const WINDOWS_PROCESS_TABLE="Get-CimInstance -ClassName Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.Name -ne 'conhost.exe' } | ForEach-Object { [string]$_.ProcessId + ' ' + [string]$_.ParentProcessId }";
 export function parsePosixGroup(text:string,pgid:number):ProcessMember[]{return text.split('\n').map(l=>l.trim().split(/\s+/)).filter(p=>Number(p[1])===pgid&&!p[3]?.startsWith('Z')).map(p=>({pid:Number(p[0]),pgid:Number(p[1]),uid:Number(p[2])}));}
 /** The root pid (if alive) and all of its live descendants. Orphans keep their dead parent's pid as ParentProcessId. */
 export function parseWindowsTree(text:string,root:number):ProcessMember[]{

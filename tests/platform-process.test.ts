@@ -29,7 +29,7 @@ test('Windows census lists the root and every live descendant via PowerShell CIM
  const call=calls[0]!;assert.equal(call.file,powershellPath(deps.env));assert.equal(call.file,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
  assert.ok(call.args.includes('-NoProfile')&&call.args.includes('-NonInteractive'));assert.equal(call.args.at(-1),WINDOWS_PROCESS_TABLE);
  assert.match(WINDOWS_PROCESS_TABLE,/Get-CimInstance -ClassName Win32_Process/);assert.match(WINDOWS_PROCESS_TABLE,/-ne \$PID/);assert.doesNotMatch(JSON.stringify(calls),/wmic/i);
- assert.equal(call.options.windowsHide,true);
+ assert.equal(call.options.windowsHide,true);assert.deepEqual(call.options.stdio,['ignore','pipe','pipe']);assert.match(WINDOWS_PROCESS_TABLE,/conhost\.exe/);
  assert.equal(ownedByCurrentUser(processGroup(100,deps)[0]!,{getuid:undefined}),true);
 });
 
