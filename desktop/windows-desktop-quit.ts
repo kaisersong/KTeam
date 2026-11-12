@@ -31,7 +31,10 @@ export interface WindowsDesktopQuitHooks {
   log: (event: string, diagnostic?: string, level?: 'warn' | 'error') => void;
   now?: () => number;
   wait?: (ms: number) => Promise<void>;
-  schedule?: (callback: () => void, delayMs: number) => void;
+  /** Returns a cancel function for the scheduled fallback. */
+  schedule?: (callback: () => void, delayMs: number) => (() => void) | void;
+  /** Register a one-shot will-quit listener; the fallback timer is cleared there. */
+  onWillQuit?: (listener: () => void) => void;
   forceExitAfterMs?: number;
   /** Return false while an update install handoff is pending but not yet committed, so it is not cut off. */
   canForceExit?: () => boolean;
@@ -51,9 +54,19 @@ export async function quitWindowsDesktop(hooks: WindowsDesktopQuitHooks): Promis
       hooks.log(WINDOWS_QUIT_FORCE_EXIT, `process still alive ${forceAfter}ms after app.quit`, 'warn');
       hooks.exit(0);
     };
-    if (hooks.schedule) hooks.schedule(fire, forceAfter);
-    else if (hooks.wait) void hooks.wait(forceAfter).then(fire);
-    else scheduleUnrefTimer(fire, forceAfter);
+    let cancelled = false;
+    let cancel: (() => void) | void;
+    const guarded = () => { if (!cancelled) fire(); };
+    if (hooks.schedule) cancel = hooks.schedule(guarded, forceAfter);
+    else if (hooks.wait) void hooks.wait(forceAfter).then(guarded);
+    else {
+      const timer = scheduleUnrefTimer(guarded, forceAfter);
+      cancel = () => clearTimeout(timer);
+    }
+    hooks.onWillQuit?.(() => {
+      cancelled = true;
+      if (cancel) cancel();
+    });
     hooks.quit();
   }
 }
