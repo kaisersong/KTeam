@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,readdirSync,existsSync,statSync} from 'node:fs';
-import {join} from 'node:path';
+import {join,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createServer,type Server} from 'node:http';
 import {initStandalone,readServicePlan,ownServicesReady,ensureManagedServices} from '../src/runtime/managed-services.js';
@@ -45,7 +45,7 @@ for(const withLegacyKey of [true,false])test(`a 0.2 shared-service install ${wit
   assert.notEqual(options.brokerToken,token('b'));assert.notEqual(options.kswarmToken,token('k'));
   assert.notEqual(config.brokerUrl,'http://127.0.0.1:4318');assert.notEqual(config.kswarmUrl,'http://127.0.0.1:4400');
   const plan=readServicePlan(config.managedServiceConfig!);
-  for(const cwd of [plan.broker.cwd,plan.kswarm.cwd])assert.ok(cwd.startsWith(join(root,'services')+'/'),cwd);
+  for(const cwd of [plan.broker.cwd,plan.kswarm.cwd])assert.ok(cwd.startsWith(join(root,'services')+sep),cwd);
   assert.deepEqual(readServiceEndpoints(root),{broker:Number(new URL(config.brokerUrl).port),kswarm:Number(new URL(config.kswarmUrl).port)});
   assert.equal(existsSync(join(root,'services','shared-connection.json')),false);
   // The old files are kept byte-for-byte in backups/, private.
