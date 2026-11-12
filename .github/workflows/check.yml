@@ -65,5 +65,7 @@ jobs:
         timeout-minutes: 5
         working-directory: kteam
       - run: npm run check
-        timeout-minutes: 10
+        # Measured Windows ACL/TLS fixture setup exceeds ten minutes; keep a finite full-suite deadline.
+        # Every original matrix job and assertion still runs, and any failed test remains a failure.
+        timeout-minutes: ${{ runner.os == 'Windows' && 25 || 10 }}
         working-directory: kteam
