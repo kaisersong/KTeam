@@ -43,8 +43,8 @@ function snapshot(dir:string):Record<string,string>{const out:Record<string,stri
 interface Fixture{root:string;home:string;xiaok:string;secrets:string[];restore():void}
 /** KTeam data dir + a fake HOME holding a xiaok install with one model whose key lives in xiaok's file vault or keychain. */
 async function fixture(options:{backend:'file'|'keychain';keychain?:Map<string,string>;withSystemOne?:boolean}):Promise<Fixture>{
- const root=temp('kteam-xiaok-import-'),home=temp('kteam-xiaok-home-'),xiaok=join(home,'.xiaok'),before={HOME:process.env.HOME,KTEAM_MODEL_CONFIG_DIR:process.env.KTEAM_MODEL_CONFIG_DIR};
- process.env.HOME=home;process.env.KTEAM_MODEL_CONFIG_DIR=join(root,'runtime');
+ const root=temp('kteam-xiaok-import-'),home=temp('kteam-xiaok-home-'),xiaok=join(home,'.xiaok'),before={HOME:process.env.HOME,USERPROFILE:process.env.USERPROFILE,KTEAM_MODEL_CONFIG_DIR:process.env.KTEAM_MODEL_CONFIG_DIR};
+ process.env.HOME=home;process.env.USERPROFILE=home;process.env.KTEAM_MODEL_CONFIG_DIR=join(root,'runtime');
  mkdirSync(xiaok,{mode:0o700});const file=join(xiaok,'config.json'),owner=createHash('sha256').update(file).digest('hex');
  const items=[{path:['providers','old','apiKey'],secret:'SYNTHETIC_XIAOK_PROVIDER_KEY'},...(options.withSystemOne?[{path:['systemOne','apiKey'],secret:'SYNTHETIC_XIAOK_SYSTEM_ONE_KEY'}]:[])].map(item=>({...item,id:randomUUID()}));
  const core=await sharedRuntime();
