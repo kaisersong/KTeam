@@ -44,3 +44,12 @@ test('saved bash grant retains original blocks, mandatory prompts, sensitive tar
   writeFileSync(f.config+'/settings.json',JSON.stringify({permissions:{deny:['bash:*']}}));const next=await createHarness({workspace:f.workspace,permissions:{store:approvals.permissions,botId:'member',bindingRevision:1},signal:controller.signal,assertCurrent:async()=>{}});assert.equal(await next.registryOptions.permissionManager.check('bash',{command:'printf blocked'}),'deny');
  }finally{controller.abort();approvals.close();r?.dispose();store.close();f.close();}
 });
+
+test('install_skill treats every Windows local path form as a path for the private-scope fence',async()=>{
+ const {localSkillSource}=await import('../src/runtime/harness.js');
+ for(const source of ['C:\\Users\\a\\secret.md','c:/Users/a/secret.md','\\\\server\\share\\secret.md','.\\skills\\x.md','..\\another-bot\\secret.md','..\\..\\host-data\\x.md','~\\secret.md','  D:\\padded.md  '])assert.equal(localSkillSource(source,'win32'),true,source);
+ for(const source of ['/abs/x.md','./x.md','../x.md','~/x.md'])for(const platform of ['win32','darwin','linux'] as const)assert.equal(localSkillSource(source,platform),true,platform+' '+source);
+ // POSIX keeps its exact rule: a backslash or drive form is a file name there, not a path prefix.
+ for(const source of ['C:\\x.md','..\\x.md'])assert.equal(localSkillSource(source,'linux'),false,source);
+ for(const source of ['my-skill','https://example.invalid/skill.md'])assert.equal(localSkillSource(source,'win32'),false,source);
+});
