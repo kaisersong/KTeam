@@ -10,7 +10,7 @@
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
-      "revision": "0e3dec43a91d7717cf1935375bc462743d96df8e",
+      "revision": "4b9da6a1ed8ff27cdb9a24667220ebb30c7efc40",
       "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     }
   ],
