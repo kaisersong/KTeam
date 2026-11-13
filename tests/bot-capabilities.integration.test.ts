@@ -67,3 +67,10 @@ test('the real host reserves bot capability and followup controls for KTeam, rej
  try{for(const route of ['/v1/bot-capabilities?botId=missing','/v1/bot-followups?botId=missing']){await assert.rejects(hostRequest(root,'kteam-companion',route),/app_settings_forbidden/);await assert.rejects(hostRequest(root,'kteam-main',route),/bot_not_managed/);}for(const route of ['/v1/bot-skills','/v1/bot-followups/cancel'])await assert.rejects(hostRequest(root,'kteam-companion',route,{requestSource:'user'}),/app_settings_forbidden/);}
  finally{await host.close();await f.close();}
 });
+
+test('explicit slash Skills require a single hosted private Bot and reject missing or disabled skills before sending',async()=>{
+ const f=await fixture();try{const a=await member(f,'slash-owner'),group=await f.coordinator.createGroup({title:'slash-group',memberAgentIds:[a.bot.id],requestId:'slash-group'},{requestSource:'user'}),caps=new BotCapabilities(f.upstream,f.store);
+  await caps.validateCommand(group.room.roomId,'普通消息');await assert.rejects(caps.validateCommand(group.room.roomId,'/proof test'),/skill_command_private_only/);await assert.rejects(caps.validateCommand(a.roomId,'/skills'),/skill_command_choose/);await assert.rejects(caps.validateCommand(a.roomId,'/no-such-skill'),/skill_command_unavailable/);
+  const {skillBindingRoot}=await import('../src/runtime/skill-library.js'),directory=join(skillBindingRoot({root:f.root,botId:a.bot.id,roomId:a.roomId}),'skills/slash-proof');mkdirSync(directory,{recursive:true});writeFileSync(join(directory,'SKILL.md'),'---\nname: slash-proof\ndescription: Synthetic slash test\n---\nOnly use synthetic input.');await caps.validateCommand(a.roomId,'/slash-proof 只读');await caps.save({botId:a.bot.id,expectedRevision:0,disabledSkills:['slash-proof']});await assert.rejects(caps.validateCommand(a.roomId,'/slash-proof 只读'),/skill_command_unavailable/);assert.equal((await f.upstream.messages(a.roomId,0,100)).messages.length,0);
+ }finally{await f.close();}
+});

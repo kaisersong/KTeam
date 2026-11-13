@@ -1,3 +1,4 @@
+import {parseSkillCommand,skillCommandNeedsList} from '../protocol/skill-command.js';
 import {KTeamError,fields,record,text} from '../errors.js';
 import type {Upstreams} from '../adapters/upstream.js';
 import type {TeamStore} from './team-store.js';
@@ -15,6 +16,16 @@ export function effectiveDisabledSkills(global:string[],bot:any):string[]{
 export class BotCapabilities {
  constructor(private upstream:Upstreams,private store:TeamStore){}
 
+ async validateCommand(roomId:string,message:string){
+  const command=parseSkillCommand(message),listing=skillCommandNeedsList(message);if(!command&&!listing)return;
+  const kind=this.store.settings(roomId)?.kind;if(kind!=='assistant'&&kind!=='direct')throw new KTeamError('skill_command_private_only',409);
+  if(listing)throw new KTeamError('skill_command_choose',409);
+  const members=(await this.upstream.membership(roomId)).members as any[],bots=members.filter(member=>member.status==='active'&&member.subject?.kind==='agent');
+  if(bots.length!==1)throw new KTeamError('skill_command_private_only',409);
+  const view=await this.view(bots[0].subject.logicalAgentId,roomId),skill=view.skills.find((skill:any)=>skill.name===command!.name);
+  if(!view.supported)throw new KTeamError('bot_skills_external',409);
+  if(!skill||!skill.enabled||skill.sourceError||skill.versionChanged)throw new KTeamError('skill_command_unavailable',409);
+ }
  private async bot(botId:string){
   if(!this.store.binding(botId)&&!this.store.state('external-bot:'+botId))throw new KTeamError('bot_not_managed',403);
   const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId&&!bot.archivedAt);
