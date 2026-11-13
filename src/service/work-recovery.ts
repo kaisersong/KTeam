@@ -22,7 +22,7 @@ export class WorkRecovery {
   return {jobId: job.id, state: job.state, hostInterrupted: failure?.code === 'host_restarted_result_unknown',
    canContinue: !this.store.settings(roomId)?.paused && !jobs.some(active) && !needsStop && !continuation,
    reason: this.store.settings(roomId)?.paused ? 'team_paused' : needsStop ? 'recovery_waiting_stop' : undefined,
-   hasDraft: !!(job.answerDraft || job.partialText), completedReplies: (job.results ?? []).length,
+   hasGeneratedFiles:this.store.hasGeneratedFiles(roomId,job.id), hasDraft: !!(job.answerDraft || job.partialText), completedReplies: (job.results ?? []).length,
    native: !!job.activeBotId && this.store.binding(job.activeBotId)?.kind === 'local-native'};
  }
  async continue(roomId: string, value: unknown) {

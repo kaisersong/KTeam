@@ -37,7 +37,7 @@ test('real room sidebar: latest message, durable unread, scoped rename/delete, r
   assert.ok((await f.upstream.listBots()).agents.some((b:any)=>b.id===bot.bot.id));const restored=await coordinator.direct(bot.bot.id,user);assert.notEqual(restored.roomId,direct);await coordinator.guardConversation(restored.roomId);
   store.close();initConfig(f.root,{version:1,brokerUrl:f.upstream.options.brokerUrl,kswarmUrl:f.upstream.options.kswarmUrl});host=await startHost({root:f.root,upstream:f.upstream.options});
   const listed:any=await hostRequest(f.root,'kteam-main','/v1/teams');assert.equal(listed.rooms.find((r:any)=>r.roomId===group).lastMessage.text,'群最后一条');
-  await assert.rejects(hostRequest(f.root,'xiaok-main',`/v1/teams/${group}/sidebar`,{action:'delete'}),/sidebar_conversation_forbidden/);
+  await assert.rejects(hostRequest(f.root,'kteam-companion',`/v1/teams/${group}/sidebar`,{action:'delete'}),/sidebar_conversation_forbidden/);
   await assert.rejects(hostRequest(f.root,'kteam-main',`/v1/teams/${group}/sidebar`,{action:'unread',expectedRevision:999}),/sidebar_changed/);
  }finally{await host?.close();try{store.close();}catch{}await f.close();}
 });

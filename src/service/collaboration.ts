@@ -80,7 +80,7 @@ export class CollaborationService {
   }
   async messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
     const result = await ownerPage(this.upstream,roomId,{after,limit,before,tail});
-    return { ...result, messages: rows(result.messages).map(projectMessage) };
+    const raw=rows(result.messages);return { ...result,hasMoreBefore:result.hasMoreBefore===true,nextSequence:Math.max(after,...raw.map(message=>Number(message.roomSequence)||0)),previousSequence:raw[0]?Number(raw[0].roomSequence):undefined,messages:raw.filter(message=>(message.sourceRef as any)?.kind!=='aimp_event').map(projectMessage) };
   }
 }
 

@@ -42,8 +42,8 @@ test('connector mutations fence stale/forged inputs, cancel duplicate and recove
 test('real host exposes connector semantic routes only to authenticated main client',async()=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-host-')));initConfig(root,{version:1,brokerUrl:'http://127.0.0.1:1',kswarmUrl:'http://127.0.0.1:1'});const host=await startHost({root,upstream:{brokerUrl:'http://127.0.0.1:1',kswarmUrl:'http://127.0.0.1:1'}});
  try{
-  await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/enterprise-connectors'),/app_settings_forbidden/);
-  await assert.rejects(hostRequest(root,'xiaok-main','/v1/app/enterprise-connectors',{provider:'yzj',action:'login',expectedRevision:'forged'}),/app_settings_forbidden/);
+  await assert.rejects(hostRequest(root,'kteam-companion','/v1/app/enterprise-connectors'),/app_settings_forbidden/);
+  await assert.rejects(hostRequest(root,'kteam-companion','/v1/app/enterprise-connectors',{provider:'yzj',action:'login',expectedRevision:'forged'}),/app_settings_forbidden/);
   const state:any=await hostRequest(root,'kteam-main','/v1/app/enterprise-connectors');assert.equal(state.connectors.length,4);
   await assert.rejects(hostRequest(root,'kteam-main','/v1/app/enterprise-connectors',{provider:'yzj',action:'check',expectedRevision:'forged'}),/connector_changed/);
  }finally{await host.close();rmSync(root,{recursive:true,force:true});}

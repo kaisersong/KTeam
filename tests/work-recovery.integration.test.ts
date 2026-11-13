@@ -36,8 +36,8 @@ test('real host shutdown and restart expose recovery and complete one linked run
   const visibleBefore=(await api.messages({roomId:bot.roomId})).messages;assert.deepEqual(visibleBefore.map((m:any)=>m.text),['完成测试答复']);
   assert.equal((await api.teams()).rooms.find((room:any)=>room.roomId===bot.roomId).lastMessage.text,'完成测试答复');
   const raw=await f.upstream.request('broker','/rooms/'+bot.roomId+'/messages?afterSequence=0&limit=100');const stop=raw.messages.find((m:any)=>m.sourceRef?.kind==='aimp_event');assert.ok(stop);
-  const internalPage=await f.upstream.messages(bot.roomId,stop.roomSequence-1,1);assert.equal(internalPage.messages.length,0);assert.equal(internalPage.nextSequence,stop.roomSequence);assert.equal(internalPage.previousSequence,stop.roomSequence);
-  assert.equal((await f.upstream.getTeam(bot.roomId)).messages.some((m:any)=>m.sourceRef?.kind==='aimp_event'),false);
+  const internalPage=await f.upstream.messages(bot.roomId,stop.roomSequence-1,1);assert.equal(internalPage.messages.length,1);assert.equal(internalPage.messages[0].sourceRef.kind,'aimp_event');assert.equal(internalPage.nextSequence,stop.roomSequence);assert.equal(internalPage.previousSequence,stop.roomSequence);
+  assert.equal((await f.upstream.getTeam(bot.roomId)).messages.some((m:any)=>m.sourceRef?.kind==='aimp_event'),true);
   const continued=await api.recoverWork({roomId:bot.roomId,jobId:source.id,requestId:'resume-click'});assert.equal((await api.recoverWork({roomId:bot.roomId,jobId:source.id,requestId:'double-click'})).jobId,continued.jobId);
   let work:any;for(let n=0;n<300;n++){work=await api.work(bot.roomId);if(work.jobs[0]?.state==='delivered')break;await new Promise(done=>setTimeout(done,20));}
   assert.equal(work.jobs[0].state,'delivered',JSON.stringify(work.jobs[0]));assert.equal(work.jobs[0].recoveryOf,source.id);assert.equal(work.jobs[1].state,'stopped');

@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.4.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). 0.4 adds Windows (x64) alongside macOS on Apple silicon (arm64), with auto-update on both. See [Version History](#version-history) for changes.
+**Current version: 0.5.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). 0.4 adds Windows (x64) alongside macOS on Apple silicon (arm64), with auto-update on both. See [Version History](#version-history) for changes.
 
 ---
 
@@ -34,9 +34,19 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 - The L0 preview never treats text such as "accept", "approve" or a tool call as authorization.
 - The experimental discussion lifecycle in intent-broker is wired up.
 
-**KTeam does not yet claim full AIMP v3.1 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. 0.4 will check the implementation against the v3.1 spec item by item.
+**KTeam does not yet claim full AIMP v3.1 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.1 specification remains the reference for incremental implementation.
 
 ---
+
+## What's in 0.5
+
+- **A ready-to-use xiaoK assistant.** Connecting or selecting a default model completes assistant setup automatically. Existing models no longer trigger another setup prompt. The assistant can prepare Bot and group creation proposals for your confirmation.
+- **Natural follow-up messages.** Send normally; the assistant decides how your message continues ongoing work. The composer no longer asks you to choose new work, append or queue. Approvals and unknown-result checks remain separate.
+- **Files, images and Skills.** Select, drop or paste files and images. Use `/` to choose a Skill in a Bot direct chat; groups direct you to that chat. Successful file receipts survive interruptions, and the file shortcut appears only when a file was actually generated.
+- **Durable work and permissions.** Questions and approvals can resume the original task after a host restart. Revocable directory grants cover ordinary file access; sensitive files still need separate confirmation. Review member Skills, memory and tool scopes.
+- **Desktop collaboration.** Conversation previews, rename/delete/unread actions, reply and reaction shortcuts, avatar presets, scheduled work, work notifications, bounded history and verified original tool output.
+- **Connectors and computer access.** Bundled Yunzhijia CLI and enterprise CLI connections; Mac CUA driver installation and system permission shortcuts. Email supports IMAP/SMTP; Gmail/Outlook OAuth is deferred to 0.5.1.
+- **A2UI and Windows.** A2UI accepts `"1.0"` and numeric `1`, with working surface deletion. Windows private hosts, native helpers and local Agent detection are included in builds. Windows installers remain unsigned.
 
 ## What's in 0.4
 
@@ -78,8 +88,8 @@ Intel Macs are not supported yet. If you already have 0.3.x, KTeam updates to 0.
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.4.0.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.4.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.5.0.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.5.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway". Signing will come in a later 0.4.x release.
 
@@ -132,6 +142,10 @@ Never put credentials in command arguments or commit them to Git.
 ---
 
 ## Version History
+
+### v0.5.0
+
+Automatic assistant setup and message handling, file/image input, direct-chat Skills, durable approvals, directory permissions, enterprise connectors, A2UI compatibility and Windows host hardening. Email uses IMAP/SMTP; OAuth is deferred to 0.5.1.
 
 ### v0.4.0
 

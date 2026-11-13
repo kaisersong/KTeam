@@ -9,5 +9,10 @@ export function projectMessage(message:any):any{const {envelope,...result}=origi
 /** Adapt the original bounded read downwards on byte overflow; never retry a mutation. */
 export async function conversationPage(upstream:Upstreams,roomId:string,input:{after?:number;before?:number;tail?:boolean;limit?:number}={}){
  const source=await ownerPage(upstream,roomId,input);
- const actual=(source.messages as any[]).map(projectMessage).sort((a,b)=>a.roomSequence-b.roomSequence),selected:any[]=[];let bytes=0;for(const message of input.tail?[...actual].reverse():actual){const count=Buffer.byteLength(JSON.stringify(message));if(count>MESSAGE_PAGE_BYTES)throw new KTeamError('conversation_message_too_large',413);if(bytes+count>MESSAGE_PAGE_BYTES)break;selected.push(message);bytes+=count;}if(input.tail)selected.reverse();return {ok:true,messages:selected,totalMessages:source.totalMessages,fromSequence:selected[0]?.roomSequence??null,toSequence:selected.at(-1)?.roomSequence??null,hasMoreBefore:!!source.hasMoreBefore||!!input.tail&&selected.length<actual.length,hasMoreAfter:!!source.hasMoreAfter||!input.tail&&selected.length<actual.length,bytes};
+ const actual=(source.messages as any[]).sort((a,b)=>a.roomSequence-b.roomSequence),selected:any[]=[],scanned:any[]=[];let bytes=0;
+ for(const raw of input.tail?[...actual].reverse():actual){
+  if(raw.sourceRef?.kind==='aimp_event'){scanned.push(raw.roomSequence);continue;}
+  const message=projectMessage(raw),count=Buffer.byteLength(JSON.stringify(message));if(count>MESSAGE_PAGE_BYTES)throw new KTeamError('conversation_message_too_large',413);if(bytes+count>MESSAGE_PAGE_BYTES)break;selected.push(message);scanned.push(raw.roomSequence);bytes+=count;
+ }
+ if(input.tail){selected.reverse();scanned.reverse();}return {ok:true,messages:selected,totalMessages:source.totalMessages,fromSequence:scanned[0]??null,toSequence:scanned.at(-1)??null,hasMoreBefore:!!source.hasMoreBefore||!!input.tail&&scanned.length<actual.length,hasMoreAfter:!!source.hasMoreAfter||!input.tail&&scanned.length<actual.length,bytes};
 }

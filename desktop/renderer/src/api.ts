@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ controlCua(input:any):Promise<any>;openComputerPermissionSettings(input:{permission:string}):Promise<any>;
  ensureAssistant():Promise<any>;
  pasteAttachments(input:{roomId:string}):Promise<{ok:boolean;count:number}>;
  toolOutput(input:{roomId:string;jobId:string;eventId:string;offset?:number}):Promise<any>;
@@ -99,7 +100,7 @@ const reasons:Record<string,string>={
  tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
  model_discovery_failed:'无法获取模型列表，请检查地址、密钥或手动填写模型 ID',model_provider_not_found:'服务商已被移除，请重新读取模型设置',model_not_found:'模型已被移除，请重新读取模型设置',
- tool_directory_changed:'目录位置已变化，请重新确认授权',
+ cua_install_failed:'驱动安装失败，请检查网络后重试',computer_permission_invalid:'请选择有效权限入口',tool_directory_changed:'目录位置已变化，请重新确认授权',
  sidebar_changed:'会话已变化，请重新打开菜单后操作',sidebar_busy:'会话正在更新，请稍后再试',sidebar_title_invalid:'请输入 1–80 个字符的会话名称',sidebar_request_conflict:'此操作内容已变化，请重新打开菜单',sidebar_conversation_forbidden:'没有权限修改此会话',room_delete_pending:'会话中的工作正在停止，请稍后再次确认删除',
  connector_changed:'连接状态已变化，请刷新后重试',connector_busy:'连接器正在执行操作，请完成或取消后重试',connector_cli_unavailable:'CLI 暂不可用，请检查安装',connector_not_found:'连接器不可用，请刷新',connector_action_invalid:'此连接器不支持该操作',
  tool_permission_changed:'此授权已变化，请刷新列表',tool_permission_once_required:'此操作需要逐次确认',

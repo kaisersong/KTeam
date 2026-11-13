@@ -15,9 +15,6 @@ export function loopbackUrl(input: string): string {
   return url.origin;
 }
 
-// Signed task lifecycle events are diagnostics, never user chat or model input.
-const isConversationMessage = (message: any) => message.sourceRef?.kind !== 'aimp_event';
-const conversationSnapshot = (result: Record<string, unknown>): Record<string, unknown> & {messages: any[]} => ({...result, messages: (result.messages as any[] ?? []).filter(isConversationMessage)});
 
 /** Semantic adapters over the existing owners; never opens their DBs or starts their schedulers. */
 export class Upstreams {
@@ -111,12 +108,11 @@ export class Upstreams {
   listRuntimes() { return this.request('kswarm', '/runtimes'); }
   listProjects() { return this.request('kswarm', '/projects'); }
   listTeams() { return this.request('broker', '/rooms'); }
-  async getTeam(roomId: string) { return conversationSnapshot(await this.request('broker', '/rooms/' + encodeURIComponent(roomId))); }
+  getTeam(roomId: string) { return this.request('broker', '/rooms/' + encodeURIComponent(roomId)); }
   membership(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/membership`);}
   createTeam(input: Record<string, unknown>) { return this.request('broker', '/rooms', 'POST', input); }
-  async messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
-    const result = await this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}${before!==undefined?'&beforeSequence='+before:''}${tail?'&direction=backward':''}`);
-    return {...conversationSnapshot(result), hasMoreBefore: result.hasMoreBefore===true, nextSequence: Math.max(after, ...(result.messages as any[] ?? []).map(message => Number(message.roomSequence) || 0)), previousSequence: (result.messages as any[] ?? [])[0]?.roomSequence};
+  messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
+    return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}${before!==undefined?'&beforeSequence='+before:''}${tail?'&direction=backward':''}`);
   }
   sendBotPrivate(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/bot-messages`,'POST',input);}
   sendMessage(roomId: string, input: Record<string, unknown>) {

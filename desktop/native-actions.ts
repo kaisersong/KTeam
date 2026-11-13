@@ -1,3 +1,4 @@
+import {computerPermissionSettingsUrl} from './computer-permissions.js';
 import {clipboardFileURLs,clipboardFileBytes,macClipboardPaths} from './clipboard-files.js';
 import {randomBytes} from 'node:crypto';
 import {messageDisplayText,attachmentMessageView} from '../src/protocol/message-attachments.js';
@@ -21,6 +22,7 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
  const voiceSettings=async()=>{const value=await hostRequest(root,'kteam-main','/v1/app/integrations');return (value.settings as any).voice;};
  const speak=async(text:string,id:string)=>{if(process.platform!=='darwin')fail('speech_unavailable');const config=await voiceSettings();await stop();const child=spawn('/usr/bin/say',[...(config.voice?['-v',config.voice]:[]),'-r',String(config.rate),'--',text.slice(0,32768)],{stdio:'ignore'});await new Promise<void>((resolve,reject)=>{child.once('spawn',resolve);child.once('error',()=>reject(Object.assign(Error('speech_unavailable'),{code:'speech_unavailable'})));});speech=child;speakingId=id;child.once('close',()=>{if(speech===child){speech=undefined;speakingId=undefined;}});return {ok:true,speakingId};};
  return {
+  openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId']);const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));if(!view.canAttach)fail('attachment_owner_required');
    let paths=process.platform==='darwin'?await macClipboardPaths(clipboard.readBuffer('NSFilenamesPboardType')):[];if(!paths.length)paths=clipboardFileURLs(clipboard.read('public.file-url')||clipboard.read('text/uri-list'));
    if(!paths.length&&process.platform==='win32'){const file=clipboard.readBuffer('FileNameW').toString('utf16le').split('\0')[0];if(file)paths=[file];}

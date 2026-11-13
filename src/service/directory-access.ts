@@ -1,6 +1,6 @@
 import {dirname,isAbsolute,join,relative,resolve,parse,sep} from 'node:path';
 import {lstatSync,realpathSync,statSync} from 'node:fs';
-import {homedir} from 'node:os';
+import {homedir,tmpdir} from 'node:os';
 export const FILE_TOOLS=new Set(['read','write','edit']);
 export const insideDirectory=(root:string,path:string)=>{const part=relative(root,path);return part===''||part!=='..'&&!part.startsWith('..'+sep)&&!isAbsolute(part);};
 export function canonicalFile(path:string):string|undefined{
@@ -13,7 +13,7 @@ function protectedPath(core:any,path:string){
  const parts=path.replace(/\\/g,'/').split('/').filter(Boolean),lower=path.replace(/\\/g,'/').toLowerCase();
  if(parts.some(part=>part.startsWith('.'))||/^\/Users\/[^/]+\/Library(?:\/|$)/i.test(path))return true;
  if(/^\/[A-Za-z]:/.test(lower)||/^[a-z]:\//.test(lower))return /(?:^|\/)(?:windows|program files(?: \(x86\))?|programdata|appdata)(?:\/|$)/.test(lower);
- return ['/System','/Library','/Applications','/usr','/bin','/sbin','/etc','/private/etc','/private/var','/opt','/dev','/proc','/sys','/boot','/root'].some(root=>insideDirectory(root.toLowerCase(),lower));
+ return ['/System','/Library','/Applications','/usr','/bin','/sbin','/etc','/private/etc','/private/var','/opt','/dev','/proc','/sys','/boot','/root'].some(root=>insideDirectory(root.toLowerCase(),lower)&&!(root==='/private/var'&&insideDirectory(realpathSync(tmpdir()).toLowerCase(),lower)));
 }
 export function sensitiveFileInvocation(core:any,name:string,input:Record<string,unknown>,cwd:string){const path=fileTarget(name,input,cwd);if(!path)return false;const actual=canonicalFile(path);return !actual||protectedPath(core,path)||protectedPath(core,actual);}
 export interface DirectoryAccess {directory:string;target:string;requestedPath:string;anchor:{path:string;dev:number;ino:number}}
