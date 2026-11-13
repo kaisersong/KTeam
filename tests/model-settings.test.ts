@@ -34,3 +34,11 @@ test('model discovery uses a real saved provider, protects credentials, validate
   assert.equal(readFileSync(join(f.root,'runtime/config.json'),'utf8'),before);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));f.close();}
 });
+
+test('a keyless loopback model passes a real runtime call without persisting a synthetic credential',async()=>{
+ const {nativeTurn}=await import('../src/runtime/native.js'),http=await import('node:http'),f=await fixture();let authorization='';
+ const server=http.createServer(async(req,res)=>{authorization=String(req.headers.authorization);for await(const _ of req){}res.writeHead(200,{'content-type':'text/event-stream'});res.write('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'local-model',choices:[{index:0,delta:{role:'assistant',content:'LOCAL_KEYLESS_REAL_REPLY'},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'local-model',choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:1,completion_tokens:1}})+'\n\n');res.end('data: [DONE]\n\n');});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
+ try{const initial=await f.settings.view(),saved=await f.settings.save({expectedRevision:initial.revision,label:'本机免密',model:'local-model',protocol:'openai_legacy',baseUrl:'http://127.0.0.1:'+(server.address() as any).port+'/v1',makeDefault:true});
+  const result=await nativeTurn({modelId:saved.defaultModelId,system:'本机连接测试',prompt:'reply',tools:[],maxIterations:1,signal:AbortSignal.timeout(5000)});assert.equal(result.text,'LOCAL_KEYLESS_REAL_REPLY');assert.equal(authorization,'Bearer kteam-local-unauthenticated');assert.equal((await f.settings.view()).models[0]!.hasKey,false);assert(!readFileSync(join(f.root,'runtime/config.json'),'utf8').includes('kteam-local-unauthenticated'));assert.equal(existsSync(join(f.root,'runtime/credentials/store.json')),false);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));f.close();}
+});

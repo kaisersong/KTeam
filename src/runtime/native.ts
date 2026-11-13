@@ -29,7 +29,11 @@ export async function modelCatalog(){
 export async function modelIdentity(modelId:string){
  const core=await sharedRuntime(),config=await core.loadConfig();
  const model=config.models[modelId];if(!model)throw new KTeamError('model_binding_not_found');
- const frozen={...config,defaultModelId:modelId};
+ const frozen={...config,providers:{...config.providers},defaultModelId:modelId};
+ // SDK clients require a constructor key even for unauthenticated loopback services.
+ // Keep this non-secret marker in the adapter snapshot, never in config or the vault.
+ const provider=config.providers[model.provider];
+ if(provider&&!provider.apiKey&&provider.baseUrl){const url=new URL(provider.baseUrl);if(['http:','https:'].includes(url.protocol)&&['localhost','127.0.0.1','[::1]'].includes(url.hostname))frozen.providers[model.provider]={...provider,apiKey:'kteam-local-unauthenticated'};}
  const adapter=core.createAdapter(frozen);
  const binding=core.resolveRuntimeModelBinding(frozen);
  return {core,adapter,origin:new URL(binding.baseUrl).origin,model:adapter.getModelName(),fingerprint:hash({modelId,providerId:binding.providerId,protocol:binding.protocol,baseUrl:binding.baseUrl,wireModel:binding.wireModel,runtimeOptions:binding.runtimeOptions})};

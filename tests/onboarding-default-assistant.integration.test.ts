@@ -1,5 +1,7 @@
 import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
+import {readFileSync,existsSync} from 'node:fs';
+import {ModelSettings} from '../src/service/model-settings.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {TeamStore} from '../src/service/team-store.js';
@@ -62,4 +64,19 @@ test('assistant readiness fails closed on changed membership and upstream failur
   db.prepare("UPDATE room_members SET role='member' WHERE room_id=? AND subject_kind='user'").run(ref.roomId);await assert.rejects(onboarding.ensureConfigured(),/conversation_identity_changed/);assert.equal((await f.upstream.listTeams()).rooms.length,1);
   db.prepare("UPDATE room_members SET role='owner' WHERE room_id=? AND subject_kind='user'").run(ref.roomId);f.upstream.membership=async()=>{throw new KTeamError('upstream_unavailable',503);};await assert.rejects(onboarding.ensureConfigured(),/upstream_unavailable/);assert.equal((await f.upstream.listTeams()).rooms.length,1);
  }finally{db.close();store.close();await f.close();}
+});
+
+test('real SDK identity recovers keyless local-model onboarding and creates exactly one assistant without probing the model',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),previous=process.env.KTEAM_MODEL_CONFIG_DIR;
+ process.env.KTEAM_MODEL_CONFIG_DIR=join(f.root,'runtime');
+ const http=await import('node:http');let requests=0;const server=http.createServer((_req,res)=>{requests++;res.writeHead(500);res.end();});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
+ try{
+  const settings=new ModelSettings(),initial=await settings.view(),saved=await settings.save({expectedRevision:initial.revision,label:'本机免密',model:'local-model',protocol:'openai_legacy',baseUrl:'http://127.0.0.1:'+(server.address() as any).port+'/v1',makeDefault:true});
+  store.saveOperation({id:'onboarding:v1',status:'creating',step:'create',modelId:saved.defaultModelId},0);
+  const before=(await f.upstream.listBots()).agents.length,onboarding=new OnboardingService(store,new TeamCoordinator(f.upstream,store,1),f.upstream);
+  const results=await Promise.all(Array.from({length:5},()=>onboarding.ensureConfigured()));assert.ok(results.every(result=>result.state==='ready'));assert.equal(new Set(results.map(result=>result.roomId)).size,1);
+  assert.equal((await f.upstream.listBots()).agents.length,before+1);assert.equal((await f.upstream.listTeams()).rooms.length,1);assert.equal(onboarding.snapshot().status,'done');assert.equal(requests,0);
+  const reopened=new OnboardingService(store,new TeamCoordinator(f.upstream,store,2),f.upstream);assert.equal((await reopened.ensureConfigured()).botId,results[0].botId);assert.equal((await f.upstream.listBots()).agents.length,before+1);
+  assert.equal((await settings.view()).models[0]!.hasKey,false);assert(!readFileSync(join(f.root,'runtime/config.json'),'utf8').includes('kteam-local-unauthenticated'));assert.equal(existsSync(join(f.root,'runtime/credentials/store.json')),false);
+ }finally{if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));store.close();await f.close();}
 });
