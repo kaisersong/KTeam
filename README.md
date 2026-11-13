@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.3.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). 0.3 is the first build signed and notarized by Apple. It supports macOS on Apple silicon (arm64) only and includes auto-update. See [Version History](#version-history) for changes.
+**Current version: 0.4.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). 0.4 adds Windows (x64) alongside macOS on Apple silicon (arm64), with auto-update on both. See [Version History](#version-history) for changes.
 
 ---
 
@@ -38,6 +38,13 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 
 ---
 
+## What's in 0.4
+
+- **Windows (x64).** An installer (`KTeam-setup-0.4.0.exe`) and a portable build (`KTeam-portable-0.4.0.exe`). Process management and credential storage (Windows Credential Manager) work on Windows.
+- **Auto-update on Windows.** The installer build updates the same way as the Mac build: official releases only, and an update whose package fails verification is rejected. The portable build does not auto-update; "检查更新" (Check for Updates) points you to Releases instead.
+- **Check for updates in Settings.** Settings ▸ 数据与关于 (Data & About) shows the current version and lets you check manually.
+- **Clean exit on Windows.** Closing the window fully exits KTeam with nothing left running in the background.
+
 ## What's in 0.3
 
 - **Fully decoupled from xiaoK.** KTeam has its own app name, bundle ID (`com.kteam.desktop`) and data directory `~/.kteam/`. Its built-in services use ports assigned by the system and recorded in `~/.kteam/service-endpoints.json`, so they never clash with xiaoK. Credentials are stored by default in KTeam's own private file; if you switch to the Mac keychain, KTeam uses only its own entries. Startup and background work never read any xiaoK file.
@@ -50,7 +57,7 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 
 - Create long-lived Bot members by name, each with its own role, initiative and model.
 - Start group chats where several members discuss; KTeam picks the members relevant to the topic (or none), and the agreed points are kept in shared notes.
-- One-to-one chats with a member, team proposal cards, pause / resume and user acceptance. Background work continues after the window is closed.
+- One-to-one chats with a member, team proposal cards, pause / resume and user acceptance. On macOS, background work continues after the window is closed; on Windows, closing the window exits KTeam.
 - Connect agents already on your Mac: KTeam detects installed xiaok CLI, Codex, Kimi and ZCode and uses their own config and sign-in.
 
 ---
@@ -59,13 +66,26 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 
 ### Download
 
-1. Open [KTeam Releases](https://github.com/kaisersong/KTeam/releases/latest) and download the 0.3.0 macOS arm64 `.dmg` from Assets.
+Open [KTeam Releases](https://github.com/kaisersong/KTeam/releases/latest) and download the file for your system from Assets.
+
+**macOS (Apple silicon)**
+
+1. Download the macOS arm64 `.dmg`.
 2. Open the dmg and drag `KTeam.app` into Applications.
 3. The first time you open it, macOS says it was downloaded from the internet; click "Open".
 
-Only Apple silicon (M-series) Macs are supported; Intel Macs are not supported yet. There is no official Windows build in 0.3; Windows is planned for 0.4.
+Intel Macs are not supported yet. If you already have 0.3.x, KTeam updates to 0.4 automatically.
 
-Optional check: put the release's `SHA256SUMS` in the same folder as the installer and run `shasum -a 256 -c SHA256SUMS`.
+**Windows (x64)**
+
+- **Installer (recommended):** download `KTeam-setup-0.4.0.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.4.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
+
+The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway". Signing will come in a later 0.4.x release.
+
+Known limitation on Windows: local agents such as Codex can't yet be linked as collaborators (they are still detected). This is planned for 0.5.
+
+Optional check: put the release's `SHA256SUMS` in the same folder as the installer and run `shasum -a 256 -c SHA256SUMS`. On Windows, run `Get-FileHash <file> -Algorithm SHA256` in PowerShell and compare the value with `SHA256SUMS`.
 
 ### Upgrading from 0.2
 
@@ -113,6 +133,18 @@ Never put credentials in command arguments or commit them to Git.
 
 ## Version History
 
+### v0.4.0
+
+- Windows x64 support: installer and portable builds (not code-signed yet).
+- Auto-update on Windows (installer build only).
+- Current version and "检查更新" (Check for Updates) in Settings.
+- Closing the window on Windows fully exits KTeam.
+- Spacing tweaks for dropdowns, inputs and buttons across desktop flows.
+
+### v0.3.1
+
+See the [v0.3.1 release](https://github.com/kaisersong/KTeam/releases/tag/v0.3.1).
+
 ### v0.3.0
 
 - Fully decoupled from xiaoK: separate data directory, ports and credentials.
@@ -127,7 +159,7 @@ First official release (macOS arm64, ad-hoc signed, not notarized). See the [v0.
 
 ## Feedback
 
-Report problems in [Issues](https://github.com/kaisersong/KTeam/issues) with your macOS version and screenshots.
+Report problems in [Issues](https://github.com/kaisersong/KTeam/issues) with your OS version (macOS or Windows) and screenshots.
 
 ## License
 
