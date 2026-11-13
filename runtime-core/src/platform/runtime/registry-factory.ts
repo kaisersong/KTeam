@@ -45,6 +45,7 @@ export function filterWorkflowToolsForAgent(tools: Tool[], agentId: string): Too
 
 export interface PlatformRegistryFactoryOptions {
   disableHooks?: boolean;
+  isToolEnabled?: (name:string) => boolean;
   notifyReminder?: (message: string) => void;
   runInteractiveBash?: Tool['execute'];
   onSubAgentEvent?: (event: SubAgentProgressEvent) => void;
@@ -118,7 +119,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
       onSandboxDenied: handleSandboxDenied,
     });
     const orderedTools = mergeToolPools([], sandboxedTools)
-      .filter((tool) => !isCcRuntimeOnlyTool(tool) && !state.baseNames.has(tool.definition.name) && (!state.allowed || state.allowed.has(getCanonicalToolId(tool.definition.name))));
+      .filter((tool) => !isCcRuntimeOnlyTool(tool) && options.isToolEnabled?.(tool.definition.name) !== false && !state.baseNames.has(tool.definition.name) && (!state.allowed || state.allowed.has(getCanonicalToolId(tool.definition.name))));
     const nextNames = new Set(orderedTools.map((tool) => tool.definition.name));
     for (const [name, installed] of state.installed) {
       if (!nextNames.has(name)) {
@@ -283,7 +284,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
       onSandboxDenied: handleSandboxDenied,
     });
     const orderedTools = mergeToolPools(sandboxedTools, sandboxedMcpTools)
-      .filter((tool) => !isCcRuntimeOnlyTool(tool));
+      .filter((tool) => !isCcRuntimeOnlyTool(tool) && options.isToolEnabled?.(tool.definition.name) !== false);
 
     // 过滤 allowedTools
     const allowedToolIds = allowedTools?.length ? new Set(allowedTools.map(getCanonicalToolId)) : undefined;

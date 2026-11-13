@@ -25,6 +25,7 @@ export interface KTeamAPI {
  conversationAction(input:any):Promise<any>;
  enterpriseConnectors():Promise<any>;controlEnterpriseConnector(input:any):Promise<any>;
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
+ discoverModels(input:any):Promise<any>;removeModel(input:any):Promise<any>;importMcpServers(input:any):Promise<any>;
  integrationSettings():Promise<any>;saveIntegrationSettings(input:any):Promise<any>;testIntegration(input:any):Promise<any>;importProviderModels(input:any):Promise<any>;voiceOptions():Promise<any>;previewVoice():Promise<any>;transcribeAudio(input:any):Promise<any>;
  legacySharedNotice():Promise<{ok:true;show:boolean}>;dismissLegacySharedNotice():Promise<{ok:true;show:boolean}>;
  appPreferences():Promise<any>;saveAppPreferences(input:any):Promise<any>;appResources():Promise<any>;openSettingsLocation(input:any):Promise<any>;updateStatus():Promise<any>;checkForUpdates():Promise<any>;installUpdate():Promise<any>;openKTeamReleases():Promise<any>;
