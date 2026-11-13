@@ -9,6 +9,9 @@ import {KTeamError} from '../errors.js';
 import {parseDataJson} from '../protocol/json.js';
 import {windowsPowerShell} from './windows-security.js';
 
+// This ephemeral, per-host trust anchor is never installed in an OS certificate store.
+// BoringSSL (Electron) requires CA basic constraints and certificate-signing key usage,
+// even though Node/OpenSSL also accepts the old self-signed leaf as an explicit CA.
 const certificateScript=String.raw`
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
@@ -16,8 +19,8 @@ $rsa=New-Object System.Security.Cryptography.RSACryptoServiceProvider(2048)
 $rsa.PersistKeyInCsp=$false
 try {
  $request=New-Object System.Security.Cryptography.X509Certificates.CertificateRequest('CN=localhost',$rsa,[System.Security.Cryptography.HashAlgorithmName]::SHA256,[System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
- $request.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($false,$false,0,$true)))
- $request.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509KeyUsageExtension(([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment),$true)))
+ $request.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($true,$true,0,$true)))
+ $request.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509KeyUsageExtension(([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign -bor [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment),$true)))
  $eku=New-Object System.Security.Cryptography.OidCollection
  [void]$eku.Add((New-Object System.Security.Cryptography.Oid('1.3.6.1.5.5.7.3.1')))
  $request.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($eku,$false)))
