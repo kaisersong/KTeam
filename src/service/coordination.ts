@@ -11,7 +11,7 @@ const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('h
 type Identity={model:string;fingerprint:string;native?:{driver:string;path:string}};
 type Models={catalog:()=>Promise<{defaultModelId:string}>;identity:(id:string)=>Promise<Identity>};
 type Member={botId:string;name:string;modelId:string;model:string;fingerprint:string;existing:boolean;unbound?:boolean;external?:{driver:string};bindingRevision?:number};
-export type Proposal={id:string;hash:string;roomId:string;threadId:string;originId:string;botId:string;runId:string;bindingRevision:number;fingerprint:string;expiresAt:number;title:string;goal:string;members:Member[];firstMessage:string;startDiscussion:boolean};
+export type Proposal={kind?:'bot';id:string;hash:string;roomId:string;threadId:string;originId:string;botId:string;runId:string;bindingRevision:number;fingerprint:string;expiresAt:number;title:string;goal:string;members:Member[];firstMessage:string;startDiscussion:boolean};
 export type AgentContext={requestSource:'agent';roomId:string;threadId:string;originId:string;botId:string;runId:string;admission:Record<string,unknown>};
 /** Coordinates existing owners. Every external mutation has a durable intent and a read-only recovery path. */
 export class TeamCoordinator{
@@ -69,7 +69,7 @@ export class TeamCoordinator{
  async bootstrap(ctx:{requestSource:string},options?:{name:string;modelId?:string;expectedFingerprint?:string}):Promise<{roomId:string;botId:string}>{
   this.user(ctx);const operationId='assistant:'+this.store.installationId();return this.single(operationId,async()=>{
    let op=this.store.operation(operationId);if(options?.expectedFingerprint&&op?.data.member?.fingerprint!==undefined&&op.data.member.fingerprint!==options.expectedFingerprint)throw new KTeamError('model_binding_changed',409);if(op?.status==='complete'){await this.guardConversation(op.receipt.roomId);return op.receipt;}
-   if(!op){const displayName=options?.name?.trim()??'小K';if(!displayName||displayName.length>60)throw new KTeamError('invalid_member_name');const modelId=options?.modelId??(await this.models.catalog()).defaultModelId,identity=await this.models.identity(modelId);if(options?.expectedFingerprint&&identity.fingerprint!==options.expectedFingerprint)throw new KTeamError('model_binding_changed',409);op=this.claim(operationId,{member:{botId:'kteam-'+hash(operationId).slice(0,24),name:displayName+' · KTeam '+this.store.installationId().slice(0,6),modelId,model:identity.model,fingerprint:identity.fingerprint,existing:false},title:displayName});}else op=this.claim(operationId,op.data);
+   if(!op){const displayName=options?.name?.trim()??'小K助理';if(!displayName||displayName.length>60)throw new KTeamError('invalid_member_name');const modelId=options?.modelId??(await this.models.catalog()).defaultModelId,identity=await this.models.identity(modelId);if(options?.expectedFingerprint&&identity.fingerprint!==options.expectedFingerprint)throw new KTeamError('model_binding_changed',409);op=this.claim(operationId,{member:{botId:'kteam-'+hash(operationId).slice(0,24),name:displayName+' · KTeam '+this.store.installationId().slice(0,6),modelId,model:identity.model,fingerprint:identity.fingerprint,existing:false},title:displayName});}else op=this.claim(operationId,op.data);
    const member:Member=op.data.member,validate=()=>this.frozen(member);await validate();await this.ensureMember(op,member,0,validate);const roomId=await this.room(op,op.data.title??'小K','理解你的目标，组织合适的成员，一起把事情向前推进。',[member],'assistant',validate);op.status='complete';op.receipt={roomId,botId:member.botId};this.save(op);return op.receipt;
   });
  }
@@ -82,18 +82,22 @@ export class TeamCoordinator{
   if(!origin||origin.sender?.kind!=='user'||origin.threadId!==proposal.threadId)throw new KTeamError('proposal_scope_mismatch',403);
   const member=(snapshot.members as any[]).find(m=>m.status==='active'&&m.subject?.logicalAgentId===proposal.botId);if(!member)throw new KTeamError('proposal_scope_mismatch',403);
  }
- async propose(value:unknown,ctx:AgentContext):Promise<Proposal>{
+ async proposeBot(value:unknown,ctx:AgentContext):Promise<Proposal>{
+  const input=record(value);fields(input,['name']);const name=text(input.name,'member_name',60).trim();
+  return this.propose({title:name,goal:'',members:[{name}]},ctx,'bot');
+ }
+ async propose(value:unknown,ctx:AgentContext,kind?:'bot'):Promise<Proposal>{
   if(ctx.requestSource!=='agent')throw new KTeamError('agent_context_required',403);
-  const input=record(value);fields(input,['title','goal','members']);const title=normalizeTeamTitle(text(input.title,'title',80)),goal=typeof input.goal==='string'&&input.goal.length<=8192?input.goal.trim():'';
+  const input=record(value);fields(input,['title','goal','members']);const title=kind==='bot'?text(input.title,'title',80).trim():normalizeTeamTitle(text(input.title,'title',80)),goal=typeof input.goal==='string'&&input.goal.length<=8192?input.goal.trim():'';
   if(!Array.isArray(input.members)||input.members.length<1||input.members.length>5)throw new KTeamError('invalid_members');
   const previous=this.store.proposalForRun(ctx.runId);if(previous)return previous;
   const binding=this.store.binding(ctx.botId);if(!binding)throw new KTeamError('proposal_scope_mismatch',403);
   const proposalId='proposal-'+hash([ctx.roomId,ctx.runId]).slice(0,32),operationId='accept:'+proposalId;
-  const proposal:Proposal={id:proposalId,hash:'',roomId:ctx.roomId,threadId:ctx.threadId,originId:ctx.originId,botId:ctx.botId,runId:ctx.runId,bindingRevision:binding.revision,fingerprint:binding.fingerprint,expiresAt:this.now()+30*60*1000,title,goal,members:[],firstMessage:goal,startDiscussion:false};
+  const proposal:Proposal={...(kind?{kind}:{}),id:proposalId,hash:'',roomId:ctx.roomId,threadId:ctx.threadId,originId:ctx.originId,botId:ctx.botId,runId:ctx.runId,bindingRevision:binding.revision,fingerprint:binding.fingerprint,expiresAt:this.now()+30*60*1000,title,goal,members:[],firstMessage:goal,startDiscussion:false};
   await this.scope(proposal);await this.upstream.aimp(ctx.roomId,'execution-check',ctx.admission);
   const agents=(await this.upstream.listBots()).agents as any[];
   for(const [index,item] of input.members.entries()){
-   const value=record(item);fields(value,['name','existingBotId']);let name=text(value.name,'member_name',60).trim();const existing=value.existingBotId?agents.find(a=>a.id===value.existingBotId):agents.find(a=>a.name===name&&this.store.binding(a.id));
+   const value=record(item);fields(value,['name','existingBotId']);let name=text(value.name,'member_name',60).trim();const existing=kind==='bot'?undefined:value.existingBotId?agents.find(a=>a.id===value.existingBotId):agents.find(a=>a.name===name&&this.store.binding(a.id));
    if(existing){const b=this.store.binding(existing.id);if(!b||existing.archivedAt||existing.id===ctx.botId)throw new KTeamError('invalid_member');proposal.members.push({botId:existing.id,name:existing.name,modelId:b.modelId,model:b.model,fingerprint:b.fingerprint,bindingRevision:b.revision,existing:true});}
    else{if(value.existingBotId)throw new KTeamError('agent_not_found',404);if(agents.some(a=>a.name===name))name+=' · KTeam '+proposalId.slice(-6);proposal.members.push({botId:'kteam-'+hash(operationId+':member:'+index).slice(0,24),name,modelId:binding.modelId,model:binding.model,fingerprint:binding.fingerprint,existing:false});}
   }
@@ -105,7 +109,7 @@ export class TeamCoordinator{
   return this.single('accept:'+p.id,async()=>{let op=this.store.operation('accept:'+p.id);if(op?.status==='complete')return op.receipt;
    const validate=async()=>{if(p.expiresAt<=this.now())throw new KTeamError('proposal_expired',409);await this.scope(p);for(const member of p.members)await this.frozen(member);};await validate();op=this.claim('accept:'+p.id,{proposalId:p.id,hash:p.hash});
    for(const [index,member] of p.members.entries())await this.ensureMember(op,member,index,validate);
-   const roomId=await this.room(op,p.title,p.goal,p.members,'group',validate);
+   const roomId=await this.room(op,p.title,p.kind==='bot'?'与 '+p.title+' 直接交流。':p.goal,p.members,p.kind==='bot'?'direct':'group',validate);
    op.status='complete';op.receipt={roomId};this.save(op);return op.receipt;
   });
  }

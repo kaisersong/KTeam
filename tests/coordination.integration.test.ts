@@ -81,3 +81,21 @@ test('queued work does not call a model or publish when the owner cannot enforce
  try{const member=await c.createMember({name:'兼容性检查',modelId:'fixture',requestId:'cap-gate'},user);const origin=await new CollaborationService(f.upstream).send({aimp:'1.0',id:id(),room_id:member.roomId,thread_id:'thread-'+member.roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'准备草稿'});store.enqueue('cap-job',member.roomId,String(origin.messageId));f.upstream.requireReady=async()=>{throw new KTeamError('upstream_protocol_unavailable',503);};let calls=0;automation=new TeamAutomation(f.upstream,store,1,async()=>{calls++;throw Error('must not infer');},c);await automation.tick();assert.equal(calls,0);assert.equal(store.jobs()[0].state,'blocked');assert.equal((await f.upstream.messages(member.roomId,0,100)).messages.length,1);
  }finally{await automation?.close();store.close();await f.close();}
 });
+
+test('assistant Bot proposal creates a single private Bot after scoped confirmation and survives receipt loss',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
+ try{
+  const before=(await f.upstream.listBots()).agents.length;const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref),p=await c.proposeBot({name:'资料核对员'},ctx);
+  assert.equal(p.kind,'bot');assert.equal((await f.upstream.listBots()).agents.length,before+1);assert.equal((await f.upstream.listTeams()).rooms.length,1);
+  await assert.rejects(c.proposeBot({name:'另一位',modelId:'injected'},ctx),/unknown_field/);
+  await assert.rejects(c.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},{requestSource:'agent'}),/user_action_required/);
+  await assert.rejects(c.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:'changed'},user),/proposal_changed/);
+  const create=f.upstream.createBot.bind(f.upstream);let writes=0;f.upstream.createBot=async(value:any)=>{writes++;await create(value);throw new KTeamError('upstream_operation_unknown',503);};
+  const input={roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash};await assert.rejects(c.accept(input,user),/operation_result_unknown/);
+  f.upstream.createBot=async()=>{throw Error('must not replay');};const restarted=new TeamCoordinator(f.upstream,store,2,models),results=await Promise.all([restarted.accept(input,user),restarted.accept(input,user)]);
+  assert.equal(writes,1);assert.equal(results[0]!.roomId,results[1]!.roomId);const roomId=results[0]!.roomId;
+  assert.equal(store.settings(roomId)?.kind,'direct');assert.equal((await f.upstream.listBots()).agents.length,before+2);assert.equal((await f.upstream.listTeams()).rooms.length,2);
+  assert.equal((await f.upstream.messages(roomId,0,100)).messages.length,0);assert.equal((await restarted.direct(p.members[0]!.botId,user)).roomId,roomId);
+  assert.equal((await new TeamCoordinator(f.upstream,store,3,models).accept(input,user)).roomId,roomId);
+ }finally{store.close();await f.close();}
+});
