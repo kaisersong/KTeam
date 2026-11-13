@@ -38,10 +38,22 @@ export const windowsEndpointPath=(root:string)=>join(root,'host-endpoint.json');
 export function windowsCertificate(){
  try{const data=JSON.parse(windowsPowerShell(certificateScript));const cert=new X509Certificate(Buffer.from(data.certificate,'base64'));return {pfx:Buffer.from(data.pfx,'base64'),passphrase:String(data.password),ca:cert.toString()};}catch{throw new KTeamError('windows_tls_unavailable',503);}
 }
-export function publishWindowsEndpoint(root:string,port:number,ca:string,epoch:number){
+export async function publishWindowsEndpoint(root:string,port:number,ca:string,epoch:number){
  const path=windowsEndpointPath(root),temporary=path+'.'+randomUUID();
- if(existsSync(path)&&!lstatSync(path).isFile())throw new KTeamError('host_endpoint_occupied');
- try{writeFileSync(temporary,JSON.stringify({version:1,port,ca,epoch}),{flag:'wx',mode:0o600});renameSync(temporary,path);}finally{if(existsSync(temporary))unlinkSync(temporary);}
+ try{
+  writeFileSync(temporary,JSON.stringify({version:1,port,ca,epoch}),{flag:'wx',mode:0o600});
+  // Windows ACL readers may briefly open the old descriptor without FILE_SHARE_DELETE.
+  // Retry only a known failed atomic rename; never unlink the old endpoint as a fallback.
+  const deadline=Date.now()+1500;
+  for(;;){
+   if(existsSync(path)&&!lstatSync(path).isFile())throw new KTeamError('host_endpoint_occupied');
+   try{renameSync(temporary,path);return;}catch(error){
+    const code=(error as NodeJS.ErrnoException).code;
+    if(process.platform!=='win32'||!['EPERM','EACCES','EBUSY'].includes(code??'')||Date.now()>=deadline)throw error;
+    await new Promise(resolve=>setTimeout(resolve,25));
+   }
+  }
+ }finally{if(existsSync(temporary))unlinkSync(temporary);}
 }
 export function readWindowsEndpoint(root:string){
  const value=parseDataJson(privateRead(windowsEndpointPath(root)),64*1024) as any;
