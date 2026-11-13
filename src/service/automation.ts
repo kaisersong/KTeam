@@ -157,7 +157,7 @@ export class TeamAutomation {
    const recordAwareness=(groups:any[])=>{for(const group of groups){const prior=awarenessSources.get(group.roomId);if(prior&&prior.roomRevision!==group.roomRevision)throw new KTeamError('assistant_team_changed',409);awarenessSources.set(group.roomId,{roomId:group.roomId,roomRevision:group.roomRevision});}};
    if(job.trigger==='assistant-notice'&&!teamAwareness?.groups.some(group=>group.roomId===job.notice?.sourceRoomId)){job.state='noop';job.reason='assistant_scope_changed';this.store.save(job);return;}
    const conversation=this.conversations?await this.conversations.data(job.roomId):undefined;
-   const protocol=await this.upstream.aimp(job.roomId,'session');if(!protocol.session)throw new KTeamError('aimp_session_required');if((protocol.session as any).goal!==team.goal)throw new KTeamError('conversation_contract_changed',409);
+   const protocol=this.coordinator?{session:await this.coordinator.ensureConversationContract(job.roomId)}:await this.upstream.aimp(job.roomId,'session');if(!protocol.session)throw new KTeamError('aimp_session_required');if((protocol.session as any).goal!==team.goal)throw new KTeamError('conversation_contract_changed',409);
    const history=messages.slice(-60).map(m=>({messageId:m.messageId,replyToMessageId:m.replyToMessageId,from:m.sender.kind==='user'?'用户':bots.find(b=>b.id===m.sender.logicalAgentId)?.name??'成员',text:String(m.text??'').slice(0,6000)}));
    if(!selected.length){
     this.current(team,signal);
