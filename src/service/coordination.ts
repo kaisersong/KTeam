@@ -98,6 +98,19 @@ export class TeamCoordinator{
    const member:Member=op.data.member,validate=()=>this.frozen(member);await validate();await this.ensureMember(op,member,0,validate);const roomId=await this.room(op,op.data.title??'小K','理解你的目标，组织合适的成员，一起把事情向前推进。',[member],'assistant',validate);op.status='complete';op.receipt={roomId,botId:member.botId};this.save(op);return op.receipt;
   });
  }
+ async ensureAssistantConversation(ctx:{requestSource:string}):Promise<{roomId:string;botId:string}>{
+  this.user(ctx);const assistantId='assistant:'+this.store.installationId();return this.single('assistant-ready:'+assistantId,async()=>{
+   let assistant=this.store.operation(assistantId);if(assistant?.status!=='complete')return this.bootstrap(ctx);
+   const receipt=assistant.receipt;try{const snapshot=await this.upstream.membership(receipt.roomId),members=(snapshot.members as any[]).filter(member=>member.status==='active');if((snapshot.room as any)?.status!=='active'||members.length!==2||!members.some(member=>member.role==='owner'&&member.subject?.userId==='user.local')||!members.some(member=>member.subject?.logicalAgentId===receipt.botId))throw new KTeamError('conversation_identity_changed',409);return receipt;}catch(error){if(!(error instanceof KTeamError)||error.code!=='room_not_found')throw error;}
+   const proof=this.store.operationsWithPrefix('').some(op=>op.status==='complete'&&op.receipt?.roomId===receipt.roomId&&op.stages?.room?.state==='done'&&op.stages.room.receipt?.roomId===receipt.roomId&&op.stages?.contract?.state==='done'&&op.stages.contract.receipt?.roomId===receipt.roomId);if(!proof)throw new KTeamError('operation_receipt_missing',409);
+   const binding=this.store.binding(receipt.botId),bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===receipt.botId&&!bot.archivedAt);if(!binding||!bot)throw new KTeamError('operation_receipt_missing',409);
+   const member:Member={...binding,name:bot.name,bindingRevision:binding.revision,existing:true},operationId='assistant-room-recovery:'+hash([assistantId,receipt.roomId]);
+   let op=this.claim(operationId,{oldRoomId:receipt.roomId,member}),validate=async()=>{const current=this.store.operation(assistantId);if(current?.receipt?.botId!==receipt.botId||![receipt.roomId,op.receipt?.roomId].includes(current.receipt.roomId))throw new KTeamError('conversation_identity_changed',409);await this.frozen(op.data.member);};
+   if(op.status!=='complete'){const previous=this.store.state<any>('conversation:'+receipt.roomId);const roomId=await this.room(op,previous?.title??'小K助理',previous?.goal??'理解你的目标，组织合适的成员，一起把事情向前推进。',[op.data.member],'assistant',validate);op.status='complete';op.receipt={roomId,botId:receipt.botId};this.save(op);}
+   const oldSettings=this.store.settings(receipt.roomId),settings=this.store.settings(op.receipt.roomId);if(oldSettings&&settings&&['paused','quiet','maxRuns','dailyCalls'].some(key=>(oldSettings as any)[key]!==(settings as any)[key]))this.store.configure({...settings,paused:oldSettings.paused,quiet:oldSettings.quiet,maxRuns:oldSettings.maxRuns,dailyCalls:oldSettings.dailyCalls},settings.revision);
+   await this.guardConversation(op.receipt.roomId);assistant=this.store.operation(assistantId);if(assistant.receipt.roomId!==op.receipt.roomId)this.store.saveOperation({...assistant,receipt:op.receipt},assistant.revision);return op.receipt;
+  });
+ }
  private async scope(proposal:Proposal){
   const assistant=this.store.operation('assistant:'+this.store.installationId())?.receipt;
   if(assistant?.botId!==proposal.botId||this.store.settings(proposal.roomId)?.kind!=='assistant')throw new KTeamError('proposal_scope_mismatch',403);

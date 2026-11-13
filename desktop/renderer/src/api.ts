@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ ensureAssistant():Promise<any>;
  pasteAttachments(input:{roomId:string}):Promise<{ok:boolean;count:number}>;
  toolOutput(input:{roomId:string;jobId:string;eventId:string;offset?:number}):Promise<any>;
  conversationUpdates(input:{roomId:string;cursor?:string;resumeAfter?:number;tail?:boolean;messageIds?:string[];sequences?:number[];force?:boolean}):Promise<any>;conversationHistory(input:{roomId:string;after?:number;before?:number;tail?:boolean}):Promise<any>;workRecords(input:{roomId:string;before?:number}):Promise<any>;workRecord(input:{roomId:string;jobId?:string;messageId?:string;eventId?:string;part?:'summary'|'draft'|'cards'}):Promise<any>;

@@ -1,3 +1,5 @@
+import {DatabaseSync} from 'node:sqlite';
+import {join} from 'node:path';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {TeamStore} from '../src/service/team-store.js';
@@ -30,4 +32,34 @@ test('interrupted assistant creation retains its identity and rejects a differen
   f.upstream.createBot=async()=>{throw Error('must not replay');};const restarted=new OnboardingService(store,new TeamCoordinator(f.upstream,store,2,models),f.upstream),result=await restarted.create({modelId:'fixture'});
   assert.equal(writes,1);assert.equal(restarted.snapshot().roomId,result.roomId);assert.equal(restarted.snapshot().assistantConfigured,true);assert.equal((await f.upstream.listBots()).agents.length,before+1);assert.equal((await f.upstream.listTeams()).rooms.length,1);
  }finally{store.close();await f.close();}
+});
+
+test('completed assistant receipt overrides stale creating onboarding even after a different default was selected',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);
+ try{const ref=await coordinator.bootstrap({requestSource:'user'}),before=(await f.upstream.listBots()).agents.length;store.saveOperation({id:'onboarding:v1',status:'creating',step:'create',modelId:'different-model'},0);
+  const onboarding=new OnboardingService(store,coordinator,f.upstream,async()=>{throw Error('must not inspect another model or probe existing assistant');});assert.equal(onboarding.snapshot().status,'done');
+  assert.equal((await onboarding.ensureConfigured()).roomId,ref.roomId);assert.equal(store.operation('onboarding:v1').status,'done');assert.equal((await onboarding.create({modelId:'different-model',expectedFingerprint:'different-model-proof'})).botId,ref.botId);assert.equal((await f.upstream.listBots()).agents.length,before);
+ }finally{store.close();await f.close();}
+});
+test('valid saved default provisions one assistant without a connection probe or an open renderer',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),onboarding=new OnboardingService(store,coordinator,f.upstream,async()=>({defaultModelId:'fixture',models:[{id:'fixture'}]}));
+ try{const before=(await f.upstream.listBots()).agents.length,results=await Promise.all(Array.from({length:5},()=>onboarding.ensureConfigured()));assert.ok(results.every(result=>result.state==='ready'));assert.equal(new Set(results.map(result=>result.roomId)).size,1);assert.equal((await f.upstream.listBots()).agents.length,before+1);assert.equal(onboarding.snapshot().status,'done');}finally{store.close();await f.close();}
+});
+test('missing assistant Room recovers the existing Bot from receipts without replaying unknown creation or losing other Rooms',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),db=new DatabaseSync(join(f.root,'broker.sqlite'));
+ db.function('solpi_disclosure_write_guard_v1',()=>0);
+ try{const ref=await coordinator.bootstrap({requestSource:'user'}),before=(await f.upstream.listBots()).agents.length;
+  const originalSettings=store.settings(ref.roomId)!;store.configure({...originalSettings,paused:true,quiet:true},originalSettings.revision);db.exec('PRAGMA foreign_keys=OFF');db.prepare('DELETE FROM aimp_sessions WHERE room_id=?').run(ref.roomId);db.prepare('DELETE FROM room_members WHERE room_id=?').run(ref.roomId);db.prepare('DELETE FROM rooms WHERE room_id=?').run(ref.roomId);await assert.rejects(f.upstream.membership(ref.roomId),/room_not_found/);
+  const create=f.upstream.createTeam.bind(f.upstream);let writes=0;f.upstream.createTeam=async(input:any)=>{writes++;await create(input);throw new KTeamError('upstream_operation_unknown',503);};
+  const onboarding=new OnboardingService(store,coordinator,f.upstream);await assert.rejects(onboarding.ensureConfigured(),/operation_result_unknown/);f.upstream.createTeam=async()=>{throw Error('must not replay creation');};
+  const results=await Promise.all([onboarding.ensureConfigured(),onboarding.ensureConfigured()]);assert.equal(writes,1);assert.equal(results[0].roomId,results[1].roomId);assert.notEqual(results[0].roomId,ref.roomId);assert.equal(results[0].botId,ref.botId);assert.equal(store.settings(results[0].roomId)?.paused,true);assert.equal(store.settings(results[0].roomId)?.quiet,true);assert.equal((await f.upstream.listBots()).agents.length,before);assert.equal((await f.upstream.listTeams()).rooms.length,1);assert.equal((await f.upstream.messages(results[0].roomId,0,100)).messages.length,0);
+ }finally{db.close();store.close();await f.close();}
+});
+test('assistant readiness fails closed on changed membership and upstream failures instead of creating another Room',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),db=new DatabaseSync(join(f.root,'broker.sqlite'));
+ db.function('solpi_disclosure_write_guard_v1',()=>0);
+ try{const ref=await coordinator.bootstrap({requestSource:'user'}),onboarding=new OnboardingService(store,coordinator,f.upstream);
+  db.prepare("UPDATE room_members SET role='member' WHERE room_id=? AND subject_kind='user'").run(ref.roomId);await assert.rejects(onboarding.ensureConfigured(),/conversation_identity_changed/);assert.equal((await f.upstream.listTeams()).rooms.length,1);
+  db.prepare("UPDATE room_members SET role='owner' WHERE room_id=? AND subject_kind='user'").run(ref.roomId);f.upstream.membership=async()=>{throw new KTeamError('upstream_unavailable',503);};await assert.rejects(onboarding.ensureConfigured(),/upstream_unavailable/);assert.equal((await f.upstream.listTeams()).rooms.length,1);
+ }finally{db.close();store.close();await f.close();}
 });
