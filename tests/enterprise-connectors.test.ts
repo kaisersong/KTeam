@@ -1,3 +1,4 @@
+import {spawnSync} from 'node:child_process';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync,writeFileSync,readFileSync,symlinkSync,unlinkSync} from 'node:fs';
@@ -14,7 +15,7 @@ test('bundled native CLI and process-local launcher execute; existing updated co
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-bundle-')));
  try{
   const cli=ensureBundledYzjCli({configDir:root});assert.equal((await connectorCommand(cli.binaryPath,['--version'])).stdout.trim(),'yzj-cli 0.1.8');
-  const env:NodeJS.ProcessEnv={PATH:'/usr/bin:/bin'};const configured=configureBundledYzjCli({configDir:root,env})!;assert.ok(configured);assert.equal((await connectorCommand(join(configured.binDir,'yzj-cli'),['--version'])).stdout.trim(),'yzj-cli 0.1.8');assert.ok(env.PATH!.startsWith(configured.binDir));
+  const env:NodeJS.ProcessEnv={PATH:'/usr/bin:/bin'};const configured=configureBundledYzjCli({configDir:root,env})!;assert.ok(configured);assert.equal((process.platform==='win32'?spawnSync(process.env.ComSpec??'C:\\Windows\\System32\\cmd.exe',['/d','/s','/c','""'+join(configured.binDir,'yzj-cli.cmd')+'" --version"'],{encoding:'utf8',windowsVerbatimArguments:true,windowsHide:true,timeout:20000}).stdout.trim():(await connectorCommand(join(configured.binDir,'yzj-cli'),['--version'])).stdout.trim()),'yzj-cli 0.1.8');assert.ok(env.PATH!.startsWith(configured.binDir));
   writeFileSync(cli.binaryPath,'preserved-update');ensureBundledYzjCli({configDir:root});assert.equal(readFileSync(cli.binaryPath,'utf8'),'preserved-update');
   unlinkSync(cli.binaryPath);symlinkSync(join(root,'outside'),cli.binaryPath);assert.throws(()=>ensureBundledYzjCli({configDir:root}),/符号链接/);
  }finally{rmSync(root,{recursive:true,force:true});}
