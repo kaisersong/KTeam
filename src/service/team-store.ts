@@ -110,6 +110,8 @@ export class TeamStore {
  jobForMessage(roomId:string,messageId:string){const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE room_id=? AND EXISTS(SELECT 1 FROM json_each(team_jobs.value_json,'$.results') WHERE json_extract(value,'$.messageId')=?) ORDER BY rowid DESC LIMIT 1").get(roomId,messageId);return row?JSON.parse(String(row.value_json)):null;}
  inboxJobs(){return this.db.prepare("SELECT id,room_id AS roomId,state,substr(json_extract(value_json,'$.reason'),1,512) AS reason FROM (SELECT * FROM team_jobs ORDER BY rowid DESC LIMIT 100) WHERE state IN ('unknown','blocked')").all();}
  jobs(roomId?:string){return this.db.prepare('SELECT value_json FROM team_jobs '+(roomId?'WHERE room_id=? ':'')+'ORDER BY rowid DESC LIMIT 100').all(...(roomId?[roomId]:[])).map(row=>JSON.parse(String(row.value_json)));}
+ automaticInputRooms():string[]{return this.db.prepare("SELECT DISTINCT json_extract(value_json,'$.roomId') AS roomId FROM product_operations WHERE id GLOB 'message-handling:*' AND json_extract(value_json,'$.status') IN ('pending','deciding','decided')").all().map(row=>String(row.roomId));}
+ automaticInputRecords(roomId?:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'message-handling:*' AND json_extract(value_json,'$.status') IN ('pending','deciding','decided','needs_review')"+(roomId?" AND json_extract(value_json,'$.roomId')=?":"")+" ORDER BY CASE WHEN json_extract(value_json,'$.status')='needs_review' THEN 1 ELSE 0 END,json_extract(value_json,'$.sequence'),rowid LIMIT 1000").all(...(roomId?[roomId]:[])).map(row=>JSON.parse(String(row.value_json)));}
  workInputRecords(roomId?:string,jobId?:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'work-input:*' AND "+(roomId?"json_extract(value_json,'$.roomId')=?":"json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected')")+(jobId?" AND json_extract(value_json,'$.jobId')=?":"")+" ORDER BY json_extract(value_json,'$.createdAt') DESC LIMIT 100").all(...(roomId?[roomId]:[]),...(jobId?[jobId]:[])).map(row=>JSON.parse(String(row.value_json)));}
  workInputRecoveryPage(after=''):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'work-input:*' AND id>? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected') ORDER BY id LIMIT 100").all(after).map(row=>JSON.parse(String(row.value_json)));}
  workInputCount(roomId:string,jobId:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'work-input:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.jobId')=? AND json_extract(value_json,'$.status') IN ('preparing','waiting_boundary','staged','injected')").get(roomId,jobId)?.n??0);}
@@ -119,6 +121,7 @@ export class TeamStore {
  workPage(roomId:string,before?:number,activeOnly=false){return workPage(this.db,roomId,before,activeOnly); }
  workRecordVersion(id:string){return Number(this.db.prepare('SELECT revision FROM job_view_revisions WHERE job_id=?').get(id)?.revision??0);}
  memoryBusy(roomId:string){return !!this.db.prepare("SELECT 1 FROM team_jobs WHERE room_id=? AND state IN ('routing','running','stopping','waiting') LIMIT 1").get(roomId);}
+ submissionIntent(id:string){return this.db.prepare('SELECT intent_hash AS intentHash FROM team_outbox WHERE id=?').get(id)?.intentHash;}
  submission(id:string):any{return this.db.prepare('SELECT id,room_id AS roomId,state,origin_id AS originId FROM team_outbox WHERE id=?').get(id);}
  submissionEnvelope(id:string):any{const row=this.db.prepare('SELECT envelope_json FROM team_outbox WHERE id=?').get(id);return row?.envelope_json?JSON.parse(String(row.envelope_json)):undefined;}
  composerUploads(roomId:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'composer-upload:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.status') NOT IN ('cancelled','attached') ORDER BY rowid DESC LIMIT 64").all(roomId).map(row=>JSON.parse(String(row.value_json)));}
@@ -132,9 +135,10 @@ export class TeamStore {
  }
  pendingSubmissionFacts(){return this.db.prepare("SELECT id,room_id AS roomId,intent_hash AS intentHash,json_extract(envelope_json,'$.ts') AS timestamp FROM team_outbox WHERE state='pending' ORDER BY rowid LIMIT 100").all() as {id:string;roomId:string;intentHash:string;timestamp?:string}[];}
  pendingSubmissions(roomId?:string){return this.db.prepare("SELECT id,room_id AS roomId,intent_hash AS intentHash FROM team_outbox WHERE state='pending' "+(roomId?'AND room_id=? ':'')+'ORDER BY rowid LIMIT 100').all(...(roomId?[roomId]:[])) as {id:string;roomId:string;intentHash:string}[];}
- completeSubmission(id:string,originId:string,enqueue=true){
+ completeSubmission(id:string,originId:string,enqueue=true,handling?:any){
   this.db.exec('BEGIN IMMEDIATE');try{
    const row=this.db.prepare('SELECT room_id FROM team_outbox WHERE id=?').get(id);if(!row)throw new KTeamError('submission_not_found');
+   if(handling){if(handling.id!=='message-handling:'+id||handling.roomId!==row.room_id||handling.messageId!==originId)throw new KTeamError('work_input_id_conflict',409);const previous=this.operation(handling.id);if(previous){if(previous.bodyHash!==handling.bodyHash||previous.messageId!==originId||previous.roomId!==handling.roomId)throw new KTeamError('work_input_id_conflict',409);}else this.saveOperation(handling,0);}
    if(enqueue&&!this.operation('work-input:'+id))this.enqueue('job-'+originId,String(row.room_id),originId);
    this.db.prepare("UPDATE team_outbox SET state='sent',origin_id=?,envelope_json=NULL WHERE id=?").run(originId,id);
    this.db.exec('COMMIT');

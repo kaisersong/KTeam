@@ -191,7 +191,7 @@ test('main.tsx schedules only for a still-current managed send and never replays
  assert.match(main,/const stillCurrent=\(\)=>mounted\.current&&recheckEpoch\.current===epoch&&navigation\.current===generation&&activeRoom\.current===target&&sendIdentity\.current\.get\(target\)\?\.id===id;/);
  assert.match(main,/const scheduleIfManaged=\(managed:boolean\)=>\{if\(managed&&stillCurrent\(\)\)sendRecheck\.current!\.schedule\(\{roomId:target,id,text,replyToMessageId\}\);\};/);
  // The catch resolves managed (closure settings or a read-only re-query), schedules, then rethrows ONLY while still current.
- assert.match(main,/catch\(error\)\{if\(!uploadIds\.length&&!choice&&isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{if\(settings\)scheduleIfManaged\(true\);else void api\.settings\(target\)\.then\(s=>scheduleIfManaged\(!!s\?\.settings\)\)\.catch\(\(\)=>\{\}\);\}if\(stillCurrent\(\)\)throw error;return;\}/);
+ assert.match(main,/catch\(error\)\{if\(!uploadIds\.length&&isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{if\(settings\)scheduleIfManaged\(true\);else void api\.settings\(target\)\.then\(s=>scheduleIfManaged\(!!s\?\.settings\)\)\.catch\(\(\)=>\{\}\);\}if\(stillCurrent\(\)\)throw error;return;\}/);
  // A new send cancels any pending check (bumping the epoch) and captures the fresh epoch.
  assert.match(main,/follow\.current=true;latestAfterSend\.current=true;cancelRecheck\(\);const generation=navigation\.current,epoch=recheckEpoch\.current;/);
  // The controller reconciles through the whitelisted read-only API and guards on room + identity.
@@ -203,7 +203,7 @@ test('a stale send rejection does not pollute another room banner: the error is 
  const main=readFileSync('desktop/renderer/src/main.tsx','utf8');
  // Conditional rethrow: a late rejection after a room switch / unmount is swallowed instead of reaching act.setError.
  assert.match(main,/if\(stillCurrent\(\)\)throw error;return;/);
- assert.doesNotMatch(main,/catch\(error\)\{if\(!uploadIds\.length&&!choice&&isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{[^}]*\}throw error;\}/);
+ assert.doesNotMatch(main,/catch\(error\)\{if\(!uploadIds\.length&&isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{[^}]*\}throw error;\}/);
 });
 
 test('main.tsx cancels the check (invalidating in-flight re-queries) on room switch, unmount and manual reconcile',()=>{

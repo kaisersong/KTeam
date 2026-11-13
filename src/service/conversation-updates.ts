@@ -99,7 +99,7 @@ export class ConversationUpdates {
     work={ok:true,jobs,tasks,recordCursor:page.nextBefore,activeLimited:active.nextBefore!==undefined,tasksLimited:(snapshot.tasks??[]).length>tasks.length,
      workingBotIds:this.store.workingBotIds(),questions:this.automation.privateChats?.questions(roomId)??[],approvals:this.approvals.list(roomId),connection:this.links.forRoom(roomId),
      recovery:jobs.some(job=>['unknown','blocked','stopped'].includes(job.state))?this.recovery.view(roomId,snapshot.tasks??[]):undefined,
-     pendingSubmissions:this.store.pendingSubmissions(roomId),inputReceipts:this.automation.inputs?.receipts(roomId)??[],
+     pendingSubmissions:this.store.pendingSubmissions(roomId),inputReceipts:[...this.automation.automatic?.receipts(roomId)??[],...this.automation.inputs?.receipts(roomId)??[]],
      inputCapabilities:jobs.filter(job=>['routing','running','waiting'].includes(job.state)).map(job=>this.automation.inputs?.capability(job))};
     workVersion=version;taskStamp=now;proposals=this.coordinator.proposals(roomId);
     if(this.store.settings(roomId)?.kind==='group'){
