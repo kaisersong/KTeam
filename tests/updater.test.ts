@@ -388,3 +388,15 @@ describe('real updater handoff wiring', () => {
     assert.equal(updater.quitAndInstall.calls.length, 1);
   });
 });
+
+// Exercise the real SDK setter and version decision: a plain object misses channel's side effect.
+it('the real update SDK refuses an older stable version after channel setup',async()=>{
+ const {NsisUpdater}=await import('electron-updater');
+ const updater=new NsisUpdater(undefined,{version:'0.5.0',name:'KTeam',isPackaged:true,userDataPath:repoRoot,baseCachePath:repoRoot,appUpdateConfigPath:join(repoRoot,'unused-update-config')} as any);
+ updater.logger=null;configureAutoUpdater(updater as any);
+ assert.equal(updater.allowDowngrade,false);assert.equal(updater.allowPrerelease,false);
+ const candidate=(version:string)=>({version,files:[],path:'unused.exe',sha512:''});
+ assert.equal(await (updater as any).isUpdateAvailable(candidate('0.4.0')),false);
+ assert.equal(await (updater as any).isUpdateAvailable(candidate('0.5.0')),false);
+ assert.equal(await (updater as any).isUpdateAvailable(candidate('0.5.1')),true);
+});

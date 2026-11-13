@@ -53,7 +53,7 @@ jobs:
       - run: npm ci
         working-directory: kteam
       - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' || runner.os == 'Windows'
         run: node node_modules/electron/install.js
         working-directory: kteam
       - name: Verify private Windows host transport and independent CLI lifecycle
@@ -62,6 +62,7 @@ jobs:
           npm run build
           node scripts/build-runtime.mjs
           node --test dist/tests/windows-private-host.test.js dist/tests/windows-runtime-security.test.js
+          ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/electron.exe --test dist/tests/windows-private-host.test.js
           node scripts/smoke-cli.mjs
         timeout-minutes: 5
         working-directory: kteam

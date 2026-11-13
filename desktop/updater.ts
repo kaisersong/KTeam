@@ -200,10 +200,11 @@ export async function skipUpdateCodeSignature(_publisherNames: string[], _file: 
 export function configureAutoUpdater(updater: Record<string, unknown>): void {
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
-  updater.allowPrerelease = false;
-  updater.allowDowngrade = false;
   updater.channel = 'latest';
   if (typeof updater.setFeedURL === 'function') (updater.setFeedURL as (feed: unknown) => void)({ ...KTEAM_UPDATE_FEED });
+  // The SDK channel setter enables downgrades. Apply stable policy after channel/feed setup.
+  updater.allowPrerelease = false;
+  updater.allowDowngrade = false;
   // Only NsisUpdater exposes this setter. MacUpdater is left unchanged.
   if ('verifyUpdateCodeSignature' in updater) updater.verifyUpdateCodeSignature = skipUpdateCodeSignature;
 }
