@@ -336,7 +336,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       unlinkSync(path);
     }
     await new Promise<void>((resolve, reject) => { server.once('error', reject); if(windows)server.listen(0,'127.0.0.1',resolve);else server.listen(path, resolve); });
-    if(windows){const address=server.address();if(!address||typeof address==='string')throw new KTeamError('host_endpoint_invalid');publishWindowsEndpoint(options.root,address.port,certificate!.ca,owner.epoch);}
+    if(windows){const address=server.address();if(!address||typeof address==='string')throw new KTeamError('host_endpoint_invalid');await publishWindowsEndpoint(options.root,address.port,certificate!.ca,owner.epoch);}
     else chmodSync(path, 0o600);
     automation.start();
   } catch (error) { server.close();teamStore.close(); owner.release(); throw error; }
