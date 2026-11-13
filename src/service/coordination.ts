@@ -54,6 +54,31 @@ export class TeamCoordinator{
   for(const member of frozen.members)await this.frozen(member);
   return Number(actual.room.revision);
  }
+ /** Restore only a previously receipted, least-privilege discussion contract. Never replay work. */
+ async ensureConversationContract(roomId:string){return this.single('restore-contract:'+roomId,async()=>{
+  const settings=this.store.settings(roomId);if(!settings)throw new KTeamError('aimp_session_required');
+  const validate=async()=>{
+   if(this.store.settings(roomId)?.revision!==settings.revision)throw new KTeamError('conversation_contract_changed',409);
+   const snapshot=await this.upstream.membership(roomId);
+   if((snapshot.room as any)?.status!=='active'||!(snapshot.members as any[]).some(m=>m.status==='active'&&m.role==='owner'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('conversation_identity_changed',409);
+   await this.guardConversation(roomId,snapshot);
+   if((snapshot.room as any).description!==settings.goal)throw new KTeamError('conversation_contract_changed',409);
+  };
+  let session=(await this.upstream.aimp(roomId,'session')).session as any;
+  if(session){if(session.goal!==settings.goal)throw new KTeamError('conversation_contract_changed',409);return session;}
+  const receipt=this.store.operationsWithPrefix('').find(op=>op.status==='complete'&&op.receipt?.roomId===roomId&&op.stages?.room?.state==='done'&&op.stages?.contract?.state==='done'&&op.stages.contract.receipt?.roomId===roomId);
+  if(!receipt)throw new KTeamError('aimp_session_required');
+  await this.upstream.requireReady();await validate();
+  // Recheck after validation; a competing host may already have restored it.
+  session=(await this.upstream.aimp(roomId,'session')).session as any;
+  if(!session){
+   try{session=(await this.upstream.aimp(roomId,'configure',{goal:settings.goal,expectedRevision:0,allowedActions:['discussion'],maxRuns:6})).session;}
+   catch(error){session=(await this.upstream.aimp(roomId,'session')).session;if(!session)throw error;}
+  }
+  await validate();
+  if(!session||session.goal!==settings.goal||session.maxRuns!==6||JSON.stringify(session.allowedActions)!==JSON.stringify(['discussion']))throw new KTeamError('conversation_contract_changed',409);
+  return session;
+ });}
  private async room(op:any,title:string,goal:string,members:Member[],kind:'assistant'|'direct'|'group'|'peer',validate:()=>Promise<void>){
   const startingNotes=kind==='group'?goal.trim():'';if(kind==='group'){if(!op.conversationVersion){op.conversationVersion=op.stages.room?1:2;this.save(op);}goal=op.conversationVersion===1?(goal.trim()||'尚未设定目标'):'在本群内交流协作；当前方向以群消息和共享纪要为准，只在已有权限内讨论与执行。';}
   const key=kind==='direct'&&!op.id.startsWith('new-chat:')?'kteam:direct:'+members[0]!.botId:'kteam:'+op.id,roomId='room-'+hash(['user','user.local',key]).slice(0,32);
@@ -68,7 +93,7 @@ export class TeamCoordinator{
  }
  async bootstrap(ctx:{requestSource:string},options?:{name:string;modelId?:string;expectedFingerprint?:string}):Promise<{roomId:string;botId:string}>{
   this.user(ctx);const operationId='assistant:'+this.store.installationId();return this.single(operationId,async()=>{
-   let op=this.store.operation(operationId);if(options?.expectedFingerprint&&op?.data.member?.fingerprint!==undefined&&op.data.member.fingerprint!==options.expectedFingerprint)throw new KTeamError('model_binding_changed',409);if(op?.status==='complete'){await this.guardConversation(op.receipt.roomId);return op.receipt;}
+   let op=this.store.operation(operationId);if(options?.expectedFingerprint&&op?.data.member?.fingerprint!==undefined&&op.data.member.fingerprint!==options.expectedFingerprint)throw new KTeamError('model_binding_changed',409);if(op?.status==='complete'){await this.guardConversation(op.receipt.roomId);await this.ensureConversationContract(op.receipt.roomId);return op.receipt;}
    if(!op){const displayName=options?.name?.trim()??'小K助理';if(!displayName||displayName.length>60)throw new KTeamError('invalid_member_name');const modelId=options?.modelId??(await this.models.catalog()).defaultModelId,identity=await this.models.identity(modelId);if(options?.expectedFingerprint&&identity.fingerprint!==options.expectedFingerprint)throw new KTeamError('model_binding_changed',409);op=this.claim(operationId,{member:{botId:'kteam-'+hash(operationId).slice(0,24),name:displayName+' · KTeam '+this.store.installationId().slice(0,6),modelId,model:identity.model,fingerprint:identity.fingerprint,existing:false},title:displayName});}else op=this.claim(operationId,op.data);
    const member:Member=op.data.member,validate=()=>this.frozen(member);await validate();await this.ensureMember(op,member,0,validate);const roomId=await this.room(op,op.data.title??'小K','理解你的目标，组织合适的成员，一起把事情向前推进。',[member],'assistant',validate);op.status='complete';op.receipt={roomId,botId:member.botId};this.save(op);return op.receipt;
   });

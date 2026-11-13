@@ -1,3 +1,5 @@
+import {DatabaseSync} from 'node:sqlite';
+import {join} from 'node:path';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {TeamStore} from '../src/service/team-store.js';
@@ -98,4 +100,32 @@ test('assistant Bot proposal creates a single private Bot after scoped confirmat
   assert.equal((await f.upstream.messages(roomId,0,100)).messages.length,0);assert.equal((await restarted.direct(p.members[0]!.botId,user)).roomId,roomId);
   assert.equal((await new TeamCoordinator(f.upstream,store,3,models).accept(input,user)).roomId,roomId);
  }finally{store.close();await f.close();}
+});
+
+test('missing receipted contract recovers once without replaying work; changed contracts and missing receipts fail closed',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
+ const db=new DatabaseSync(join(f.root,'broker.sqlite'));db.function('solpi_disclosure_write_guard_v1',()=>0);
+ try{
+  const ref=await c.bootstrap(user),before=(await f.upstream.messages(ref.roomId,0,100)).messages.length;
+  db.prepare('DELETE FROM aimp_sessions WHERE room_id=?').run(ref.roomId);
+  const sessions=await Promise.all(Array.from({length:5},()=>c.ensureConversationContract(ref.roomId)));
+  assert.ok(sessions.every(s=>s.revision===1));assert.deepEqual(sessions[0].allowedActions,['discussion']);
+  assert.equal((await f.upstream.messages(ref.roomId,0,100)).messages.length,before);assert.equal(store.jobs().length,0);
+  db.prepare('DELETE FROM aimp_sessions WHERE room_id=?').run(ref.roomId);
+  await c.bootstrap(user);assert.ok((await f.upstream.aimp(ref.roomId,'session')).session);
+  await f.upstream.aimp(ref.roomId,'configure',{goal:'changed',expectedRevision:1,allowedActions:['discussion'],maxRuns:6});
+  await assert.rejects(c.ensureConversationContract(ref.roomId),/conversation_contract_changed/);
+  db.prepare('DELETE FROM aimp_sessions WHERE room_id=?').run(ref.roomId);
+  db.prepare("UPDATE room_members SET role='member' WHERE room_id=? AND subject_kind='user'").run(ref.roomId);
+  await assert.rejects(c.ensureConversationContract(ref.roomId),/conversation_identity_changed/);
+  assert.equal((await f.upstream.aimp(ref.roomId,'session')).session,null);
+  db.prepare("UPDATE room_members SET role='owner' WHERE room_id=? AND subject_kind='user'").run(ref.roomId);
+  const original=f.upstream.aimp.bind(f.upstream);let writes=0;
+  f.upstream.aimp=async(roomId:string,command:string,input?:any)=>{const result=await original(roomId,command,input);if(command==='configure'){writes++;throw new KTeamError('upstream_operation_unknown',503);}return result;};
+  await c.ensureConversationContract(ref.roomId);assert.equal(writes,1);f.upstream.aimp=original;
+  db.prepare('DELETE FROM aimp_sessions WHERE room_id=?').run(ref.roomId);
+  const op=store.operationsWithPrefix('assistant:')[0];store.saveOperation({...op,stages:{...op.stages,contract:undefined}},op.revision);
+  await assert.rejects(c.ensureConversationContract(ref.roomId),/aimp_session_required/);
+  assert.equal((await f.upstream.aimp(ref.roomId,'session')).session,null);
+ }finally{db.close();store.close();await f.close();}
 });
