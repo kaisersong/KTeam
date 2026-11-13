@@ -704,7 +704,6 @@ export function createHooksRunner(config: HooksRunnerConfig = {}): HooksRunner {
     }
 
     for (const hook of allHooks) {
-      try { await config.assertCurrent?.(); } catch { return {ok:false,message:'harness_scope_revoked'}; }
       if (signal.aborted) return { ok: false, message: String(signal.reason) };
       if (!shouldMatch(hook, eventName, payload)) continue;
 
@@ -712,9 +711,18 @@ export function createHooksRunner(config: HooksRunnerConfig = {}): HooksRunner {
       const hookKey = `${(hook as CommandHookConfig).command || (hook as HttpHookConfig).url || (hook as PromptHookConfig).prompt}::${eventName}`;
       if (hook.once) {
         if (executedOnce.has(hookKey)) continue;
-        executedOnce.add(hookKey);
+        // Claim once only after scope admission.
       }
 
+      try { await config.assertCurrent?.(); } catch (error) {
+        const cause = error as {code?: unknown};
+        const code = typeof cause?.code === 'string' && /^[a-z0-9_-]{1,96}$/.test(cause.code) ? cause.code : 'scope_check_failed';
+        return {ok:false,message:'harness_scope_check_failed:'+code+'。当前执行环境校验未通过；不能据此判定其他成员离线或授权已撤销。'};
+      }
+      if (hook.once) {
+        if (executedOnce.has(hookKey)) continue;
+        executedOnce.add(hookKey);
+      }
       const timeout = hook.timeoutMs ?? defaultTimeout;
 
       // Async (fire-and-forget) mode

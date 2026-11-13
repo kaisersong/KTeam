@@ -9,10 +9,10 @@ jobs:
         node: ['22.22.0', '24.16.0']
     runs-on: ${{ matrix.os }}
     # A hung test process must not hold a runner for the 6h default.
-    timeout-minutes: 30
-    # 0.3 Windows port in progress: Windows results are visible but not yet blocking.
-    # Remove this line once the Windows port lands and Windows is green.
-    continue-on-error: ${{ matrix.os == 'windows-2022' }}
+    timeout-minutes: 40
+    # All platforms are blocking, including Windows.
+    env:
+      KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
     defaults:
       run:
         shell: bash
@@ -26,8 +26,8 @@ jobs:
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const lock=JSON.parse(fs.readFileSync('sources.lock.json','utf8'));
-          // KTeam owns its runtime copy; only the pinned kswarm/intent-broker services are fetched.
-          for(const source of lock.sources) {
+          // KTeam owns its runtime copy; fetch only pinned services and report/slide plugin assets.
+          for(const source of [...lock.sources,{name:'creator-plugins',revision:lock.creatorPlugins.revision}]) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-','_')+'='+source.revision+String.fromCharCode(10));
           }
           JS
@@ -41,6 +41,12 @@ jobs:
           repository: kaisersong/intent-broker
           ref: ${{ steps.pins.outputs.intent_broker }}
           path: intent-broker
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kai-xiaok-plugins
+          ref: ${{ steps.pins.outputs.creator_plugins }}
+          path: creator-plugins
+          token: ${{ secrets.SIBLING_READ_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -50,5 +56,18 @@ jobs:
         if: runner.os == 'macOS'
         run: node node_modules/electron/install.js
         working-directory: kteam
+      - name: Verify private Windows host transport and independent CLI lifecycle
+        if: runner.os == 'Windows'
+        run: |
+          npm run build
+          node scripts/build-runtime.mjs
+          node --test dist/tests/windows-private-host.test.js dist/tests/windows-runtime-security.test.js
+          node scripts/smoke-cli.mjs
+        timeout-minutes: 5
+        working-directory: kteam
       - run: npm run check
+        # Node 22 on Windows was still passing cases at the measured 25 minute cutoff.
+        # Keep a finite 35 minute suite budget within the 40 minute job watchdog.
+        # Every original matrix job and assertion still runs, and any failed test remains a failure.
+        timeout-minutes: ${{ runner.os == 'Windows' && 35 || 10 }}
         working-directory: kteam

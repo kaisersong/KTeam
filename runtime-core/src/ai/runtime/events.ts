@@ -9,12 +9,14 @@ export interface RuntimeActivity {
 
 export type AgentRuntimeEvent =
   | { type: 'execution_progress'; runId: string }
+  | { type: 'run_suspended'; runId:string; approvalId:string }
   | { type: 'run_started'; runId: string }
   | { type: 'execution_health'; invocationId?: string; runId: string; state: import('../../runtime/execution-health.js').ExecutionHealthState }
   | { type: 'model_request_started'; runId: string }
   | { type: 'model_recovery'; runId: string; attempt: number; delayMs: number; remainingMs: number; failure?: import('./model-failure.js').ModelFailureDiagnostic }
   | { type: 'assistant_text'; runId: string; delta: string }
   | { type: 'tool_started'; runId: string; toolName: string; input: Record<string, unknown> }
+  | { type: 'tool_output_saved'; runId: string; invocationId: string; toolName: string; sessionId: string; key: string; sha256: string; bytes: number }
   | { type: 'tool_finished'; runId: string; invocationId: string; toolName: string; ok: boolean }
   | { type: 'tool_execution_fact'; runId: string; invocationId: string; toolName: string; factKind: 'command_result' | 'file_mutation'; exitCode?: number | null; normalizedFilePaths?: string[] }
   | { type: 'usage_updated'; runId: string; usage: UsageStats }

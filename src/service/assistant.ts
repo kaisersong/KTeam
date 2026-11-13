@@ -1,9 +1,12 @@
+import {ownerPage} from './room-reads.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import type {systemOneChoice} from '../runtime/decision.js';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
+import {existsSync} from 'node:fs';
+
 import type {Upstreams} from '../adapters/upstream.js';
-import {KTeamError} from '../errors.js';
+import {KTeamError,record,fields,text} from '../errors.js';
 import {sharedRuntime,nativeTurn} from '../runtime/native.js';
 import type {LocalAgents} from './local-agents.js';
 import {profile} from './bot-profile.js';
@@ -17,10 +20,28 @@ export class TeamAssistant {
  identity(){return this.store.operation('assistant:'+this.store.installationId())?.receipt as {botId:string;roomId:string}|undefined;}
  enabled(){return this.store.state<any>('assistant-proactivity')?.enabled!==false;}
  state(){return {enabled:this.enabled(),health:this.store.state('assistant-scan-health'),decisionModel:this.store.state('assistant-decision-model')};}
+ private async attentionStore(){if(!this.inboxStore&&existsSync(join(this.store.root,'assistant-attention.sqlite'))){const core=await sharedRuntime();this.inboxStore??=new core.AssistantInboxStore(join(this.store.root,'assistant-attention.sqlite'));}return this.inboxStore;}
+ private validAttention(item:any){return item?.source==='internal'&&item.accountKey===this.store.installationId()&&typeof item.locator?.roomId==='string';}
+ async workbench(){
+  const source=await this.attentionStore(),snapshot=source?.snapshot(Date.now())??{items:[],coverage:[]},items=snapshot.items.filter((item:any)=>this.validAttention(item)),outbox=this.store.pendingSubmissionFacts(),roomIds=[...new Set<string>([...items.map((item:any)=>item.locator.roomId),...outbox.map(item=>item.roomId)])].slice(0,64),scopes=new Map<string,any>(),coverage:any[]=[];
+  for(let start=0;start<roomIds.length;start+=4)await Promise.all(roomIds.slice(start,start+4).map(async roomId=>{try{scopes.set(roomId,await this.userRoomScope(roomId));}catch(error){coverage.push({key:hash(roomId),state:'unavailable',code:error instanceof KTeamError&&[403,404].includes(error.status)?'source_no_longer_accessible':'source_read_failed'});}}));
+  const projected=items.flatMap((item:any)=>{const scope=scopes.get(item.locator.roomId);if(!scope||!['group',undefined].includes(this.store.settings(item.locator.roomId)?.kind))return [];return [{id:item.id,revision:item.revision,priority:item.priority,status:item.status,title:item.title,reason:item.reason,nextStep:item.nextStep,observedAt:item.observedAt,updatedAt:item.updatedAt,sourceRoomId:item.locator.roomId,sourceTitle:scope.room.title,sourceChanged:String(scope.room.revision)!==item.locator.roomRevision,hasMessage:!!item.locator.messageId}];});
+  for(const item of outbox){const scope=scopes.get(item.roomId);if(!scope)continue;projected.unshift({kind:'pending-send',id:'outbox:'+item.id,revision:0,intentHash:item.intentHash,priority:'now',status:'unknown',title:'消息发送结果待核对',reason:'这条消息的送达结果尚未确认，不会重新发送旧消息。',nextStep:'打开原会话，核对消息与发送状态。',observedAt:Date.parse(item.timestamp??'')||null,sourceRoomId:item.roomId,sourceTitle:scope.room.title,sourceChanged:false,hasMessage:false});}
+  return {ok:true,...this.state(),configured:!!this.identity(),checkedAt:Date.now(),items:projected,coverage:[...snapshot.coverage.map(({state,code,checkedAt}:any)=>({state,code,checkedAt})),...coverage],limited:items.length+outbox.length>projected.length||snapshot.items.length>=200||outbox.length>=100,hiddenSources:coverage.filter(item=>item.code==='source_no_longer_accessible').length};
+ }
+ async locateAttention(value:unknown){
+  const input=record(value);fields(input,['id','expectedRevision','expectedHash']);const id=text(input.id,'attention_id');if(id.startsWith('outbox:')){if(input.expectedRevision!==0)throw new KTeamError('attention_changed',409);const pending=this.store.pendingSubmissionFacts().find(item=>'outbox:'+item.id===id);if(!pending||pending.intentHash!==input.expectedHash)throw new KTeamError('attention_changed',409);await this.userRoomScope(pending.roomId);if(!this.store.pendingSubmissions().some(item=>item.id===pending.id&&item.intentHash===pending.intentHash))throw new KTeamError('attention_changed',409);return {ok:true,roomId:pending.roomId};}if(input.expectedHash!==undefined)throw new KTeamError('unknown_field');if(!Number.isSafeInteger(input.expectedRevision))throw new KTeamError('attention_changed',409);const source=await this.attentionStore(),item=source?.get(id);
+  if(!this.validAttention(item)||item.revision!==input.expectedRevision||['hidden','resolved'].includes(item.status))throw new KTeamError('attention_changed',409);
+  const roomId=item.locator.roomId;await this.groupScope(roomId);const message=item.locator.messageId?(await this.upstream.conversationMessage(roomId,item.locator.messageId)).message:undefined;await this.groupScope(roomId);
+  if(source.get(id)?.revision!==input.expectedRevision)throw new KTeamError('attention_changed',409);return {ok:true,roomId,message};
+ }
  setEnabled(enabled:boolean){this.store.setState('assistant-proactivity',{enabled});if(enabled)void this.scan();return this.state();}
  private async authorize(botId:string,roomId:string){if(this.identity()?.botId!==botId||this.store.settings(roomId)?.kind!=='assistant')throw new KTeamError('assistant_scope_required',403);const m=await this.upstream.membership(roomId);if(!(m.members as any[]).some(v=>v.status==='active'&&v.subject?.kind==='user'&&v.subject.userId==='user.local')||!(m.members as any[]).some(v=>v.status==='active'&&v.subject?.logicalAgentId===botId))throw new KTeamError('assistant_scope_required',403);}
  private async groupScope(roomId:string){
   if(this.store.settings(roomId)&&this.store.settings(roomId)?.kind!=='group'&&this.store.settings(roomId)?.kind!==undefined)throw new KTeamError('assistant_team_forbidden',403);
+  return this.userRoomScope(roomId);
+ }
+ private async userRoomScope(roomId:string){
   const snapshot=await this.upstream.membership(roomId),room=snapshot.room as any;
   if(room?.status!=='active'||!(snapshot.members as any[]).some(v=>v.status==='active'&&v.subject?.kind==='user'&&v.subject.userId==='user.local'))throw new KTeamError('assistant_team_forbidden',403);
   return snapshot;
@@ -28,10 +49,10 @@ export class TeamAssistant {
  async validateSources(groups:any[]){for(const group of groups){const current=await this.groupScope(group.roomId);if((current.room as any).revision!==group.roomRevision)throw new KTeamError('assistant_team_changed',409);}}
  async team(roomId:string){
   const scope=await this.groupScope(roomId);
-  const [transcript,conversation,taskData]=await Promise.all([this.upstream.messages(roomId,0,12,undefined,true),this.upstream.conversationData(roomId),this.upstream.aimp(roomId,'tasks').catch(()=>({tasks:[]}))]);
+  const [transcript,conversation,taskData]=await Promise.all([ownerPage(this.upstream,roomId,{limit:12,tail:true}),this.upstream.conversationData(roomId),this.upstream.aimp(roomId,'tasks')]);
   const jobs=this.store.jobs(roomId),taskRows=(taskData.tasks as any[]??[]),live=jobs.filter(j=>activeStates.has(j.state));
   const waiting=[...this.store.operationsWithPrefix('bot-question:'),...this.store.operationsWithPrefix('tool-approval:')].filter(op=>op.status==='pending'&&(op.sourceRoomId??op.roomId)===roomId).map(op=>({id:op.id,botId:op.botId,question:op.question,toolName:op.toolName,privateRoomId:op.displayRoomId??op.roomId}));
-  const value={roomId,title:(scope.room as any).title,roomRevision:(scope.room as any).revision,checkedAt:new Date().toISOString(),paused:this.store.settings(roomId)?.paused===true,
+  const value={roomId,transcriptWindow:{limit:12,returned:(transcript.messages as any[]).length,hasMoreBefore:transcript.hasMoreBefore===true},title:(scope.room as any).title,roomRevision:(scope.room as any).revision,checkedAt:new Date().toISOString(),paused:this.store.settings(roomId)?.paused===true,
    members:(scope.members as any[]).filter(m=>m.status==='active'&&m.subject?.kind==='agent').map(m=>m.subject.logicalAgentId),
    waitingForUser:waiting,execution:waiting.length?'needs_input':live.length?'running':jobs[0]?.state??'no_run',activeBotIds:live.map(j=>j.activeBotId).filter(Boolean),
    tasks:taskRows.slice(-12).map(t=>({id:t.taskRef,state:t.state,description:t.terms?.description,assignee:t.terms?.assignee})),

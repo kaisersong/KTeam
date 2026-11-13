@@ -1,3 +1,5 @@
+import {isToolApprovalPause,toolBatchCompletedCount,type ToolApprovalPort} from './tool-batch-checkpoint.js';
+import {createHash,randomUUID} from 'node:crypto';
 import {retainCommandResult} from '../tools/command-result.js';
 import { getModelFailure } from './model-failure.js';
 import { normalizeRuntimeError } from './runtime-errors.js';
@@ -53,6 +55,7 @@ import {
 } from './provider-conversation-authorization.js';
 
 export interface AgentRuntimeOptions {
+  toolApprovalPort?:ToolApprovalPort;
   /** Fixed host lifetime shared across actual Agent runtime replacements. */
   modelPhysicalOwner?: ModelStreamPhysicalOwner;
   semanticCompactionOwner?: SemanticCompactionOwner;
@@ -83,6 +86,7 @@ export interface AgentRuntimeOptions {
 }
 
 export class AgentRuntime {
+  private readonly toolApprovalPort?:ToolApprovalPort;
   private readonly modelPhysicalOwner:ModelStreamPhysicalOwner;
   private readonly semanticCompactionOwner?: SemanticCompactionOwner;
   private readonly onSemanticCompactionOutcome?: (outcome: SemanticCompactionOutcome) => void;
@@ -131,6 +135,7 @@ export class AgentRuntime {
     this.adapter = options.adapter;
     this.registry = options.registry;
     this.session = options.session;
+    this.toolApprovalPort=options.toolApprovalPort;
     this.semanticCompactionOwner = options.semanticCompactionOwner;
     this.onSemanticCompactionOutcome = options.onSemanticCompactionOutcome;
     if (this.semanticCompactionOwner) assertSemanticCompactionOwner(this.semanticCompactionOwner, this.session);
@@ -204,6 +209,7 @@ export class AgentRuntime {
     externalSignal?.throwIfAborted();
 
     const run = this.controller.startRun();
+    const spillRunId=randomUUID();
     const strictK3Run = this.isStrictK3Adapter(this.adapter);
     onEvent({ type: 'run_started', runId: run.runId });
     const mergedSignal = externalSignal
@@ -214,12 +220,19 @@ export class AgentRuntime {
     let assistantBlocksCommitted = false;
     let toolResults: MessageBlock[] = [];
     let executedToolIds = new Set<string>();
+    const checkpointBatch=async()=>{try{await this.checkpoint?.();}catch(error){const batch=this.session.getToolBatch();if(batch)this.session.setToolBatch({...batch,state:'executing'});throw error;}};
+    let batchGuardFailure=false;const rejectBatch=(code:string):never=>{batchGuardFailure=true;throw Error(code);};
 
     try {
       mergedSignal.throwIfAborted();
 
-      this.session.repairIncompleteToolCalls();
+      let resumeBatch=this.session.getToolBatch();
+      if(resumeBatch&&(!this.toolApprovalPort||resumeBatch.ownerId!==this.toolApprovalPort.ownerId||resumeBatch.state!=='waiting_approval'))rejectBatch('tool_batch_execution_unknown');
+      if(this.toolApprovalPort&&(strictK3Run||this.observationOwner))rejectBatch('tool_batch_profile_unavailable');
+      if(resumeBatch){const last=this.session.getMessages().at(-1);if(last?.role!=='assistant'||JSON.stringify(last.content.filter(block=>block.type==='tool_use'))!==JSON.stringify(resumeBatch.calls))rejectBatch('tool_batch_history_changed');}
+      this.session.repairIncompleteToolCalls({preserveToolBatch:!!resumeBatch});
 
+      if(!resumeBatch){
       if (typeof input === 'string') {
         this.session.appendUserText(input);
         if (this.memoryStore?.writeRawMessage) {
@@ -232,6 +245,7 @@ export class AgentRuntime {
         this.session.appendUserBlocks(input);
       }
 
+      }
       let iteration = 0;
       let emptyRetries = 0;
       const verificationToolCalls: TraceToolCall[] = [];
@@ -257,6 +271,10 @@ export class AgentRuntime {
           return;
         }
 
+        const restoredBatch=resumeBatch;resumeBatch=undefined;
+        let toolProviderInvocationId:string|undefined=restoredBatch?.providerInvocationId;
+        if(restoredBatch){currentAssistantBlocks=this.session.getMessages().at(-1)!.content;assistantBlocksCommitted=true;toolResults=[...restoredBatch.results];executedToolIds=new Set(restoredBatch.results.flatMap(block=>block.type==='tool_result'?[block.tool_use_id]:[]));}
+        else {
         // Only drain at a complete conversation boundary, never inside a tool batch.
         const pendingInput = this.takePendingInput?.();
         if (pendingInput) this.session.appendUserText(pendingInput);
@@ -374,7 +392,6 @@ export class AgentRuntime {
           ? streamCliSubagentProviderConversation
           : streamCliChatTaskProviderConversation;
         let recoveryAttempt = 0;
-        let toolProviderInvocationId: string | undefined;
         await this.checkpoint?.();
         onEvent({ type: 'model_request_started', runId: run.runId });
         for await (const chunk of recoverModelStream({
@@ -485,6 +502,7 @@ export class AgentRuntime {
         assistantBlocksCommitted = true;
 
         await this.checkpoint?.();
+        }
         const toolCalls = currentAssistantBlocks.filter((block): block is ToolCall => block.type === 'tool_use');
         if (toolCalls.length === 0) {
           // A message may arrive while the final response is streaming. Handle it in
@@ -500,9 +518,11 @@ export class AgentRuntime {
           return;
         }
 
-        toolResults = [];
+        if(!restoredBatch)toolResults = [];
+        if(this.toolApprovalPort){if(!restoredBatch)this.session.setToolBatch({version:1,id:'batch_'+randomUUID().replaceAll('-',''),ownerId:this.toolApprovalPort.ownerId,providerInvocationId:toolProviderInvocationId,calls:toolCalls,results:[],state:'preparing'});await checkpointBatch();}
         const baseToolExecutionContext = this.buildToolExecutionContext(mergedSignal);
         for (const toolCall of toolCalls) {
+          if(executedToolIds.has(toolCall.id))continue;
           mergedSignal.throwIfAborted();
           this.reportActivity({ phase: 'tool', toolName: toolCall.name });
           onEvent({
@@ -549,6 +569,14 @@ export class AgentRuntime {
           try {
             result = await this.registry.executeTool(toolCall.name, toolCall.input, {
               ...toolExecutionContext,
+              prepareToolApproval:this.toolApprovalPort?async value=>{const batch=this.session.getToolBatch()!;const approved=await this.toolApprovalPort!.prepare({batchId:batch.id,index:toolBatchCompletedCount(batch),...value});this.session.setToolBatch({...batch,state:'executing',approvalId:undefined});await checkpointBatch();return approved;}:undefined,
+              retainToolOutput: content => {
+                if(toolCall.name==='read_runtime_output'||!this.spillDir||content.length<=2000||Buffer.byteLength(content)>32*1024*1024)return;
+                const snapshot=this.session.exportSnapshot(),saved=truncateToolResult(content,0,{sessionId:snapshot.sessionId,toolCallId:toolCall.id,runId:spillRunId,spillDir:this.spillDir??join(snapshot.cwd,'.kteam','spill')});
+                if(!saved.spillPath)return;
+                onEvent({type:'tool_output_saved',runId:run.runId,invocationId:toolCall.id,toolName:toolCall.name,sessionId:snapshot.sessionId,key:createHash('sha256').update(JSON.stringify([spillRunId,toolCall.id])).digest('hex'),sha256:createHash('sha256').update(content).digest('hex'),bytes:Buffer.byteLength(content)});
+                return '\n[已保存完整返回正文：'+saved.hint+'；可用 read_runtime_output 分段读取。]';
+              },
               // Install host media callbacks only after strict provider projection.
               modelSupportsImageInput: supportsImages,
               emitToolImage: toolImages.emit,
@@ -574,6 +602,7 @@ export class AgentRuntime {
           const truncated = truncateToolResult(result, MODEL_OUTPUT_CAP + MODEL_OUTPUT_TRUNCATION_MARKER.length, {
             sessionId: sessionSnapshot.sessionId,
             toolCallId: toolCall.id,
+            runId: spillRunId,
             spillDir: this.spillDir ?? join(sessionSnapshot.cwd, '.kteam', 'spill'),
           });
           // Exact final history bytes; failure only makes this observation ineligible for P1-B.
@@ -593,6 +622,7 @@ export class AgentRuntime {
             endedAt: new Date().toISOString(),
             ok,
           });
+          if(this.toolApprovalPort){const batch=this.session.getToolBatch()!,index=toolBatchCompletedCount(batch);this.session.setToolBatch({...batch,results:[...toolResults],state:'preparing',approvalId:undefined});await checkpointBatch();try{await this.toolApprovalPort.finished?.({batchId:batch.id,index});}catch(error){batchGuardFailure=true;throw error;}}
           codeMutatingToolSeen = codeMutatingToolSeen || isCodeMutatingToolCall(toolCall.name, toolCall.input);
           onEvent({
             type: 'tool_finished',
@@ -604,6 +634,7 @@ export class AgentRuntime {
         }
 
         this.session.appendUserToolResults(toolResults);
+        if(this.toolApprovalPort)this.session.setToolBatch(undefined);
         toolResults = [];
         await this.checkpoint?.();
         await this.registry.publishCompoundHistory?.();
@@ -612,6 +643,10 @@ export class AgentRuntime {
         iteration += 1;
       }
     } catch (error) {
+      if(batchGuardFailure)throw error;
+      if(isToolApprovalPause(error)&&!mergedSignal.aborted&&this.toolApprovalPort){const batch=this.session.getToolBatch();if(!batch||batch.ownerId!==this.toolApprovalPort.ownerId)throw Error('tool_batch_owner_changed');this.session.setToolBatch({...batch,state:'waiting_approval',approvalId:error.approvalId});await checkpointBatch();onEvent({type:'run_suspended',runId:run.runId,approvalId:error.approvalId});return;}
+      if(this.toolApprovalPort&&this.session.getToolBatch()?.state==='executing')throw error;
+      if(this.toolApprovalPort)this.session.setToolBatch(undefined);
       if (mergedSignal.aborted) {
         const partialSentinel = '\n\n[partial - interrupted by user]';
         const blocks = currentAssistantBlocks.map((block) => ({ ...block })) as MessageBlock[];
@@ -678,7 +713,7 @@ export class AgentRuntime {
       onEvent({ type: 'run_failed', runId: run.runId, error: publicError });
       throw normalized;
     } finally {
-      try { await this.observationOwner?.publishCurrentHistory?.({ strictPrivateProtocol: strictK3Run }); }
+      try { if(!this.session.getToolBatch())await this.observationOwner?.publishCurrentHistory?.({ strictPrivateProtocol: strictK3Run }); }
       finally {
         this.pendingSubtaskBoundary = false;
         this.controller.completeRun(run.runId);

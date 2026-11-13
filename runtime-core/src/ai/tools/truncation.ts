@@ -38,7 +38,7 @@ export function truncateText(text: string, maxChars = DEFAULT_MAX_CHARS, notice 
 
   const sliceLength = Math.max(0, maxChars - notice.length);
   return {
-    text: text.slice(0, sliceLength) + notice,
+    text: text.slice(0, sliceLength).replace(/[\uD800-\uDBFF]$/,'') + notice,
     truncated: true,
   };
 }

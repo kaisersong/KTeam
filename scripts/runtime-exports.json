@@ -38,7 +38,8 @@
   ],
   "src/ai/skills/loader.ts": [
     "createSkillCatalog",
-    "formatSkillsContext"
+    "formatSkillsContext",
+    "discoverSkills"
   ],
   "src/ai/skills/tool.ts": [
     "createSkillTool"
@@ -153,7 +154,8 @@
     "selectMacosCuaAbiProfile"
   ],
   "src/platform/mcp/config.ts": [
-    "loadSettingsMcpServers"
+    "loadSettingsMcpServers",
+    "loadPluginMcpServers"
   ],
   "src/ai/permissions/policy-engine.ts": [
     "requiresAlwaysCommandConfirmation"
@@ -167,6 +169,21 @@
     "writeDesktopServicePorts",
     "desktopServiceUrl",
     "configuredDesktopServicePorts"
+  ],
+  "src/platform/plugins/runtime.ts": [
+    "loadPlatformPluginRuntime"
+  ],
+  "src/ai/memory/management.ts": [
+    "LayeredMemoryReview"
+  ],
+  "src/ai/memory/file-management.ts": [
+    "FileMemoryReview"
+  ],
+  "src/ai/runtime/tool-batch-checkpoint.ts": [
+    "validateToolBatchCheckpoint",
+    "toolBatchCompletedCount",
+    "toolApprovalPause",
+    "isToolApprovalPause"
   ],
   "src/runtime/verification/windows-installation-absence.ts": [
     "observeWindowsInstallationAbsence",

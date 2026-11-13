@@ -1,7 +1,10 @@
+import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
+import {assertPrivateMode} from './helpers/private-temp.js';
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile,execFileSync} from 'node:child_process';
-import {chmodSync,mkdtempSync,readFileSync,realpathSync,rmSync,statSync,symlinkSync,writeFileSync,existsSync} from 'node:fs';
+import {chmodSync,readFileSync,realpathSync,rmSync,statSync,writeFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -29,7 +32,7 @@ test('discovery file round-trips privately between KTeam and its runtime, and re
  const file=serviceEndpointsFile(dir);assert.equal(file,join(dir,'service-endpoints.json'));
  assert.equal(readServiceEndpoints(dir),undefined);
  writeServiceEndpoints(dir,{broker:41001,kswarm:41002});
- if(process.platform!=='win32')assert.equal(statSync(file).mode&0o777,0o600);
+ assertPrivateMode(file,0o600);
  assert.deepEqual(readServiceEndpoints(dir),{broker:41001,kswarm:41002});
  // runtime-core reads and writes the same file and format.
  process.env.KTEAM_DATA_DIR=dir;
@@ -39,7 +42,7 @@ test('discovery file round-trips privately between KTeam and its runtime, and re
  assert.equal(core.desktopServiceUrl('broker'),'http://127.0.0.1:41001');
  assert.equal(core.desktopServiceUrl('kswarm'),'http://127.0.0.1:41002');
  core.writeDesktopServicePorts(file,{broker:42001,kswarm:42002});
- if(process.platform!=='win32')assert.equal(statSync(file).mode&0o777,0o600);
+ assertPrivateMode(file,0o600);
  assert.deepEqual(readServiceEndpoints(dir),{broker:42001,kswarm:42002});
  // Explicit KTeam overrides win over the file; there is no fixed fallback port.
  assert.deepEqual(core.configuredDesktopServicePorts({}),{broker:0,kswarm:0});
@@ -59,7 +62,7 @@ test('discovery file round-trips privately between KTeam and its runtime, and re
  }
 }));
 
-test('standalone desktop init records its own free ports, and the CLI reads them unless KTEAM_*_URL overrides',{timeout:20000},()=>isolated(async dir=>{
+test('standalone desktop init records its own free ports, and the CLI reads them unless KTEAM_*_URL overrides',{timeout:process.platform==='win32'?90000:20000},()=>isolated(async dir=>{
  const data=join(dir,'kteam');await initStandalone(data);
  const config=loadConfig(data),ports=readServiceEndpoints(data)!;
  assert.equal(config.brokerUrl,'http://127.0.0.1:'+ports.broker);assert.equal(config.kswarmUrl,'http://127.0.0.1:'+ports.kswarm);

@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {parseSkillCommand,skillCommandNeedsList} from '../src/protocol/skill-command.js';
+test('slash Skills preserve arguments and distinguish absolute paths, normal messages and local help',()=>{assert.deepEqual(parseSkillCommand('/skill report 本周\n只读'),{name:'report',arguments:'本周\n只读'});assert.deepEqual(parseSkillCommand('/provider:report 资料'),{name:'provider:report',arguments:'资料'});for(const text of ['/Users/me/data.txt','https://example.com','请读取 /tmp/a','/../../file'])assert.equal(parseSkillCommand(text),undefined);for(const text of ['/','/skill','/skills','/help'])assert.equal(skillCommandNeedsList(text),true);});

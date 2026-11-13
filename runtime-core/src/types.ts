@@ -100,6 +100,10 @@ export interface ToolExecutionContext {
   modelSupportsImageInput?: boolean;
   /** Actual host provider request namespace; never accepted from model tool input. */
   hostProviderInvocationId?: string;
+  /** Host-only retention of the sanitized original registry result, before the history cap. */
+  /** Host-only permission-boundary parking; a tool never receives this callback. */
+  prepareToolApproval?: (value:{name:string;input:Record<string,unknown>;decision:string;permission:unknown})=>Promise<boolean|undefined>;
+  retainToolOutput?: (content: string) => string | undefined;
   runtimeFactSink?: {
     emit(fact: ToolExecutionFact): void;
   };

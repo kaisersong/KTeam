@@ -44,6 +44,7 @@ export function filterWorkflowToolsForAgent(tools: Tool[], agentId: string): Too
 }
 
 export interface PlatformRegistryFactoryOptions {
+  disableHooks?: boolean;
   notifyReminder?: (message: string) => void;
   runInteractiveBash?: Tool['execute'];
   onSubAgentEvent?: (event: SubAgentProgressEvent) => void;
@@ -294,7 +295,7 @@ export function createPlatformRegistryFactory(options: PlatformRegistryFactoryOp
       : orderedTools;
 
     const hooksRunner = createHooksRunner({assertCurrent:options.assertCurrent,promptExecutor:options.promptExecutor,
-        hooks: options.platform.pluginRuntime.hookConfigs,
+        hooks: options.disableHooks ? [] : options.platform.pluginRuntime.hookConfigs,
         context: {
           session_id: options.sessionId,
           cwd,

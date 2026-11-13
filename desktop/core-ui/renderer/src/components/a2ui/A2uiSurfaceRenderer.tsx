@@ -88,6 +88,11 @@ export function buildA2uiSurfaceModel(input: unknown) {
       components.clear();
       for (const c of message.updateComponents.components) components.set(c.id, c);
     } else if ('updateDataModel' in message) dataModel = message.updateDataModel.value;
+    else if ('deleteSurface' in message || 'destroySurface' in message) {
+      rootId = '';
+      components.clear();
+      dataModel = {};
+    }
   }
   return { rootId, components, dataModel };
 }

@@ -1,8 +1,9 @@
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
 import {pathToFileURL} from 'node:url';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {chmodSync,cpSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,existsSync,writeFileSync} from 'node:fs';
+import {chmodSync,cpSync,mkdirSync,readFileSync,realpathSync,rmSync,existsSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -35,7 +36,11 @@ test('build and test inputs never reference xiaok-cli or the mydocs checkout',()
  for(const [name,script] of Object.entries(pkg.scripts as Record<string,string>))assert.doesNotMatch(script,/xiaok|mydocs/i,name);
  const lock=JSON.parse(read('sources.lock.json'));
  assert.deepEqual(lock.sources.map((s:any)=>s.name).sort(),['intent-broker','kswarm']);
- assert.doesNotMatch(read('sources.lock.json'),/xiaok/i);
+ assert.equal(lock.creatorPlugins.repository,'https://github.com/kaisersong/kai-xiaok-plugins');
+ assert.equal(lock.creatorPlugins.revision,'828c4c11122fcbbb50837c34aaac3b98a9f79404');
+ assert.deepEqual(lock.creatorPlugins.names,['kai-report-creator','kai-slide-creator']);
+ const {creatorPlugins:pluginProvenance,...runtimeSources}=lock;
+ assert.doesNotMatch(JSON.stringify(runtimeSources),/xiaok/i);
  assert.equal(lock.runtime,undefined);assert.equal(lock.ui,undefined);
  const build=[...tracked('scripts','electron-builder.yml','tsconfig.json','desktop/tsconfig.json','desktop/vite.config.ts')].filter(code);
  assert.ok(build.includes('scripts/build-runtime.mjs'));

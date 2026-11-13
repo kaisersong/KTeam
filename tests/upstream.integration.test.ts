@@ -1,9 +1,11 @@
-import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
+import {removeTempRoot} from './helpers/tmp-root.js';
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
+import {tmpdir} from 'node:os';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, dirname, delimiter } from 'node:path';
+import {realpathSync, rmSync, mkdirSync, writeFileSync} from 'node:fs';
+import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { initConfig } from '../src/service/config.js';
@@ -12,10 +14,6 @@ import { hostRequest } from '../src/service/client.js';
 import { LOCAL_HUMAN } from '../src/service/collaboration.js';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
-// Windows budget, from the phase timings this test reports: the 'history' phase (105 synchronous intent-broker
-// room writes to its SQLite store, all upstream code) took 10.4s (Node 22) and 23.0s (Node 24) on windows-2022
-// versus 0.17s on Linux; every other phase stays under ~3.5s. macOS/Linux keep 40s.
-const E2E_TIMEOUT_MS = process.platform === 'win32' ? 90_000 : 40_000;
 async function importSource(name: string) { return import(name); }
 async function stop(child: ChildProcess) {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -25,10 +23,8 @@ async function stop(child: ChildProcess) {
   });
 }
 
-test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retries/conflicts, reopening host recovers history', { timeout: E2E_TIMEOUT_MS }, async (t) => {
-  // Phase timings go to the test report so a slow platform shows where the time goes (no behavior change).
-  const began = Date.now(), phases: string[] = [], mark = (name: string) => phases.push(name + '=' + (Date.now() - began) + 'ms');
-  const root = realpathSync(mkdtempSync(tmpRoot+'/kteam-e2e-'));
+test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retries/conflicts, reopening host recovers history', { timeout: 40_000 }, async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(),'kteam-e2e-')));
   const source = join(project, 'node_modules/kswarm');
   const home = join(root, 'home'); mkdirSync(home, { mode: 0o700 });
   const brokerToken = randomBytes(32).toString('hex'), kswarmToken = randomBytes(32).toString('hex');
@@ -43,7 +39,7 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     cwd: root, silent: true, execArgv: ['--preserve-symlinks', '--preserve-symlinks-main', '--import', pathToFileURL(join(project, 'tests/loopback-test-host.mjs')).href],
     env: { ...process.env, HOME: home, USERPROFILE: home, KSWARM_PORT: '0', KSWARM_DATA_ROOT: join(home, '.kswarm'),
       BROKER_URL: brokerUrl, KSWARM_DESKTOP_MUTATION_TOKEN: kswarmToken, KSWARM_RUNTIME_TOKEN: '',
-      INTENT_BROKER_KSWARM_TOKEN: '', PATH: [dirname(process.execPath), '/usr/bin', '/bin'].join(delimiter), ENABLE_HUMAN_ESCALATION: '0' },
+      INTENT_BROKER_KSWARM_TOKEN: '', PATH: dirname(process.execPath) + ':/usr/bin:/bin', ENABLE_HUMAN_ESCALATION: '0' },
   });
   child.stdout!.on('data', chunk => logs += chunk); child.stderr!.on('data', chunk => logs += chunk);
   let host: Awaited<ReturnType<typeof startHost>> | undefined;
@@ -54,10 +50,10 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
       child.on('message', (value: any) => { if (value.type === 'test-listening') { clearTimeout(timer); resolve(value.address.port); } });
       child.once('exit', code => { clearTimeout(timer); reject(new Error('upstream_exit:' + code + ':' + logs)); });
     });
-    mark('upstream-ready'); const kswarmUrl = 'http://127.0.0.1:' + port;
+    const kswarmUrl = 'http://127.0.0.1:' + port;
     const upstream = { brokerUrl, kswarmUrl, brokerToken, kswarmToken };
     const state = join(root, 'kteam'); initConfig(state, { version: 1, brokerUrl, kswarmUrl });
-    host = await startHost({ root: state, upstream }); mark('host-started');
+    host = await startHost({ root: state, upstream });
     const request = (route: string, value?: unknown) => hostRequest(state, 'kteam-main', route, value);
     assert.equal(((await request('/v1/status')).upstream as any).ready, true);
     const bots = (await request('/v1/bots')).bots as any[];
@@ -92,8 +88,8 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     const ctx = { sessionId: 'verification', requestSource: 'user', actor: { kind: 'user', userId: 'user.local' }, allowedLogicalAgentIds: [], issuedAt: new Date().toISOString() };
     const transcript = broker.room.listRoomMessages({ roomId }, ctx);
     assert.equal(transcript.messages.length, 1); assert.equal(transcript.messages[0].responsePolicy, 'none');
-    mark('first-pass'); const epoch = host.epoch; await host.close(); mark('host-closed');
-    host = await startHost({ root: state, upstream }); mark('host-restarted');
+    const epoch = host.epoch; await host.close();
+    host = await startHost({ root: state, upstream });
     assert.ok(host.epoch > epoch);
     assert.equal((await directory()).pinnedAt,pin.pinnedAt,'pin survives host restart');
     assert.equal((await request(`/v1/teams/${roomId}/sidebar`,{pinned:false})).pinnedAt,null);
@@ -112,11 +108,11 @@ test('real KSwarm + intent-broker: same roster, one Room transcript, AIMP retrie
     assert.equal((tail.messages as any[]).length,100);assert.equal((tail.messages as any[]).at(-1).text,'history-104');assert.equal(tail.hasMoreBefore,true);
     const older=await request(`/v1/teams/${roomId}/messages?tail=true&before=${(tail.messages as any[])[0].roomSequence}&limit=100`);
     assert.equal((older.messages as any[]).length,7);assert.equal((older.messages as any[])[0].messageId,first.messageId);
-    mark('history'); await stop(child); mark('upstream-stopped');
+    await stop(child);
     await assert.rejects(request('/v1/messages', { ...reply, id: 'msg_' + randomBytes(16).toString('hex') }), /upstream_protocol_unavailable/);
     assert.equal(broker.room.listRoomMessages({ roomId }, ctx).messages.length, 107, 'missing project owner cannot be bypassed by a live Room owner');
   } finally {
-    await host?.close(); await stop(child); broker.close(); await server.close(); mark('cleanup'); t.diagnostic('phases ' + phases.join(' '));
+    await host?.close(); await stop(child); broker.close(); await server.close();
     assert.ok(child.exitCode !== null || child.signalCode !== null, 'own upstream process must be reaped');
     removeTempRoot(root);
   }

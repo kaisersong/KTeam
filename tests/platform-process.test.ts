@@ -81,7 +81,7 @@ test('Windows census is reused for a moment and dropped by any kill',()=>{
  let now=0;const {deps,calls}=fake('win32','100 1 1000\n');deps.now=()=>now;
  processGroup(100,deps);processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,1);
  now=1000;processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,2);
- killGroup(100,'SIGTERM',deps);processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,3);
+ killGroup(100,'SIGTERM',deps);processGroup(100,deps);assert.equal(calls.filter(c=>c.kind==='exec').length,4);
  assert.match(WINDOWS_PROCESS_TABLE,/CreationDate/);assert.match(WINDOWS_PROCESS_TABLE,/-Property ProcessId,ParentProcessId,CreationDate,Name/);
 });
 
@@ -92,10 +92,16 @@ test('POSIX kill is still kill(-pgid, signal)',()=>{
  assert.deepEqual(seen,[[-123,'SIGTERM'],[-123,'SIGKILL']]);assert.equal(calls.length,0);
 });
 
-test('group spawn options: detached POSIX group, no detached on Windows, always hidden',()=>{
+test('Windows process creation identity accepts exact legacy ISO tokens and refuses unknown timestamps',()=>{
+ const actual='134389152000000000';const same=fake('win32','100 1 '+actual+'\n101 100 134389152000000010\n');
+ assert.deepEqual(processGroup(100,same.deps,{birth:'2026-11-12T00:00:00.0000000Z'}).map(member=>member.pid),[100,101]);
+ const unknown=fake('win32','100 1 '+actual+'\n101 100 0\n');assert.throws(()=>killGroup(100,'SIGKILL',unknown.deps,{birth:actual}),/process_identity_unconfirmed/);assert.equal(unknown.calls.filter(call=>call.kind==='spawn').length,0);
+});
+
+test('group spawn options: private IPC launcher survives host death on each platform and stays hidden',()=>{
  assert.deepEqual(groupSpawnOptions('darwin'),{detached:true,windowsHide:true});
  assert.deepEqual(groupSpawnOptions('linux'),{detached:true,windowsHide:true});
- assert.deepEqual(groupSpawnOptions('win32'),{detached:false,windowsHide:true});
+ assert.deepEqual(groupSpawnOptions('win32'),{detached:true,windowsHide:true});
 });
 
 test('shell: /bin/sh -c on POSIX, cmd /d /s /c with verbatim quoting on Windows',()=>{

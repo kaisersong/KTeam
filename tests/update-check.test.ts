@@ -13,6 +13,13 @@ import { KTEAM_RELEASES_URL, presentUpdateCheck, showPortableOrUnsupportedUpdate
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
+it('update presentation bundles for a sandboxed browser without Node dependencies', async () => {
+  const {build} = await import('esbuild');
+  const result = await build({entryPoints:[join(repoRoot,'desktop/update-ui.ts')],bundle:true,platform:'browser',format:'esm',write:false,logLevel:'silent'});
+  assert.equal(result.errors.length, 0);
+  assert.ok(result.outputFiles?.[0]?.text.includes('presentUpdateCheck'));
+});
+
 type Mock = ((...args: any[]) => any) & { calls: any[][]; impl?: (...args: any[]) => any; queue: Array<() => any> };
 function fn(impl?: (...args: any[]) => any): Mock {
   const mock = ((...args: any[]) => { mock.calls.push(args); const next = mock.queue.shift(); if (next) return next(); return mock.impl?.(...args); }) as Mock;

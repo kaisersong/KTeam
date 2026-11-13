@@ -4,13 +4,13 @@
     {
       "name": "kswarm",
       "repository": "https://github.com/kaisersong/kswarm",
-      "revision": "5c64da71305e69cbec72ec68debfad14cd59b099",
+      "revision": "ebcbedd121c4bef381df744943914a85fe963880",
       "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     },
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
-      "revision": "0e3dec43a91d7717cf1935375bc462743d96df8e",
+      "revision": "4b9da6a1ed8ff27cdb9a24667220ebb30c7efc40",
       "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     }
   ],
@@ -53,6 +53,84 @@
     {
       "file": "spec/aimp/aimp-v3.1-test-vectors.json",
       "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
+    },
+    {
+      "file": "docs/design/desktop/openmausbot-delivery-plan-20261110.md",
+      "sha256": "610b1ed8c7bfdce42a1aec85bc4d58eb05b9690ac487770db968f6b60fb78b4a"
+    },
+    {
+      "file": "docs/design/desktop/async-member-handoffs-20261111.md",
+      "sha256": "5907c0d48048175aaf65d5498afb902aa4ab3c34744db04035af8dd7d49eb6ab"
+    },
+    {
+      "file": "docs/design/desktop/condition-work-waits-20261111.md",
+      "sha256": "42f4f7b926371b818d1893d246dbc690196147ace58052ba7c87158f98a08276"
+    },
+    {
+      "file": "docs/design/desktop/assistant-attention-workbench-20261111.md",
+      "sha256": "5470420607472933b4a4136632af1fde74e8e86c934a48bf125a71fe1fc958fe"
+    },
+    {
+      "file": "docs/design/desktop/work-notifications-20261111.md",
+      "sha256": "a0ca76b696dde4042b2910ebb62f4a4cdd6a2ee77f093fd8edf9800be8e2e3e5"
+    },
+    {
+      "file": "docs/design/desktop/openmausbot-source-audit-20261110.md",
+      "sha256": "0592d3a7f9a518bc3cf6d09ea95e30ae31c0a69b03cf38efb15c2abc8cd0e0c6",
+      "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
+      "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
+      "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
+    },
+    {
+      "file": "docs/design/desktop/openmausbot-source-audit-20261110.sources.json",
+      "sha256": "a99f287b5ec3527cf7077eeb7da87662500b52b9de59ed80f58590a0357eb7ca",
+      "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
+      "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
+      "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
+    },
+    {
+      "file": "docs/design/desktop/bot-skill-library-20261111.md",
+      "sha256": "e7a36806ded2549157b50d6f14821d7b56965ae81f78250cc90bc4d9835ba9ff"
+    },
+    {
+      "file": "docs/design/desktop/reviewed-skill-learning-20261111.md",
+      "sha256": "64ae8a592fe3ca6dea51eaf028b33ca28dd02f22e414879c479b475ac29bbef8"
+    },
+    {
+      "file": "docs/design/desktop/bot-tool-scopes-20261111.md",
+      "sha256": "ae529ceffb25e1433eb9a6e5b9d1c88b59e88731d855e4ff4f995d25949f9a52"
+    },
+    {
+      "file": "docs/design/desktop/runtime-feature-integration-20261111.md",
+      "sha256": "1705398c9197816f2a28592a9033eb317fae97ba8f806977ff1b14330fdbc325"
+    },
+    {
+      "file": "docs/design/desktop/running-work-inputs-20261111.md",
+      "sha256": "2ed5152c47a4d6a4bf4f7a65dc2080741b23e26a4f15c55b3b9858719d8da764"
+    },
+    {
+      "file": "docs/design/desktop/durable-work-questions-20261111.md",
+      "sha256": "64743fe3d412934ae5aaf4c2b8e3193049b8aad08fb2592558b640cf7f726402"
+    },
+    {
+      "file": "docs/design/desktop/portable-team-recipes-20261111.md",
+      "sha256": "3f86fd84891b2b65a0e5bb424a8677e6bf65d28461c8637eb056b365dc813697"
+    },
+    {
+      "file": "docs/design/desktop/interrupted-artifact-receipts-20261111.md",
+      "sha256": "fd8d29474561420f71b90777612f1a5e98ffd358b37d2d660e36062d3779d5bf"
+    },
+    {
+      "file": "docs/design/desktop/composer-attachments-20261111.md",
+      "sha256": "7ad5b64f9eb3c4e388fc72b1d88409baf2a5c8354c36025b13bf308efd03431c"
+    },
+    {
+      "file": "docs/design/desktop/bot-memory-review-20261111.md",
+      "sha256": "6bf8b72cd8a74cf9159d75fe3c363aae5cdc5d0be4e1e17621a9c18c1e8786ad"
+    },
+    {
+      "file": "docs/design/desktop/member-profile-workspace-20261111.md",
+      "sha256": "254313d07158f313ca460245683dd4d9fe260e64e5f466c2945f5cc191032fe7"
     }
   ],
   "productBaseline": {
@@ -62,7 +140,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "f3ea797fa0c9f40d6f541860591cda9d02b41dd2",
+    "revision": "8cff1136fb79d9cf34fd7388064297178d779872",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },
@@ -81,5 +159,14 @@
       "manifest": "desktop/assets/brand/provenance.json",
       "usage": "Original V3 Bot hairstyles, lively SVGs, forest native app icon and optically adjusted web glyph; verified original bytes, no regenerated assets"
     }
-  ]
+  ],
+  "creatorPlugins": {
+    "repository": "https://github.com/kaisersong/kai-xiaok-plugins",
+    "revision": "828c4c11122fcbbb50837c34aaac3b98a9f79404",
+    "names": [
+      "kai-report-creator",
+      "kai-slide-creator"
+    ],
+    "adaptation": "Only build assets are copied from the pinned git archive. KTeam binds host Node and bundled Python, removes xiaok installation hooks, exposes skill references, and guards output paths. Original renderer and planner bytes stay unchanged."
+  }
 }

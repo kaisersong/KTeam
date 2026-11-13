@@ -6,7 +6,7 @@
 import {
   PORTABLE_UPDATE_MESSAGE, UNSUPPORTED_UPDATE_MESSAGE, DEV_MODE_MESSAGE, DISABLED_MESSAGE,
   type AutoUpdateChannel, type UpdateStatus,
-} from './updater.js';
+} from './update-contract.js';
 
 /** The only page the portable / unsupported 「检查更新」 path may open. */
 export const KTEAM_RELEASES_URL = 'https://github.com/kaisersong/KTeam/releases';

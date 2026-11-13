@@ -1,14 +1,16 @@
-import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import {privateTempDir as mkdtempSync} from '../dist/tests/helpers/private-temp.js';
+import {tmpdir} from 'node:os';
+import {  realpathSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
+import {readWindowsEndpoint} from '../dist/src/service/windows-transport.js';
 import { hostRequest } from '../dist/src/service/client.js';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'kteam-cli-')));
+const root = realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-')));
 const cli = join(project, 'dist/src/cli.js');
 const env = { ...process.env, KTEAM_DATA_DIR: root, KTEAM_BROKER_URL: 'http://127.0.0.1:1', KTEAM_KSWARM_URL: 'http://127.0.0.1:1' };
 delete env.KTEAM_BROKER_TOKEN_FILE; delete env.KTEAM_KSWARM_TOKEN_FILE;
@@ -26,7 +28,7 @@ function exited(child, signal) {
 }
 async function ready(child) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('CLI readiness timed out')), 5000);
+    const timer = setTimeout(() => reject(new Error('CLI readiness timed out')), process.platform==='win32'?15000:5000);
     let output = '', errors = '';
     child.stderr.on('data', chunk => errors += chunk);
     child.stdout.on('data', chunk => {
@@ -39,32 +41,25 @@ async function ready(child) {
 try {
   await execute(process.execPath, [cli, 'init'], { env });
   const first = start(); const one = await ready(first);
+  const firstCertificate=process.platform==='win32'?readWindowsEndpoint(root).ca:undefined;
+  await assert.rejects(hostRequest(root,'kteam-companion','/v1/host/stop',{}),/host_stop_forbidden/);
   assert.equal((await hostRequest(root, 'kteam-companion', '/v1/handshake')).ownerEpoch, one.ownerEpoch);
   await assert.rejects(execute(process.execPath, [cli, 'start'], { env }), error => error.stderr.includes('host_already_running'));
   report.assertions.push('separate CLI processes cannot acquire a second writer');
   await exited(first, 'SIGKILL');
   const second = start(); const two = await ready(second);
   assert.ok(two.ownerEpoch > one.ownerEpoch);
+  if(process.platform==='win32')assert.notEqual(readWindowsEndpoint(root).ca,firstCertificate);
   report.assertions.push('crash releases OS lock; new owner removes stale socket and advances epoch');
   const diagnosis = JSON.parse((await execute(process.execPath, [cli, 'doctor'], { env })).stdout);
   assert.equal(diagnosis.handshake.clientId, 'kteam-main');
   assert.equal(diagnosis.status.upstream.ready, false);
   assert.equal(diagnosis.handshake.aimp.executionEnabled, false);
   report.assertions.push('doctor returns explicit upstream absence and no execution admission');
-  if (process.platform === 'win32') {
-    // Windows has no POSIX SIGTERM delivery: child.kill('SIGTERM') is TerminateProcess, so the CLI's SIGTERM handler
-    // cannot run. Check the forced stop instead: the process is gone and the next owner starts cleanly.
-    await exited(second, 'SIGTERM');
-    assert.ok(second.exitCode !== null || second.signalCode !== null);
-    const third = start(); const three = await ready(third);
-    assert.ok(three.ownerEpoch > two.ownerEpoch);
-    await exited(third, 'SIGTERM');
-    report.assertions.push('Windows: a terminated CLI owner releases the lock and the next owner advances epoch (graceful SIGTERM is POSIX-only)');
-  } else {
-    await exited(second, 'SIGTERM');
-    assert.equal(second.exitCode, 0);
-    report.assertions.push('graceful CLI shutdown exits successfully');
-  }
+  if(process.platform==='win32'){await execute(process.execPath,[cli,'stop'],{env});await exited(second);}
+  else await exited(second, 'SIGTERM');
+  assert.equal(second.exitCode, 0);
+  report.assertions.push('graceful CLI shutdown exits successfully');
 } finally {
   for (const child of children) await exited(child, 'SIGKILL');
   report.remainingOwnProcesses = children.filter(child => child.exitCode === null && child.signalCode === null).length;

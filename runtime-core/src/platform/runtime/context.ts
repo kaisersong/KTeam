@@ -99,6 +99,8 @@ export interface PlatformRuntimeHealth {
 }
 
 export interface CreatePlatformRuntimeContextOptions {
+  kteamMcpAllowed?: (name: string) => boolean;
+  kteamDisableLsp?: boolean;
   cwd: string;
   builtinCommands: string[];
   reminderMode?: 'daemon' | 'local';
@@ -185,7 +187,7 @@ export async function createPlatformRuntimeContext(
       description: agent.model ? `subagent:${agent.model}` : 'subagent',
     });
   }
-  const lspClient = await connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables, options.assertCurrent);
+  const lspClient = options.kteamDisableLsp ? undefined : await connectWorkspaceLspServers(pluginRuntime, lspManager, options.cwd, capabilityHealth, disposables, options.assertCurrent);
   const health = createPlatformRuntimeHealth(capabilityHealth);
   healthStore.set(options.cwd, health.snapshot());
 
@@ -220,7 +222,7 @@ export async function createPlatformRuntimeContext(
     }
   };
   const mcpReady = connectWorkspaceMcpServers(
-    mergedMcpServers,
+    options.kteamMcpAllowed ? mergedMcpServers.filter(server => options.kteamMcpAllowed!(server.name)) : mergedMcpServers,
     capabilityHealth,
     registerDisposable,
     () => disposed,

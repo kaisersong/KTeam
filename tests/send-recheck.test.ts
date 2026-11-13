@@ -188,29 +188,29 @@ test('main.tsx schedules only for a still-current managed send and never replays
  const main=readFileSync('desktop/renderer/src/main.tsx','utf8');
  assert.match(main,/import \{createSendRecheck,isUnknownSendReceipt\} from '\.\/send-recheck';/);
  // stillCurrent binds lifecycle, a cancellable recheck epoch, navigation generation, room and identity.
- assert.match(main,/const stillCurrent=\(\)=>mounted\.current&&recheckEpoch\.current===epoch&&navigation\.current===generation&&activeRoom\.current===target&&sendIdentity\.current\?\.id===id;/);
+ assert.match(main,/const stillCurrent=\(\)=>mounted\.current&&recheckEpoch\.current===epoch&&navigation\.current===generation&&activeRoom\.current===target&&sendIdentity\.current\.get\(target\)\?\.id===id;/);
  assert.match(main,/const scheduleIfManaged=\(managed:boolean\)=>\{if\(managed&&stillCurrent\(\)\)sendRecheck\.current!\.schedule\(\{roomId:target,id,text,replyToMessageId\}\);\};/);
  // The catch resolves managed (closure settings or a read-only re-query), schedules, then rethrows ONLY while still current.
- assert.match(main,/catch\(error\)\{if\(isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{if\(settings\)scheduleIfManaged\(true\);else void api\.settings\(target\)\.then\(s=>scheduleIfManaged\(!!s\?\.settings\)\)\.catch\(\(\)=>\{\}\);\}if\(stillCurrent\(\)\)throw error;return;\}/);
+ assert.match(main,/catch\(error\)\{if\(!uploadIds\.length&&isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{if\(settings\)scheduleIfManaged\(true\);else void api\.settings\(target\)\.then\(s=>scheduleIfManaged\(!!s\?\.settings\)\)\.catch\(\(\)=>\{\}\);\}if\(stillCurrent\(\)\)throw error;return;\}/);
  // A new send cancels any pending check (bumping the epoch) and captures the fresh epoch.
- assert.match(main,/follow\.current=true;cancelRecheck\(\);const epoch=recheckEpoch\.current;/);
+ assert.match(main,/follow\.current=true;latestAfterSend\.current=true;cancelRecheck\(\);const generation=navigation\.current,epoch=recheckEpoch\.current;/);
  // The controller reconciles through the whitelisted read-only API and guards on room + identity.
  assert.match(main,/reconcile:target=>api\.reconcile\(target\)/);
- assert.match(main,/isCurrent:context=>activeRoom\.current===context\.roomId&&sendIdentity\.current\?\.roomId===context\.roomId&&sendIdentity\.current\?\.id===context\.id/);
+ assert.match(main,/isCurrent:context=>activeRoom\.current===context\.roomId&&sendIdentity\.current\.get\(context\.roomId\)\?\.id===context\.id/);
 });
 
 test('a stale send rejection does not pollute another room banner: the error is rethrown only while still current',()=>{
  const main=readFileSync('desktop/renderer/src/main.tsx','utf8');
  // Conditional rethrow: a late rejection after a room switch / unmount is swallowed instead of reaching act.setError.
  assert.match(main,/if\(stillCurrent\(\)\)throw error;return;/);
- assert.doesNotMatch(main,/catch\(error\)\{if\(isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{[^}]*\}throw error;\}/);
+ assert.doesNotMatch(main,/catch\(error\)\{if\(!uploadIds\.length&&isUnknownSendReceipt\(error\)&&stillCurrent\(\)\)\{[^}]*\}throw error;\}/);
 });
 
 test('main.tsx cancels the check (invalidating in-flight re-queries) on room switch, unmount and manual reconcile',()=>{
  const main=readFileSync('desktop/renderer/src/main.tsx','utf8');
  // cancelRecheck bumps the epoch so a pending settings re-query cannot revive a cancelled check.
  assert.match(main,/const cancelRecheck=\(\)=>\{recheckEpoch\.current\+\+;sendRecheck\.current\?\.cancel\(\);setSendOutcome\(''\);setSendRechecking\(false\);\};/);
- assert.match(main,/useEffect\(\(\)=>\(\)=>\{mounted\.current=false;sendRecheck\.current\?\.cancel\(\);\},\[\]\);/);
+ assert.match(main,/useEffect\(\(\)=>\{mounted\.current=true;return\(\)=>\{mounted\.current=false;recheckEpoch\.current\+\+;sendRecheck\.current\?\.cancel\(\);\};\},\[\]\);/);
  assert.match(main,/useEffect\(\(\)=>\{cancelRecheck\(\);peerReturn\.current=undefined;/);
  assert.match(main,/const reconcileNow=\(\)=>\{const target=activeRoom\.current;if\(!target\)return;cancelRecheck\(\);void act\(\(\)=>api\.reconcile\(target\)\);\};/);
  assert.match(main,/\{pending>0&&<div className="pending-note">\{pending\} 条消息发送结果待核对<button disabled=\{busy\} onClick=\{reconcileNow\}>核对结果<\/button><\/div>\}/);
@@ -230,7 +230,7 @@ test('every verdict drops only the unknown banner; delivered clears draft/reply/
  const main=readFileSync('desktop/renderer/src/main.tsx','utf8');
  // The banner clear is guarded so a concurrent unrelated error is never clobbered (applies to all three verdicts).
  assert.match(main,/setError\(previous=>previous===explain\('upstream_operation_unknown'\)\?'':previous\);/);
- assert.match(main,/if\(verdict==='delivered'\)\{\s*if\(replyRef\.current\?\.messageId===context\.replyToMessageId\)setReply\(undefined\);\s*setDrafts\(d=>d\[context\.roomId\]===context\.text\?\{\.\.\.d,\[context\.roomId\]:''\}:d\);\s*if\(sendIdentity\.current\?\.id===context\.id\)sendIdentity\.current=undefined;\s*setSendOutcome\('delivered'\);\s*void refreshRef\.current\(\);\s*\}else if\(verdict==='not_delivered'\)\{\s*setSendOutcome\('not_delivered'\);\s*\}else\{\s*setSendOutcome\('undetermined'\);\s*\}/);
+ assert.match(main,/if\(verdict==='delivered'\)\{\s*if\(replyRef\.current\?\.messageId===context\.replyToMessageId\)setReply\(undefined\);\s*setDrafts\(d=>d\[context\.roomId\]===context\.text\?\{\.\.\.d,\[context\.roomId\]:''\}:d\);\s*if\(sendIdentity\.current\.get\(context\.roomId\)\?\.id===context\.id\)sendIdentity\.current\.delete\(context\.roomId\);\s*setSendOutcome\('delivered'\);\s*void refreshRef\.current\(\);\s*\}else if\(verdict==='not_delivered'\)\{\s*setSendOutcome\('not_delivered'\);\s*\}else\{\s*setSendOutcome\('undetermined'\);\s*\}/);
  // undetermined must not overwrite the global error banner with a send-specific string.
  assert.doesNotMatch(main,/setError\('发送结果暂未确认/);
 });

@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {resolve} from 'node:path';
+import {resolve,join} from 'node:path';
+import {mkdirSync,writeFileSync,existsSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
@@ -10,6 +11,9 @@ import {PeerExchanges} from '../src/service/peer-exchanges.js';
 import {TeamAssistant} from '../src/service/assistant.js';
 import {TeamAutomation} from '../src/service/automation.js';
 import {CollaborationService,LOCAL_HUMAN,agentAddress} from '../src/service/collaboration.js';
+import {createHarness} from '../src/runtime/harness.js';
+import {verifyExecutionScope} from '../src/service/execution-guard.js';
+import {KTeamError} from '../src/errors.js';
 const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture-model',fingerprint:'frozen'})};
 const id=()=>'msg_'+randomBytes(16).toString('hex');
 const sleep=()=>new Promise(r=>setTimeout(r,5));
@@ -64,14 +68,14 @@ test('peer consultation receives the original group request but never another pr
   const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'请核实 Claude Duet，不要替换为 Claude Code',wait:false}));
   await f.upstream.sendMessage(f.b.roomId,{text:'PRIVATE_NOT_SOURCE_CONTEXT_55',kind:'text',threadId:'private',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});
   const job=f.store.jobs(receipt.roomId)[0],context=await chats.sourceContext(job);
-  assert.equal(context?.roomId,f.roomId);assert.equal(context?.title,'产品团队');assert.equal(context?.userMessage.text,'查看KTeam源码并与团队协作');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_NOT_SOURCE_CONTEXT_55/);
+  assert.equal(context?.roomId,f.roomId);assert.equal(context?.title,'产品团队');assert.equal(context?.userMessage?.text,'查看KTeam源码并与团队协作');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_NOT_SOURCE_CONTEXT_55/);
   f.store.pause(f.roomId);await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
  }finally{chats.close();await f.close();}
 });
 test('peer source context is rejected if membership is revoked while its messages are being read',async()=>{
  const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{
-  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'核对来源',wait:false})),job=f.store.jobs(receipt.roomId)[0],get=f.upstream.getTeam.bind(f.upstream);
-  f.upstream.getTeam=async(roomId:string)=>{const result=await get(roomId);if(roomId===f.roomId){const changed=f.broker.room.updateRoomMembers({roomId,removeAgentIds:[f.b.bot.id]},{sessionId:'revoke-read',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(changed.ok,true);}return result;};
+  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'核对来源',wait:false})),job=f.store.jobs(receipt.roomId)[0],get=f.upstream.messages.bind(f.upstream);
+  f.upstream.messages=async(roomId:string,...args:any[])=>{const result=await get(roomId,...args);if(roomId===f.roomId){const changed=f.broker.room.updateRoomMembers({roomId,removeAgentIds:[f.b.bot.id]},{sessionId:'revoke-read',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});assert.equal(changed.ok,true);}return result;};
   await assert.rejects(chats.sourceContext(job),/bot_private_scope_denied/);
  }finally{chats.close();await f.close();}
 });
@@ -96,4 +100,27 @@ test('peer reader rejects another exchange owner receipt and rechecks target acc
   const read=f.upstream.conversationMessage.bind(f.upstream);for(const field of ['exchangeId','originMessageId','recipientLogicalAgentId']){f.upstream.conversationMessage=async(...args:any[])=>{const result=structuredClone(await read(...args));if(result.message.sourceRef.kind==='bot_private_message')result.message.sourceRef[field]='another-exchange';return result;};await assert.rejects(reader.messages(f.roomId,summary.id),/peer_exchange_message_unavailable/);}f.upstream.conversationMessage=read;
   const membership=f.upstream.membership.bind(f.upstream);let sourceReads=0;f.upstream.membership=async(room:string)=>{const value=await membership(room);if(room===f.roomId&&++sourceReads===2)assert.equal(f.broker.room.updateRoomMembers({roomId:sent.roomId,addUserIds:['late-observer']},{sessionId:'peer-late-scope',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()}).ok,true);return value;};await assert.rejects(reader.list(f.roomId,{originIds:[scope.originId]}),/peer_exchange_forbidden|peer_exchange_scope_changed/);
  }finally{chats.close();await automation?.close();await f.close();}
+});
+
+test('production contact registry reconnects preflight, receives the target reply once and fails closed after actual scope revocation',async()=>{
+ const f=await setup();let automation:TeamAutomation|undefined,owner:any;
+ const previous={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.KTEAM_DISABLE_GLOBAL_PLUGINS};
+ const chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{void automation!.tick();});
+ try{
+  const cwd=join(f.root,'project'),config=join(f.root,'config'),plugin=join(cwd,'.kteam/plugins/review'),marker=join(f.root,'hook-ran');mkdirSync(plugin,{recursive:true});mkdirSync(config);
+  process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_DISABLE_GLOBAL_PLUGINS='1';
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',events:['PreToolUse'],matcher:'contact_bot',command:'printf checked > '+marker}]}));
+  let targetTurns=0;automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();targetTurns++;return {text:'CTO independently checked the rollback scope.',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};},f.coordinator);
+  const scope=await admission(f,f.a.bot.id);let failures=0;
+  const guard=()=>verifyExecutionScope(async()=>{if(failures-->0)throw new KTeamError('broker_unavailable',503);await scope.assertCurrent();},scope.signal);
+  const h=await createHarness({scope:{root:f.root,botId:scope.botId,roomId:f.roomId,bindingRevision:1,fingerprint:'frozen',profileRevision:1},workspace:cwd,signal:scope.signal,assertCurrent:guard,onPrompt:async()=>true});
+  owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','use actual contact results',chats.tools({...scope,assertCurrent:guard}));
+  failures=2;const failed=await owner.registry.executeTool('contact_bot',{botId:f.b.bot.id,message:'This check must not send.',wait:true});
+  assert.match(failed,/harness_scope_check_failed:broker_unavailable/);assert.equal(targetTurns,0);assert.equal(existsSync(marker),false);assert.equal(f.store.operationsWithPrefix('bot-contact:').length,0);
+  failures=1;const result=await owner.registry.executeTool('contact_bot',{botId:f.b.bot.id,message:'Please check the rollback scope.',wait:true});
+  assert.match(result,/CTO independently checked/);assert.equal(targetTurns,1);assert.equal(existsSync(marker),true);assert.equal(f.store.operationsWithPrefix('bot-contact:').length,1);
+  f.broker.room.updateRoomMembers({roomId:f.roomId,removeAgentIds:[f.a.bot.id]},{sessionId:'revoke-test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()});
+  const denied=await owner.registry.executeTool('contact_bot',{botId:f.b.bot.id,message:'No longer authorized.',wait:true});
+  assert.doesNotMatch(denied,/"sent":true/);assert.equal(targetTurns,1);assert.equal(f.store.operationsWithPrefix('bot-contact:').length,1);
+ }finally{await owner?.close();chats.close();await automation?.close();for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:previous.config,KTEAM_DISABLE_GLOBAL_PLUGINS:previous.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;await f.close();}
 });

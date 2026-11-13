@@ -1,3 +1,10 @@
+# The lock verifies these copied upstream bytes, including on autocrlf checkouts.
+src/vendor/kswarm/** -text
+tests/fixtures/aimp-v3.1-test-vectors.json -text
+
+# Imported artwork is verified against archive hashes, including line endings.
+desktop/assets/brand/** -text
+desktop/renderer/public/brand/** -text
 # Keep working-tree text as LF on every platform, including Windows CI.
 # Windows runners default to core.autocrlf=true; without this, locked
 # sources such as src/vendor/kswarm/runtime-capabilities.js check out as
@@ -25,3 +32,9 @@
 *.node binary -eol
 *.wasm binary -eol
 *.pdf binary -eol
+
+# Exact locked byte contracts override general text normalization.
+src/vendor/kswarm/** text eol=lf
+tests/fixtures/aimp-v3.1-test-vectors.json -text -eol
+desktop/assets/brand/** -text -eol
+desktop/renderer/public/brand/** -text -eol

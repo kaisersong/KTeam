@@ -1,5 +1,5 @@
 import{processGroup,processBirth,ownedByCurrentUser}from'../runtime/platform-process.js';
-import{randomBytes,createHash}from'node:crypto';import{mkdirSync,writeFileSync,lstatSync,realpathSync,rmSync,openSync,closeSync,fstatSync,ftruncateSync,fsyncSync,constants}from'node:fs';import{join,resolve,sep}from'node:path';import{hostname}from'node:os';
+import{randomBytes,createHash}from'node:crypto';import{mkdirSync,writeFileSync,lstatSync,realpathSync,rmSync,openSync,closeSync,fstatSync,ftruncateSync,fsyncSync,renameSync,constants}from'node:fs';import{join,resolve,sep}from'node:path';import{hostname}from'node:os';
 import{TeamStore,type Binding}from'./team-store.js';import{TeamCoordinator}from'./coordination.js';import{AgentLinks}from'./agent-links.js';import{Upstreams}from'../adapters/upstream.js';import{KTeamError,fields,record,text}from'../errors.js';
 import{LOCAL_AGENTS,type LocalAgentId,type LocalInstallation,isLocalAgent,inspectLocalAgent,nativeEnvironment,localArgs,parseNativeOutput}from'../runtime/local-agents.js';import{calendarWindow}from'../runtime/calendar.js';
 import{runLocal}from'../runtime/local-process.js';
@@ -43,9 +43,17 @@ export class LocalAgents{
 }
 function existsPrivate(path:string){try{return lstatSync(path);}catch{return undefined;}}
 
-/** Windows has no O_NOFOLLOW (the constant is undefined, so open() follows links): refuse a link at the path before
- * opening, and after opening confirm the path still names the very file that was opened. */
-const windowsLinkAt=(path:string)=>process.platform==='win32'&&existsPrivate(path)?.isSymbolicLink()===true;
-function privateFile(path:string,content:string){if(windowsLinkAt(path))throw new KTeamError('native_workspace_changed',409);const fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|(constants.O_NOFOLLOW??0),0o600);try{const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1||(process.platform!=='win32'&&stat.uid!==process.getuid?.()))throw new KTeamError('native_workspace_changed',409);if(process.platform==='win32'){const now=existsPrivate(path);if(!now||now.isSymbolicLink()||now.ino!==stat.ino||now.dev!==stat.dev)throw new KTeamError('native_workspace_changed',409);}ftruncateSync(fd,0);writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}}
+function privateFile(path:string,content:string){
+ if(process.platform==='win32'){
+  // O_NOFOLLOW has no Windows equivalent in Node. Replace our directory entry
+  // atomically so even a raced link cannot redirect truncation into its target.
+  const safe=()=>{const stat=existsPrivate(path);if(stat&&(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||realpathSync(path)!==path))throw new KTeamError('native_workspace_changed',409);return stat;};
+  const before=safe(),temporary=path+'.'+randomBytes(16).toString('hex')+'.tmp';
+  try{const fd=openSync(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL,0o600);try{const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1)throw new KTeamError('native_workspace_changed',409);writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}const after=safe();if(before?.ino!==after?.ino||before?.dev!==after?.dev)throw new KTeamError('native_workspace_changed',409);renameSync(temporary,path);}finally{rmSync(temporary,{force:true});}
+  return;
+ }
+ const fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|constants.O_NOFOLLOW,0o600);try{const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1||stat.uid!==process.getuid?.())throw new KTeamError('native_workspace_changed',409);ftruncateSync(fd,0);writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}
+}
+
 
 function groupAlive(pid:number|undefined,birth?:string){if(!pid)return false;const rows=processGroup(pid,undefined,{birth});if(rows.some(member=>!ownedByCurrentUser(member)))throw new KTeamError('native_stop_unconfirmed',503);return rows.length>0;}

@@ -2,7 +2,8 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { spawnSync } from '../../../../src/runtime/harness-child-process.js';
+// Only the hash-checked bundled, argument-free read-only helper below may use this path.
+import { spawnSync } from 'node:child_process';
 import { machine } from 'node:os';
 type WindowsInstallationObservation = 'ordinary' | 'installed' | 'unavailable';
 export interface WindowsAbsenceDeps { platform: NodeJS.Platform; arch: string; machine: string; root: string;
@@ -25,9 +26,9 @@ const missingFile = (error: unknown) => (error as NodeJS.ErrnoException)?.code =
 /** Fixed client-bundled read-only helper. This is not a protected Windows
  * controller or a qualification receipt.
  *
- * 0.4 interim rule (CTO-approved, follow-up: https://github.com/kaisersong/KTeam/issues/74): the helper's source is not in this repository, so it cannot be built or
- * bundled yet. When the helper AND its manifest are both simply absent, the client is treated as an ordinary
- * install and a warning is emitted. Anything that is present but wrong still denies fallback ('unavailable'):
+ * KTeam now builds and bundles the original diagnostic source. Absence is therefore
+ * an incomplete installation, never evidence that ordinary-mode writes are safe.
+ * Anything that is absent or wrong denies fallback ('unavailable'):
  * only one of the two files present, a non-regular/linked/oversized file, a bad manifest, a hash mismatch, a
  * failed or non-zero helper run, or an unexpected answer. */
 export function readWindowsInstallationAbsence(): WindowsInstallationObservation {
@@ -47,8 +48,8 @@ export function observeWindowsInstallationAbsence(deps: WindowsAbsenceDeps): Win
         const present = (path: string) => { try { deps.lstat(path); return true; } catch (error) { if (missingFile(error)) return false; throw error; } };
         const helperPresent = present(helper), manifestPresent = present(manifestPath);
         if (!helperPresent && !manifestPresent) {
-            deps.warn('windows_absence_helper_not_bundled: windows-installation-absence helper is not bundled (' + helper + '); treating this client as an ordinary install (0.4 interim, see https://github.com/kaisersong/KTeam/issues/74)');
-            return 'ordinary';
+            deps.warn('windows_absence_helper_not_bundled: windows-installation-absence helper is not bundled (' + helper + '); writes remain unavailable (see https://github.com/kaisersong/KTeam/issues/74)');
+            return 'unavailable';
         }
         function read(path: string, limit: number): Buffer { const s = deps.lstat(path); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1 || s.size > limit)
             throw Error('windows_absence_file'); const b = deps.readFile(path); if (b.length > limit)

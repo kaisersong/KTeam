@@ -1,14 +1,15 @@
-import {tmpRoot} from './helpers/tmp-root.js';
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
+import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,writeFileSync,rmSync} from 'node:fs';
+import {realpathSync,writeFileSync,rmSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {createServer} from 'node:http';
 import {sharedRuntime,nativeTurn} from '../src/runtime/native.js';
 
 test('real original runtime sends a tool-free routing request without phantom tool_search',async()=>{
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
- const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-no-tools-')),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-no-tools-'))),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=root;
  let calls=0,reservations=0;const server=createServer(async(req,res)=>{
   calls++;let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);
   assert.ok(!body.tools?.length,'A routing request advertised an execution/search tool');

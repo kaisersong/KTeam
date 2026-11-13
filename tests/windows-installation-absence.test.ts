@@ -18,9 +18,9 @@ function deps(files:Record<string,Buffer|'deny'>,run?:{status:number|null;stdout
 const exe=Buffer.from('MZ fixture helper');
 const manifest=(over:Record<string,unknown>={})=>Buffer.from(JSON.stringify({version:1,target:'win32-x64',sourceSha256:'a'.repeat(64),coreSha256:'b'.repeat(64),sha256:createHash('sha256').update(exe).digest('hex'),...over}));
 
-test('Windows absence helper not bundled (both files absent): ordinary install, with a warning, and nothing is run',async()=>{
+test('Windows absence helper not bundled (both files absent): writes unavailable, with a warning, and nothing is run',async()=>{
  const {observeWindowsInstallationAbsence}=await runtime();
- const f=deps({});assert.equal(observeWindowsInstallationAbsence(f.deps),'ordinary');
+ const f=deps({});assert.equal(observeWindowsInstallationAbsence(f.deps),'unavailable');
  assert.equal(f.warnings.length,1);assert.match(f.warnings[0]!,/^windows_absence_helper_not_bundled: windows-installation-absence helper is not bundled/);assert.match(f.warnings[0]!,/issues\/74/);assert.deepEqual(f.runs,[]);
 });
 

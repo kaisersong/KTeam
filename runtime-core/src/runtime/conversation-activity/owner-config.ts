@@ -8,4 +8,3 @@ export function activityOwnerConfigDigest(config: ActivityOwnerConfig): string {
   const digestConfig = { ...config, managedSources: config.managedSources?.map(({ env: _env, ...source }) => source) };
   return createHash('sha256').update(JSON.stringify(canonical(digestConfig))).digest('hex');
 }
-

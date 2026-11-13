@@ -1,23 +1,27 @@
-import {tmpRoot,removeTempRoot} from './helpers/tmp-root.js';
+import {waitForProcessGone} from './helpers/process-gone.js';
+import {processBirth} from '../src/runtime/platform-process.js';
+import {nodeFixtureCommand} from './helpers/node-command.js';
+import {privateTempDir as mkdtempSync} from './helpers/private-temp.js';
+import {tmpdir} from 'node:os';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {join,resolve} from 'node:path';
 import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
-import {assertProcessGone} from './helpers/process-gone.js';
+import {KTeamError} from '../src/errors.js';
 
 async function fixture(){
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
- const root=realpathSync(mkdtempSync(tmpRoot+'/kteam-platform-')),config=join(root,'config'),cwd=join(root,'project');mkdirSync(config);mkdirSync(cwd);
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-platform-'))),config=join(root,'config'),cwd=join(root,'project');mkdirSync(config);mkdirSync(cwd);
  const before={config:process.env.KTEAM_MODEL_CONFIG_DIR,plugins:process.env.KTEAM_DISABLE_GLOBAL_PLUGINS};process.env.KTEAM_MODEL_CONFIG_DIR=config;process.env.KTEAM_DISABLE_GLOBAL_PLUGINS='1';
  const core=await sharedRuntime();
  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'text',delta:'done'};yield {type:'done'};}};
  const scope={root:join(root,'host-data'),botId:'bot-a',roomId:'room-a',bindingRevision:1,fingerprint:'fp-a',profileRevision:1};
  const open=async(extra={})=>{const h=await createHarness({scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
- return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;removeTempRoot(root);}};
+ return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
 }
 test('production platform factory preserves complete tool history and project instructions across runs, with room/binding isolation',async()=>{
  const f=await fixture();let owner:any;try{
@@ -32,7 +36,7 @@ test('production platform factory preserves complete tool history and project in
   owner=await f.open();assert.match(JSON.stringify(owner.session.getMessages()),/PERSISTED_SESSION_21/);assert.match(owner.system,/PRIVATE_ROOM_MEMORY_33/);await owner.close();owner=undefined;
   owner=await f.open({roomId:'room-b'});assert.doesNotMatch(owner.system,/PRIVATE_ROOM_MEMORY_33/);assert.doesNotMatch(JSON.stringify(owner.session.getMessages()),/PERSISTED_SESSION_21/);await owner.close();owner=undefined;
   owner=await f.open({bindingRevision:2});assert.equal(owner.session.getMessages().length,0);
-  assert.equal(existsSync(join(f.cwd,'.kteam/state/teams.json')),false);assert.equal(existsSync(join(f.cwd,'.xiaok')),false);
+  assert.equal(existsSync(join(f.cwd,'.kteam/state/teams.json')),false);assert.equal(existsSync(join(f.cwd,'.kteam')),false);
  }finally{await owner?.close();f.close();}
 });
 
@@ -53,10 +57,39 @@ test('revoked scope cannot launch a real plugin PreToolUse command before the to
   const marker=join(f.root,'must-not-start');
   writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',events:['PreToolUse'],command:'printf synthetic > '+marker}]}));
   writeFileSync(join(f.cwd,'proof'),'read-only');let current=true;
-  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(5000),assertCurrent:async()=>{if(!current)throw Error('synthetic_revoked');},onPrompt:async()=>true});
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(process.platform==='win32'?30000:5000),assertCurrent:async()=>{if(!current)throw Error('synthetic_revoked');},onPrompt:async()=>true});
   owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);current=false;
   const result=await owner.registry.executeTool('read',{file_path:'proof'});
-  assert.match(result,/harness_scope_revoked|synthetic_revoked/);assert.equal(existsSync(marker),false);
+  assert.match(result,/harness_scope_check_failed:scope_check_failed/);assert.equal(existsSync(marker),false);
+ }finally{await owner?.close();f.close();}
+});
+
+test('hook admission preserves a safe cause and a failed check does not consume a once-only hook',async()=>{
+ const f=await fixture();let owner:any;try{
+  const plugin=join(f.cwd,'.kteam/plugins/review');mkdirSync(plugin,{recursive:true});
+  const marker=join(f.root,'ran'),script=join(plugin,'proof.cjs');writeFileSync(script,"require('node:fs').appendFileSync(process.argv[2],'checked')");
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[{type:'command',once:true,events:['PreToolUse'],matcher:'read',command:nodeFixtureCommand(script,marker)}]}));
+  writeFileSync(join(f.cwd,'proof'),'read-only');let unavailable=false;
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{if(unavailable)throw new KTeamError('broker_unavailable',503);},onPrompt:async()=>true});
+  owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);unavailable=true;
+  const failed=await owner.registry.executeTool('read',{file_path:'proof'});
+  assert.match(failed,/harness_scope_check_failed:broker_unavailable/);assert.doesNotMatch(failed,/harness_scope_revoked/);assert.equal(existsSync(marker),false);
+  unavailable=false;const results=await Promise.all([owner.registry.executeTool('read',{file_path:'proof'}),owner.registry.executeTool('read',{file_path:'proof'})]);for(const value of results)assert.match(value,/read-only/);assert.equal(readFileSync(marker,'utf8'),'checked');
+ }finally{await owner?.close();f.close();}
+});
+
+test('unmatched plugin events do not perform extra remote scope checks',async()=>{
+ const f=await fixture();let owner:any;try{
+  const plugin=join(f.cwd,'.kteam/plugins/review');mkdirSync(plugin,{recursive:true});
+  writeFileSync(join(plugin,'plugin.json'),JSON.stringify({name:'review',version:'1.0.0',hooks:[
+   {events:['PreToolUse'],matcher:'write',command:'exit 2'},
+   {events:['SessionEnd'],command:'exit 2'}
+  ]}));
+  writeFileSync(join(f.cwd,'proof'),'read-only');let checks=0;
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{checks++;},onPrompt:async()=>true});
+  owner=await h.prepare!({getModelName:()=> 'fixture'},'fixture','proof',[]);checks=0;
+  assert.match(await owner.registry.executeTool('read',{file_path:'proof'}),/read-only/);
+  assert.equal(checks,2,'only the bound tool pre/post guards, no unmatched hook guards');
  }finally{await owner?.close();f.close();}
 });
 
@@ -78,6 +111,7 @@ test('host-managed card and Skill tools cannot read or overwrite another private
   assert.match(await owner.registry.executeTool('install_skill',{source:'  '+skill+'  ',scope:'global'}),/harness_private_path_denied/);const scopeKey=createHash('sha256').update(f.scope.botId+'\n'+f.scope.roomId).digest('hex');assert.equal(existsSync(join(f.scope.root,'harness-assets',scopeKey,'skills/private-skill.md')),false);
   assert.match(await owner.registry.executeTool('render_ui',{title:'must fail',output_path:'  '+output+'  ',sections:[{kind:'text',content:'must not write'}]}),/harness_private_path_denied/);assert.equal(existsSync(output),false);
   assert.doesNotMatch(await owner.registry.executeTool('read',{file_path:skill}),/FOREIGN_PRIVATE_BODY/);
+  const publicSkill=join(f.cwd,'public-skill.md');writeFileSync(publicSkill,'---\nname: public-skill\ndescription: public source\n---\nPUBLIC_WORKSPACE_SKILL');assert.match(await owner.registry.executeTool('install_skill',{source:publicSkill,scope:'global'}),/已安装 skill "public-skill"/);assert.match(readFileSync(join(f.scope.root,'harness-assets',scopeKey,'skills/public-skill.md'),'utf8'),/PUBLIC_WORKSPACE_SKILL/);
  }finally{await owner?.close();f.close();}
 });
 
@@ -89,8 +123,8 @@ test('real MCP stdio is supervised, records ownership before payload, and closes
   assert.equal(existsSync(join(f.root,'provider.pid')),true);
   assert.match(await owner.registry.executeTool('mcp__owned__proof',{}),/MCP_REAL_PROCESS_92/);
   assert.ok(resources.some(r=>r.state==='preparing'&&r.pid));assert.ok(resources.some(r=>r.state==='running'&&r.birth));
-  const running=resources.filter(r=>r.state==='running');await owner.close();owner=undefined;
-  for(const r of running)assertProcessGone(r);
+  const owned=resources.filter(r=>r.state==='running'),providerPid=Number(readFileSync(join(f.root,'provider.pid'),'utf8')),provider={pid:providerPid,birth:processBirth(providerPid)};assert.ok(provider.birth);await owner.close();owner=undefined;
+  for(const record of [...owned,provider])await waitForProcessGone(record);
  }finally{await owner?.close();f.close();}
 });
 
@@ -102,7 +136,7 @@ test('SIGKILL of a harness owner reaps its actual MCP provider through the IPC s
   const provider=Number((await import('node:fs')).readFileSync(join(f.root,'provider.pid'),'utf8'));assert.ok(provider);assert.ok(ready.records.some((r:any)=>r.state==='running'));
   const ended=new Promise(r=>parent.once('exit',r));parent.kill('SIGKILL');await ended;
   const alive=()=>{try{process.kill(provider,0);return true;}catch{return false;}};
-  const until=Date.now()+6000;while(alive()&&Date.now()<until)await new Promise(r=>setTimeout(r,30));assert.equal(alive(),false);
+  const pids=[...new Set<number>([provider,...ready.records.filter((record:any)=>record.state==='running').map((record:any)=>Number(record.pid))])];const live=()=>pids.filter(pid=>{try{process.kill(pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH')throw error;return false;}});const until=Date.now()+(process.platform==='win32'?10000:6000);while(live().length&&Date.now()<until)await new Promise(r=>setTimeout(r,30));assert.deepEqual(live(),[]);assert.equal(alive(),false);
  }finally{if(parent&&parent.exitCode===null&&parent.signalCode===null)parent.kill('SIGKILL');f.close();}
 });
 
@@ -110,17 +144,29 @@ test('original Worktree allocate/release and recovery GC use owned Git and lsof 
  const f=await fixture(),records:any[]=[];let platform:any;try{
   const git=(args:string[])=>execFileSync('git',args,{cwd:f.cwd,encoding:'utf8'});
   git(['init','-q']);git(['config','user.email','fixture@localhost']);git(['config','user.name','Fixture']);writeFileSync(join(f.cwd,'source.txt'),'fixture');git(['add','source.txt']);git(['commit','-qm','fixture']);
-  /* Windows: every owned process costs two PowerShell CIM queries (start identity before ownership, drain proof after exit, ~0.5s each on windows-2022), so this ~15-process Git sequence needs more than the POSIX 20s. Follow-up: persistent census to cut the per-process cost. */const processOwner={cwd:f.cwd,signal:AbortSignal.timeout(process.platform==='win32'?60000:20000),assertCurrent:async()=>{},record:(r:any)=>{records.push(r);}};
+  const processOwner={cwd:f.cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},record:(r:any)=>{records.push(r);}};
   await f.core.withHarnessProcessOwner(processOwner,async()=>{
    platform=await f.core.createPlatformRuntimeContext({cwd:f.cwd,builtinCommands:[],assertCurrent:processOwner.assertCurrent,stateRootDir:join(f.root,'platform-state'),teamService:{}});await platform.mcpReady;
    const first=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-release',branch:'fixture-release',cleanup:'delete'});assert.equal(existsSync(first.path),true);await platform.worktreeManager.release(first.path);assert.equal(existsSync(first.path),false);
    const second=await platform.worktreeManager.allocate({owner:'fixture',taskId:'task-gc',branch:'fixture-gc',cleanup:'delete'});
    const path=join(f.cwd,'.worktrees/.kteam-worktree-registry'),registry=JSON.parse(readFileSync(path,'utf8'));registry.leases.find((r:any)=>r.path===second.path).state='released';writeFileSync(path,JSON.stringify(registry));
-   const result=await platform.worktreeManager.gc({dryRun:false});
-   // GC removes a released worktree only after `lsof +D` proves no process uses it. lsof is POSIX-only (/usr/sbin/lsof, /usr/bin/lsof), so on Windows usage is unknown and GC must fail closed: keep the worktree and say why.
-   if(process.platform==='win32'){assert.deepEqual(result.removed,[],JSON.stringify(result));assert.deepEqual(result.skipped,[{branch:'fixture-gc',reason:'path_unknown'}],JSON.stringify(result));assert.equal(existsSync(second.path),true);}
-   else{assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);}
+   const result=await platform.worktreeManager.gc({dryRun:false});assert.ok(result.removed.includes('fixture-gc'),JSON.stringify(result));assert.equal(existsSync(second.path),false);
   });
-  assert.ok(records.filter(r=>r.state==='running').length>=5);for(const r of records.filter(r=>r.state==='running'))assertProcessGone(r);
+  assert.ok(records.filter(r=>r.state==='running').length>=5);await platform.dispose();platform=undefined;for(const r of records.filter(r=>r.state==='running'))await waitForProcessGone(r);
  }finally{await platform?.dispose();f.close();}
+});
+
+test('closing a failed checkpoint preserves its unknown tool batch instead of repairing it into replayable history',async()=>{
+ const f=await fixture();let owner:any;try{
+  writeFileSync(join(f.cwd,'proof'),'ACTUAL_READ_RESULT');
+  const port={ownerId:'checkpoint-owner',async prepare(){return undefined;}};
+  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000}),async*stream(){yield {type:'tool_use',id:'read-proof',name:'read',input:{file_path:join(f.cwd,'proof')}};yield {type:'done'};}};
+  const h=await createHarness({scope:f.scope,toolApprovalPort:port,workspace:f.cwd,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{},onPrompt:async()=>true});
+  owner=await h.prepare!(adapter,'fixture','verify saved result',[]);
+  const runtime=new f.core.AgentRuntime({toolApprovalPort:port,adapter,registry:owner.registry,session:owner.session,controller:new f.core.AgentRunController(),systemPrompt:owner.system,checkpoint:async()=>{await owner.persist();if(owner.session.getToolBatch()?.results.length)throw Error('synthetic_checkpoint_loss');},maxIterations:2});
+  await assert.rejects(owner.runOwned(()=>runtime.run('read actual synthetic file',()=>{})),/synthetic_checkpoint_loss/);
+  assert.match(owner.session.getToolBatch().results[0].content,/ACTUAL_READ_RESULT/);
+  await owner.close();owner=undefined;
+  await assert.rejects(h.prepare!(adapter,'fixture','must not replay',[]),/tool_batch_execution_unknown/);
+ }finally{await owner?.close();f.close();}
 });

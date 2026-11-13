@@ -39,7 +39,7 @@ import { validateSkillTool } from './validate-skill.js';
 import { createRenderUiTool } from './render-ui.js';
 import {createKimJudgeTool} from './kim-judge.js';
 import {createKimStatusTool} from './kim-status.js';
-import { sanitizeToolOutput } from '../../shared/stream-safety/redact.js';
+import { sanitizeToolOutput, MODEL_OUTPUT_CAP } from '../../shared/stream-safety/redact.js';
 import {
   buildCapabilityToolDefinition,
   buildToolSearchEntry,
@@ -657,6 +657,10 @@ export class ToolRegistry {
     const decision = await this.permissionManager.check(registeredName, cloneToolInput(input));
     context?.signal?.throwIfAborted();
     if (authorityChanged() || initialPolicyRevision !== this.permissionManager.getRevision()) return stop(changedError, 'invalidated');
+    const restoredApproval=await context?.prepareToolApproval?.({name:registeredName,input:cloneToolInput(input),decision,permission});
+    context?.signal?.throwIfAborted();
+    if(authorityChanged()||initialPolicyRevision!==this.permissionManager.getRevision())return stop(changedError,'invalidated');
+    if(restoredApproval===false)return stop(`Error: 权限不足: ${name}`,'denied');
     if (decision === 'deny') {
       if (this.options.hookInputMode === 'direct-callback' && this.options.hooksRunner) {
         const hookReceiver = this.options.hooksRunner;
@@ -790,7 +794,7 @@ export class ToolRegistry {
       else {
         const promptToken = Object.freeze({});
         const result = await this.permissionManager.runPromptAuthorization(promptToken, registeredName, cloneToolInput(input),
-          () => this.options.onPrompt(registeredName, cloneToolInput(input), { tool, context }));
+          () => restoredApproval===true?true:this.options.onPrompt(registeredName, cloneToolInput(input), { tool, context }));
         context?.signal?.throwIfAborted();
         if (authorityChanged() || result.continuationRevision === undefined) return stop(changedError, 'invalidated');
         approved = result.value;
@@ -1001,7 +1005,7 @@ export class ToolRegistry {
       // Scoped native wrappers re-enter this guard after their own journal await,
       // including auto/boolean approvals which do not carry a grant object.
       if (context) {
-        invocationContext = { ...context, assertPermissionApproval: assertInvocationCurrent,
+        invocationContext = { ...context, retainToolOutput:undefined, prepareToolApproval:undefined, assertPermissionApproval: assertInvocationCurrent,
           runtimeFactSink: {emit: fact => {
             if (name === 'bash' && fact.toolName === 'bash' && fact.factKind === 'command_result' && fact.invocationId === context.toolInvocationId)
               commandFact = retainCommandResult(commandFact, fact);
@@ -1105,11 +1109,14 @@ export class ToolRegistry {
       if (observationMetricsEnabled()) {
         measureToolResult('registry_visible', context?.toolInvocationId, tool.definition.name, sanitizeToolOutput(result, { cap: false }).text);
       }
-      const modelOutput = sanitizeToolOutput(result);
+      const fullOutput=sanitizeToolOutput(result,{cap:false});
+      const outputHint=context?.retainToolOutput?.(appendToolWarnings(fullOutput.text,[...fullOutput.warnings,...warnings]))??'';
+      const modelOutput = sanitizeToolOutput(result,{maxChars:Math.max(1,MODEL_OUTPUT_CAP-outputHint.length)});
       recordProvenance(port => port.observeTransform({ before: result, after: modelOutput.text }));
       const finalResult = appendToolWarnings(modelOutput.text, [...modelOutput.warnings, ...warnings], suffix => recordProvenance(port => port.appendSuffix(suffix)));
-      recordProvenance(port => port.sealRegistry(finalResult));
-      return finalResult;
+      if(outputHint)recordProvenance(port=>port.appendSuffix(outputHint));
+      recordProvenance(port => port.sealRegistry(finalResult+outputHint));
+      return finalResult+outputHint;
         } catch (e) { return normalizeFailure(e); }
       };
       const preparedInput = cloneToolInput(input); freezeToolInput(preparedInput);

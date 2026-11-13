@@ -10,6 +10,12 @@ files:
   - LICENSE
   - NOTICE
 extraResources:
+  - from: desktop/yzj-cli/runner.cjs
+    to: yzj-cli/runner.cjs
+  - from: node_modules/@yunzhijia/cli
+    to: yzj-cli/package
+  - from: node_modules/@yunzhijia/cli/skills/yzj-cli
+    to: skills/yzj-cli
   - from: desktop/bin
     to: bin
   - from: desktop/skills
@@ -18,6 +24,7 @@ extraResources:
     to: app-update.yml
 asar: true
 asarUnpack:
+  - build/plugins/**
   - build/host.cjs
   - build/native-child.cjs
   - build/agent-cli.cjs

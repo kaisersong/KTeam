@@ -21,6 +21,8 @@ import { types } from 'node:util';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { UpdaterHandoffStateMachine } from './updater-handoff.js';
+import {DEV_MODE_MESSAGE,DISABLED_MESSAGE,PORTABLE_UPDATE_MESSAGE,UNSUPPORTED_UPDATE_MESSAGE,type AutoUpdateChannel,type UpdateStatus} from './update-contract.js';
+export {DEV_MODE_MESSAGE,DISABLED_MESSAGE,PORTABLE_UPDATE_MESSAGE,UNSUPPORTED_UPDATE_MESSAGE,type AutoUpdateChannel,type UpdateStatus} from './update-contract.js';
 
 /** The only update feed KTeam ever uses. Must match electron-builder.yml `publish` and desktop/app-update.yml. */
 export const KTEAM_UPDATE_FEED = Object.freeze({ provider: 'github', owner: 'kaisersong', repo: 'KTeam' } as const);
@@ -28,10 +30,6 @@ export const STARTUP_UPDATE_DELAY_MS = 10_000;
 export const STARTUP_UPDATE_RETRY_DELAY_MS = 60_000;
 export const PERIODIC_UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 export const INSTALL_OBSERVATION_MS = 30_000;
-export const DEV_MODE_MESSAGE = '开发模式下无法检查更新';
-export const DISABLED_MESSAGE = '自动更新已关闭（KTEAM_DISABLE_AUTO_UPDATE）';
-export const PORTABLE_UPDATE_MESSAGE = '便携版不会自动更新，请到 Releases 下载新版本';
-export const UNSUPPORTED_UPDATE_MESSAGE = '此版本不支持自动更新';
 
 /** electron-builder sets this for portable executables. Any non-empty value means portable. */
 export function isPortableBuild(env: NodeJS.ProcessEnv): boolean {
@@ -39,7 +37,6 @@ export function isPortableBuild(env: NodeJS.ProcessEnv): boolean {
   return value !== undefined && value !== '';
 }
 
-export type AutoUpdateChannel = 'mac' | 'nsis' | 'portable' | 'unsupported';
 
 export function resolveAutoUpdateChannel(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): AutoUpdateChannel {
   if (platform === 'darwin') return 'mac';
@@ -56,17 +53,6 @@ export function inactiveUpdateMessage(reason: 'portable' | 'unsupported' | 'env'
   if (reason === 'unsupported') return UNSUPPORTED_UPDATE_MESSAGE;
   if (reason === 'env') return DISABLED_MESSAGE;
   return DEV_MODE_MESSAGE;
-}
-
-export interface UpdateStatus {
-  checking: boolean;
-  available: boolean;
-  downloading: boolean;
-  downloaded: boolean;
-  installing?: boolean;
-  progress: number; // 0-100
-  version?: string;
-  error?: string;
 }
 
 export interface UpdaterRequestContext { requestSource: 'user' | 'agent' | 'scheduler' }

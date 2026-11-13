@@ -1,3 +1,4 @@
+import {assertWindowsPrivate,assertWindowsPrivateMany} from './windows-security.js';
 import { mkdirSync, readFileSync, writeFileSync, lstatSync, realpathSync,existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -16,7 +17,8 @@ export interface Config {
 }
 export function dataRoot(): string { return resolve(process.env.KTEAM_DATA_DIR || join(homedir(), '.kteam')); }
 export function ensurePrivateRoot(root: string): void {
-  mkdirSync(root, { recursive: true, mode: 0o700 });
+  if(process.platform==='win32')assertWindowsPrivate(root,true,true);
+  else mkdirSync(root, { recursive: true, mode: 0o700 });
   const stat = lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(root) !== root) throw new KTeamError('private_directory_required');
   if (process.platform !== 'win32' && (stat.mode & 0o077 || stat.uid !== process.getuid?.())) throw new KTeamError('private_directory_required');
@@ -25,6 +27,7 @@ export function privateRead(file: string): string {
   const stat = lstatSync(file);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 64 * 1024) throw new KTeamError('private_file_required');
   if (process.platform !== 'win32' && (stat.mode & 0o077 || stat.uid !== process.getuid?.())) throw new KTeamError('private_file_required');
+  if(process.platform==='win32')assertWindowsPrivate(file,false);
   return readFileSync(file, 'utf8').trim();
 }
 export function initConfig(root: string, config: Config): void {
@@ -68,7 +71,17 @@ export function isLegacySharedConfig(value: unknown): boolean {
   return typeof config.managedServiceConfig === 'string' && (typeof config.brokerTokenFile !== 'string' || typeof config.kswarmTokenFile !== 'string');
 }
 export function readRawConfig(root: string): unknown { return parseJson(privateRead(join(root, 'config.json'))); }
+const warmedWindowsRoots=new Set<string>();
+function warmWindowsRoot(root:string){
+ if(process.platform!=='win32')return;
+ const files=['config.json',...CLIENTS.map(client=>client+'.token'),'host-endpoint.json'].map(name=>join(root,name)).filter(existsSync);
+ // ensurePrivateRoot enforces root ACLs at ownership boundaries. Clients validate their root once;
+ // per-file NTFS metadata still invalidates credentials/endpoint checks without treating every SQLite journal as an ACL change.
+ assertWindowsPrivateMany([...(warmedWindowsRoots.has(root)?[]:[{path:root,directory:true}]),...files.map(path=>({path,directory:false}))]);
+ warmedWindowsRoots.add(root);
+}
 export function loadConfig(root: string): Config {
+ warmWindowsRoot(root);
   return validateConfig(dropLegacyKeys(parseJson(privateRead(join(root, 'config.json'))), root));
 }
 export function upstreamOptions(config: Config): UpstreamOptions {
@@ -76,6 +89,7 @@ export function upstreamOptions(config: Config): UpstreamOptions {
     kswarmToken: config.kswarmTokenFile ? privateRead(resolve(config.kswarmTokenFile)) : undefined };
 }
 export function clientToken(root: string, client: ClientId): string {
+  warmWindowsRoot(root);
   return privateRead(join(root, client + '.token'));
 }
 export function socketPath(root: string): string {

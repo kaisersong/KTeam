@@ -1,3 +1,5 @@
+import {EnterpriseConnectorSettings} from './enterprise-connectors';
+import {NotificationSettings} from './notification-settings';
 import {settingsAutosave} from './autosave-api';
 import React,{useEffect,useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Monitor,Palette,RefreshCw,Search,Server,Settings,Shield,SlidersHorizontal,Sparkles,Users} from 'lucide-react';
@@ -25,11 +27,11 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  const [page,setPage]=useState<Page>(initialPage);
  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229&&!e.defaultPrevented){if(document.activeElement instanceof HTMLElement)document.activeElement.blur();onClose();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[onClose]);
  return <div className="settings-workspace"><aside className="settings-nav"><button className="settings-back" onClick={onClose}><ArrowLeft size={17}/>返回会话</button><h1>设置</h1><nav aria-label="设置分类">{sections.map(([id,label,Icon])=><button key={id} aria-current={page===id?'page':undefined} onClick={()=>setPage(id)}><Icon size={18}/><span>{label}</span></button>)}</nav><p>KTeam<span>你的本地 AI 工作空间</span></p></aside><div className="settings-content" key={page} tabIndex={-1}>
- {page==='general'&&<><ProfileSettings preferences={preferences} onSaved={onPreferences}/><PreferencesPanel kind="general" preferences={preferences} onSaved={onPreferences}/><Services/><Section title="你的 AI 团队" description="创建成员后，在 Bot 设置中选择模型、职责与工作目录。"><button className="secondary" onClick={onCreate}>创建 Bot / 接入 Agent<ArrowRight size={15}/></button></Section></>}
+ {page==='general'&&<><ProfileSettings preferences={preferences} onSaved={onPreferences}/><PreferencesPanel kind="general" preferences={preferences} onSaved={onPreferences}/><NotificationSettings/><Services/><Section title="你的 AI 团队" description="创建成员后，在 Bot 设置中选择模型、职责与工作目录。"><button className="secondary" onClick={onCreate}>创建 Bot / 接入 Agent<ArrowRight size={15}/></button></Section></>}
  {page==='services'&&<Services/>}
- {page==='models'&&<ModelsPanel onSaved={onModelsSaved}/>}
+ {page==='models'&&<ModelsPanel onSaved={onModelsSaved} onFinished={onClose}/>}
  {page==='decision'&&<DecisionPanel/>}
- {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/></>}
+ {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/><EnterpriseConnectorSettings/></>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='tools'&&<WebToolsSettings/>}
  {page==='mcp'&&<MCPSettings/>}{page==='cua'&&<CUASettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
@@ -57,10 +59,10 @@ function PreferencesPanel({kind,preferences,onSaved}:{kind:'general'|'appearance
 
 function Services(){const value=useResource('status');return <Section title="服务状态" description="连接状态来自正在运行的本地服务。">{value.loading?<Loading/>:value.error?<Failure error={value.error} retry={value.reload}/>:<div className="settings-list">{[['broker','消息服务 · Intent Broker'],['kswarm','成员服务 · KSwarm']].map(([key,label])=><div className="settings-row" key={key}><span>{label}</span><span className={'settings-badge '+(value.data?.upstream?.[key]?.available?'ready':'')}>{value.data?.upstream?.[key]?.available?'已连接':'未连接'}</span></div>)}</div>}<button className="secondary" disabled={value.loading} onClick={value.reload}><RefreshCw size={14}/>重新检查</button></Section>;}
 
-function ModelsPanel({onSaved}:{onSaved?:()=>Promise<void>}){return <Section title="模型设置" description="模型与凭证独立保存在 KTeam。添加、编辑和测试已保存的模型；支持导入已有 API 配置，或选择服务商添加模型。"><ModelSettingsPanel onSaved={onSaved}/></Section>;}
+function ModelsPanel({onSaved,onFinished}:{onSaved?:()=>Promise<void>;onFinished?:()=>void}){return <Section title="模型设置" description="模型与凭证独立保存在 KTeam。添加、编辑和测试已保存的模型；支持导入已有 API 配置，或选择服务商添加模型。"><ModelSettingsPanel onSaved={onSaved} onFinished={onFinished}/></Section>;}
 function DecisionPanel(){
  const state=useResource('assistantState'),[busy,setBusy]=useState(false),[error,setError]=useState('');
- return <><Section title="决策模型" description="使用内置的 System One 与本机 K-IM 判断能力，配置保存在 KTeam。"><DecisionModelSettings/></Section><Section title="小K主动跟进" description="关注团队进展，有重要交付、阻塞或待决策事项时在小K会话提醒。相同进展不重复提醒，每日最多 4 条。">{state.loading?<Loading/>:state.error?<Failure error={state.error} retry={state.reload}/>:<label className="settings-field"><span>关注团队工作<small>关闭后停止新提醒；不会中断已经授权的工作。</small></span><button role="switch" aria-label="小K主动跟进" aria-checked={state.data?.enabled!==false} disabled={busy} className={'settings-switch '+(state.data?.enabled!==false?'on':'')} onClick={()=>{setBusy(true);setError('');void api.setAssistantProactivity({enabled:state.data?.enabled===false}).then(state.setData).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}><span/></button></label>}{error&&<p className="settings-error" role="alert">{error}</p>}</Section></>;
+ return <><Section title="决策模型" description="按需启用辅助判断。无需部署 K-IM；关闭时仍使用现有模型完成分工和选人。"><DecisionModelSettings/></Section><Section title="小K主动跟进" description="关注团队进展，有重要交付、阻塞或待决策事项时在小K会话提醒。相同进展不重复提醒，每日最多 4 条。">{state.loading?<Loading/>:state.error?<Failure error={state.error} retry={state.reload}/>:<label className="settings-field"><span>关注团队工作<small>关闭后停止新提醒；不会中断已经授权的工作。</small></span><button role="switch" aria-label="小K主动跟进" aria-checked={state.data?.enabled!==false} disabled={busy} className={'settings-switch '+(state.data?.enabled!==false?'on':'')} onClick={()=>{setBusy(true);setError('');void api.setAssistantProactivity({enabled:state.data?.enabled===false}).then(state.setData).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}><span/></button></label>}{error&&<p className="settings-error" role="alert">{error}</p>}</Section></>;
 }
 
 function ResourcesPanel({kind,preferences,onSaved}:{kind:'skills';preferences?:AppPreferences;onSaved?:(value:AppPreferences)=>void}){
@@ -89,5 +91,5 @@ function AgentsPanel({bots,onBot,onCreate}:{bots:Bot[];onBot:(bot:Bot)=>void;onC
 function PermissionsPanel({bots}:{bots:Bot[]}){
  const [data,setData]=useState<any>(),[error,setError]=useState(''),[busy,setBusy]=useState('');
  const load=()=>{setError('');void api.toolPermissions().then(setData).catch(e=>setError(explain(e)));};useEffect(load,[]);
- return <Section title="已保存的授权" description="仅适用于所列成员、工作目录与工具。撤销后，下次调用重新确认。">{error&&<Failure error={error} retry={load}/>}<div className="settings-list">{!data?<Loading/>:!data.permissions.length?<p className="settings-description">暂无已保存的授权。</p>:data.permissions.map((grant:any)=><div className="settings-row" key={grant.id}><div><strong>{bots.find(bot=>bot.id===grant.botId)?.name??'已移除的成员'} · {grant.toolName}</strong><p className="settings-description">{grant.cwd}</p></div><button className="secondary" disabled={!!busy} onClick={()=>{setBusy(grant.id);setError('');void api.revokeToolPermission({id:grant.id}).then(setData).catch(e=>setError(explain(e))).finally(()=>setBusy(''));}}>撤销授权</button></div>)}</div></Section>;
+ return <Section title="已保存的授权" description="目录授权适用于所列成员的普通文件读写；系统与敏感文件仍单独确认。可随时撤销。">{error&&<Failure error={error} retry={load}/>}<div className="settings-list">{!data?<Loading/>:!data.permissions.length?<p className="settings-description">暂无已保存的授权。</p>:data.permissions.map((grant:any)=><div className="settings-row" key={grant.id}><div><strong>{bots.find(bot=>bot.id===grant.botId)?.name??'已移除的成员'} · {grant.kind==='directory'?'目录读写':grant.toolName}</strong><p className="settings-description">{grant.directory??grant.cwd}</p></div><button className="secondary" disabled={!!busy} onClick={()=>{setBusy(grant.id);setError('');void api.revokeToolPermission({id:grant.id}).then(setData).catch(e=>setError(explain(e))).finally(()=>setBusy(''));}}>撤销授权</button></div>)}</div></Section>;
 }

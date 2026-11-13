@@ -1,3 +1,4 @@
+import {creatorPluginRoot,bindCreatorPlugin} from '../../../../src/runtime/creator-plugins.js';
 import { homedir } from 'os';
 import { join } from 'path';
 import { createMcpRuntimeClient } from '../../ai/mcp/runtime/client.js';
@@ -47,11 +48,11 @@ export async function loadPlatformPluginRuntime(
   builtinCommands: string[],
 ): Promise<PlatformPluginRuntimeState> {
   const disableGlobalPlugins = process.env.KTEAM_DISABLE_GLOBAL_PLUGINS === '1';
-  const pluginDirs = [
+  const pluginDirs = [creatorPluginRoot(),
     ...(disableGlobalPlugins ? [] : [join((process.env.KTEAM_MODEL_CONFIG_DIR ?? join(process.env.KTEAM_DATA_DIR ?? join(homedir(), '.kteam'), 'runtime')), 'plugins')]),
     join(cwd, '.kteam', 'plugins'),
   ];
-  const plugins = await loadPlugins(pluginDirs, { builtinCommands });
+  const discovered = await loadPlugins(pluginDirs, { builtinCommands }); const plugins = discovered.filter((plugin,index)=>!["kai-report-creator","kai-slide-creator"].includes(plugin.name)||discovered.findIndex(p=>p.name===plugin.name)===index).map(bindCreatorPlugin);
 
   const rawHooks = plugins.flatMap((plugin) => plugin.hooks);
   const hookConfigs: HookConfigOrCommand[] = rawHooks.map((h) => {
