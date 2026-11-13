@@ -45,6 +45,7 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 - **Files, images and Skills.** Select, drop or paste files and images. Use `/` to choose a Skill in a Bot direct chat; groups direct you to that chat. Successful file receipts survive interruptions, and the file shortcut appears only when a file was actually generated.
 - **Durable work and permissions.** Questions and approvals can resume the original task after a host restart. Revocable directory grants cover ordinary file access; sensitive files still need separate confirmation. Review member Skills, memory and tool scopes.
 - **Desktop collaboration.** Conversation previews, rename/delete/unread actions, reply and reaction shortcuts, avatar presets, scheduled work, work notifications, bounded history and verified original tool output.
+- **Complete settings.** Manage models by provider, discover model IDs, import MCP configuration, enable tools and edit their descriptions, select voice profiles, and browse memory by member and conversation.
 - **Connectors and computer access.** Bundled Yunzhijia CLI and enterprise CLI connections; Mac CUA driver installation and system permission shortcuts. Email supports IMAP/SMTP; Gmail/Outlook OAuth is deferred to 0.5.1.
 - **A2UI and Windows.** A2UI accepts `"1.0"` and numeric `1`, with working surface deletion. Windows private hosts, native helpers and local Agent detection are included in builds. Windows installers remain unsigned.
 
@@ -93,7 +94,7 @@ Intel Macs are not supported yet. If you already have 0.3.x, KTeam updates to 0.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway". Signing will come in a later 0.4.x release.
 
-Known limitation on Windows: local agents such as Codex can't yet be linked as collaborators (they are still detected). This is planned for 0.5.
+Windows detects local Agents through native executable and npm shim paths. Use the connection test before linking an installed CLI; its supported protocol and login determine availability.
 
 Optional check: put the release's `SHA256SUMS` in the same folder as the installer and run `shasum -a 256 -c SHA256SUMS`. On Windows, run `Get-FileHash <file> -Algorithm SHA256` in PowerShell and compare the value with `SHA256SUMS`.
 
