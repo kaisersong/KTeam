@@ -24,6 +24,7 @@ export interface KTeamAPI {
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
  openGeneratedFile(input:{roomId:string;toolCallId:string}):Promise<any>;
  conversationAction(input:any):Promise<any>;
+ mailConnectors:()=>Promise<any>;controlMailConnector:(input:unknown)=>Promise<any>;
  enterpriseConnectors():Promise<any>;controlEnterpriseConnector(input:any):Promise<any>;
  toolPermissions():Promise<any>;revokeToolPermission(input:{id:string}):Promise<any>;
  discoverModels(input:any):Promise<any>;removeModel(input:any):Promise<any>;importMcpServers(input:any):Promise<any>;

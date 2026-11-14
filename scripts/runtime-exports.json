@@ -126,7 +126,8 @@
   ],
   "src/utils/system-credentials.ts": [
     "getCredentialStore",
-    "setCredentialStore"
+    "setCredentialStore",
+    "systemCredentialBackend"
   ],
   "src/ai/providers/normalize.ts": [
     "normalizeConfig"

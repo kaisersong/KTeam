@@ -1,3 +1,4 @@
+import {MailConnectorSettings} from './mail-connectors';
 import {ToolsSettings} from './tool-manager';
 import {MCPSettings} from './mcp-settings';
 import {VoiceSettings} from './voice-settings';
@@ -34,7 +35,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='services'&&<Services/>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved} onFinished={onClose}/>}
  {page==='decision'&&<DecisionPanel/>}
- {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailSettings/><EnterpriseConnectorSettings/></>}
+ {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailConnectorSettings/><MailSettings/><EnterpriseConnectorSettings/></>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='tools'&&<ToolsSettings/>}
  {page==='mcp'&&<MCPSettings/>}{page==='cua'&&<CUASettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
