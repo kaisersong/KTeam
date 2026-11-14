@@ -1,3 +1,4 @@
+import {toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
 import React,{useState}from'react';
@@ -5,7 +6,16 @@ import{Terminal,Check,ShieldCheck,X}from'lucide-react';
 import{api,explain,type Bot}from'./api';
 export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'deny')=>Promise<void>}){
  const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision);}catch(e){setError(explain(e));}finally{setBusy(false);}};
- return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认"><h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3><p>{approval.directory?'允许此成员在以下目录及子目录读取、写入和编辑普通文件，后续文件无需重复确认。':'调用 '+approval.toolName}</p>{approval.directory&&<p className="directory-permission-path">{approval.directory}</p>}{approval.directory&&approval.pendingOperationCount>1&&<small>此目录有 {approval.pendingOperationCount} 项待处理操作，授权后一起继续。</small>}<pre>{approval.display}</pre>{!approval.directory&&approval.canAlways&&<small>授权范围：此成员 · {approval.cwd} · {approval.toolName}</small>}{error&&<p className="flow-error" role="alert">{error}</p>}<div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className="secondary" disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>{approval.directory?'仅允许此文件':'允许本次'}</button>{approval.directory?<button className="primary" disabled={busy} onClick={()=>void decide('allow_directory')}>允许此目录读写</button>:approval.canAlways&&<button className="primary" disabled={busy} onClick={()=>void decide('allow_always')}>始终允许</button>}</div></section>;
+ const description=toolApprovalSummary(approval.toolName,approval.display);
+ return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
+  <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
+  <p>{description.summary}</p>{description.target&&<small>操作对象：{description.target}</small>}
+  {approval.directory&&<><small>允许本次只处理当前文件；允许目录读写后，此成员可在该目录及子目录读取、保存和修改文件。</small><p className="directory-permission-path">{approval.directory}</p>{approval.pendingOperationCount>1&&<small>此目录还有 {approval.pendingOperationCount-1} 项待处理操作，允许目录读写后一起继续。</small>}</>}
+  {!approval.directory&&approval.canAlways&&<small>{approval.toolName==='bash'?'长期允许将覆盖此成员在该工作目录下的所有终端命令。':'长期允许将覆盖此成员在该工作目录下的同类操作。'}</small>}
+  <details className="operation-details"><summary>技术详情</summary><pre>{approval.display}</pre>{approval.cwd&&<small>工作目录：{approval.cwd}</small>}<small>工具：{approval.toolName}</small></details>
+  {error&&<p className="flow-error" role="alert">{error}</p>}
+  <div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className="primary" disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>{approval.directory?'仅允许本次文件操作':'允许本次'}</button>{approval.directory?<button className="secondary" disabled={busy} onClick={()=>void decide('allow_directory')}>允许此目录读写</button>:approval.canAlways&&<button className="secondary" disabled={busy} onClick={()=>void decide('allow_always')}>长期允许此类操作</button>}</div>
+ </section>;
 }
 export function toolActivity(events:any[],bots:Bot[]){
  const descriptions:Record<string,string>={read:'正在查阅本机资料',glob:'正在定位资料',grep:'正在检索资料',bash:'正在检查本机资料',web_fetch:'正在核对网络资料',web_search:'正在查找公开来源',update_shared_context:'正在整理共享纪要',ask_user:'等待你在私聊中确认'};

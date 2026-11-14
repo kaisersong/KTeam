@@ -4,7 +4,7 @@ import {realpathSync} from 'node:fs';
 import {TeamStore} from './team-store.js';
 import {KTeamError,record,fields,text} from '../errors.js';
 export type PermissionScope={botId:string;cwd:string;bindingRevision?:number};
-export function persistentToolEligible(core:any,name:string,input:Record<string,unknown>){return !sensitiveFileInvocation(core,name,input,String(input.workdir??process.cwd()))&&!['send_mail','install_skill','uninstall_skill'].includes(name)&&!core.isSensitiveToolInvocation(name,input)&&!(name==='bash'&&core.requiresAlwaysCommandConfirmation(String(input.command??'')));}
+export function persistentToolEligible(core:any,name:string,input:Record<string,unknown>){return !sensitiveFileInvocation(core,name,input,String(input.workdir??process.cwd()))&&!['send_mail','send_connected_mail','install_skill','uninstall_skill'].includes(name)&&!core.isSensitiveToolInvocation(name,input)&&!(name==='bash'&&core.requiresAlwaysCommandConfirmation(String(input.command??'')));}
 /** Human grants only: creation is private to the live approval decision path. */
 export class ToolPermissions{
  constructor(private store:TeamStore){}

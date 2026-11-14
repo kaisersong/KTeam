@@ -170,3 +170,20 @@ test('closing a failed checkpoint preserves its unknown tool batch instead of re
   await assert.rejects(h.prepare!(adapter,'fixture','must not replay',[]),/tool_batch_execution_unknown/);
  }finally{await owner?.close();f.close();}
 });
+
+test('retiring an exclusively owned stale waiting batch preserves checkpoint results across reopen without executing old tools',async()=>{
+ const f=await fixture();let owner:any;try{
+  owner=await f.open();
+  const calls=[{type:'tool_use',id:'completed-call',name:'read',input:{}},{type:'tool_use',id:'pending-call',name:'write',input:{}}];
+  owner.session.appendAssistantBlocks(calls);
+  owner.session.setToolBatch({version:1,id:'batch_'+'a'.repeat(32),ownerId:'old-owner',state:'waiting_approval',approvalId:'tool-approval:fixture',calls,results:[{type:'tool_result',tool_use_id:'completed-call',content:'CHECKPOINT_RESULT_93'}]});
+  await owner.close();owner=undefined;
+  let checks=0;
+  const open=async(allow:boolean)=>{const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{},toolApprovalPort:{ownerId:'new-owner',prepare:async()=>{throw Error('must_not_execute');},retireStaleBatch:async()=>{checks++;return allow;}}});return h.prepare!({},'fixture','verify',[]);};
+  await assert.rejects(open(false),/harness_session_busy/);
+  owner=await open(true);assert.equal(owner.session.getToolBatch(),undefined);
+  const messages=JSON.stringify(owner.session.getMessages());assert.match(messages,/CHECKPOINT_RESULT_93/);assert.match(messages,/run-interrupted/);
+  assert.equal(owner.session.getMessages().flatMap((m:any)=>m.content).filter((b:any)=>b.type==='tool_result'&&b.tool_use_id==='completed-call').length,1);
+  await owner.close();owner=await open(true);assert.equal(checks,2);assert.match(JSON.stringify(owner.session.getMessages()),/CHECKPOINT_RESULT_93/);
+ }finally{await owner?.close();f.close();}
+});

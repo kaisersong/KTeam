@@ -1,3 +1,4 @@
+import {approvalSystemNotice} from '../src/protocol/system-notice.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {resolve,join} from 'node:path';
@@ -124,3 +125,5 @@ test('production contact registry reconnects preflight, receives the target repl
   assert.doesNotMatch(denied,/"sent":true/);assert.equal(targetTurns,1);assert.equal(f.store.operationsWithPrefix('bot-contact:').length,1);
  }finally{await owner?.close();chats.close();await automation?.close();for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:previous.config,KTEAM_DISABLE_GLOBAL_PLUGINS:previous.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;await f.close();}
 });
+
+test('group approval contact publishes one compact system notice per original work and retains source identity',async()=>{const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{const scope=await admission(f,f.a.bot.id),roomId=await chats.notifyApproval(scope);assert.equal(await chats.notifyApproval(scope),roomId);const rows=(await new CollaborationService(f.upstream).messages(roomId,0,100)).messages.filter((message:any)=>message.sourceRef?.purpose==='approval');assert.equal(rows.length,1);const notice=rows[0]!;assert.equal(notice.text,'群聊操作确认，请查看审批卡片。');assert.deepEqual(approvalSystemNotice(notice),{kind:'approval_required',sourceRoomId:f.roomId});assert.equal(notice.sourceRef?.verifiedExecution,false);}finally{chats.close();await f.close();}});
