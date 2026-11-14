@@ -125,3 +125,30 @@ for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stop
   assert.equal(store.jobs(roomId)[0].state,'stopped');
  }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
+
+for(const target of ['b','human','gone'])test('structured group mention targets '+target+' without broadcast or a routing model',async()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-receipt-')));
+ const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
+ const broker=createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});
+ const roomId=broker.room.createRoom({title:'receipt',memberAgentIds:['a','b']},user).room.roomId;
+ broker.aimp.configure({roomId,expectedRevision:0,goal:'draft',allowedActions:['discussion'],maxRuns:6},user);
+ broker.room.sendRoomMessage({roomId,threadId:'thread',kind:'text',text:'@CEO 草稿',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:'origin',sourceRef:{kind:'aimp_l0',envelope:{mentions:[target==='human'?'human://kteam.local/user.local':'agent://kteam.local/'+target]}}},user);
+ const origin=broker.room.getCollaborationRoom({roomId},user).messages[0];
+ const store=new TeamStore(root);store.configure({roomId,goal:'draft',kind:'group',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
+ store.bind({botId:'a',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.bind({botId:'b',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.enqueue('job',roomId,origin.messageId);
+ let inferences=0;
+ const upstream={...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'},{id:'b',name:'CEO',profile:{participation:'mentions'}}]}),aimp:async(_room:string,command:string,input:any={})=>{
+  const ctx=input.logicalAgentId?{...user,requestSource:'agent',actor:{kind:'agent',logicalAgentId:input.logicalAgentId},allowedLogicalAgentIds:[input.logicalAgentId]}:user;
+  const method=({session:'getSession',tasks:'listTasks',event:'submit','agent-event':'submit','begin-execution':'beginExecution','execution-check':'checkExecution',chat:'chat','verify-delivery':'verifyDelivery'} as Record<string,string>)[command];assert.ok(method,'unexpected command '+command);
+  const result=['session','tasks'].includes(command)?broker.aimp[method!](roomId,user):broker.aimp[method!]({...input,roomId},ctx);
+  if(!result.ok)throw new KTeamError(result.code);
+  return result;
+ }} as unknown as Upstreams;
+ const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();await input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
+ try{
+  await automation.tick();const job=store.jobs()[0];
+  assert.equal(inferences,target==='b'?1:0,JSON.stringify(job));
+  if(target==='b'){assert.equal(job.state,'delivered');assert.deepEqual(job.members,['b']);const replies=broker.room.getCollaborationRoom({roomId},user).messages.filter((m:any)=>m.sender.kind==='agent');assert.equal(replies.length,1);assert.equal(replies[0].sender.logicalAgentId,'b');await automation.tick();assert.equal(inferences,1);}
+  else assert.equal(job.state,'noop');
+ }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
+});

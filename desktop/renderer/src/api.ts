@@ -62,7 +62,7 @@ export interface KTeamAPI {
  status():Promise<any>;bots():Promise<{bots:Bot[]}>;teams():Promise<{rooms:Room[]}>;models():Promise<any>;runtimes():Promise<any>;
  createBot(input:{name:string;modelId:string;requestId:string;expectedFingerprint?:string}):Promise<any>;
  createTeam(input:{title:string;goal?:string;memberAgentIds:string[];requestId:string}):Promise<any>;
- send(input:{roomId:string;text:string;id:string;replyToMessageId?:string}):Promise<any>;
+ send(input:{roomId:string;text:string;id:string;replyToMessageId?:string;mentions?:string[]}):Promise<any>;
  messages(input:{roomId:string;after?:number;before?:number;tail?:boolean;limit?:number}):Promise<{messages:Message[];hasMoreBefore?:boolean;nextSequence?:number;previousSequence?:number}>;
  settings(roomId:string):Promise<any>;work(roomId:string):Promise<any>;pause(roomId:string):Promise<any>;resume(roomId:string):Promise<any>;
  seen(input:{roomId:string;sequences:number[];responseScope?:'requested'}):Promise<any>;review(input:{roomId:string;taskRef:string;decision:'pass'|'rework'}):Promise<any>;
