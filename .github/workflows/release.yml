@@ -137,8 +137,10 @@ jobs:
           cache: npm
           cache-dependency-path: kteam/package-lock.json
       - run: npm ci
-      - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
-        run: node node_modules/electron/install.js
+      - name: Install and verify pinned Electron / Node 24 runtime
+        run: |
+          node node_modules/electron/install.js
+          node scripts/verify-electron-runtime.mjs
       - run: npm run build:desktop
       - name: Write Apple notarization API key
         env:
@@ -400,8 +402,10 @@ jobs:
           cache: npm
           cache-dependency-path: kteam/package-lock.json
       - run: npm ci
-      - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
-        run: node node_modules/electron/install.js
+      - name: Install and verify pinned Electron / Node 24 runtime
+        run: |
+          node node_modules/electron/install.js
+          node scripts/verify-electron-runtime.mjs
       - run: npm run build:desktop
       - name: Package unsigned Windows NSIS installer and portable exe
         # Targets, x64 and artifact names come from electron-builder.yml (win/nsis/portable).

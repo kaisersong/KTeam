@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import electron from 'electron';
+const {version}=JSON.parse(readFileSync(new URL('../node_modules/electron/package.json',import.meta.url),'utf8'));
+const builder=readFileSync(new URL('../electron-builder.yml',import.meta.url),'utf8');
+assert.equal(/^electronVersion:\s*(\S+)$/m.exec(builder)?.[1],version,'Electron package and packaging pins must match');
+const versions=JSON.parse(execFileSync(electron,['-p','JSON.stringify(process.versions)'],{encoding:'utf8',timeout:30000,env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}}));
+assert.equal(versions.electron,version,'Installed Electron binary must match the package pin');
+assert.equal(versions.node.split('.')[0],'24','Desktop runtime requires Node 24');
+console.log(JSON.stringify({electron:versions.electron,node:versions.node,chrome:versions.chrome,modules:versions.modules}));

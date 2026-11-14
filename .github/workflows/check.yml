@@ -52,9 +52,11 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm ci
         working-directory: kteam
-      - name: Install Electron distribution (Electron 42 no longer downloads it on postinstall)
+      - name: Install and verify pinned Electron / Node 24 runtime
         if: runner.os == 'macOS' || runner.os == 'Windows'
-        run: node node_modules/electron/install.js
+        run: |
+          node node_modules/electron/install.js
+          node scripts/verify-electron-runtime.mjs
         working-directory: kteam
       - name: Verify private Windows host transport and independent CLI lifecycle
         if: runner.os == 'Windows'
