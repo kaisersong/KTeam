@@ -63,7 +63,7 @@ export async function desktopGeneration(options:Options){
    if(!inspect(member))continue;
    if(!receipt.intents.includes(member.pid)){
     receipt.intents.push(member.pid);atomic(receiptFile,receipt);
-    try{if(role==='host')await options.request('/v1/host/stop',{});else process.kill(member.pid,'SIGTERM');}
+    try{if(inspect(member))process.kill(member.pid,'SIGTERM');}
     catch(e){if(inspect(member)&&!disconnected(e)&&(e as any).code!=='ESRCH')throw e;}
    }
    await waitGone(member);
