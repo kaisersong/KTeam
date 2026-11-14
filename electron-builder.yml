@@ -9,6 +9,7 @@ files:
   - package.json
   - LICENSE
   - NOTICE
+  - vendor/splash/THIRD-PARTY-NOTICES.txt
 extraResources:
   - from: desktop/yzj-cli/runner.cjs
     to: yzj-cli/runner.cjs
@@ -24,6 +25,7 @@ extraResources:
     to: app-update.yml
 asar: true
 asarUnpack:
+  - build/splash-runtime.cjs
   - build/plugins/**
   - build/host.cjs
   - build/native-child.cjs
