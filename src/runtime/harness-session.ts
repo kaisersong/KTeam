@@ -39,9 +39,18 @@ export async function openHarnessSession(input:{core:any;toolApprovalPort?:any;t
   session=new core.AgentSessionState();
   session.restoreSnapshot(previous??{...session.exportSnapshot(),sessionId,cwd,lineage:[sessionId]});
   const pendingBatch=session.getToolBatch();
-  if(pendingBatch&&(!input.toolApprovalPort||pendingBatch.ownerId!==input.toolApprovalPort.ownerId))throw new KTeamError('harness_session_busy',409);
-  if(pendingBatch&&pendingBatch.state!=='waiting_approval')throw new KTeamError('tool_batch_execution_unknown',409);
-  session.repairIncompleteToolCalls({preserveToolBatch:!!pendingBatch});
+  if(pendingBatch&&(!input.toolApprovalPort||pendingBatch.ownerId!==input.toolApprovalPort.ownerId)){
+   if(pendingBatch.state!=='waiting_approval')throw new KTeamError('tool_batch_execution_unknown',409);
+   if(!input.toolApprovalPort?.retireStaleBatch||!await input.toolApprovalPort.retireStaleBatch(pendingBatch))throw new KTeamError('harness_session_busy',409);
+   // Checkpointed results have not necessarily reached message history yet.
+   const seen=new Set(session.getMessages().flatMap((message:any)=>message.content.filter((block:any)=>block.type==='tool_result').map((block:any)=>block.tool_use_id)));
+   const missing:any[]=[];let include=false;
+   for(const block of pendingBatch.results){if(block.type==='tool_result')include=!seen.has(block.tool_use_id);if(include)missing.push(block);}
+   if(missing.length)session.appendUserToolResults(missing);
+   session.repairIncompleteToolCalls();
+  }
+  if(session.getToolBatch()&&pendingBatch.state!=='waiting_approval')throw new KTeamError('tool_batch_execution_unknown',409);
+  session.repairIncompleteToolCalls({preserveToolBatch:!!session.getToolBatch()});
   const promptMemory={search:async()=>{const relevant=input.query?await memory.listRelevant({cwd,query:input.query}):[];const recent=memory.search?await memory.search('',6):await memory.listRelevant({cwd,query:''});return [...new Map([...relevant,...recent].map((r:any)=>[r.id,r])).values()].slice(0,integration.memory.retrievalLimit);},listRelevant:memory.listRelevant.bind(memory)};
   const builder=new core.PromptBuilder({memoryStore:promptMemory,harnessMemoryStore:{listActive:()=>[]}});
   const buildPrompt=async(promptCwd:string)=>builder.build({channel:'chat',enterpriseId:null,devApp:null,cwd:promptCwd,budget:24000,skills:input.catalog.list(),agents:platform.customAgents,pluginCommands:platform.pluginRuntime.commandDeclarations,autoContext:await core.loadAutoContext({cwd:promptCwd}),permissionMode:'default'});
