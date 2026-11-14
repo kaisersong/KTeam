@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
+import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {privateTempDir} from './helpers/private-temp.js';
 import {MailConnectors} from '../src/service/mail-connectors.js';
@@ -12,7 +13,8 @@ test('connected mail shares one account owner, encrypts secrets, fences revision
  try{const service=await (first as any).get();assert.equal(service,await (second as any).get());const store=service.deps.store,id='a'.repeat(32),secret='FICTIONAL_MAIL_PASSWORD';store.put({id,provider:'qq',email:'fixture@example.invalid',host:'imap.qq.com',port:993,allowSend:false,revision:1,auth:{kind:'password',password:secret}},0,'user');const view=await second.view();assert.equal(view.accounts[0].id,id);assert(!JSON.stringify(view).includes(secret));const encrypted=readFileSync(join(root,'mail-accounts/accounts.enc'));assert.equal(encrypted.subarray(0,4).toString(),'KTM1');assert(!encrypted.includes(Buffer.from(secret)));
  await assert.rejects(first.control({action:'access',value:{id,expectedRevision:2,allowSend:true}}),/mail_stale_account/);await assert.rejects(first.control({action:'oauth',value:{provider:'gmail',clientId:'fixture',expectedRevision:0,allowSend:false},requestSource:'agent'}),/unknown_field/);
  const tools=await first.tools(),send=tools.find((t:any)=>t.definition.name==='send_connected_mail');assert(send);assert.equal(send.permission,'write');assert(tools.some((t:any)=>t.definition.name==='mail_search'));await assert.rejects(send.execute({accountId:id,requestId:'00000000-0000-4000-8000-000000000001',to:['other@example.invalid'],subject:'fixture',text:'fixture'}),/mail_send_denied/);
- await first.close();assert.equal((await second.view()).accounts.length,1);await second.control({action:'disconnect',value:{id,expectedRevision:1}});assert.equal((await second.view()).accounts.length,0);
+ const sending={accountId:id,requestId:'00000000-0000-4000-8000-000000000002',to:['other@example.invalid'],subject:'fixture',text:'fixture'},payloadHash=createHash('sha256').update(JSON.stringify([id,sending.to,sending.subject,sending.text])).digest('hex');const account=store.get(id);store.put({...account,allowSend:true,revision:2},1,'user');store.beginSend({requestId:sending.requestId,accountId:id,revision:2,payloadHash,status:'pending',createdAt:Date.now()},'user');store.finishSend(sending.requestId,payloadHash,'unknown','user');await assert.rejects(send.execute(sending),/mail_send_unknown/);await assert.rejects(send.execute({...sending,requestId:'00000000-0000-4000-8000-000000000003'}),/mail_send_unknown/);
+ await first.close();assert.equal((await second.view()).accounts.length,1);await second.control({action:'disconnect',value:{id,expectedRevision:2}});assert.equal((await second.view()).accounts.length,0);
  }finally{await first.close();await second.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}
 });
 
