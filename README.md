@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.5.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). 0.4 adds Windows (x64) alongside macOS on Apple silicon (arm64), with auto-update on both. See [Version History](#version-history) for changes.
+**Current version: 0.6.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -37,6 +37,15 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 **KTeam does not yet claim full AIMP v3.1 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.1 specification remains the reference for incremental implementation.
 
 ---
+
+## What's in 0.6
+
+- **Electron 45 and Node 24.** Updated desktop runtime, including asynchronous file and image clipboard support.
+- **Targeted group replies.** Type `@` to search and select a group member. Stable member identities travel with text and attachment messages, so the selected Agent responds even when display names overlap.
+- **Clearer approvals.** Human-readable summaries, collapsed technical details and lightweight system notices. Terminal grants apply to the actual command directory and survive recovery; deletion, reset and outbound operations still require separate confirmation.
+- **Reliable continuation.** Verified stale approval waits and interrupted scheduled work can continue without replaying completed or unknown operations.
+- **Skills and local spaces.** Left-aligned `/` Skill choices in direct chats. The hidden `/space` command opens a loopback-only workbench for local pages.
+- **Mail connections.** Gmail/Outlook OAuth joins QQ, 163 and generic IMAP/SMTP. OAuth requires your own client ID; credentials are encrypted and sending requires approval. Live provider account acceptance remains separate from the verified local callback and TLS flows.
 
 ## What's in 0.5
 
@@ -85,14 +94,14 @@ Open [KTeam Releases](https://github.com/kaisersong/KTeam/releases/latest) and d
 2. Open the dmg and drag `KTeam.app` into Applications.
 3. The first time you open it, macOS says it was downloaded from the internet; click "Open".
 
-Intel Macs are not supported yet. If you already have 0.3.x, KTeam updates to 0.4 automatically.
+Intel Macs are not supported yet. Existing Mac installations can update to the latest official release from KTeam's own update channel.
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.5.0.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.5.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.6.0.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.6.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
-The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway". Signing will come in a later 0.4.x release.
+The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
 Windows detects local Agents through native executable and npm shim paths. Use the connection test before linking an installed CLI; its supported protocol and login determine availability.
 
@@ -143,6 +152,10 @@ Never put credentials in command arguments or commit them to Git.
 ---
 
 ## Version History
+
+### v0.6.0
+
+Electron 45.3.2 / Node 24.22.2, identity-based group mentions, lightweight approval notices, readable approval cards, effective-directory terminal grants, scheduled-work recovery, local `/space` pages and mail OAuth. See the [0.6.0 release](https://github.com/kaisersong/KTeam/releases/tag/v0.6.0).
 
 ### v0.5.0
 

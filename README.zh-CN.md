@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.5.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。0.4 开始支持 Windows（x64），加上 macOS Apple 芯片（arm64），两个平台都带自动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.6.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -37,6 +37,15 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 **KTeam 目前不声明完整兼容 AIMP v3.1，也不声明通过 Core-L2 认证。** 生产身份根、收据激活、完整的状态迁移和执行副作用登记等还没有完成。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现继续按 v3.1 规范逐条核对。
 
 ---
+
+## 0.6 有什么
+
+- **Electron 45 与 Node 24。** 升级桌面运行时，兼容异步文件和图片剪贴板接口。
+- **群聊定向回复。** 输入 `@` 筛选并选择群成员，文本和附件消息都会携带成员身份；即使显示名相似，也由选中的 Agent 针对性回复。
+- **更易读的审批。** 默认展示操作说明，技术参数折叠，群聊审批联系改为轻量系统提示。终端长期授权按实际命令目录保存，恢复后仍可复用；删除、重置和外发仍需单独确认。
+- **可靠接续。** 从已核验的失效审批等待或定时触发记录继续工作，不重放已完成或结果未知的操作。
+- **技能与本机空间。** 单聊 `/` 技能列表左对齐；隐藏 `/space` 命令可打开仅本机访问的网页工作台。
+- **邮箱连接。** 增加 Gmail/Outlook OAuth，保留 QQ、163 和通用 IMAP/SMTP。OAuth 使用用户自己的 Client ID，凭据加密保存，发送仍需审批；真实服务商账号验收与已验证的本地回调、TLS 流程分开记录。
 
 ## 0.5 有什么
 
@@ -85,14 +94,14 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 2. 打开 dmg，把 `KTeam.app` 拖进「应用程序」。
 3. 第一次打开时，macOS 会提示这是从互联网下载的应用，点「打开」即可。
 
-Intel Mac 暂不支持。已经装了 0.3.x 的 Mac 会自动更新到 0.4。
+Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠道升级到最新正式版本。
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.5.0.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.5.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.6.0.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.6.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
-Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。签名会在后续 0.4.x 补上。
+Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
 Windows 通过原生可执行文件与 npm shim 路径检测本机 Agent。接入已安装 CLI 前请先运行连接测试，可用性取决于该 CLI 的协议和登录状态。
 
@@ -143,6 +152,10 @@ node dist/src/cli.js teams
 ---
 
 ## 版本日志
+
+### v0.6.0
+
+Electron 45.3.2 / Node 24.22.2、群聊身份点名、轻量审批提示、易读审批卡片、实际目录终端授权、例行任务恢复、本机 `/space` 网页与邮箱 OAuth。见 [0.6.0 发布页](https://github.com/kaisersong/KTeam/releases/tag/v0.6.0)。
 
 ### v0.5.0
 
