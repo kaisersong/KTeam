@@ -29,3 +29,5 @@ if(key==='win32-x64'){
  writeFileSync(join(root,'path.txt'),binary);
 }
 console.log(JSON.stringify({electronVersion:version,binaryReady:true}));
+
+execFileSync(process.execPath,['scripts/verify-electron-runtime.mjs'],{stdio:'inherit'});
