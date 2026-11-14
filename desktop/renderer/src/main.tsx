@@ -1,3 +1,4 @@
+import {currentRecoveryJob} from '../../../src/protocol/work-recovery-view';
 import {SkillCommands} from './skill-commands';
 import {parseSkillCommand,skillCommandNeedsList} from '../../../src/protocol/skill-command';
 import {ConversationMessage} from './work-record-preview';
@@ -192,7 +193,7 @@ function App(){
  const recoveryIntent=useRef(new Map<string,string>());
  const continueWork=()=>{if(!roomId||!workRecovery?.canContinue)return;const target=roomId,jobId=workRecovery.jobId,key=target+':'+jobId,id=recoveryIntent.current.get(key)??crypto.randomUUID();recoveryIntent.current.set(key,id);void act(async()=>{await api.recoverWork({roomId:target,jobId,requestId:id});recoveryIntent.current.delete(key);});};
  const running=jobs.find(job=>['routing','running','stopping'].includes(job.state)),roomBots=bots.filter(bot=>memberIds.includes(bot.id));
- const recoveryJob=jobs.find(job=>job.id===workRecovery?.jobId)??jobs.find(job=>['blocked','unknown','stopped'].includes(job.state));
+ const recoveryJob=currentRecoveryJob(roomId,jobs,workRecovery);
  const privateWaits=[...(inbox.questions??[]),...(inbox.approvals??[])].filter((item:any)=>(item.sourceRoomId===roomId||item.rootSourceRoomId===roomId)&&item.roomId!==roomId);
  const activity=running?toolActivity(running.toolTrace??[],bots):undefined;
  const accept=(proposal:any)=>{const generation=navigation.current;void act(async()=>{const result=await api.acceptProposal({roomId:proposal.roomId,proposalId:proposal.id,expectedHash:proposal.hash});if(navigation.current===generation)select(result.roomId);});};
