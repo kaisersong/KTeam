@@ -9,7 +9,7 @@ export function splashEnvironment(env:NodeJS.ProcessEnv){
 function validateURL(value:unknown){
  if(typeof value!=='string')throw Error('splash_invalid_ready');
  const u=new URL(value);
- if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||!u.port||u.pathname!=='/splash'||u.search||u.username||u.password||!/^#token=[A-Za-z0-9_-]{43}$/.test(u.hash))throw Error('splash_invalid_ready');
+ if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||!u.port||u.pathname!=='/space'||u.search||u.username||u.password||!/^#token=[A-Za-z0-9_-]{43}$/.test(u.hash))throw Error('splash_invalid_ready');
  return u;
 }
 export class SplashService {

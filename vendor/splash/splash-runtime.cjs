@@ -9090,7 +9090,7 @@ var SpaceService = class {
 var import_node_http = __toESM(require("node:http"), 1);
 
 // src/workspace.mjs
-var workspaceHTML = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Splash \xB7 \u521B\u4F5C\u7A7A\u95F4</title><style>
+var workspaceHTML = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Space \xB7 \u521B\u4F5C\u7A7A\u95F4</title><style>
 body{margin:0;background:#f5f7fa;color:#172536;font:15px system-ui}main{max-width:1040px;margin:48px auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center}h1{margin:0;font-size:28px}.badge{color:#8b5100;background:#fff2d9;padding:6px 12px;border-radius:20px}section{background:white;border:1px solid #dce3eb;border-radius:12px;padding:24px;margin:20px 0}label{display:block;margin:12px 0}input,select,button{font:inherit;padding:10px;border:1px solid #b8c4d2;border-radius:6px}button{cursor:pointer;background:#173c63;color:white;margin:4px}button:disabled{opacity:.45;cursor:default}.muted{color:#637184;line-height:1.7}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}#message{white-space:pre-wrap;line-height:1.7}#pending{border-color:#cd9e4e}ul{line-height:1.9}a{color:#15559b}details{margin:12px 0}@media(max-width:600px){main{margin:8px auto}header{align-items:flex-start;gap:12px}section{padding:16px}input,select{max-width:100%}}
 </style><main><header><div><h1>\u521B\u4F5C\u7A7A\u95F4</h1><p class="muted">\u4ECE\u7F51\u9875\u76EE\u5F55\u5230\u53EF\u9884\u89C8\u7684\u4F5C\u54C1\u3002</p></div><span class="badge">\u672C\u673A\u9A8C\u8BC1 \xB7 \u975E\u516C\u7F51\u5206\u4EAB</span></header>
 <p class="muted">\u5F53\u524D\u53EA\u5728\u8FD9\u53F0\u7535\u8111\u63D0\u4F9B\u9884\u89C8\u3002CloudBase \u7BA1\u7406\u5BC6\u94A5\u4E0D\u4F1A\u4EA4\u7ED9\u9875\u9762\uFF1B\u6B63\u5F0F\u516C\u7F51\u53D1\u5E03\u4ECD\u9700\u5B8C\u6210\u8D26\u53F7\u3001\u57DF\u540D\u548C\u8D39\u7528\u9632\u62A4\u914D\u7F6E\u3002</p>
@@ -9100,14 +9100,14 @@ body{margin:0;background:#f5f7fa;color:#172536;font:15px system-ui}main{max-widt
 <div class="row"><button id="upload">\u4E0A\u4F20\u4E3A\u8349\u7A3F</button><button id="publish">\u53D1\u5E03\u5F53\u524D\u8349\u7A3F</button><button id="preview">\u6253\u5F00\u672C\u673A\u9884\u89C8</button><button id="copy">\u590D\u5236\u672C\u673A\u94FE\u63A5</button><button id="unpublish">\u4E0B\u67B6</button></div>
 <label>\u56DE\u6EDA\u5230\u5DF2\u53D1\u5E03\u7248\u672C<select id="releases" aria-label="\u56DE\u6EDA\u7248\u672C"></select></label><button id="rollback">\u56DE\u6EDA</button><p id="quota" class="muted"></p></section>
 <section id="pending" hidden><h2>\u6709\u4E00\u4E2A\u64CD\u4F5C\u9700\u8981\u6838\u5BF9</h2><p id="pendingText"></p><div class="row"><button id="reconcile">\u53EA\u8BFB\u6838\u5BF9</button><button id="retry">\u91CD\u8BD5\u539F\u8BF7\u6C42</button><button id="abandon">\u653E\u5F03\u8FD9\u6761\u5F85\u6838\u5BF9\u8BB0\u5F55</button></div><p class="muted">\u6838\u5BF9\u4E0D\u4F1A\u81EA\u52A8\u91CD\u653E\u5199\u64CD\u4F5C\u3002\u653E\u5F03\u8BB0\u5F55\u4E0D\u4F1A\u64A4\u9500\u5DF2\u7ECF\u53D1\u751F\u7684\u64CD\u4F5C\uFF1B\u9875\u9762\u5237\u65B0\u540E\u82E5\u5DF2\u4E22\u5931\u4E0A\u4F20\u5185\u5BB9\uFF0C\u9700\u8981\u91CD\u65B0\u9009\u62E9\u539F\u76EE\u5F55\u3002</p></section>
-<p id="message" role="status"></p></main><script src="/splash/app.js"></script></html>`;
+<p id="message" role="status"></p></main><script src="/space/app.js"></script></html>`;
 var workspaceJS = String.raw`'use strict';
 const el=id=>document.getElementById(id);
 const fragment=new URLSearchParams(location.hash.slice(1));
 // This is a local session bearer, never a CloudBase key. It expires with the owned runtime.
 const token=fragment.get('token')||sessionStorage.getItem('splash-session');
 if(fragment.get('token'))sessionStorage.setItem('splash-session',token);
-history.replaceState(null,'','/splash');
+history.replaceState(null,'','/space');
 let spaces=[],detail=null,selectedFiles=[],busy=false,payload=null;
 let pending=null;try{pending=JSON.parse(sessionStorage.getItem('splash-pending')||'null');}catch{sessionStorage.removeItem('splash-pending');}
 function say(text){el('message').textContent=text;}
@@ -9126,7 +9126,7 @@ function render(){
  el('summary').textContent=detail?detail.title+' · '+detail.status+' · revision '+detail.revision:'先创建或选择一个空间';
 }
 async function api(path,{method='GET',data,key}={}){
- if(!token)throw Error('登录凭证缺失，请回到 KTeam 再输入 /splash 打开。');
+ if(!token)throw Error('登录凭证缺失，请回到 KTeam 再输入 /space 打开。');
  const r=await fetch(path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...(key?{'Idempotency-Key':key}:{})},body:data===undefined?undefined:JSON.stringify(data)});
  const value=await r.json();if(!r.ok){const e=Error(value.error||'请求失败');e.status=r.status;throw e;}return value;
 }
@@ -9235,9 +9235,9 @@ function servers({ service, verify, contentSuffix = "spaces.localhost" }) {
       if (req.headers.origin) requireValue(req.headers.origin === `http://${host}` || req.headers.origin === `https://${host}`, "origin_rejected", 403);
       const url = new URL(req.url, "http://local");
       if (url.pathname === "/health" && req.method === "GET") return json(res, 200, { ok: true });
-      if (req.method === "GET" && ["/splash", "/splash/app.js"].includes(url.pathname)) {
-        res.writeHead(200, { "Content-Type": url.pathname === "/splash" ? "text/html; charset=utf-8" : "text/javascript; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
-        return res.end(url.pathname === "/splash" ? workspaceHTML : workspaceJS);
+      if (req.method === "GET" && ["/space", "/space/app.js"].includes(url.pathname)) {
+        res.writeHead(200, { "Content-Type": url.pathname === "/space" ? "text/html; charset=utf-8" : "text/javascript; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
+        return res.end(url.pathname === "/space" ? workspaceHTML : workspaceJS);
       }
       const owner = await verify(req.headers.authorization);
       const key = req.headers["idempotency-key"];
@@ -9356,7 +9356,7 @@ async function start(root) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", done);
   })));
-  return `http://127.0.0.1:${pair.control.address().port}/splash#token=${token}`;
+  return `http://127.0.0.1:${pair.control.address().port}/space#token=${token}`;
 }
 async function main() {
   process.once("SIGINT", stop);

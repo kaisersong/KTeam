@@ -1,19 +1,19 @@
 {
   "formatVersion": 1,
   "origin": "cloudbase-space-service",
-  "revision": "b049ca7a19d5b3c5197e10d375f9fe5f5c9a7c47",
+  "revision": "0689d4ad59aa59529d434e526d1d04231dd7d10e",
   "entry": "src/splash-runtime.mjs",
   "builder": "esbuild 0.28.2; bundle:true platform:node target:node22 format:cjs",
-  "sha256": "357cf21fa639a31611d8c97048781ae48a6de06203967f11c65bb4f5f8d5d1e5",
+  "sha256": "3384fb32f07780da8d4fd5e3b71a6edc2352d1ee59a4fe8f9f90f9a02baec360",
   "sources": {
     "src/blobs.mjs": "a0cc8975c484e489ab649666256ef80c7026976249f7591718e4df1be345a311",
     "src/errors.mjs": "55e2e19d3fa538ba43ef3c02048a170d8e6329fe1e30b4aa8d089ab093e30b2c",
-    "src/http.mjs": "c1d0e29b5ba1bc66c5810d7d613c2a56a0dd6bb10d42ca169ade7e93a937c110",
+    "src/http.mjs": "bc096b76664b2dcd7285fb8efc31f3707b5a4d6cb88d671f433833b9c4d1f274",
     "src/package.mjs": "581113e60eaeef5b6ad86304d8a19ea18e390d372b51aaa18a95e8787efe7990",
     "src/service.mjs": "3e948bcb946b465e8b7dc14a5f273ba94af0944c0c6025c3be9d8edb13f9a322",
-    "src/splash-runtime.mjs": "dad4282c59a4a2212e2928da5ca782bfddb90ef882ea8824ed9667613654aa49",
+    "src/splash-runtime.mjs": "a3655580cc079167e3f7b04d66e4ed471e149573e919ea0135a52a5399e9de7b",
     "src/state.mjs": "673c7dcafa6d346958705bc2b86c8d9032cef63c429ce9d22dc62208db0fff71",
-    "src/workspace.mjs": "e54a577c04dc642ab5e2d65a8c17288313a370fbce56f669e6a2dc78228bdb31"
+    "src/workspace.mjs": "28ff1359c5e571bf7c2aa0accec8fe77edd0153ecee87ab2b9a5156519885c74"
   },
   "scope": "local-only validation; no cloud credentials or deployment"
 }

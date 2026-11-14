@@ -31,7 +31,7 @@ async function start(root) {
   await Promise.all(Object.values(pair).map(server => new Promise((done, reject) => {
     server.once('error', reject); server.listen(0, '127.0.0.1', done);
   })));
-  return `http://127.0.0.1:${pair.control.address().port}/splash#token=${token}`;
+  return `http://127.0.0.1:${pair.control.address().port}/space#token=${token}`;
 }
 async function main() {
   process.once('SIGINT', stop); process.once('SIGTERM', stop);

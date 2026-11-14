@@ -1,5 +1,5 @@
 // Verification UI only. Never embeds user HTML in the management origin.
-export const workspaceHTML = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Splash · 创作空间</title><style>
+export const workspaceHTML = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Space · 创作空间</title><style>
 body{margin:0;background:#f5f7fa;color:#172536;font:15px system-ui}main{max-width:1040px;margin:48px auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center}h1{margin:0;font-size:28px}.badge{color:#8b5100;background:#fff2d9;padding:6px 12px;border-radius:20px}section{background:white;border:1px solid #dce3eb;border-radius:12px;padding:24px;margin:20px 0}label{display:block;margin:12px 0}input,select,button{font:inherit;padding:10px;border:1px solid #b8c4d2;border-radius:6px}button{cursor:pointer;background:#173c63;color:white;margin:4px}button:disabled{opacity:.45;cursor:default}.muted{color:#637184;line-height:1.7}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}#message{white-space:pre-wrap;line-height:1.7}#pending{border-color:#cd9e4e}ul{line-height:1.9}a{color:#15559b}details{margin:12px 0}@media(max-width:600px){main{margin:8px auto}header{align-items:flex-start;gap:12px}section{padding:16px}input,select{max-width:100%}}
 </style><main><header><div><h1>创作空间</h1><p class="muted">从网页目录到可预览的作品。</p></div><span class="badge">本机验证 · 非公网分享</span></header>
 <p class="muted">当前只在这台电脑提供预览。CloudBase 管理密钥不会交给页面；正式公网发布仍需完成账号、域名和费用防护配置。</p>
@@ -9,7 +9,7 @@ body{margin:0;background:#f5f7fa;color:#172536;font:15px system-ui}main{max-widt
 <div class="row"><button id="upload">上传为草稿</button><button id="publish">发布当前草稿</button><button id="preview">打开本机预览</button><button id="copy">复制本机链接</button><button id="unpublish">下架</button></div>
 <label>回滚到已发布版本<select id="releases" aria-label="回滚版本"></select></label><button id="rollback">回滚</button><p id="quota" class="muted"></p></section>
 <section id="pending" hidden><h2>有一个操作需要核对</h2><p id="pendingText"></p><div class="row"><button id="reconcile">只读核对</button><button id="retry">重试原请求</button><button id="abandon">放弃这条待核对记录</button></div><p class="muted">核对不会自动重放写操作。放弃记录不会撤销已经发生的操作；页面刷新后若已丢失上传内容，需要重新选择原目录。</p></section>
-<p id="message" role="status"></p></main><script src="/splash/app.js"></script></html>`;
+<p id="message" role="status"></p></main><script src="/space/app.js"></script></html>`;
 
 export const workspaceJS = String.raw`'use strict';
 const el=id=>document.getElementById(id);
@@ -17,7 +17,7 @@ const fragment=new URLSearchParams(location.hash.slice(1));
 // This is a local session bearer, never a CloudBase key. It expires with the owned runtime.
 const token=fragment.get('token')||sessionStorage.getItem('splash-session');
 if(fragment.get('token'))sessionStorage.setItem('splash-session',token);
-history.replaceState(null,'','/splash');
+history.replaceState(null,'','/space');
 let spaces=[],detail=null,selectedFiles=[],busy=false,payload=null;
 let pending=null;try{pending=JSON.parse(sessionStorage.getItem('splash-pending')||'null');}catch{sessionStorage.removeItem('splash-pending');}
 function say(text){el('message').textContent=text;}
@@ -36,7 +36,7 @@ function render(){
  el('summary').textContent=detail?detail.title+' · '+detail.status+' · revision '+detail.revision:'先创建或选择一个空间';
 }
 async function api(path,{method='GET',data,key}={}){
- if(!token)throw Error('登录凭证缺失，请回到 KTeam 再输入 /splash 打开。');
+ if(!token)throw Error('登录凭证缺失，请回到 KTeam 再输入 /space 打开。');
  const r=await fetch(path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...(key?{'Idempotency-Key':key}:{})},body:data===undefined?undefined:JSON.stringify(data)});
  const value=await r.json();if(!r.ok){const e=Error(value.error||'请求失败');e.status=r.status;throw e;}return value;
 }

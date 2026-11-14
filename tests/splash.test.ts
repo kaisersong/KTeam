@@ -8,16 +8,16 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {SplashService,splashEnvironment} from '../desktop/splash-service.js';
 import {SPLASH_SHA256} from '../desktop/splash-runtime-identity.js';
-import {splashCommand,runSplashCommand} from '../desktop/renderer/src/hidden-splash.js';
+import {spaceCommand,runSpaceCommand} from '../desktop/renderer/src/hidden-space.js';
 import {createDesktopAPI,dispatchDesktop,DESKTOP_METHODS} from '../desktop/semantic-api.js';
 
 test('hidden command recognizes exact namespace, rejects arguments/attachments, never forwards normal chat',async()=>{
  let opens=0;const open=async()=>{opens++;};
- assert.equal(splashCommand('/splashx'),false);assert.equal(splashCommand('explain /splash'),false);
- assert.equal(await runSplashCommand('hello',0,open),false);
- await assert.rejects(runSplashCommand('/splash deploy',0,open),/用法/);
- await assert.rejects(runSplashCommand('/splash',1,open),/附件/);
- await runSplashCommand(' /splash open ',0,open);assert.equal(opens,1);
+ assert.equal(spaceCommand('/spacex'),false);assert.equal(spaceCommand('explain /space'),false);
+ assert.equal(await runSpaceCommand('hello',0,open),false);
+ await assert.rejects(runSpaceCommand('/space deploy',0,open),/用法/);
+ await assert.rejects(runSpaceCommand('/space',1,open),/附件/);
+ await runSpaceCommand(' /space open ',0,open);assert.equal(opens,1);
 });
 test('semantic splash uses native capability only and denies arbitrary process parameters',async()=>{
  let calls=0;const api=createDesktopAPI(async()=>{throw Error('broker_must_not_be_called');},{nativeActions:{openSplash:async()=>{calls++;return {ok:true};}}});
@@ -64,7 +64,7 @@ test('ready requires matching nonce and exact loopback URL; quitting during star
  const dir=mkdtempSync(join(tmpdir(),'kteam-splash-ready-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  let opens=0;
  const runtime=join(dir,'forged.cjs');
- const source="process.on('message',m=>{process.send({type:'ready',nonce:'wrong',url:'https://evil.example'});process.send({type:'ready',nonce:m.nonce,url:'http://127.0.0.1@evil.example:8080/splash#token='+ 'a'.repeat(43)});});";
+ const source="process.on('message',m=>{process.send({type:'ready',nonce:'wrong',url:'https://evil.example'});process.send({type:'ready',nonce:m.nonce,url:'http://127.0.0.1@evil.example:8080/space#token='+ 'a'.repeat(43)});});";
  writeFileSync(runtime,source);
  const options={runtime,sha256:createHash('sha256').update(source).digest('hex'),dataDir:dir,openExternal:async()=>{opens++;}};
  const manager=new SplashService(options);t.after(()=>manager.close());

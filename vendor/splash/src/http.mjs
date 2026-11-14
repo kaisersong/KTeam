@@ -35,9 +35,9 @@ export function servers({ service, verify, contentSuffix = 'spaces.localhost' })
       if (req.headers.origin) requireValue(req.headers.origin === `http://${host}` || req.headers.origin === `https://${host}`, 'origin_rejected', 403);
       const url = new URL(req.url, 'http://local');
       if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true });
-      if (req.method === 'GET' && ['/splash', '/splash/app.js'].includes(url.pathname)) {
-        res.writeHead(200, { 'Content-Type': url.pathname === '/splash' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
-        return res.end(url.pathname === '/splash' ? workspaceHTML : workspaceJS);
+      if (req.method === 'GET' && ['/space', '/space/app.js'].includes(url.pathname)) {
+        res.writeHead(200, { 'Content-Type': url.pathname === '/space' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
+        return res.end(url.pathname === '/space' ? workspaceHTML : workspaceJS);
       }
       const owner = await verify(req.headers.authorization); const key = req.headers['idempotency-key'];
       if (url.pathname === '/v1/operations' && req.method === 'GET') return json(res, 200, await service.operation(owner, url.searchParams.get('kind'), url.searchParams.get('spaceId'), url.searchParams.get('key')));

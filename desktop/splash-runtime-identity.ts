@@ -1,2 +1,2 @@
 // Immutable expected digest compiled into Electron main. See vendor/splash/manifest.json.
-export const SPLASH_SHA256="357cf21fa639a31611d8c97048781ae48a6de06203967f11c65bb4f5f8d5d1e5";
+export const SPLASH_SHA256="3384fb32f07780da8d4fd5e3b71a6edc2352d1ee59a4fe8f9f90f9a02baec360";
