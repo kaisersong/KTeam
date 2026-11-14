@@ -1,5 +1,5 @@
 import {computerPermissionSettingsUrl} from './computer-permissions.js';
-import {clipboardFileURLs,clipboardFileBytes,macClipboardPaths} from './clipboard-files.js';
+import {clipboardAttachments} from './clipboard-files.js';
 import {randomBytes} from 'node:crypto';
 import {messageDisplayText,attachmentMessageView} from '../src/protocol/message-attachments.js';
 import {parseSystemVoices} from './system-voices.js';
@@ -24,9 +24,7 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
  return {
   openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId']);const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));if(!view.canAttach)fail('attachment_owner_required');
-   let paths=process.platform==='darwin'?await macClipboardPaths(clipboard.readBuffer('NSFilenamesPboardType')):[];if(!paths.length)paths=clipboardFileURLs(clipboard.read('public.file-url')||clipboard.read('text/uri-list'));
-   if(!paths.length&&process.platform==='win32'){const file=clipboard.readBuffer('FileNameW').toString('utf16le').split('\0')[0];if(file)paths=[file];}
-   const files=await clipboardFileBytes(paths);if(!files.length){const image=clipboard.readImage();if(!image.isEmpty()){const bytes=image.toPNG();if(bytes.length>4*1024*1024)fail('library_file_too_large');files.push({name:'粘贴图片.png',data:bytes.toString('base64')});}}
+   const files=await clipboardAttachments(await clipboard.read());
    if((view.uploads as any[]).length+files.length>4)fail('attachment_limit');
    for(const file of files)await hostRequest(root,'kteam-main','/v1/composer-attachments/upload',{roomId,id:'upload_'+randomBytes(16).toString('hex'),...file});return {ok:true,count:files.length};
   },
