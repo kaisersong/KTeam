@@ -137,7 +137,7 @@ for(const target of ['b','human','gone'])test('structured group mention targets 
  const store=new TeamStore(root);store.configure({roomId,goal:'draft',kind:'group',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
  store.bind({botId:'a',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.bind({botId:'b',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.enqueue('job',roomId,origin.messageId);
  let inferences=0;
- const upstream={...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'},{id:'b',name:'CEO',profile:{participation:'mentions'}}]}),aimp:async(_room:string,command:string,input:any={})=>{
+ const upstream={...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'},{id:'b',name:'CEO · KTeam abc',kteamProfile:{revision:0,participation:'mentions',workspace:'',followup:false}}]}),aimp:async(_room:string,command:string,input:any={})=>{
   const ctx=input.logicalAgentId?{...user,requestSource:'agent',actor:{kind:'agent',logicalAgentId:input.logicalAgentId},allowedLogicalAgentIds:[input.logicalAgentId]}:user;
   const method=({session:'getSession',tasks:'listTasks',event:'submit','agent-event':'submit','begin-execution':'beginExecution','execution-check':'checkExecution',chat:'chat','verify-delivery':'verifyDelivery'} as Record<string,string>)[command];assert.ok(method,'unexpected command '+command);
   const result=['session','tasks'].includes(command)?broker.aimp[method!](roomId,user):broker.aimp[method!]({...input,roomId},ctx);
