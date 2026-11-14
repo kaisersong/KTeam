@@ -1,3 +1,4 @@
+import {desktopGeneration} from './host-generation.js';
 import {initStandalone} from '../src/runtime/managed-services.js';
 import {app,BrowserWindow,dialog,ipcMain,Menu,Notification,shell} from 'electron';
 import {join} from 'node:path';
@@ -78,13 +79,21 @@ async function checkForUpdatesFromMenu(){
 function stopNotificationPolling(){if(notificationTimer)clearInterval(notificationTimer);notificationTimer=undefined;notificationActivations.close();notificationDelivery?.close();}
 function resources(){return app.getAppPath().endsWith('.asar')?app.getAppPath()+'.unpacked':app.getAppPath();}
 let ensuringHost:Promise<void>|undefined;
+let hostReady=false;
+let desktopBuildInfo:Record<string,any>={version:app.getVersion()};
 function assertHostCanStart(){if(process.platform==='win32'&&(windowsDesktopQuitStarted||windowsHostQuitStarted||windowsHostStop))throw Object.assign(Error('desktop_stopping'),{code:'desktop_stopping'});}
-function ensureHost(){assertHostCanStart();return ensuringHost??=(ensureHostBody().finally(()=>{ensuringHost=undefined;}));}
+function ensureHost(){assertHostCanStart();return ensuringHost??=(ensureHostBody().then(()=>{hostReady=true;},error=>{hostReady=false;throw error;}).finally(()=>{ensuringHost=undefined;}));}
 async function ensureHostBody(){
+ let generation:Awaited<ReturnType<typeof desktopGeneration>>|undefined;
+ try{
  assertHostCanStart();
  await initStandalone(root);
  assertHostCanStart();
- try{await hostRequest(root,'kteam-main','/v1/handshake');return;}catch(error){
+ if(process.platform==='darwin'&&app.isPackaged){
+  const revision=desktopBuildInfo.revision;if(typeof revision!=='string'||!/^[a-f0-9]{40}$/.test(revision))throw Object.assign(Error('desktop_generation_unconfirmed'),{code:'desktop_generation_unconfirmed'});
+  generation=await desktopGeneration({root,executable:process.execPath,buildDirectory:join(resources(),'build'),revision:revision+':'+(desktopBuildInfo.dirty?'dirty':'clean'),request:(route,value)=>hostRequest(root,'kteam-main',route,value)});
+  if(generation.reuse)return;
+ }else try{await hostRequest(root,'kteam-main','/v1/handshake');return;}catch(error){
   const code=(error as NodeJS.ErrnoException).code;
   if(!['ENOENT','ECONNREFUSED','ECONNRESET'].includes(code??''))throw error;
  }
@@ -96,8 +105,9 @@ async function ensureHostBody(){
  if(process.platform==='win32'&&child.pid)windowsHost=captureWindowsHostIdentity(child.pid,windowsHostLayer());
  const deadline=Date.now()+15000;
  let failed:Error|undefined;child.once('error',error=>{failed=error;});
- while(Date.now()<deadline){if(failed)throw failed;try{await hostRequest(root,'kteam-main','/v1/handshake');return;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
+ while(Date.now()<deadline){if(failed)throw failed;try{await hostRequest(root,'kteam-main','/v1/handshake');if(generation){if(!child.pid)throw Error('host_start_timeout');await generation.commit(child.pid);}return;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  throw Error('host_start_timeout');
+ }finally{generation?.close();}
 }
 async function show(){
  if(window&&!window.isDestroyed()){window.show();window.focus();return;}
@@ -114,14 +124,15 @@ if(locked){
  app.once('ready',(_event,launchInfo)=>{if(process.platform==='darwin')void notificationActivations.receive(launchInfo);});
  app.on('second-instance',()=>void show());
  app.whenReady().then(async()=>{
+  try{desktopBuildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
   try{await ensureHost();}catch(error){console.error('KTeam host unavailable:',(error as {code?:string}).code??'startup_failed');}
-  let buildInfo={version:app.getVersion()};try{buildInfo=JSON.parse(readFileSync(join(app.getAppPath(),'build','build-info.json'),'utf8'));}catch{}
+  const buildInfo=desktopBuildInfo;
   const connectedRequest=hostConnection({request:(route,value)=>hostRequest(root,'kteam-main',route,value),ensureHost});
   notificationDelivery=new NotificationDelivery({request:connectedRequest,supported:()=>Notification.isSupported(),foreground:()=>!!window&&!window.isDestroyed()&&window.isVisible()&&window.isFocused(),create:options=>new Notification(nativeNotificationOptions(process.platform,options)),navigate:async navigation=>{pendingNotificationNavigation=navigation;await show();window?.webContents.send('kteam:notification-open');}});
   if(process.platform==='win32')Notification.handleActivation(details=>void notificationActivations.receive(details));
   notificationTimer=setInterval(()=>void notificationDelivery?.poll(),2000);notificationTimer.unref();
   app.once('before-quit',stopNotificationPolling);
-  const api=createDesktopAPI(async(route,value)=>{const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),updateStatus:async()=>projectUpdate(updater),checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},installUpdate:async()=>{if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},openKTeamReleases,takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  const api=createDesktopAPI(async(route,value)=>{if(!hostReady)await ensureHost();const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),updateStatus:async()=>projectUpdate(updater),checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},installUpdate:async()=>{if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},openKTeamReleases,takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}
