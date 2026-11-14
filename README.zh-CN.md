@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.5.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。0.4 开始支持 Windows（x64），加上 macOS Apple 芯片（arm64），两个平台都带自动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.6.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -38,6 +38,15 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 ---
 
+## 0.6 有什么
+
+- **Electron 45 与 Node 24。** 升级桌面运行时，兼容异步文件和图片剪贴板接口。
+- **群聊定向回复。** 输入 `@` 筛选并选择群成员，文本和附件消息都会携带成员身份；即使显示名相似，也由选中的 Agent 针对性回复。
+- **更易读的审批。** 默认展示操作说明，技术参数折叠，群聊审批联系改为轻量系统提示。终端长期授权按实际命令目录保存，恢复后仍可复用；删除、重置和外发仍需单独确认。
+- **可靠接续。** 从已核验的失效审批等待或定时触发记录继续工作，不重放已完成或结果未知的操作。
+- **技能与本机空间。** 单聊 `/` 技能列表左对齐；隐藏 `/space` 命令可打开仅本机访问的网页工作台。
+- **邮箱连接。** 增加 Gmail/Outlook OAuth，保留 QQ、163 和通用 IMAP/SMTP。OAuth 使用用户自己的 Client ID，凭据加密保存，发送仍需审批；真实服务商账号验收与已验证的本地回调、TLS 流程分开记录。
+
 ## 0.5 有什么
 
 - **开箱即用的小K助理。** 接入或选择默认模型后自动完成助理准备；已有模型不再重复弹接入提示。可以通过助理准备 Bot 或群聊创建方案，确认后创建。
@@ -46,7 +55,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 - **持久工作与工具授权。** 问题与审批可跨宿主重启续接原任务；目录授权支持普通文件读写与撤销，敏感文件继续单独确认。成员技能、记忆与工具范围可以审阅。
 - **更完整的桌面协作。** 会话预览、重命名、删除和未读标记；消息回复/表情快捷操作；头像预设、定时工作、工作提醒、有界历史和原始工具输出核验。
 - **完整设置。** 按服务商管理和发现模型、导入 MCP 配置、启停工具和编辑说明、选择语音配置，按成员与会话浏览记忆。
-- **连接器与电脑权限。** 内置云之家 CLI 和企业 CLI 连接入口；Mac CUA 驱动安装更新及系统权限入口。邮箱支持 IMAP/SMTP，Gmail/Outlook OAuth 延至 0.5.1。
+- **连接器与电脑权限。** 内置云之家 CLI 和企业 CLI 连接入口；Mac CUA 驱动安装更新及系统权限入口。邮箱支持 IMAP/SMTP，Gmail/Outlook OAuth 已在 0.6 加入。
 - **A2UI 与 Windows。** A2UI 接受 `"1.0"` 和数字 `1`，兼容表面删除指令；Windows 私有宿主、原生辅助程序与本机 Agent 检测已纳入构建。Windows 安装包仍未代码签名。
 
 ## 0.4 有什么
@@ -85,14 +94,14 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 2. 打开 dmg，把 `KTeam.app` 拖进「应用程序」。
 3. 第一次打开时，macOS 会提示这是从互联网下载的应用，点「打开」即可。
 
-Intel Mac 暂不支持。已经装了 0.3.x 的 Mac 会自动更新到 0.4。
+Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠道升级到最新正式版本。
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.5.0.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.5.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.6.0.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.6.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
-Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。签名会在后续 0.4.x 补上。
+Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
 Windows 通过原生可执行文件与 npm shim 路径检测本机 Agent。接入已安装 CLI 前请先运行连接测试，可用性取决于该 CLI 的协议和登录状态。
 
@@ -144,9 +153,13 @@ node dist/src/cli.js teams
 
 ## 版本日志
 
+### v0.6.0
+
+Electron 45.3.2 / Node 24.22.2、群聊身份点名、轻量审批提示、易读审批卡片、实际目录终端授权、例行任务恢复、本机 `/space` 网页与邮箱 OAuth。见 [0.6.0 发布页](https://github.com/kaisersong/KTeam/releases/tag/v0.6.0)。
+
 ### v0.5.0
 
-默认助理与自然消息续接、文件图片输入、单聊 Skill、持久审批、目录授权、企业连接器、A2UI 兼容及 Windows 宿主加固。邮箱当前为 IMAP/SMTP，OAuth 延至 0.5.1。
+默认助理与自然消息续接、文件图片输入、单聊 Skill、持久审批、目录授权、企业连接器、A2UI 兼容及 Windows 宿主加固。邮箱当前为 IMAP/SMTP，OAuth 已在 0.6 加入。
 
 ### v0.4.0
 
