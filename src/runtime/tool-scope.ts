@@ -14,7 +14,7 @@ export function parseToolScope(value:unknown):BotToolScope{
  }catch{throw new KTeamError('bot_tool_scope_invalid',409);}
 }
 export const restrictedToolScope=(scope:BotToolScope)=>JSON.stringify(scope)!==JSON.stringify(defaultToolScope());
-const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','delegate_work','wait_for_condition','read_runtime_output','notebook_read','notebook_write','tool_search','skill','skillFetchAssets','validate_skill','list_mail_accounts','subagent','spawn_agent','send_message','followup_task','wait_agent','list_agents','interrupt_agent','close_agent']);
+const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','delegate_work','wait_for_condition','read_runtime_output','notebook_read','notebook_write','tool_search','skill','skillFetchAssets','validate_skill','list_mail_accounts','mail_list_accounts','subagent','spawn_agent','send_message','followup_task','wait_agent','list_agents','interrupt_agent','close_agent']);
 /** A tool-admission restriction, never an OS sandbox or an authority grant. */
 export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string){
  const restricted=restrictedToolScope(scope),opaqueAllowed=scope.files.mode==='inherit'&&scope.files.write&&scope.network==='inherit';
@@ -31,7 +31,7 @@ export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string)
   if(name==='validate_skill')return scope.files.mode!=='none'&&typeof args.path==='string'&&sandbox.checkPath(resolve(base,args.path)).allowed;
   if(name==='wait_for_condition'){const condition=args.condition as any;return condition?.kind==='work_result'||scope.files.mode!=='none'&&typeof condition?.path==='string'&&sandbox.checkPath(resolve(base,condition.path)).allowed;}
   if(name==='bash')return scope.terminal==='inherit'&&opaqueAllowed;
-  if(['web_fetch','web_search','read_mail','search_mail','send_mail'].includes(name))return scope.network==='inherit';
+  if(['web_fetch','web_search','read_mail','search_mail','send_mail','send_connected_mail','mail_search','mail_read'].includes(name))return scope.network==='inherit';
   if(name.startsWith('mcp__')){const split=name.indexOf('__',5);return split>5&&mcpAllowed(name.slice(5,split));}
   if(['render_ui','install_skill','uninstall_skill','lsp'].includes(name))return opaqueAllowed;
   if(['subagent','spawn_agent'].includes(name)&&!opaqueAllowed&&(args.agent||args.isolation==='worktree'))return false;

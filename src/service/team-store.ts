@@ -13,6 +13,7 @@ export class TeamStore {
  transaction<T>(fn:()=>T):T{if(this.transactionDepth)return fn();this.db.exec('BEGIN IMMEDIATE');this.transactionDepth++;try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}finally{this.transactionDepth--;}}
  constructor(readonly root:string){
   this.db=new DatabaseSync(join(root,'team-extensions.sqlite'));
+  this.db.exec('PRAGMA busy_timeout=3000');
   this.db.exec(`CREATE TABLE IF NOT EXISTS bot_bindings(bot_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_settings(room_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS team_jobs(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,origin_id TEXT NOT NULL,state TEXT NOT NULL,value_json TEXT NOT NULL);

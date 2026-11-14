@@ -79,3 +79,33 @@ test('recovery does not continue a revoked member, unknown live execution, newer
   store.enqueue('newer',roomId,String(sent.messageId));await assert.rejects(recovery.continue(roomId,{jobId:'old',requestId:'superseded'}),/recovery_superseded/);
  } finally {store.close();await f.close();}
 });
+
+test('safe automatic recovery checks current profile, storage exclusion and unknown approvals; persists one attempt per stale batch',{timeout:30000},async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),recovery=new WorkRecovery(f.upstream,store,coordinator);
+ try{
+  const {harnessWorkspace}=await import('../src/runtime/harness.js'),{harnessLocation,acquireHarnessStorage,beginMemoryReview}=await import('../src/runtime/harness-storage.js');
+  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const core=await sharedRuntime();
+  const member=await coordinator.createMember({name:'自动恢复验证员',modelId:'fixture',requestId:'auto-recovery'},user),roomId=member.roomId,botId=member.bot.id;
+  const bot=((await f.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId),revision=bot.kteamProfile?.revision??0,cwd=harnessWorkspace(bot.kteamProfile?.workspace);
+  const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'thread-'+roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'继续完成虚构测试事项'});
+  store.enqueue('original',roomId,String(sent.messageId));const original=store.job('original');Object.assign(original,{state:'blocked',reason:'handoff_wait_expired',activeBotId:botId,members:[botId]});store.save(original);
+  store.enqueueFollowup({id:'sixth-recovery',roomId,originId:String(sent.messageId),trigger:'recovery'});const latest=store.job('sixth-recovery');Object.assign(latest,{state:'blocked',reason:'harness_session_busy',activeBotId:botId,members:[botId]});store.save(latest);
+  const binding=store.binding(botId)!,scope={root:store.root,roomId,botId,bindingRevision:binding.revision,fingerprint:binding.fingerprint,profileRevision:revision};
+  const {identity,directory}=harnessLocation(scope,cwd),session=new core.AgentSessionState(),calls=[{type:'tool_use',id:'pending',name:'write',input:{file_path:join(f.root,'never-written')}}];
+  session.restoreSnapshot({...session.exportSnapshot(),sessionId:'kteam_'+identity,cwd,lineage:['kteam_'+identity]});session.appendAssistantBlocks(calls);
+  const batch={version:1,id:'batch_'+'b'.repeat(32),ownerId:'original',state:'waiting_approval',approvalId:'tool-approval:auto-fixture',calls,results:[]};session.setToolBatch(batch);
+  await new core.FileSessionStore(join(directory,'sessions')).save(session.exportSnapshot());
+  const approval={id:batch.approvalId,roomId,botId,jobId:'original',bindingRevision:binding.revision,profileRevision:revision,modelFingerprint:binding.fingerprint,cwd,durable:true,batchId:batch.id,index:0,toolName:'write',input:calls[0]!.input,status:'cancelled'};
+  const save=(changes:any)=>{const prior=store.operation(approval.id);store.saveOperation({...approval,...changes},prior?.revision??0);};save({profileRevision:revision+1});await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,2);
+  save({status:'executing'});await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,2);
+  save({});const release=acquireHarnessStorage(directory);try{await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,2);}finally{release();}
+  const endReview=beginMemoryReview(store.root,roomId);try{await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,2);}finally{endReview();}
+  store.pause(roomId);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,2);store.resume(roomId);
+  store.enqueueFollowup({id:'legitimate-wait',roomId,originId:'different',trigger:'peer'});const wait=store.job('legitimate-wait');wait.state='waiting';store.save(wait);
+  await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,3);wait.state='delivered';store.save(wait);
+  await recovery.wakeSafe();const next=store.jobs(roomId)[0];assert.equal(next.recoveryOf,latest.id);assert.equal(next.recoveryAutomatic,true);assert.equal(store.jobs(roomId).length,4);
+  Object.assign(next,{state:'blocked',reason:'harness_session_busy',activeBotId:botId});store.save(next);
+  await recovery.wakeSafe();await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,4);
+  store.close();const reopened=new TeamStore(f.root);try{await new WorkRecovery(f.upstream,reopened,coordinator).wakeSafe();assert.equal(reopened.jobs(roomId).length,4);}finally{reopened.close();}
+ }finally{try{store.close();}catch{}await f.close();}
+});

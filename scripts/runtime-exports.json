@@ -126,7 +126,8 @@
   ],
   "src/utils/system-credentials.ts": [
     "getCredentialStore",
-    "setCredentialStore"
+    "setCredentialStore",
+    "systemCredentialBackend"
   ],
   "src/ai/providers/normalize.ts": [
     "normalizeConfig"
@@ -158,7 +159,8 @@
     "loadPluginMcpServers"
   ],
   "src/ai/permissions/policy-engine.ts": [
-    "requiresAlwaysCommandConfirmation"
+    "requiresAlwaysCommandConfirmation",
+    "parseCommandSegments"
   ],
   "src/ai/permissions/sensitive-paths.ts": [
     "isSensitiveToolInvocation"
@@ -188,5 +190,8 @@
   "src/runtime/verification/windows-installation-absence.ts": [
     "observeWindowsInstallationAbsence",
     "readWindowsInstallationAbsence"
+  ],
+  "src/ai/tools/bash-safety.ts": [
+    "classifyBashCommand"
   ]
 }

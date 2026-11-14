@@ -39,11 +39,19 @@ const checked=new Map<string,string>();
 const identity=(path:string)=>{const s=lstatSync(path,{bigint:true});return [s.dev,s.ino,s.nlink,s.size,s.mtimeNs,s.ctimeNs,s.mode].join(':');};
 /** NTFS change time invalidates this cache; real Windows tests must cover ACL changes. */
 export function assertWindowsPrivateMany(entries:{path:string;directory:boolean;create?:boolean}[]){
- const pending=entries.flatMap(entry=>{let before:string|undefined;try{before=identity(entry.path);if(checked.get(entry.path)===before)return [];}catch{if(!entry.create)throw new KTeamError(entry.directory?'private_directory_required':'private_file_required');}return [{...entry,before}];});
- if(!pending.length)return;
- let result:any;try{result=JSON.parse(windowsPowerShell(aclScript,{entries:pending}));}catch{throw new KTeamError(pending[0]!.directory?'private_directory_required':'private_file_required');}
- if(result?.ok!==true){const failed=pending[result?.failed]??pending[0]!;throw new KTeamError(failed.directory?'private_directory_required':'private_file_required');}
- if(checked.size+pending.length>=4096)checked.clear();
- for(const entry of pending){const after=identity(entry.path);if(entry.before!==undefined&&entry.before!==after)throw new KTeamError(entry.directory?'private_directory_required':'private_file_required');checked.set(entry.path,after);}
+ // Directory entries may change while the host starts journals. Retry the complete
+ // metadata + ACL proof; an actual ACL failure is never retried or accepted.
+ for(let attempt=0;attempt<3;attempt++){
+  const pending=entries.flatMap(entry=>{let before:string|undefined;try{before=identity(entry.path);if(checked.get(entry.path)===before)return [];}catch{if(!entry.create)throw new KTeamError(entry.directory?'private_directory_required':'private_file_required');}return [{...entry,before}];});
+  if(!pending.length)return;
+  let result:any;try{result=JSON.parse(windowsPowerShell(aclScript,{entries:pending}));}catch{throw new KTeamError(pending[0]!.directory?'private_directory_required':'private_file_required');}
+  if(result?.ok!==true){const failed=pending[result?.failed]??pending[0]!;throw new KTeamError(failed.directory?'private_directory_required':'private_file_required');}
+  const observed=pending.map(entry=>({...entry,after:identity(entry.path)})),changed=observed.find(entry=>entry.before!==undefined&&entry.before!==entry.after);
+  if(changed){if(attempt<2)continue;throw new KTeamError(changed.directory?'private_directory_required':'private_file_required');}
+  if(checked.size+pending.length>=4096)checked.clear();
+  for(const entry of observed)checked.set(entry.path,entry.after);
+  return;
+ }
 }
+
 export function assertWindowsPrivate(path:string,directory:boolean,create=false){assertWindowsPrivateMany([{path,directory,create}]);}

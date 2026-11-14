@@ -131,12 +131,60 @@
     {
       "file": "docs/design/desktop/member-profile-workspace-20261111.md",
       "sha256": "254313d07158f313ca460245683dd4d9fe260e64e5f466c2945f5cc191032fe7"
+    },
+    {
+      "file": "vendor/splash/THIRD-PARTY-NOTICES.txt",
+      "sha256": "0b6c7d16192d80039a764d69617cd5a24d311500ee2c4e6af61ff247d67e0868"
+    },
+    {
+      "file": "vendor/splash/manifest.json",
+      "sha256": "ea64957d8db4c5bd2af82ac721e819b0207ab83abe91ca5e234a76a7c0f7db77"
+    },
+    {
+      "file": "vendor/splash/splash-runtime.cjs",
+      "sha256": "3384fb32f07780da8d4fd5e3b71a6edc2352d1ee59a4fe8f9f90f9a02baec360"
+    },
+    {
+      "file": "vendor/splash/src/blobs.mjs",
+      "sha256": "a0cc8975c484e489ab649666256ef80c7026976249f7591718e4df1be345a311"
+    },
+    {
+      "file": "vendor/splash/src/errors.mjs",
+      "sha256": "55e2e19d3fa538ba43ef3c02048a170d8e6329fe1e30b4aa8d089ab093e30b2c"
+    },
+    {
+      "file": "vendor/splash/src/http.mjs",
+      "sha256": "bc096b76664b2dcd7285fb8efc31f3707b5a4d6cb88d671f433833b9c4d1f274"
+    },
+    {
+      "file": "vendor/splash/src/package.mjs",
+      "sha256": "581113e60eaeef5b6ad86304d8a19ea18e390d372b51aaa18a95e8787efe7990"
+    },
+    {
+      "file": "vendor/splash/src/service.mjs",
+      "sha256": "3e948bcb946b465e8b7dc14a5f273ba94af0944c0c6025c3be9d8edb13f9a322"
+    },
+    {
+      "file": "vendor/splash/src/splash-runtime.mjs",
+      "sha256": "a3655580cc079167e3f7b04d66e4ed471e149573e919ea0135a52a5399e9de7b"
+    },
+    {
+      "file": "vendor/splash/src/state.mjs",
+      "sha256": "673c7dcafa6d346958705bc2b86c8d9032cef63c429ce9d22dc62208db0fff71"
+    },
+    {
+      "file": "vendor/splash/src/workspace.mjs",
+      "sha256": "28ff1359c5e571bf7c2aa0accec8fe77edd0153ecee87ab2b9a5156519885c74"
+    },
+    {
+      "file": "desktop/splash-runtime-identity.ts",
+      "sha256": "9e0260a921d9cb88c0907109051d35b307c5c6414f3fb60a89c81fa3ce9d5859"
     }
   ],
   "productBaseline": {
     "version": "v5",
     "sha256": "8644218d427851e7671d954dec70d7d30556fa0e5f6b9dde6a3d4048e8fcc428",
-    "file": "docs/design/baseline-v5/\u4ea7\u54c1\u8bbe\u8ba1.md"
+    "file": "docs/design/baseline-v5/产品设计.md"
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",

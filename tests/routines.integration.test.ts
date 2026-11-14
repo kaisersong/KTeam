@@ -98,3 +98,25 @@ test('an occurrence that expires in the original queue stays quiet and does not 
   now=f.store.operationsWithPrefix('routine:')[0].nextAt+1;await automation.tick();assert.equal(turns,1);assert.equal(f.store.jobs()[0].state,'delivered');
  }finally{await automation?.close();await f.end();}
 });
+
+test('interrupted routine recovers from its scheduler receipt, delivers once and remains linked for the next cycle',async()=>{
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await setup();let now=Date.now(),turns=0,automation:TeamAutomation|undefined;
+ try{
+  const {WorkRecovery}=await import('../src/service/work-recovery.js');
+  automation=new TeamAutomation(f.upstream,f.store,1,async turn=>{turns++;await turn.onRequest?.();if(turns===1)throw new KTeamError('model_response_incomplete');const prompt=JSON.parse(turn.prompt);assert.equal(prompt.currentMessage,'阅读本会话资料并生成周报，结果回到本群。');assert.equal(prompt.routine.source,'用户在KTeam设置的例行任务');return {text:'已核对原例行任务并完成报告。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};},f.coordinator,undefined,undefined,undefined,undefined,undefined,()=>now);
+  const saved=await automation.routines.save(input(f,now));now+=61000;await automation.tick();const original=f.store.jobs()[0];assert.equal(original.state,'blocked');assert.ok(original.originId.startsWith('routine-run:'));
+  await assert.rejects(f.upstream.conversationMessage(f.member.roomId,original.originId),/room_scope_mismatch/);
+  const recovery=new WorkRecovery(f.upstream,f.store,f.coordinator);
+  await assert.rejects(recovery.continue('foreign',{jobId:original.id,requestId:'wrong-room'}),/recovery_unavailable|conversation_not_managed/);
+  const run=f.store.operation(original.originId);f.store.saveOperation({...run,jobId:'forged-owner'},run.revision);
+  await assert.rejects(recovery.continue(original.roomId,{jobId:original.id,requestId:'forged'}),/routine_scope_changed/);
+  const changed=f.store.operation(run.id);f.store.saveOperation({...run},changed.revision);
+  const resumed=await recovery.continue(original.roomId,{jobId:original.id,requestId:'continue'});assert.equal((await recovery.continue(original.roomId,{jobId:original.id,requestId:'double-click'})).jobId,resumed.jobId);
+  const next=f.store.job(resumed.jobId);assert.deepEqual(next.routine,original.routine);assert.equal(next.originId,original.originId);
+  await automation.tick();assert.equal(f.store.job(next.id).state,'delivered',JSON.stringify(f.store.job(next.id)));assert.equal(turns,2);await automation.tick();assert.equal(turns,2);
+  const listing=(await automation.routines.list(original.roomId)).items.find(item=>item.id===saved.routine.id)!;assert.equal(listing.needsReview,false);assert.equal(listing.runs[0]!.jobId,next.id);assert.equal(listing.runCount,1);
+  now=f.store.operation(saved.routine.id).nextAt+1;await automation.tick();assert.equal(turns,3);assert.equal(f.store.operation(saved.routine.id).runCount,2);
+  const latest=f.store.jobs()[0];latest.state='blocked';f.store.save(latest);await automation.routines.pause({roomId:latest.roomId,id:saved.routine.id,expectedRevision:f.store.operation(saved.routine.id).revision});
+  await assert.rejects(recovery.continue(latest.roomId,{jobId:latest.id,requestId:'paused'}),/routine_scope_changed/);
+ }finally{await automation?.close();await f.end();}
+});
