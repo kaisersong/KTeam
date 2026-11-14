@@ -1,13 +1,27 @@
+import {terminalRequiresConfirmation} from './terminal-permissions.js';
 import {directoryAccess,directoryAccessCurrent,sensitiveFileInvocation,fileTarget,canonicalFile,insideDirectory,type DirectoryAccess} from './directory-access.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {realpathSync} from 'node:fs';
 import {TeamStore} from './team-store.js';
 import {KTeamError,record,fields,text} from '../errors.js';
 export type PermissionScope={botId:string;cwd:string;bindingRevision?:number};
-export function persistentToolEligible(core:any,name:string,input:Record<string,unknown>){return !sensitiveFileInvocation(core,name,input,String(input.workdir??process.cwd()))&&!['send_mail','install_skill','uninstall_skill'].includes(name)&&!core.isSensitiveToolInvocation(name,input)&&!(name==='bash'&&core.requiresAlwaysCommandConfirmation(String(input.command??'')));}
+export function persistentToolEligible(core:any,name:string,input:Record<string,unknown>){return !sensitiveFileInvocation(core,name,input,String(input.workdir??process.cwd()))&&!['send_mail','install_skill','uninstall_skill'].includes(name)&&!core.isSensitiveToolInvocation(name,input)&&!(name==='bash'&&terminalRequiresConfirmation(core,String(input.command??'')));}
 /** Human grants only: creation is private to the live approval decision path. */
 export class ToolPermissions{
- constructor(private store:TeamStore){}
+ constructor(private store:TeamStore){this.restoreTerminalDirectories();}
+ private restoreTerminalDirectories(){
+  // Old durable approvals wrote the harness cwd, even when bash ran elsewhere.
+  for(const receipt of this.store.operationsWithPrefix('tool-approval:')){
+   if(receipt.toolName!=='bash'||receipt.decision!=='allow_always'||!['allowed','executing','completed'].includes(receipt.status)||typeof receipt.input?.workdir!=='string'||typeof receipt.cwd!=='string')continue;
+   try{
+    const cwd=realpathSync(receipt.input.workdir),scope={botId:receipt.botId,cwd:realpathSync(receipt.cwd),bindingRevision:receipt.bindingRevision??undefined};
+    if(cwd===scope.cwd)continue;
+    const old=this.store.state<any>(this.key(scope,'bash')),target={...scope,cwd},key=this.key(target,'bash');
+    if(!old||old.revokedAt||this.store.state(key))continue;
+    this.store.setState(key,{id:randomUUID(),...this.scope(target),toolName:'bash',createdAt:new Date().toISOString(),restoredFrom:receipt.id});
+   }catch{/* Missing or changed directories never receive a guessed grant. */}
+  }
+ }
  private scope(value:PermissionScope){return {botId:value.botId,cwd:value.cwd,bindingRevision:value.bindingRevision??null};}
  private key(scope:PermissionScope,name:string){return 'tool-permission:'+createHash('sha256').update(JSON.stringify([this.scope(scope),name])).digest('hex');}
  private epochKey(scope:PermissionScope){return 'tool-permission-epoch:'+createHash('sha256').update(JSON.stringify(this.scope(scope))).digest('hex');}

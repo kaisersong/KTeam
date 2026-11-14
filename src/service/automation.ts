@@ -67,7 +67,7 @@ export class TeamAutomation {
  }
  start(){
   if(this.recovering)return;this.starting=true;
-  this.recovering=(async()=>{await recoverHarnessProcesses(this.store);await this.automatic?.recover();await this.reconcileSubmissions();await this.inputs?.recover();await this.retirePriorClaims();})();
+  this.recovering=(async()=>{await recoverHarnessProcesses(this.store);await this.automatic?.recover();await this.reconcileSubmissions();await this.inputs?.recover();await this.retirePriorClaims();await this.approvals?.reconcileRuntimeVersion();})();
   void this.recovering.then(()=>{this.starting=false;if(!this.accepting)return;this.assistant.start();this.timer=setInterval(()=>void this.tick(),750);this.timer.unref();void this.tick();},()=>{this.starting=false;this.accepting=false;});
  }
  async retirePriorClaims(roomId?:string){
