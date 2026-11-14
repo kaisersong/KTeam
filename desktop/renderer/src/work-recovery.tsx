@@ -3,7 +3,7 @@ import {explain, type Bot} from './api';
 import {recoveredConnectionError} from './connection-state';
 
 export function WorkRecoveryNotice({recovery,job,bots,reconnecting,busy,onContinue}:{recovery:any;job:any;bots:Bot[];reconnecting:boolean;busy:boolean;onContinue:()=>void}) {
- if (!job || !['stopped','unknown','blocked'].includes(job.state)) return null;
+ if (!recovery?.jobId || recovery.jobId!==job?.id || !['stopped','unknown','blocked'].includes(job.state)) return null;
  const name = bots.find(bot=>bot.id===job.activeBotId)?.name.replace(/ · KTeam .+$/,'') ?? '成员';
  const code = executionFailure(job)?.code ?? job.reason;
  const connectionFailure = recoveredConnectionError(code,{ready:true,broker:{available:true},kswarm:{available:true}});
