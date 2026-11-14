@@ -43,3 +43,6 @@ The original xiaok builtin Skills shipped in desktop/skills (except KTeam's own 
   derive from xiaok-cli e385c26508fb942670b8816a92d0044c7bf4ebfc.
   KTeam owns and adapts this code for its connector lifecycle, private runtime
   directories and independently packaged official CLI distributions.
+
+Splash validation runtime: source snapshot b049ca7a19d5b3c5197e10d375f9fe5f5c9a7c47 (cloudbase-space-service).
+Bundled parse5/entities notices are included in vendor/splash/THIRD-PARTY-NOTICES.txt.
