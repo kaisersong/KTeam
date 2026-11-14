@@ -55,7 +55,7 @@ Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spe
 - **Durable work and permissions.** Questions and approvals can resume the original task after a host restart. Revocable directory grants cover ordinary file access; sensitive files still need separate confirmation. Review member Skills, memory and tool scopes.
 - **Desktop collaboration.** Conversation previews, rename/delete/unread actions, reply and reaction shortcuts, avatar presets, scheduled work, work notifications, bounded history and verified original tool output.
 - **Complete settings.** Manage models by provider, discover model IDs, import MCP configuration, enable tools and edit their descriptions, select voice profiles, and browse memory by member and conversation.
-- **Connectors and computer access.** Bundled Yunzhijia CLI and enterprise CLI connections; Mac CUA driver installation and system permission shortcuts. Email supports IMAP/SMTP; Gmail/Outlook OAuth is deferred to 0.5.1.
+- **Connectors and computer access.** Bundled Yunzhijia CLI and enterprise CLI connections; Mac CUA driver installation and system permission shortcuts. Email supports IMAP/SMTP; Gmail/Outlook OAuth was added in 0.6.
 - **A2UI and Windows.** A2UI accepts `"1.0"` and numeric `1`, with working surface deletion. Windows private hosts, native helpers and local Agent detection are included in builds. Windows installers remain unsigned.
 
 ## What's in 0.4
@@ -159,7 +159,7 @@ Electron 45.3.2 / Node 24.22.2, identity-based group mentions, lightweight appro
 
 ### v0.5.0
 
-Automatic assistant setup and message handling, file/image input, direct-chat Skills, durable approvals, directory permissions, enterprise connectors, A2UI compatibility and Windows host hardening. Email uses IMAP/SMTP; OAuth is deferred to 0.5.1.
+Automatic assistant setup and message handling, file/image input, direct-chat Skills, durable approvals, directory permissions, enterprise connectors, A2UI compatibility and Windows host hardening. Email uses IMAP/SMTP; OAuth was added in 0.6.
 
 ### v0.4.0
 
