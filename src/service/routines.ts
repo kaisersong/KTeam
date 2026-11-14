@@ -8,6 +8,7 @@ import {routineSchedule,routineTimeZone,nextRoutineAt,validTime,type RoutineSche
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const activeStates=['queued','held','routing','running','waiting','stopping','paused'];
 const reviewStates=['unknown','blocked','stopped'];
+export const routineWork=(job:any)=>job?.trigger==='routine'||job?.trigger==='recovery'&&!!job.routine;
 export class Routines {
  constructor(private upstream:Upstreams,private store:TeamStore,private now=Date.now,private changed:(id:string)=>void=()=>{}){}
  private async scope(roomId:string,botId?:string){
@@ -21,9 +22,27 @@ export class Routines {
  }
  private projection(row:any){return {id:row.id,roomId:row.roomId,botId:row.botId,name:row.name,prompt:row.prompt,schedule:row.schedule,timeZone:row.timeZone,maxRuns:row.maxRuns,endAt:row.endAt??null,overlap:'skip',enabled:row.enabled,revision:row.revision,nextAt:row.nextAt??null,runCount:row.runCount,reason:row.reason??null,lastError:row.lastError??null,retryAt:row.retryAt??null,deleted:!!row.deletedAt};}
  private runs(id:string){return this.store.operationsWithPrefix('routine-run:'+id+':');}
+ private runJob(run:any){
+  let job=run.jobId?this.store.job(run.jobId):null;const seen=new Set<string>();
+  while(job&&!seen.has(job.id)&&seen.size<32){seen.add(job.id);const op=this.store.operation('work-recovery:'+job.id),next=op?.jobId?this.store.job(op.jobId):null;if(!next||next.recoveryOf!==job.id||next.roomId!==job.roomId||next.originId!==job.originId||!routineWork(next))break;job=next;}
+  return job;
+ }
+ /** Validate a scheduler receipt, never interpret its run ID as a chat message. */
+ async recoverySource(job:any){
+  let source=job;const seen=new Set<string>();
+  while(source?.trigger==='recovery'){
+   if(seen.has(source.id)||seen.size>=32)throw new KTeamError('routine_scope_changed',409);seen.add(source.id);
+   const parent=this.store.job(source.recoveryOf);
+   if(!parent||!parent.routine||!source.routine||parent.roomId!==job.roomId||parent.originId!==job.originId||hash(parent.routine)!==hash(source.routine))throw new KTeamError('routine_scope_changed',409);
+   source=parent;
+  }
+  const run=source?.trigger==='routine'?this.store.operation(source.originId):null;
+  if(!run||run.outcome!=='enqueued'||run.roomId!==job.roomId||run.jobId!==source.id||run.routineId!==source.routine?.id||run.scheduledAt!==source.routine.scheduledAt||source.originId!=='routine-run:'+source.routine.id+':'+source.routine.scheduledAt)throw new KTeamError('routine_scope_changed',409);
+  await this.guard(source);return structuredClone(source.routine);
+ }
  async list(roomId:string){
   await this.scope(roomId);
-  return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=run.jobId?this.store.job(run.jobId):null;return job&&(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=run.jobId?this.store.job(run.jobId):null;return {id:run.id,scheduledAt:run.scheduledAt,jobId:job?.id??null,state:job?.needsReview?'needs_review':job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
+  return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=this.runJob(run);return job&&(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=this.runJob(run);return {id:run.id,scheduledAt:run.scheduledAt,jobId:job?.id??null,state:job?.needsReview?'needs_review':job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
  }
  async save(value:unknown){
   const input=record(value);fields(input,['id','roomId','botId','expectedRevision','requestId','name','prompt','schedule','timeZone','maxRuns','endAt','enabled','overlap']);
@@ -44,7 +63,7 @@ export class Routines {
    if((current?.revision??0)!==input.expectedRevision||current?.deletedAt)throw new KTeamError('routine_changed',409);
    if(!current&&this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).length>=100)throw new KTeamError('routine_limit_reached',409);
    if(this.store.settings(roomId)?.revision!==captured.settings.revision||this.store.binding(botId)?.revision!==captured.binding?.revision||this.store.state('source-changing:'+botId))throw new KTeamError('routine_scope_changed',409);
-   return this.store.saveOperation({id,roomId,botId,name,prompt,schedule,timeZone,maxRuns:input.maxRuns,endAt,enabled:input.enabled,nextAt:input.enabled?nextAt:null,runCount:current?.runCount??0,configVersion:(current?.configVersion??0)+1,captured:captured.captured,reviewedJobIds:[...new Set([...(current?.reviewedJobIds??[]),...this.runs(id).flatMap(run=>{const job=run.jobId?this.store.job(run.jobId):null;return job&&(reviewStates.includes(job.state)||job.needsReview)?[job.id]:[];})])],lastRequestId:requestId,intent,createdAt:current?.createdAt??now,updatedAt:now,reason:input.enabled?null:'user_paused'},Number(input.expectedRevision));
+   return this.store.saveOperation({id,roomId,botId,name,prompt,schedule,timeZone,maxRuns:input.maxRuns,endAt,enabled:input.enabled,nextAt:input.enabled?nextAt:null,runCount:current?.runCount??0,configVersion:(current?.configVersion??0)+1,captured:captured.captured,reviewedJobIds:[...new Set([...(current?.reviewedJobIds??[]),...this.runs(id).flatMap(run=>{const job=this.runJob(run);return job&&(reviewStates.includes(job.state)||job.needsReview)?[job.id]:[];})])],lastRequestId:requestId,intent,createdAt:current?.createdAt??now,updatedAt:now,reason:input.enabled?null:'user_paused'},Number(input.expectedRevision));
   });
   if(!reused)this.changed(saved.id);return {ok:true,reused,routine:this.projection(saved)};
  }
@@ -57,19 +76,21 @@ export class Routines {
   let reused=false;const saved=this.store.transaction(()=>{const current=this.store.operation(id);if(!id.startsWith('routine:')||!current||current.roomId!==roomId||current.deletedAt)throw new KTeamError('routine_not_found',404);if(!current.enabled){reused=true;return current;}if(current.revision!==input.expectedRevision)throw new KTeamError('routine_changed',409);return this.store.saveOperation({...current,enabled:false,nextAt:null,reason:'user_paused',configVersion:current.configVersion+1},current.revision);});if(!reused)this.changed(id);return {ok:true,reused,routine:this.projection(saved)};
  }
  assertJob(job:any,bot?:any){
-  if(job.trigger!=='routine')return;
+  if(!routineWork(job))return;
   const row=this.store.operation(job.routine?.id),binding=this.store.binding(row?.botId),settings=this.store.settings(job.roomId);
   if(!row||!row.enabled||row.deletedAt||row.roomId!==job.roomId||row.botId!==job.routine.botId||row.configVersion!==job.routine.configVersion||!settings||settings.paused||settings.quiet||settings.revision!==row.captured.settingsRevision||binding?.revision!==row.captured.bindingRevision||binding?.modelId!==row.captured.bindingModelId||binding?.fingerprint!==row.captured.bindingFingerprint)throw new KTeamError('routine_scope_changed',409);
   if(bot&&profile(bot).revision!==row.captured.profileRevision)throw new KTeamError('routine_scope_changed',409);
   if(!job.routine.admittedAt&&(this.now()-job.routine.scheduledAt>300000||row.endAt&&this.now()>row.endAt))throw new KTeamError('routine_missed',409);
  }
  async guard(job:any){
+  if(job.trigger==='recovery'&&job.routine){await this.recoverySource(job);return;}
   if(job.trigger!=='routine')return;
   this.assertJob(job);const row=this.store.operation(job.routine.id),current=await this.scope(job.roomId,row.botId);
   if(hash(current.captured)!==hash(row.captured))throw new KTeamError('routine_scope_changed',409);
   this.assertJob(job);
  }
  async admit(job:any){
+  if(job.trigger==='recovery'&&job.routine){await this.guard(job);return;}
   if(job.trigger!=='routine')return;
   await this.guard(job);job.routine.admittedAt=this.now();this.store.save(job);
  }
@@ -88,7 +109,7 @@ export class Routines {
     const row=this.store.operation(snapshot.id);if(row?.revision!==snapshot.revision||!row.enabled||row.nextAt!==snapshot.nextAt)return;
     const matches=hash(current.captured)===hash(row.captured)&&!current.settings.paused&&!current.settings.quiet&&this.store.settings(row.roomId)?.revision===current.settings.revision&&this.store.binding(row.botId)?.revision===current.binding?.revision&&!this.store.state('source-changing:'+row.botId);
     if(!matches){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_scope_changed'},row.revision);return;}
-    const prior=this.runs(row.id).find(run=>run.jobId),priorJob=prior?this.store.job(prior.jobId):null;
+    const prior=this.runs(row.id).find(run=>run.jobId),priorJob=prior?this.runJob(prior):null;
     if(priorJob&&(reviewStates.includes(priorJob.state)||priorJob.needsReview)&&!(row.reviewedJobIds??[]).includes(priorJob.id)){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_result_needs_review'},row.revision);return;}
     const scheduledAt=row.nextAt,runId='routine-run:'+row.id+':'+scheduledAt,next=nextRoutineAt(row.schedule as RoutineSchedule,row.timeZone,now,row.endAt);
     const outcome=now-scheduledAt>300000||row.endAt&&now>row.endAt?'missed':priorJob&&activeStates.includes(priorJob.state)?'overlap':'enqueued';

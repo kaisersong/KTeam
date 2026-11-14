@@ -1,3 +1,4 @@
+import {Routines,routineWork} from './routines.js';
 import {harnessWorkspace} from '../runtime/harness.js';
 import {profile} from './bot-profile.js';
 import {memoryReviewRooms} from '../runtime/harness-storage.js';
@@ -77,13 +78,14 @@ export class WorkRecovery {
   if (!this.view(roomId, tasks)?.canContinue) throw new KTeamError('recovery_waiting_stop', 409);
   const members = await this.upstream.membership(roomId);
   const delivered = new Set((prior.results ?? []).map((result: any) => result.botId));
-  const botIds = [...new Set<string>([prior.activeBotId, ...(prior.members ?? [])].filter((id): id is string => !!id && !delivered.has(id)))];
+  const botIds = [...new Set<string>([prior.activeBotId, ...(prior.members ?? []), ...(routineWork(prior)?[prior.routine.botId]:[])].filter((id): id is string => !!id && !delivered.has(id)))];
   for (const botId of botIds) {
    if (!this.store.binding(botId) || !(members.members as any[]).some(member => member.status === 'active' && member.subject?.logicalAgentId === botId)) throw new KTeamError('recovery_member_changed', 409);
    if (this.store.state('harness-fence:' + botId)) throw new KTeamError('native_stop_unconfirmed', 409);
   }
-  // Fetch the original request from its own Room, even when it is outside the current page.
-  await this.upstream.conversationMessage(roomId, prior.originId);
+  // Scheduled runs have an owner receipt rather than a Room message.
+  const routine=routineWork(prior)?await new Routines(this.upstream,this.store).recoverySource(prior):undefined;
+  if(!routine)await this.upstream.conversationMessage(roomId, prior.originId);
   await this.coordinator.guardConversation(roomId);
   return this.store.transaction(() => {
    if(autoId&&(this.store.operation(autoId)||this.store.jobs(roomId).some(job=>job.state==='waiting')))throw new KTeamError('recovery_in_progress',409);
@@ -91,10 +93,11 @@ export class WorkRecovery {
    if (old) return {ok: true, jobId: old.jobId, reused: true};
    if (latestWork(this.store.jobs(roomId))?.id !== jobId || this.store.jobs(roomId).some(active)) throw new KTeamError('recovery_in_progress', 409);
    if (this.store.settings(roomId)?.paused) throw new KTeamError('team_paused', 409);
+   if(routine)new Routines(this.upstream,this.store).assertJob({...prior,trigger:'recovery',routine});
    const nextId = 'job-recovery-' + digest(jobId).slice(0, 32);
    if(autoId)this.store.saveOperation({id:autoId,sourceJobId:jobId,status:'queued'},0);
    this.store.saveOperation({id: operationId, jobId: nextId, sourceJobId: jobId, requestId, status: 'queued'}, 0);
-   this.store.enqueueFollowup({id: nextId, roomId, originId: prior.originId, trigger: 'recovery', recoveryOf: jobId, recoveryAutomatic:!!autoId, recoveryBotIds: botIds,
+   this.store.enqueueFollowup({id: nextId, roomId, originId: prior.originId, trigger: 'recovery', ...(routine?{routine}:{}), recoveryOf: jobId, recoveryAutomatic:!!autoId, recoveryBotIds: botIds,
     recoveryContext: {sourceJobId: jobId, failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
      completedReplies: prior.results ?? [], recentTools: (prior.toolTrace ?? []).slice(-12)},
     recoveryBindings: Object.fromEntries(botIds.map(id => [id, this.store.binding(id)]))});
