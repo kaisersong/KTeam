@@ -1,5 +1,5 @@
 type Upstream={broker?:{available?:boolean};kswarm?:{available?:boolean};ready?:boolean};
-const hostErrors=['ENOENT','ECONNREFUSED','ECONNRESET','EPIPE','host_start_timeout','host_timeout'];
+const hostErrors=['ENOENT','ECONNREFUSED','ECONNRESET','EPIPE','host_start_timeout','host_timeout','desktop_generation_busy','desktop_generation_unconfirmed'];
 /** Only connection errors whose own service has recovered may be cleared. */
 export function recoveredConnectionError(error:string,upstream:Upstream,explain:(code:string)=>string=(code=>code)){
  if(error===explain('broker_unavailable'))return upstream.broker?.available===true;
