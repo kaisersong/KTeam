@@ -187,3 +187,13 @@ test('retiring an exclusively owned stale waiting batch preserves checkpoint res
   await owner.close();owner=await open(true);assert.equal(checks,2);assert.match(JSON.stringify(owner.session.getMessages()),/CHECKPOINT_RESULT_93/);
  }finally{await owner?.close();f.close();}
 });
+
+test('durable terminal approvals carry the actual command directory separately from the harness session directory',async()=>{
+ const f=await fixture();let owner:any;try{
+  const actual=join(f.root,'command-directory');mkdirSync(actual);let captured:any;
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{},toolApprovalPort:{ownerId:'directory-owner',prepare:async(value:any)=>{captured=value;return true;}}});
+  owner=await h.prepare!({},'fixture','check directory',[]);
+  await owner.toolApprovalPort.prepare({name:'bash',input:{command:'printf DIRECTORY_SCOPE',workdir:actual},decision:'prompt',permission:'write',batchId:'fixture',index:0});
+  assert.equal(captured.cwd,realpathSync(actual));assert.equal(captured.sessionCwd,f.cwd);assert.equal(captured.input.workdir,actual);
+ }finally{await owner?.close();f.close();}
+});
