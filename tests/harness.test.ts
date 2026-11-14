@@ -54,3 +54,42 @@ test('install_skill treats every Windows local path form as a path for the priva
  for(const source of ['C:\\x.md','..\\x.md','\\Users\\x.md'])assert.equal(localSkillSource(source,'linux'),false,source);
  for(const source of ['my-skill','https://example.invalid/skill.md'])assert.equal(localSkillSource(source,'win32'),false,source);
 });
+
+test('low-risk compound ls and gh queries run without recovery prompts; saved effective-directory grants survive recovery and restart',async()=>{
+ const f=await fixture();let store=new TeamStore(f.root),approvals=new ToolApprovals(store),registry:any;let prompts=0;const controller=new AbortController();
+ const make=async(botId='member',bindingRevision=1)=>createHarness({workspace:f.root,recoveryReview:true,permissions:{store:approvals.permissions,botId,bindingRevision},signal:controller.signal,assertCurrent:async()=>{},onPrompt:async()=>{prompts++;return false;}});
+ try{
+  writeFileSync(join(f.workspace,'proof.txt'),'PROOF');let h=await make();registry=new f.core.ToolRegistry(h.registryOptions,h.tools);
+  assert.match(await registry.executeTool('bash',{command:`ls "${f.workspace}" 2>/dev/null; echo ---; ls "${f.workspace}" 2>/dev/null`,workdir:f.root}),/proof.txt/);assert.equal(prompts,0);
+  const query=String.raw`gh run view 123 --json status --jq '{status}'; echo ---; gh run list --limit 10 --json databaseId,status --jq '.[] | "\(.databaseId)\t\(.status)"'`;
+  assert.equal(await h.registryOptions.permissionManager.check('bash',{command:query,workdir:f.workspace}),'allow');
+  approvals.permissions.remember({botId:'member',bindingRevision:1,cwd:f.workspace},'bash');
+  assert.match(await registry.executeTool('bash',{command:'printf DIRECTORY_GRANT',workdir:f.workspace}),/DIRECTORY_GRANT/);assert.equal(prompts,0);
+  registry.dispose();registry=undefined;store.close();store=new TeamStore(f.root);approvals=new ToolApprovals(store);h=await make();
+  const pm=h.registryOptions.permissionManager;assert.equal(await pm.check('bash',{command:'printf NEXT_COMMAND',workdir:f.workspace}),'allow');
+  assert.equal(await pm.check('bash',{command:'printf OTHER_DIR',workdir:f.root}),'prompt');
+  assert.equal(await (await make('other')).registryOptions.permissionManager.check('bash',{command:'printf OTHER_MEMBER',workdir:f.workspace}),'prompt');
+  assert.equal(await (await make('member',2)).registryOptions.permissionManager.check('bash',{command:'printf NEW_BINDING',workdir:f.workspace}),'prompt');
+  for(const command of ['rm proof.txt','git reset --hard','git -C . clean -fd','gh pr merge 1','gh release delete v1','git -c core.editor=custom log','sudo ls','ls; rm proof.txt'])assert.notEqual(await pm.check('bash',{command,workdir:f.workspace}),'allow',command);
+  const grant=approvals.permissions.list().find(g=>g.cwd===f.workspace)!;approvals.permissions.revoke({id:grant.id});await assert.rejects(h.assertCurrent(),/harness_permissions_changed/);
+ }finally{controller.abort();registry?.dispose();approvals.close();store.close();f.close();}
+});
+
+test('legacy durable bash grants restore only approved effective directories and never resurrect revoked grants',async()=>{
+ const f=await fixture(),store=new TeamStore(f.root);try{
+  let approvals=new ToolApprovals(store);approvals.permissions.remember({botId:'member',bindingRevision:1,cwd:f.root},'bash');
+  store.saveOperation({id:'tool-approval:legacy',toolName:'bash',botId:'member',bindingRevision:1,cwd:f.root,input:{command:'printf old',workdir:f.workspace},decision:'allow_always',status:'completed'},0);
+  approvals=new ToolApprovals(store);const scoped=approvals.permissions.list().find(g=>g.cwd===f.workspace);assert.ok(scoped);assert.equal(scoped.restoredFrom,'tool-approval:legacy');
+  approvals.permissions.revoke({id:scoped.id});approvals=new ToolApprovals(store);assert.equal(approvals.permissions.list().some(g=>g.cwd===f.workspace),false);
+ }finally{store.close();f.close();}
+});
+
+test('an update cancels only an unexecuted pending approval for the waiting owner and leaves executing receipts intact',async()=>{
+ const f=await fixture(),store=new TeamStore(f.root),approvals=new ToolApprovals(store);try{
+  store.enqueue('waiting-owner','room','origin');const job=store.job('waiting-owner');Object.assign(job,{state:'waiting',currentHandoffId:'handoff-fixture'});store.save(job);
+  store.saveOperation({id:'handoff-fixture',approvalId:'tool-approval:pending'},0);
+  store.saveOperation({id:'tool-approval:pending',jobId:job.id,durable:true,status:'pending',runtimeRevision:'previous-runtime'},0);
+  store.saveOperation({id:'tool-approval:executing',jobId:job.id,durable:true,status:'executing',runtimeRevision:'previous-runtime'},0);
+  await approvals.reconcileRuntimeVersion();assert.equal(store.operation('tool-approval:pending').status,'cancelled');assert.equal(store.operation('tool-approval:pending').reason,'runtime_changed_before_execution');assert.equal(store.operation('tool-approval:executing').status,'executing');assert.equal(approvals.permissions.list().length,0);
+ }finally{store.close();f.close();}
+});

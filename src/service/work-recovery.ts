@@ -27,16 +27,17 @@ export class WorkRecovery {
   for(const roomId of rooms){
    const job=latestWork(this.store.jobs(roomId));
    if(memoryReviewRooms(this.store.root).includes(roomId))continue;
-   if(job?.state!=='blocked'||!['harness_session_busy','handoff_wait_expired'].includes(job.reason)||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id))continue;
+   if(job?.state!=='blocked'||!['harness_session_busy','handoff_wait_expired','tool_approval_result_unknown'].includes(job.reason)||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id))continue;
    const approvals=this.store.operationsWithPrefix('tool-approval:').filter(a=>a.roomId===roomId&&a.durable&&a.botId===job.activeBotId);
    for(const approval of approvals){
+    if(job.reason==='tool_approval_result_unknown'&&approval.reason!=='runtime_changed_before_execution')continue;
     const binding=this.store.binding(approval.botId);if(!binding||binding.kind!=='xiaok-hosted'||binding.revision!==approval.bindingRevision||binding.fingerprint!==approval.modelFingerprint)continue;
     let bot:any,cwd:string;try{bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===approval.botId);cwd=harnessWorkspace(profile(bot).workspace);}catch{continue;}
-    if(!bot||profile(bot).revision!==approval.profileRevision||cwd!==approval.cwd)continue;
-    const scope={root:this.store.root,roomId,botId:approval.botId,bindingRevision:binding.revision,profileRevision:approval.profileRevision,fingerprint:binding.fingerprint,cwd:approval.cwd};
+    if(!bot||profile(bot).revision!==approval.profileRevision||cwd!==(approval.sessionCwd??approval.cwd))continue;
+    const scope={root:this.store.root,roomId,botId:approval.botId,bindingRevision:binding.revision,profileRevision:approval.profileRevision,fingerprint:binding.fingerprint,cwd};
     let release:(()=>void)|undefined;
     try{
-     const {identity,directory}=harnessLocation(scope,approval.cwd);release=acquireHarnessStorage(directory);
+     const {identity,directory}=harnessLocation(scope,cwd);release=acquireHarnessStorage(directory);
      const core=await sharedRuntime(),snapshot=await new core.FileSessionStore(join(directory,'sessions')).load('kteam_'+identity);
      const session=new core.AgentSessionState();if(!snapshot)continue;session.restoreSnapshot(snapshot);
      const batch=session.getToolBatch();if(!staleToolBatchApproval(this.store,batch,scope)||this.store.job(batch.ownerId)?.originId!==job.originId)continue;
