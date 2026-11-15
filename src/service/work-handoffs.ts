@@ -1,4 +1,4 @@
-import {findOwnerMessage} from './room-reads.js';
+import {originalMessage} from './room-reads.js';
 import {WorkConditions} from './work-conditions.js';
 import {createHash} from 'node:crypto';
 import {KTeamError,fields,record,text} from '../errors.js';
@@ -18,18 +18,17 @@ export class WorkHandoffs {
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private chats:PrivateConversations,
   private assertRoutine:(job:any)=>Promise<void>,private invalidateChildren:(rootId:string)=>void,private now=Date.now){this.conditions=new WorkConditions(upstream,store);chats.setQuestionGuard(async question=>{const job=store.job(question.jobId),op=job?.currentHandoffId?store.operation(job.currentHandoffId):undefined;if(job?.state!=='waiting'||op?.questionId!==question.id||!['parked','parking'].includes(op.status))throw new KTeamError('bot_question_expired',409);await this.guard(job);},question=>{const job=store.job(question.jobId),op=job?.currentHandoffId?store.operation(job.currentHandoffId):undefined;if(op?.questionId===question.id&&op.status==='parked')store.saveOperation({...op,pollAt:0},op.revision);});}
  private conditions:WorkConditions;
- private budget(job:any,limit:number,code:string){if(this.store.waitingJobs().length>=100)throw new KTeamError('work_wait_queue_full',409);const approvals=this.store.operationsWithPrefix('work-handoff:').filter(op=>op.jobId===job.id&&op.approvalId).length;if((job.handoffVersion??0)-approvals>=limit)throw new KTeamError(code,409);}
  private async capture(job:any,botId:string,targetIds:string[]){
   await this.coordinator.guardConversation(job.roomId);
   const snapshot=await this.upstream.membership(job.roomId),bots=((await this.upstream.listBots()).agents as any[]),members=snapshot.members as any[];
   const bindings=Object.fromEntries([botId,...targetIds].map(id=>{const bot=bots.find(bot=>bot.id===id&&!bot.archivedAt),binding=this.store.binding(id);if(!bot||!binding||this.store.state('source-changing:'+id)||!members.some(member=>member.status==='active'&&member.subject?.logicalAgentId===id))throw new KTeamError('handoff_scope_changed',409);return [id,{binding,profileRevision:profile(bot).revision}];}));
   const settings=this.store.settings(job.roomId);if(!settings||settings.paused)throw new KTeamError('handoff_scope_changed',409);
-  return {settingsRevision:settings.revision,roomRevision:(snapshot.room as any).revision,bindings,sourceTailId:(await findOwnerMessage(this.upstream,job.roomId,message=>message.sender?.kind==='user'&&!['aimp_event','bot_question_answer'].includes(message.sourceRef?.kind)))?.messageId??null,rolesRevision:this.store.state<any>('team-role-policy:'+job.roomId)?.revision??0,disabledSkills:appPreferences(this.store).disabledSkills};
+  return {settingsRevision:settings.revision,roomRevision:(snapshot.room as any).revision,bindings,sourceOrigin:job.routine?{routineId:job.routine.id}:{messageId:job.originId,bodyHash:hash((await originalMessage(this.upstream,job.roomId,job.originId)).text)},rolesRevision:this.store.state<any>('team-role-policy:'+job.roomId)?.revision??0,disabledSkills:appPreferences(this.store).disabledSkills};
  }
  async guard(job:any){
   if(!job?.currentHandoffId)return;
   const op=this.store.operation(job.currentHandoffId);if(!op||['failed','unknown','cancelled'].includes(op.status))throw new KTeamError('handoff_scope_changed',409);
-  try{if(['waiting','parking','parked','resuming'].includes(op.status)&&this.now()>op.deadline)throw new KTeamError(op.condition?'condition_wait_expired':'handoff_wait_expired',409);await this.conditions.assertScope(op);await this.assertRoutine(job);const current=await this.capture(job,op.botId,op.requests.map((request:any)=>request.botId));if(hash(current)!==hash(op.captured))throw new KTeamError('handoff_scope_changed',409);for(const child of op.children??[])await this.coordinator.guardConversation(child.roomId);}
+  try{if(['waiting','parking','parked','resuming'].includes(op.status)&&this.now()>op.deadline)throw new KTeamError(op.condition?'condition_wait_expired':'handoff_wait_expired',409);await this.conditions.assertScope(op);await this.assertRoutine(job);const current=await this.capture(job,op.botId,op.requests.map((request:any)=>request.botId));const {sourceTailId:legacyTail,...captured}=op.captured;const comparable={...current};if(!captured.sourceOrigin)delete (comparable as any).sourceOrigin;if(hash(comparable)!==hash(captured))throw new KTeamError('handoff_scope_changed',409);for(const child of op.children??[])await this.coordinator.guardConversation(child.roomId);}
   catch(error){if(error instanceof KTeamError&&([403,404].includes(error.status)||['conversation_identity_changed','conversation_contract_changed','routine_scope_changed','bot_profile_changed','model_binding_changed'].includes(error.code)))throw new KTeamError('handoff_scope_changed',409);throw error;}
  }
  async guardApproval(approval:any){
@@ -39,8 +38,7 @@ export class WorkHandoffs {
  }
  async waitForApproval(scope:BotContactScope,job:any,approval:any){
   await scope.assertCurrent();
-  // Human-reviewed approvals do not consume the automatic collaboration/wait budget.
-  this.budget(job,Infinity,'work_approval_limit');
+  if(this.store.waitingJobs().length>=100)throw new KTeamError('handoff_capacity_exceeded',409);
   const previous=job.currentHandoffId?this.store.operation(job.currentHandoffId):undefined;
   if(previous&&!['returned','cancelled','failed'].includes(previous.status))throw new KTeamError('handoff_result_unknown',409);
   const captured=await this.capture(job,scope.botId,[]),id='work-handoff:'+hash([job.id,approval.id]),version=(job.handoffVersion??0)+1;
@@ -50,17 +48,16 @@ export class WorkHandoffs {
  wantsPause(job:any){const op=job.currentHandoffId?this.store.operation(job.currentHandoffId):null;return !!op&&['waiting','parking'].includes(op.status);}
  questionTool(scope:BotContactScope,job:any){const original=this.chats.tools(scope).find(tool=>tool.definition.name==='ask_user')!;return {...original,definition:{...original.definition,description:'遇到必须由本人回答的问题时，转到你与用户的私聊。原工作保存并挂起、释放执行槽；本人回答后重新核验来源并接续同一工作，重启不重新询问。答案不是工具批准，不索取密码或验证码。'},execute:async(input:unknown)=>{
   await scope.assertCurrent();const captured=await this.capture(job,scope.botId,[]),deadline=Date.parse(job.task?.terms?.deadline)||this.now()+3600000;
-  const receipt=await this.chats.requestDurableQuestion(scope,input,deadline,()=>this.budget(job,2,'work_question_limit'));if(!receipt.asked)return JSON.stringify(receipt);const answer=await this.chats.answeredQuestion(receipt.id!);if(answer)return JSON.stringify({answered:true,...answer});
+  const receipt=await this.chats.requestDurableQuestion(scope,input,deadline,()=>{if(this.store.waitingJobs().length>=100)throw new KTeamError('handoff_capacity_exceeded',409);});if(!receipt.asked)return JSON.stringify(receipt);const answer=await this.chats.answeredQuestion(receipt.id!);if(answer)return JSON.stringify({answered:true,...answer});
   await scope.assertCurrent();const id='work-handoff:'+hash([job.id,scope.botId,receipt.id]),prior=this.store.operation(id);if(prior)throw new KTeamError('handoff_result_unknown',409);
-  try{this.budget(job,2,'work_question_limit');}catch(error){this.chats.cancelQuestion(receipt.id!,error instanceof KTeamError?error.code:'work_question_limit');throw error;}
+  if(this.store.waitingJobs().length>=100){this.chats.cancelQuestion(receipt.id!,'handoff_capacity_exceeded');throw new KTeamError('handoff_capacity_exceeded',409);}
   const version=(job.handoffVersion??0)+1;this.store.transaction(()=>{this.store.saveOperation({id,jobId:job.id,roomId:job.roomId,botId:scope.botId,requests:[],children:[],questionId:receipt.id,doneWhen:'本人回答后接续原工作',deadline,captured,version,status:'waiting'},0);job.currentHandoffId=id;job.handoffVersion=version;job.handoffWait={operationId:id,doneWhen:'等待本人回答',deadline,questionId:receipt.id,questionRoomId:this.store.operation(receipt.id!).roomId,children:[]};this.store.save(job);});
   return JSON.stringify({waiting:true,answered:false,questionId:receipt.id,next:'问题已发送到本人私聊。原工作将保存并挂起，回答后接续，不重新提问。'});
  }};}
  tools(scope:BotContactScope,job:any){return [this.conditionTool(scope,job),{permission:'safe',definition:{name:'delegate_work',description:'把独立子工作交给当前群内至多三位成员，可并行完成。当前工作会保存并挂起，释放执行槽；全部结果或失败返回后，重新校验原范围并自动接续原工作。不把送达当完成，不授予新权限。不使用本工具重复结果未知的旧操作。',inputSchema:{type:'object',additionalProperties:false,required:['requests','doneWhen'],properties:{requests:{type:'array',minItems:1,maxItems:3,items:{type:'object',additionalProperties:false,required:['botId','message'],properties:{botId:{type:'string'},message:{type:'string',minLength:1,maxLength:6000}}}},doneWhen:{type:'string',minLength:1,maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:(input:unknown)=>this.delegate(scope,job,input)}];}
  private conditionTool(scope:BotContactScope,job:any){return {permission:'safe',definition:{name:'wait_for_condition',description:'保存当前工作并释放执行槽，等待工作目录内文件到位、文件内容变化或同会话已有工作返回结果。未变化不调用模型。只读观察不扩大权限，不重新执行旧操作。文件内容变化最多检查1MiB；必须填写期限，最多60分钟且不超过原任务期限。',inputSchema:{type:'object',additionalProperties:false,required:['condition','reason','timeoutMinutes'],properties:{condition:{type:'object',additionalProperties:false,required:['kind'],properties:{kind:{type:'string',enum:['file_exists','file_changed','work_result']},path:{type:'string'},jobId:{type:'string'}}},reason:{type:'string',maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:async(value:unknown)=>{
   const input=record(value);fields(input,['condition','reason','timeoutMinutes']);const reason=text(input.reason,'condition_reason',512),minutes=input.timeoutMinutes;
-  if(!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60)throw new KTeamError('condition_input_invalid');
-  this.budget(job,2,'work_condition_limit');
+  if(!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60||this.store.waitingJobs().length>=100)throw new KTeamError('condition_input_invalid');
   await scope.assertCurrent();const condition=await this.conditions.capture(job,scope.botId,input.condition),captured=await this.capture(job,scope.botId,[]);await scope.assertCurrent();
   const id='work-handoff:'+hash([job.id,scope.botId,input]),existing=this.store.operation(id);if(existing)throw new KTeamError('condition_already_recorded',409);
   const version=(job.handoffVersion??0)+1,deadline=Math.min(this.now()+Number(minutes)*60000,Date.parse(job.task?.terms?.deadline)||this.now()+3600000);
@@ -76,7 +73,7 @@ export class WorkHandoffs {
   if(new Set(requests.map(request=>request.botId)).size!==requests.length||requests.some(request=>(scope.path??[scope.botId]).includes(request.botId)))throw new KTeamError('handoff_input_invalid');
   await scope.assertCurrent();const id='work-handoff:'+hash([job.id,scope.botId,requests,doneWhen]),existing=this.store.operation(id);
   if(existing){await this.guard({...job,currentHandoffId:id});if(existing.status==='returned')return JSON.stringify({completed:true,results:existing.results});if(existing.status==='waiting'){job.currentHandoffId=id;this.store.save(job);return JSON.stringify({completed:false,waiting:true});}throw new KTeamError('handoff_result_unknown',409);}
-  this.budget(job,2,'work_delegation_limit');
+  if(this.store.waitingJobs().length>=100)throw new KTeamError('handoff_capacity_exceeded',409);
   const captured=await this.capture(job,scope.botId,requests.map(request=>request.botId));await scope.assertCurrent();
   const version=(job.handoffVersion??0)+1,deadline=Math.min(this.now()+Number(minutes)*60000,Date.parse(job.task?.terms?.deadline)||this.now()+3600000);
   let op=this.store.saveOperation({id,jobId:job.id,roomId:job.roomId,botId:scope.botId,requests,doneWhen,deadline,captured,version,status:'creating',children:[]},0);

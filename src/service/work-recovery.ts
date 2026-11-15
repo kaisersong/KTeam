@@ -1,3 +1,4 @@
+import {processBirth,sameProcessBirth} from '../runtime/platform-process.js';
 import {Routines,routineWork} from './routines.js';
 import {harnessWorkspace} from '../runtime/harness.js';
 import {profile} from './bot-profile.js';
@@ -14,14 +15,17 @@ import type {TeamCoordinator} from './coordination.js';
 import type {TeamStore} from './team-store.js';
 
 const interrupted = (job: any) => job && ['stopped','unknown','blocked'].includes(job.state) && !['peer','followup','assistant-notice','regenerate'].includes(job.trigger);
-const active = (job: any) => ['queued','held','routing','running','stopping'].includes(job.state);
-const latestWork = (jobs:any[]) => jobs.find(job=>!['assistant-notice','peer','followup','regenerate'].includes(job.trigger));
+const dependent = (job:any) => ['queued','held'].includes(job.state)&&typeof job.afterJobId==='string';
+const active = (job: any) => !dependent(job)&&['queued','held','routing','running','stopping'].includes(job.state);
+const latestWork = (jobs:any[]) => jobs.find(job=>!dependent(job)&&!['assistant-notice','peer','followup','regenerate'].includes(job.trigger));
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
 /** Link a user-requested continuation to preserved evidence. Old runs stay immutable. */
 export class WorkRecovery {
  constructor(private upstream: Upstreams, private store: TeamStore, private coordinator: TeamCoordinator) {}
  async wakeSafe(){
+  await this.wakeCheckpointRecovery();
+  await this.wakeUnknownBatch();
   // Only stale approval waits / busy recovery chains are eligible. No unknown runs.
   const rooms=new Set(this.store.jobs().map(job=>job.roomId));
   for(const roomId of rooms){
@@ -47,6 +51,65 @@ export class WorkRecovery {
      await this.continue(roomId,{jobId:job.id,requestId:'auto-stale-approval:'+job.id},autoId);break;
     }catch{/* Scope changes, active locks and unknown evidence remain blocked. */}finally{release?.();}
    }
+  }
+ }
+ /** Reconcile only the legacy checkpoint-only fence. Unknown process shutdowns stay fenced. */
+ private async reconcileCheckpointFence(roomId:string,botId:string){
+  const fence=this.store.state<any>('harness-fence:'+botId);if(!fence)return true;
+  if(fence.reason!=='harness_runtime_close_failed'||typeof fence.jobId!=='string')return false;
+  const job=this.store.job(fence.jobId),binding=this.store.binding(botId);
+  if(fence.reason!=='harness_runtime_close_failed'||!job||job.roomId!==roomId||job.activeBotId!==botId||job.state!=='blocked'||job.stopResultUnknown||[...(job.toolTrace??[])].reverse().find((event:any)=>['run_failed','run_aborted'].includes(event.type))?.code!=='session_save_locked'||!binding||binding.kind!=='xiaok-hosted')return false;
+  const captured=job.recoveryBindings?.[botId];if(!captured||captured.revision!==binding.revision||captured.fingerprint!==binding.fingerprint)return false;
+  if(this.store.jobs().some(candidate=>candidate.activeBotId===botId&&(active(candidate)||candidate.state==='waiting')))return false;
+  const processes=this.store.operationsWithPrefix('harness-process:'+job.id+':');
+  for(const row of processes){
+   if(row.state!=='stopped')return false;if(!row.pid)continue;
+   try{process.kill(row.pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')continue;return false;}
+   try{if(sameProcessBirth(processBirth(row.pid),row.birth))return false;}catch{return false;}
+  }
+  const task=((await this.upstream.aimp(roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===job.task?.taskRef);if(task&&!['halted','delivered','rejected','expired','cancelled'].includes(task.state))return false;
+  let release:(()=>void)|undefined;
+  try{
+   const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId&&!bot.archivedAt);if(!bot)return false;
+   const cwd=harnessWorkspace(profile(bot).workspace);if(job.harness?.cwd!==cwd)return false;
+   const {identity,directory}=harnessLocation({root:this.store.root,roomId,botId,bindingRevision:binding.revision,fingerprint:binding.fingerprint},cwd);release=acquireHarnessStorage(directory);
+   const core=await sharedRuntime(),sessions=new core.FileSessionStore(join(directory,'sessions')),snapshot=await sessions.load('kteam_'+identity);if(!snapshot)return false;
+   // Prove the checkpoint store accepts its saved state. This never executes a pending tool batch.
+   await sessions.save(snapshot);
+   if(this.store.state<any>('harness-fence:'+botId)?.jobId!==job.id)return false;
+   this.store.setState('harness-checkpoint-reconciled:'+job.id,{at:new Date().toISOString(),sessionId:snapshot.sessionId,processIds:processes.map(row=>row.id)});
+   this.store.setState('harness-fence:'+botId,null);return true;
+  }catch{return false;}finally{release?.();}
+ }
+ private async wakeCheckpointRecovery(){
+  for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
+   const job=latestWork(this.store.jobs(roomId));
+   if(!job||job.state!=='blocked'||!['harness_runtime_close_failed','harness_session_persist_failed','handoff_budget_exhausted'].includes(job.reason)||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   if(job.reason==='harness_runtime_close_failed'&&!this.store.state('harness-fence:'+job.activeBotId))continue;
+   try{
+    if(!await this.reconcileCheckpointFence(roomId,job.activeBotId))continue;
+    const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
+    if(!this.view(roomId,tasks)?.canContinue)continue;
+    await this.continue(roomId,{jobId:job.id,requestId:'auto-checkpoint:'+job.id},'auto-checkpoint:'+job.id);
+   }catch{/* Retry observations on the next tick; no old model/tool action is replayed here. */}
+  }
+ }
+ private async wakeUnknownBatch(){
+  for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
+   const job=latestWork(this.store.jobs(roomId));
+   if(!job||!interrupted(job)||!(job.reason==='tool_batch_execution_unknown'||executionFailure(job)?.code==='host_restarted_result_unknown')||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   const botId=job.activeBotId,binding=this.store.binding(botId);if(!binding||binding.kind!=='xiaok-hosted'||job.stopResultUnknown||this.store.state('harness-fence:'+botId))continue;
+   let release:(()=>void)|undefined;
+   try{
+    const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId&&!bot.archivedAt);if(!bot)continue;
+    const cwd=harnessWorkspace(profile(bot).workspace),{identity,directory}=harnessLocation({root:this.store.root,roomId,botId,bindingRevision:binding.revision,fingerprint:binding.fingerprint},cwd);
+    release=acquireHarnessStorage(directory);const core=await sharedRuntime(),snapshot=await new core.FileSessionStore(join(directory,'sessions')).load('kteam_'+identity),batch=snapshot?.toolBatch;
+    if(!batch||!['executing','preparing'].includes(batch.state))continue;
+    let owner=job;const seen=new Set<string>();while(owner&&owner.id!==batch.ownerId&&!seen.has(owner.id)){seen.add(owner.id);owner=this.store.job(owner.recoveryOf);}
+    if(!owner||owner.id!==batch.ownerId||owner.roomId!==roomId||owner.originId!==job.originId||owner.activeBotId!==botId||!interrupted(owner)||owner.stopResultUnknown)continue;
+    const autoId='auto-unknown-batch:'+botId+':'+batch.id;if(this.store.operation(autoId))continue;
+    release();release=undefined;await this.continue(roomId,{jobId:job.id,requestId:'auto-result-check:'+job.id},autoId);
+   }catch{/* Active owners and unverifiable sources are never replayed. */}finally{release?.();}
   }
  }
  view(roomId: string, tasks: any[]) {
@@ -82,7 +145,7 @@ export class WorkRecovery {
   const botIds = [...new Set<string>([prior.activeBotId, ...(prior.members ?? []), ...(routineWork(prior)?[prior.routine.botId]:[])].filter((id): id is string => !!id && !delivered.has(id)))];
   for (const botId of botIds) {
    if (!this.store.binding(botId) || !(members.members as any[]).some(member => member.status === 'active' && member.subject?.logicalAgentId === botId)) throw new KTeamError('recovery_member_changed', 409);
-   if (this.store.state('harness-fence:' + botId)) throw new KTeamError('native_stop_unconfirmed', 409);
+   if (!await this.reconcileCheckpointFence(roomId,botId)) throw new KTeamError('native_stop_unconfirmed', 409);
   }
   // Scheduled runs have an owner receipt rather than a Room message.
   const routine=routineWork(prior)?await new Routines(this.upstream,this.store).recoverySource(prior):undefined;
@@ -102,6 +165,7 @@ export class WorkRecovery {
     recoveryContext: {sourceJobId: jobId, failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
      completedReplies: prior.results ?? [], recentTools: (prior.toolTrace ?? []).slice(-12)},
     recoveryBindings: Object.fromEntries(botIds.map(id => [id, this.store.binding(id)]))});
+   for(const queued of this.store.jobs(roomId).filter(job=>dependent(job)&&job.afterJobId===prior.id)){queued.afterJobId=nextId;this.store.save(queued);}
    return {ok: true, jobId: nextId, reused: false};
   });
  }

@@ -41,8 +41,9 @@ export async function openHarnessSession(input:{core:any;toolApprovalPort?:any;t
   session.restoreSnapshot(previous??{...session.exportSnapshot(),sessionId,cwd,lineage:[sessionId]});
   const pendingBatch=session.getToolBatch();
   if(pendingBatch&&(!input.toolApprovalPort||pendingBatch.ownerId!==input.toolApprovalPort.ownerId)){
-   if(pendingBatch.state!=='waiting_approval')throw new KTeamError('tool_batch_execution_unknown',409);
-   if(!input.toolApprovalPort?.retireStaleBatch||!await input.toolApprovalPort.retireStaleBatch(pendingBatch))throw new KTeamError('harness_session_busy',409);
+   if(pendingBatch.state!=='waiting_approval'){
+    if(!input.toolApprovalPort?.retireUnknownBatch||!await input.toolApprovalPort.retireUnknownBatch(pendingBatch))throw new KTeamError('tool_batch_execution_unknown',409);
+   }else if(!input.toolApprovalPort?.retireStaleBatch||!await input.toolApprovalPort.retireStaleBatch(pendingBatch))throw new KTeamError('harness_session_busy',409);
    // Checkpointed results have not necessarily reached message history yet.
    const seen=new Set(session.getMessages().flatMap((message:any)=>message.content.filter((block:any)=>block.type==='tool_result').map((block:any)=>block.tool_use_id)));
    const missing:any[]=[];let include=false;
@@ -62,13 +63,28 @@ export async function openHarnessSession(input:{core:any;toolApprovalPort?:any;t
   const system=snapshot.rendered+"\n大工具输出保存在本会话私有存储。若结果提示 file://.kteam/spill/...，用 read_runtime_output 按工具调用ID读取，不能读取其他会话。\n"+'\n'+input.system+'\n子 Agent 是本成员在当前会话中的内部工作线程，不能创建群成员、改变项目权限或代表其他 Bot 发言。记忆只属于当前 Bot 与当前群，不跨群读取。';
   factory=core.createPlatformRegistryFactory({platform,disableHooks:input.toolPolicy?.restricted,source:'chat',sessionId,adapter:()=>input.adapter,promptExecutor:sideCall,skillTool:core.createSkillTool(input.catalog,platform.capabilityRegistry),workflowTools:[...input.tools,...mailTools(integration.mail),...await connectedMail.tools(),{permission:'safe',definition:{name:'read_runtime_output',description:'分段读取当前Bot当前会话的大工具输出。toolCallId来自截断提示中的.txt文件名，不含扩展名。不能读取其他会话或任意文件。',inputSchema:{type:'object',additionalProperties:false,required:['toolCallId'],properties:{toolCallId:{type:'string',pattern:'^[a-zA-Z0-9_-]{1,256}$'},offset:{type:'integer',minimum:0},bytes:{type:'integer',minimum:1,maximum:32000}}}},execute:async(args:any)=>{await input.assertCurrent();const page=runtimeOutputPage(join(directory,'spill',sessionId),args.toolCallId,args.offset??0,args.bytes??16000);await input.assertCurrent();return JSON.stringify(page);}}],memoryStore:memoryEnabled?memory:undefined,permissionManager:input.permissions,permissionManagerForCwd:input.permissionManagerForCwd,onPrompt:input.onPrompt,onPromptForCwd:input.onPromptForCwd,assertCurrent:input.assertCurrent,teamTools:[],disableReminders:true,bindTool:input.bindTool,isToolEnabled:(name:string)=>!integration.tools?.disabled?.includes(name),buildSystemPrompt:async(childCwd:string)=>(await buildPrompt(childCwd)).rendered+'\n'+input.system,onSubAgentEvent:input.onEvent,onMultiAgentEvent:input.onEvent});
   const registry=factory.createRegistry(cwd);
-  const persist=async()=>{await store.save({...session.exportSnapshot(),model:input.model});const actual=await store.load(sessionId);if(!actual)throw new KTeamError('harness_session_persist_failed');session.updatePersistenceFacts(actual);};
+  let persistence=Promise.resolve();
+  const persist=()=>{const write=persistence.catch(()=>{}).then(async()=>{
+   // Retry only pre-write lock contention. A failed save never authorizes replaying a tool.
+   for(const delay of [0,25,75,150,300]){
+    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+    try{await store.save({...session.exportSnapshot(),model:input.model});const actual=await store.load(sessionId);if(!actual)throw Error('session_snapshot_missing');session.updatePersistenceFacts(actual);return;}
+    catch(error){const code=(error as Error)?.message;if(code==='session_save_locked'&&delay!==300)continue;throw new KTeamError('harness_session_persist_failed',503,{causeCode:/^[a-z][a-z0-9_]{0,79}$/.test(code??'')?code:'session_save_failed'});}
+   }
+  });persistence=write;return write;};
   await persist();
-  let closed=false;
   const joined=new Set<string>();
   const collect=()=>[...factory.listChildren().filter((a:any)=>a.id!=='main').map((a:any)=>({id:a.id,turn:a.turn,state:a.status,active:a.executionActive||a.status==='pending',result:a.lastResult,error:a.error})),...platform.listBackgroundJobs(sessionId).filter((j:any)=>!backgroundBefore.has(j.jobId)).map((j:any)=>({id:j.jobId,state:j.status,active:['queued','running'].includes(j.status),result:j.summary,error:j.errorMessage}))];
   const settleChildren=async()=>{if(!collect().some((r:any)=>!joined.has(key(r))))return [];for(;;){await input.assertCurrent();const rows=collect();if(!rows.some((r:any)=>r.active)){const pending=rows.filter((r:any)=>!joined.has(key(r)));for(const row of pending)joined.add(key(row));return pending;}await new Promise(r=>setTimeout(r,1000));}};
   const distill=async(text:string)=>{await input.assertCurrent();input.processOwner?.signal.throwIfAborted();await memory.writeRawMessage?.(sessionId,'assistant',text);if(memoryEnabled&&integration.memory.autoCompact&&memory.compact&&(memory.getStats?.().l0??0)>=5){try{await memory.compact({requestSource:'scheduler'});}catch{input.processOwner?.signal.throwIfAborted();await input.assertCurrent();input.onEvent?.({type:'memory_distillation_deferred'});}}input.processOwner?.signal.throwIfAborted();await input.assertCurrent();};
-  return {toolApprovalPort:input.toolApprovalPort,registry,session,settleChildren,distill,spillDir:join(directory,'spill'),runOwned:<T>(work:()=>T):T=>core.withHarnessProcessOwner(input.processOwner,work),memoryStore:memory,promptSnapshot:{...snapshot,rendered:system},system:system+'\n当前实际工具目录：'+registry.getToolDefinitions().map((t:any)=>t.name).join('、'),persist,onEvent:event=>input.onEvent?.(event),async close(){if(closed)return;closed=true;const errors:unknown[]=[];for(const run of [()=>factory.dispose(),()=>factory.waitForDisposedResources()]){try{await run();}catch(e){errors.push(e);}}try{await platform.dispose();}catch(e){errors.push(e);}try{session.repairIncompleteToolCalls({preserveToolBatch:!!session.getToolBatch()});await persist();}catch(e){errors.push(e);}try{await memory.close?.();}catch(e){errors.push(e);}if(errors.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}await connectedMail.close();releaseStorage();}};
- }catch(error){const failures:unknown[]=[];for(const cleanup of [()=>factory?.dispose(),()=>factory?.waitForDisposedResources(),()=>platform?.dispose(),()=>memory?.close?.()]){try{await cleanup();}catch(e){failures.push(e);}}if(failures.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}await connectedMail.close();releaseStorage();throw error;}
+  let closing:Promise<void>|undefined;
+  return {toolApprovalPort:input.toolApprovalPort,registry,session,settleChildren,distill,spillDir:join(directory,'spill'),runOwned:<T>(work:()=>T):T=>core.withHarnessProcessOwner(input.processOwner,work),memoryStore:memory,promptSnapshot:{...snapshot,rendered:system},system:system+'\n当前实际工具目录：'+registry.getToolDefinitions().map((t:any)=>t.name).join('、'),persist,onEvent:event=>input.onEvent?.(event),close(){return closing??=Promise.resolve().then(async()=>{
+   const resourceErrors:unknown[]=[];
+   for(const run of [()=>factory.dispose(),()=>factory.waitForDisposedResources(),()=>platform.dispose(),()=>memory.close?.(),()=>connectedMail.close()]){try{await run();}catch(error){resourceErrors.push(error);}}
+   let checkpointError:unknown;try{session.repairIncompleteToolCalls({preserveToolBatch:!!session.getToolBatch()});await persist();}catch(error){checkpointError=error;}
+   // A checkpoint failure does not mean a process is still running. Always release a fully drained scope.
+   if(resourceErrors.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}
+   releaseStorage();if(checkpointError)throw checkpointError;
+  });}};
+ }catch(error){const failures:unknown[]=[];for(const cleanup of [()=>factory?.dispose(),()=>factory?.waitForDisposedResources(),()=>platform?.dispose(),()=>memory?.close?.(),()=>connectedMail.close()]){try{await cleanup();}catch(e){failures.push(e);}}if(failures.length){input.onCloseFailure?.();throw new KTeamError('harness_runtime_close_failed',503);}releaseStorage();throw error;}
 }

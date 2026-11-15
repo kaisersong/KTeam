@@ -1,3 +1,5 @@
+import {createHarness} from '../runtime/harness.js';
+import {readOnlyTerminalCommands} from './terminal-permissions.js';
 import {toolDirectoryAccesses} from './tool-access.js';
 import {commandAccess,commandAccessCurrent} from './terminal-access.js';
 import {directoryAccessCurrent,type DirectoryAccess} from './directory-access.js';
@@ -14,7 +16,7 @@ export class ToolApprovals{
  private durableGuard?: (approval:any)=>Promise<void>;
  setDurableGuard(guard:(approval:any)=>Promise<void>){this.durableGuard=guard;}
  constructor(private store:TeamStore){this.permissions=new ToolPermissions(store);for(const old of store.operationsWithPrefix('tool-approval:').filter(v=>v.status==='pending'&&!v.durable))store.saveOperation({...old,status:'cancelled',reason:'host_restarted'},old.revision);}
- private access(core:any,scope:any,name:string,input:Record<string,unknown>,fresh=false){const accesses=typeof scope.cwd==='string'&&!fresh?toolDirectoryAccesses(core,name,input,scope.cwd):[],command=typeof scope.cwd==='string'&&name==='bash'&&!fresh&&!accesses.length?commandAccess(core,String(input.command??''),scope.cwd):undefined;return {directory:accesses[0]?.directory,directories:accesses.map(access=>access.directory),directoryAccess:accesses[0],directoryAccesses:accesses,directoryOperations:'routine',commandAccess:command,canAlways:typeof scope.cwd==='string'&&(name==='bash'?!!accesses.length||!!command:persistentToolEligible(core,name,input))};}
+ private access(core:any,scope:any,name:string,input:Record<string,unknown>,fresh=false){const accesses=typeof scope.cwd==='string'&&!fresh?toolDirectoryAccesses(core,name,input,scope.cwd):[],command=typeof scope.cwd==='string'&&name==='bash'&&!fresh&&!accesses.length?commandAccess(core,String(input.command??''),scope.cwd):undefined;return {directory:accesses[0]?.directory,directories:accesses.map(access=>access.directory),directoryAccess:accesses[0],directoryAccesses:accesses,directoryOperations:'routine',commandAccess:command,canAlways:typeof scope.cwd==='string'&&(name==='bash'?!!accesses.length||!!command||(!fresh&&persistentToolEligible(core,name,input)):persistentToolEligible(core,name,input))};}
  private directoryGroup(row:any){return JSON.stringify([row.botId,row.bindingRevision??null,row.directories??row.directory,row.displayRoomId??row.roomId]);}
  list(roomId?:string){const rows=[...this.pending.values()].map(p=>p.record).concat(this.store.operationsWithPrefix('tool-approval:').filter(p=>p.durable&&typeof p.handoffId==='string'&&p.status==='pending'&&p.expiresAt>Date.now()&&['waiting','running'].includes(this.store.job(p.jobId)?.state)&&!['cancelled','failed','unknown'].includes(this.store.operation(p.handoffId)?.status))).filter(p=>!roomId||(p.displayRoomId??p.roomId)===roomId).map(({id,roomId,displayRoomId,botId,jobId,toolName,display,hash,expiresAt,status,cwd,canAlways,directory,directories,directoryOperations,commandAccess,bindingRevision})=>({id,roomId:displayRoomId??roomId,sourceRoomId:roomId,botId,jobId,toolName,display,hash,expiresAt,status,cwd,canAlways,directory,directories,directoryOperations,commandScoped:!!commandAccess,bindingRevision,pendingOperationCount:1}));const groups=new Map<string,typeof rows[number]>();return rows.filter(row=>{if(!row.directory)return true;const key=this.directoryGroup(row),prior=groups.get(key);if(prior){prior.pendingOperationCount++;return false;}groups.set(key,row);return true;});}
 
@@ -54,6 +56,19 @@ export class ToolApprovals{
   const saved=this.store.saveOperation(record,0);
   try{await onWait(saved);}catch(error){const current=this.store.operation(id);this.store.saveOperation({...current,status:'cancelled',reason:'handoff_unavailable'},current.revision);throw error;}
   throw core.toolApprovalPause(id);
+ }
+ async reconcilePendingPolicy(){
+  if(!this.durableGuard||this.closed)return;
+  const core=await sharedRuntime();
+  for(const row of this.store.operationsWithPrefix('tool-approval:').filter(row=>row.durable&&row.status==='pending'&&row.toolName==='bash'&&row.expiresAt>Date.now()&&this.store.job(row.jobId)?.state==='waiting')){
+   const readOnly=!!readOnlyTerminalCommands(core,String(row.input?.command??'')),canAlways=persistentToolEligible(core,'bash',row.input??{});if(!readOnly&&(!canAlways||row.canAlways))continue;
+   try{
+    const guard=async()=>{await this.validateDurablePolicy(row);await this.durableGuard!(row);};await guard();
+    const harness=await createHarness({workspace:row.sessionCwd??row.cwd,permissions:{store:this.permissions,botId:row.botId,bindingRevision:row.bindingRevision},signal:AbortSignal.timeout(10000),assertCurrent:guard});
+    const decision=await harness.registryOptions.permissionManager.check('bash',row.input);if(decision==='deny'||readOnly&&decision!=='allow')continue;
+    await guard();const current=this.store.operation(row.id);if(!this.closed&&current?.status==='pending'&&current.revision===row.revision)this.store.saveOperation(readOnly?{...current,status:'allowed',decision:'policy_allow',policyReconciledAt:new Date().toISOString()}:{...current,canAlways:true},current.revision);
+   }catch{/* Changed or unavailable scope keeps its existing approval. */}
+  }
  }
  async reconcileRuntimeVersion(){
   const rows=this.store.operationsWithPrefix('tool-approval:').filter(row=>row.durable&&row.status==='pending'&&typeof row.runtimeRevision==='string'&&this.store.job(row.jobId)?.state==='waiting'&&this.store.operation(this.store.job(row.jobId)?.currentHandoffId)?.approvalId===row.id);

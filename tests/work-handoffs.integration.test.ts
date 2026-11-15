@@ -89,3 +89,15 @@ test('an unanswered mandatory private question blocks the child instead of letti
   await automation.tick();await until(()=>automation!.privateChats!.questions().length===1);automation.privateChats!.close();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='blocked'));assert.equal(childContinued,false);assert.equal(f.store.jobs().find(job=>job.trigger==='peer').reason,'handoff_human_needed');await automation.tick();assert.equal(f.store.job('handoff-root').needsReview,true);
  }finally{await automation?.close();await f.end();}
 });
+
+test('a new ordinary message cannot cancel a parked member handoff or its returned continuation',async()=>{
+ const f=await setup(),hold=gate();let automation:TeamAutomation|undefined;
+ try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();const prompt=JSON.parse(input.prompt);if(prompt.sourceConversation){await hold.wait(input.signal);return {text:'成员已实际核对。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}if(prompt.handoff)return {text:'原工作已按实际结果完成。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({requests:[{botId:f.bots[1]!.id,message:'核对合成资料。'}],doneWhen:'结果返回。'},{});await input.onRequest?.();throw Error('yield');},f.coordinator);
+  await automation.tick();assert.equal(f.store.job('handoff-root').state,'waiting');
+  const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',room_id:f.roomId,thread_id:'handoff-source',from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'做完后再整理一份清单。'});
+  await automation.handoffs!.guard(f.store.job('handoff-root'));assert.equal(f.store.job('handoff-root').state,'waiting');
+  // Old installed handoffs are reconciled using their stable scope, never the moving transcript tail.
+  const job=f.store.job('handoff-root'),op=f.store.operation(job.currentHandoffId),captured={...op.captured,sourceTailId:job.originId};delete captured.sourceOrigin;f.store.saveOperation({...op,captured},op.revision);await automation.handoffs!.guard(job);
+  hold.release();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='delivered'));await automation.tick();assert.equal(f.store.job('handoff-root').state,'delivered');assert.equal((await f.upstream.conversationMessage(f.roomId,String(sent.messageId))).message.text,'做完后再整理一份清单。');
+ }finally{hold.release();await automation?.close();await f.end();}
+});
