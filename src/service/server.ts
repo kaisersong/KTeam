@@ -1,3 +1,5 @@
+import {GroupMembers} from './group-members.js';
+import {InboxState,projectInbox} from './inbox.js';
 import {MailConnectors} from './mail-connectors.js';
 import https from 'node:https';
 import {ConversationSidebar} from './sidebar.js';
@@ -10,7 +12,7 @@ import {MemberWorkspace} from './member-workspace.js';
 import {BotMemory} from './bot-memory.js';
 import {ComposerAttachments} from './composer-attachments.js';
 import {generatedFileRecords} from '../runtime/generated-file-receipts.js';
-import {generatedFilePath} from '../runtime/generated-files.js';
+import {generatedFilePath,generatedFilePreview} from '../runtime/generated-files.js';
 import {TeamRecipes} from './team-recipes.js';
 import {BotToolScopes} from './bot-tool-scopes.js';
 import {SkillLearning} from './skill-learning.js';
@@ -98,6 +100,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const approvals=new ToolApprovals(teamStore);
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
+  const groupMembers=new GroupMembers(upstream,teamStore);
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
   const composerAttachments=new ComposerAttachments(options.root,upstream,teamStore,conversations,roomId=>automation.reconcileSubmissions(roomId),(roomId,id,messageId)=>automation.automatic!.accept(roomId,id,messageId));
@@ -108,6 +111,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const links=new AgentLinks(upstream,teamStore,coordinator);
   const conversationUpdates=new ConversationUpdates(upstream,teamStore,conversations,automation,coordinator,approvals,links,workRecovery,teamRoles,String(owner.epoch));
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
+  const inboxState=new InboxState(teamStore);
+  const inboxSource=()=>({ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.inboxJobs().filter(item=>!teamStore.state('deleted-conversation:'+item.roomId))});
   const instanceId = randomUUID();
   const directoryMembers=new Map<string,{revision:number;at:number;ids:string[]}>();
   const sourceChanges=new Set<string>();
@@ -232,7 +237,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/bot-followups'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).list(url.searchParams.get('botId')??''));}
       if(url.pathname==='/v1/bot-followups/cancel'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).cancel(await body(req)));}
       if(url.pathname==='/v1/bot-questions'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions()??[]});
-      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.inboxJobs()});
+      if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,projectInbox(inboxState,inboxSource()));
+      if(url.pathname==='/v1/inbox/change'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('inbox_client_forbidden',403);const input=record(await body(req));const current=input.collection==='attention'?(await automation.assistant.workbench(true)).items:Object.entries(inboxSource()).flatMap(([key,rows])=>Array.isArray(rows)&&['questions','approvals','proposals','creations','jobs'].includes(key)?rows.map(item=>inboxState.project(({questions:'question',approvals:'approval',proposals:'proposal',creations:'creation',jobs:'job'} as Record<string,string>)[key]!,item)):[]);return send(res,200,inboxState.change(input,current));}
       if(url.pathname==='/v1/creations/resume'&&req.method==='POST'){const result=await coordinator.resumeCreation(await body(req),{requestSource:'user'});return send(res,200,{...result,roomId:result.roomId??result.room?.roomId});}
       if(url.pathname==='/v1/bootstrap'&&req.method==='POST')return send(res,200,{ok:true,...await coordinator.bootstrap({requestSource:'user'})});
       if(url.pathname==='/v1/direct'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='botId')||typeof input.botId!=='string')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...await coordinator.direct(input.botId,{requestSource:'user'})});}
@@ -256,7 +262,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           return send(res,201,await coordinator.createGroup(await body(req),{requestSource:'user'}));
         }
       }
-      if(url.pathname.startsWith('/v1/composer-attachments')){if(client.id!=='kteam-main')throw new KTeamError('attachment_client_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/composer-attachments')return send(res,200,await composerAttachments.view(url.searchParams.get('roomId')??''));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/upload')return send(res,201,await composerAttachments.stage(await body(req,8*1024*1024)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel')return send(res,200,await composerAttachments.cancel(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/send'){const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));const result=await composerAttachments.send(input);void automation.tick();return send(res,201,result);}if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel-send')return send(res,200,await composerAttachments.cancelSend(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/preview')return send(res,200,await composerAttachments.preview(await body(req)));throw new KTeamError('route_not_found',404);}
+      if(url.pathname.startsWith('/v1/composer-attachments')){if(client.id!=='kteam-main')throw new KTeamError('attachment_client_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/composer-attachments')return send(res,200,await composerAttachments.view(url.searchParams.get('roomId')??''));if(req.method==='GET'&&url.pathname==='/v1/composer-attachments/content')return send(res,200,await composerAttachments.content({roomId:url.searchParams.get('roomId')??'',id:url.searchParams.get('id')??''}));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/upload')return send(res,201,await composerAttachments.stage(await body(req,8*1024*1024)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel')return send(res,200,await composerAttachments.cancel(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/send'){const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));const result=await composerAttachments.send(input);void automation.tick();return send(res,201,result);}if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel-send')return send(res,200,await composerAttachments.cancelSend(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/preview')return send(res,200,await composerAttachments.preview(await body(req)));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/work-inputs'||url.pathname==='/v1/work-inputs/release'){if(client.id!=='kteam-main')throw new KTeamError('work_input_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/work-inputs')return send(res,200,await automation.inputs!.view(url.searchParams.get('roomId')??''));if(req.method==='POST'){const result=url.pathname.endsWith('/release')?await automation.inputs!.release(await body(req)):await (async()=>{const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));return automation.inputs!.submit(input);})();void automation.tick();return send(res,201,result);}throw new KTeamError('route_not_found',404);}
       if (url.pathname === '/v1/messages' && req.method === 'POST') {
         const input=validateL0(await body(req));
@@ -272,9 +278,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
       const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
       if(rolesRoute){const roomId=decodeURIComponent(rolesRoute[1]!);if(req.method==='GET')return send(res,200,await teamRoles.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);const input=record(await body(req));if(input.action==='ensure'){fields(input,['action','force']);if(input.force!==undefined&&typeof input.force!=='boolean')throw new KTeamError('invalid_input');return send(res,202,await teamRoles.start(roomId,input.force===true));}if(input.action==='assign'){delete input.action;return send(res,200,await teamRoles.assign(roomId,input));}throw new KTeamError('invalid_input');}}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|members|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-preview|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
+        if(action==='members'){if(client.id!=='kteam-main')throw new KTeamError('room_actor_forbidden',403);if(req.method==='GET')return send(res,200,await groupMembers.view(roomId));if(req.method==='POST'){const result=await groupMembers.control(roomId,await body(req),{requestSource:'user'});directoryMembers.delete(roomId);return send(res,200,result);}throw new KTeamError('route_not_found',404);}
         if(req.method==='POST'&&action==='sidebar'){if(client.id!=='kteam-main')throw new KTeamError('sidebar_conversation_forbidden',403);return send(res,200,await sidebar.control(roomId,await body(req)));}
         const membership=await upstream.membership(roomId);
         if(req.method==='POST'&&action==='edit')return send(res,200,await coordinator.editGroup({...record(await body(req)),roomId}));
@@ -286,6 +293,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='library-import')return send(res,201,await conversations.importFile(roomId,await body(req,8*1024*1024)));
         if(req.method==='GET'&&action==='library-file')return send(res,200,await conversations.preview(roomId,url.searchParams.get('fileId')??''));
         if(req.method==='GET'&&action==='generated-files'){await conversations.scope(roomId);const botId=url.searchParams.get('botId')??undefined;if(botId)await new BotCapabilities(upstream,teamStore).scope(botId,roomId);const value=generatedFileRecords(teamStore,roomId,url.searchParams.get('cursor')??undefined,botId);await conversations.scope(roomId);if(botId)await new BotCapabilities(upstream,teamStore).scope(botId,roomId);return send(res,200,value);}
+        if(req.method==='GET'&&action==='generated-file-preview'){if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);await conversations.scope(roomId);const result=generatedFilePreview(teamStore,roomId,url.searchParams.get('toolCallId')??'');await conversations.scope(roomId);return send(res,200,result);}
         if(req.method==='GET'&&action==='generated-file-open'){if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);await conversations.scope(roomId);const path=generatedFilePath(teamStore,roomId,url.searchParams.get('toolCallId')??'');await conversations.scope(roomId);return send(res,200,{ok:true,path});}
         if(req.method==='GET'&&action==='library-open'){const file=await conversations.file(roomId,url.searchParams.get('fileId')??'');return send(res,200,{ok:true,path:file.path});}
         if(req.method==='POST'&&action==='library-remove'){const input=record(await body(req));return send(res,200,await conversations.removeFile(roomId,String(input.fileId),String(input.requestId)));}

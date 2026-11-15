@@ -1,3 +1,4 @@
+import {messagePreviewText} from '../protocol/message-attachments.js';
 import {createHash} from 'node:crypto';
 import {KTeamError,fields,record,text} from '../errors.js';
 import {Upstreams} from '../adapters/upstream.js';
@@ -21,7 +22,7 @@ export class ConversationSidebar{
   let before:number|undefined;
   for(let page=0;page<10;page++){
    const result=await new CollaborationService(this.upstream).messages(roomId,0,100,before,true),last=result.messages.at(-1);
-   if(last)return {messageId:last.messageId,roomSequence:last.roomSequence,text:String(last.text??'').replace(/\s+/g,' ').slice(0,240),sender:last.sender,createdAt:last.createdAt};
+   if(last)return {messageId:last.messageId,roomSequence:last.roomSequence,text:String(messagePreviewText(last)).replace(/\s+/g,' ').slice(0,240),sender:last.sender,createdAt:last.createdAt};
    if(!result.hasMoreBefore||!result.previousSequence||result.previousSequence===before)break;
    before=result.previousSequence;
   }

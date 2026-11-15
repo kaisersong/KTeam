@@ -20,7 +20,7 @@ async function fixture(){
  const core=await sharedRuntime();
  const adapter={getModelName:()=> 'fixture',getModelPolicy:()=>({contextLimit:200000,compactThreshold:0.85}),async*stream(){yield {type:'text',delta:'done'};yield {type:'done'};}};
  const scope={root:join(root,'host-data'),botId:'bot-a',roomId:'room-a',bindingRevision:1,fingerprint:'fp-a',profileRevision:1};
- const open=async(extra={})=>{const h=await createHarness({scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
+ const open=async(extra={},options:{onCloseFailure?:()=>void}={})=>{const h=await createHarness({onCloseFailure:options.onCloseFailure,scope:{...scope,...extra},workspace:cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>true});return h.prepare!(adapter,'fixture','仅使用真实结果。',[]);};
  return {root,config,cwd,core,scope,open,close(){for(const[k,v]of Object.entries({KTEAM_MODEL_CONFIG_DIR:before.config,KTEAM_DISABLE_GLOBAL_PLUGINS:before.plugins}))if(v===undefined)delete process.env[k];else process.env[k]=v;rmSync(root,{recursive:true,force:true});}};
 }
 test('production platform factory preserves complete tool history and project instructions across runs, with room/binding isolation',async()=>{
@@ -196,4 +196,15 @@ test('durable terminal approvals carry the actual command directory separately f
   await owner.toolApprovalPort.prepare({name:'bash',input:{command:'printf DIRECTORY_SCOPE',workdir:actual},decision:'prompt',permission:'write',batchId:'fixture',index:0});
   assert.equal(captured.cwd,realpathSync(actual));assert.equal(captured.sessionCwd,f.cwd);assert.equal(captured.input.workdir,actual);
  }finally{await owner?.close();f.close();}
+});
+
+test('transient checkpoint locks retry without losing history, and permanent checkpoint failure drains and releases the scope without a process fence',async()=>{
+ const f=await fixture(),prototype=f.core.FileSessionStore.prototype,original=prototype.save;let owner:any,failures=0,mode='normal',fences=0;
+ prototype.save=function(...args:any[]){if(mode==='permanent'||mode==='transient'&&failures++<2)return Promise.reject(Error('session_save_locked'));return original.apply(this,args);};
+ try{
+  owner=await f.open({}, {onCloseFailure:()=>fences++});owner.session.appendUserText('CHECKPOINT_RETRY_HISTORY');mode='transient';await owner.persist();assert.equal(failures,3);await owner.close();owner=undefined;
+  mode='normal';owner=await f.open({}, {onCloseFailure:()=>fences++});assert.match(JSON.stringify(owner.session.getMessages()),/CHECKPOINT_RETRY_HISTORY/);
+  mode='permanent';const closing=owner.close();assert.equal(owner.close(),closing);await assert.rejects(closing,/harness_session_persist_failed/);owner=undefined;assert.equal(fences,0);
+  mode='normal';owner=await f.open();assert.match(JSON.stringify(owner.session.getMessages()),/CHECKPOINT_RETRY_HISTORY/);await owner.close();owner=undefined;
+ }finally{mode='normal';prototype.save=original;await owner?.close();f.close();}
 });

@@ -13,3 +13,8 @@ export function encodeAttachmentMessage(text:string,attachments:MessageAttachmen
 /** Both original Broker projections: list rows carry envelope, details carry sourceRef. Display never grants file access. */
 export function attachmentMessageView(message:any){const envelope=message?.sourceRef?.kind==='aimp_l0'?message.sourceRef.envelope:message?.envelope;return message?.attachmentView===true&&message?.sender?.kind==='user'?parseAttachmentMessage(message.text):message?.sender?.kind==='user'&&envelope?.aimp==='1.0'&&envelope.body===message.text&&envelope.room_id===message.roomId?parseAttachmentMessage(message.text):undefined;}
 export const messageDisplayText=(message:any)=>attachmentMessageView(message)?.text??message?.text??'';
+
+const imageTypes:Record<string,string>={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp'};
+export const attachmentImageType=(extension:string)=>imageTypes[extension];
+/** Compact UI text is derived before truncation; the immutable wire body stays intact. */
+export function messagePreviewText(message:any){const payload=attachmentMessageView(message);if(!payload)return message?.text??'';const images=payload.attachments.filter(file=>attachmentImageType(file.extension)).length,files=payload.attachments.length-images;return [payload.text.trim(),images?(images===1?'[图片]':'[图片×'+images+']'):'',files?(files===1?'[文件]':'[文件×'+files+']'):''].filter(Boolean).join(' ');}

@@ -6,13 +6,13 @@ import {EnterpriseConnectorSettings} from './enterprise-connectors';
 import {NotificationSettings} from './notification-settings';
 import {settingsAutosave} from './autosave-api';
 import React,{useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Monitor,Palette,RefreshCw,Search,Server,Settings,Shield,SlidersHorizontal,Sparkles,Users} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Palette,RefreshCw,Search,Server,Settings,Shield,SlidersHorizontal,Sparkles,Users} from 'lucide-react';
 import {api,explain,type Bot} from './api';
 import type {AppPreferences} from '../../../src/service/app-preferences';
 import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
 import './settings.css';
 import {ModelSettingsPanel,DecisionModelSettings} from './model-settings';
-import {WebToolsSettings,MemorySettings,CUASettings,MailSettings} from './integration-settings';
+import {MemorySettings,MailSettings} from './integration-settings';
 import {ProfileSettings} from './profile-settings';
 import {UpdateCheckSettings} from './update-check';
 
@@ -24,7 +24,7 @@ function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'ap
 function Loading(){return <p className="settings-loading" role="status"><LoaderCircle size={17} className="spinner"/>正在读取…</p>;}
 function Failure({error,retry}:{error:string;retry:()=>void}){return <div className="settings-error" role="alert"><p>{error}</p><button className="secondary" onClick={retry}><RefreshCw size={14}/>重新读取</button></div>;}
 function Section({title,description,children}:{title:string;description?:string;children:React.ReactNode}){return <section className="settings-block"><h2>{title}</h2>{description&&<p className="settings-description">{description}</p>}{children}</section>;}
-const sections=[['general','通用设置',SlidersHorizontal],['services','服务',Server],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','工具管理',Search],['mcp','MCP 服务器',Shield],['cua','电脑操作 CUA',Monitor],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
+const sections=[['general','通用设置',SlidersHorizontal],['services','服务',Server],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','工具管理',Search],['mcp','MCP 服务器',Shield],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
 type Page=typeof sections[number][0];
 
 export function SettingsWorkspace({initialPage='general',preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
@@ -38,7 +38,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailConnectorSettings/><MailSettings/><EnterpriseConnectorSettings/></>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='tools'&&<ToolsSettings/>}
- {page==='mcp'&&<MCPSettings/>}{page==='cua'&&<CUASettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
+ {page==='mcp'&&<MCPSettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
  {page==='appearance'&&<PreferencesPanel kind="appearance" preferences={preferences} onSaved={onPreferences}/>}
  {page==='permissions'&&<PermissionsPanel bots={bots}/>}
  {page==='data'&&<DataPanel/>}
@@ -95,5 +95,5 @@ function AgentsPanel({bots,onBot,onCreate}:{bots:Bot[];onBot:(bot:Bot)=>void;onC
 function PermissionsPanel({bots}:{bots:Bot[]}){
  const [data,setData]=useState<any>(),[error,setError]=useState(''),[busy,setBusy]=useState('');
  const load=()=>{setError('');void api.toolPermissions().then(setData).catch(e=>setError(explain(e)));};useEffect(load,[]);
- return <Section title="已保存的授权" description="目录授权适用于所列成员的普通文件读写；系统与敏感文件仍单独确认。可随时撤销。">{error&&<Failure error={error} retry={load}/>}<div className="settings-list">{!data?<Loading/>:!data.permissions.length?<p className="settings-description">暂无已保存的授权。</p>:data.permissions.map((grant:any)=><div className="settings-row" key={grant.id}><div><strong>{bots.find(bot=>bot.id===grant.botId)?.name??'已移除的成员'} · {grant.kind==='directory'?'目录读写':grant.toolName}</strong><p className="settings-description">{grant.directory??grant.cwd}</p></div><button className="secondary" disabled={!!busy} onClick={()=>{setBusy(grant.id);setError('');void api.revokeToolPermission({id:grant.id}).then(setData).catch(e=>setError(explain(e))).finally(()=>setBusy(''));}}>撤销授权</button></div>)}</div></Section>;
+ return <Section title="已保存的授权" description="目录授权适用于所列成员在目录及子目录内的常规文件、Git 和本地命令操作；删除等高危操作仍需确认。可随时撤销。">{error&&<Failure error={error} retry={load}/>}<div className="settings-list">{!data?<Loading/>:!data.permissions.length?<p className="settings-description">暂无已保存的授权。</p>:data.permissions.map((grant:any)=><div className="settings-row" key={grant.id}><div><strong>{bots.find(bot=>bot.id===grant.botId)?.name??'已移除的成员'} · {grant.kind==='directory'?(grant.operations==='routine'?'目录常规操作':'目录读写'):grant.kind==='command'?'指定命令':grant.toolName}</strong><p className="settings-description">{grant.directory??grant.cwd}</p>{grant.kind==='command'&&grant.display&&<details><summary>查看命令</summary><pre>{grant.display}</pre></details>}</div><button className="secondary" disabled={!!busy} onClick={()=>{setBusy(grant.id);setError('');void api.revokeToolPermission({id:grant.id}).then(setData).catch(e=>setError(explain(e))).finally(()=>setBusy(''));}}>撤销授权</button></div>)}</div></Section>;
 }

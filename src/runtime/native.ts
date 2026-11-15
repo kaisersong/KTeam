@@ -1,3 +1,4 @@
+import {HARNESS_PERMISSION_POLICY_VERSION} from '../service/terminal-permissions.js';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
@@ -17,7 +18,8 @@ globalThis.fetch=async(input,init)=>{
 
 const entry=process.env.KTEAM_RUNTIME_ENTRY??resolve('build/shared/kteam-runtime.mjs');
 let artifactRevision:Promise<string>|undefined;
-export const runtimeArtifactRevision=()=>artifactRevision??=readFile(entry).then(bytes=>createHash('sha256').update(bytes).digest('hex'));
+// Durable approvals must also notice changes to the owned wrapper permission policy.
+export const runtimeArtifactRevision=()=>artifactRevision??=readFile(entry).then(bytes=>createHash('sha256').update(bytes).update('\0'+HARNESS_PERMISSION_POLICY_VERSION).digest('hex'));
 let loaded:Promise<any>|undefined;
 export const sharedRuntime=()=>loaded??=import(pathToFileURL(entry).href);
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
