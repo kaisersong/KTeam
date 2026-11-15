@@ -9,7 +9,7 @@ export function useIntegrationSettings(){
  async function reload(){setError('');try{const next=await api.integrationSettings();if(mounted.current)setData(next);}catch(e){if(mounted.current)setError(explain(e));}}
  async function run(work:()=>Promise<any>,success=''){
   if(locked.current)return null;locked.current=true;setBusy(true);setError('');setMessage('');
-  try{const next=await work();if(mounted.current){if(next.settings)setData(next);setMessage(success);}return next;}
+  try{const next=await work();if(mounted.current){if(next.settings)setData(next);setMessage(success);}if(next?.settings)window.dispatchEvent(new CustomEvent('kteam:integration-settings-saved'));return next;}
   catch(e){if(mounted.current)setError(explain(e));return null;}
   finally{locked.current=false;if(mounted.current)setBusy(false);}
  }
