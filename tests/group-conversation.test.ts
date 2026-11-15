@@ -21,3 +21,13 @@ test('unanswered feedback review is durable, latest-only, bounded and discussion
   store.enqueue('newer',roomId,'newer-message');const newer=store.job('newer');Object.assign(newer,{state:'noop',reason:'group_discussion_dispatched',groupPlan:{mode:'discussion',members:[],stages:[]}});store.save(newer);store.enqueue('latest-explicit',roomId,'current-message');reviewUnansweredGroupTurns(store,Date.now());assert.equal(store.jobs().length,4,'do not recheck an old feedback turn after a newer human request');
  }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('only a terminal failed public turn gets a discussion-only retry; pending, stopped and delivered replies stay intact',async()=>{
+ const {TeamStore}=await import('../src/service/team-store.js'),{reviewUnansweredGroupTurns}=await import('../src/service/group-conversation.js'),{privateTempDir}=await import('./helpers/private-temp.js'),{rmSync}=await import('node:fs'),{join}=await import('node:path'),{tmpdir}=await import('node:os');
+ const root=privateTempDir(join(tmpdir(),'failed-group-reply-')),store=new TeamStore(root);
+ try{for(const state of ['queued','delivered','stopped','blocked']){
+  const roomId='room-'+state,id='source-'+state;store.configure({roomId,goal:'fixture',kind:'group',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:20,dailyCalls:100},0);store.setState('team-role-policy:'+roomId,{status:'ready'});store.enqueue(id,roomId,'human-'+state);const source=store.job(id);Object.assign(source,{state:'noop',reason:'group_discussion_dispatched',groupPlan:{mode:'discussion',members:['chief'],stages:[]}});store.save(source);
+  store.enqueueFollowup({id:'reply-'+state,roomId,originId:source.originId,trigger:'group-response',groupResponse:{sourceJobId:id,botId:'chief'}});const reply=store.job('reply-'+state);Object.assign(reply,{state,reason:'iteration_budget_exhausted'});store.save(reply);
+  reviewUnansweredGroupTurns(store);reviewUnansweredGroupTurns(store);const reviews=store.jobs().filter(job=>job.groupInput?.sourceJobId===id);assert.equal(reviews.length,state==='blocked'?1:0);if(reviews[0]){assert.equal(reviews[0].trigger,'group-discussion');assert.equal(reviews[0].task,undefined);}
+ }}finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
