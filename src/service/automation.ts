@@ -78,7 +78,13 @@ export class TeamAutomation {
    try{
     const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
     const owned=new Set(jobs.filter(job=>job.roomId===roomId).flatMap(job=>[job.task?.taskRef,...(job.members??[]).map((botId:string)=>'task_'+digest(id(job.id+botId+'request')).slice(0,32))]));
-    for(const task of tasks)if(this.accepting&&owned.has(task.taskRef)&&['proposed','committed','working','blocked'].includes(task.state))await this.stopTask(roomId,task,'旧主机工作已停止，结果需核对，不自动重放');
+    const confirmed=new Set(tasks.filter(task=>['halted','delivered','rejected','expired','cancelled'].includes(task.state)).map(task=>task.taskRef));
+    for(const task of tasks)if(this.accepting&&owned.has(task.taskRef)&&['proposed','committed','working','blocked'].includes(task.state)){await this.stopTask(roomId,task,'旧主机工作已停止，结果需核对，不自动重放');confirmed.add(task.taskRef);}
+    for(const job of jobs.filter(job=>job.roomId===roomId&&job.stopResultUnknown&&confirmed.has(job.task?.taskRef))){
+     const processes=this.store.operationsWithPrefix('harness-process:'+job.id+':');
+     if(!processes.length||processes.some(row=>row.state!=='stopped')||this.store.state('harness-fence:'+job.activeBotId))continue;
+     job.stopResultUnknown=false;job.stopReconciliation={at:new Date().toISOString(),taskRef:job.task.taskRef,processIds:processes.map(row=>row.id)};this.store.save(job);
+    }
    }catch{/* Unknown old work remains frozen by its lease; never reopen it. */}
   }
  }
