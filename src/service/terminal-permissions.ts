@@ -1,3 +1,4 @@
+export const HARNESS_PERMISSION_POLICY_VERSION='read-only-shell-1';
 import {readOnlyShell} from './read-only-shell.js';
 /** Conservative command inspection for reusable directory grants, never an execution replay rule. */
 export function terminalCommands(core:any,command:string):string[]|undefined{
