@@ -1,3 +1,4 @@
+import {FileText} from 'lucide-react';
 import {memo,useState,type ReactNode} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -24,6 +25,6 @@ export function receiptForLink(href:string|undefined,files:MessageFile[]){
 export const Markdown=memo(function Markdown({text,files=[]}:{text:string;files?:MessageFile[]}){
  return <ReactMarkdown remarkPlugins={plugins} skipHtml urlTransform={url=>webLinkUrl(url)??(receiptForLink(url,files)?url:'')} components={{
   img:({alt})=><span className="muted">[图片：{alt??'未加载'}]</span>,
-  a:({children,href})=>{const receipt=receiptForLink(href,files);return receipt?<a href="#" title={'在 KTeam 中查看 '+receipt.file.name} onClick={event=>{event.preventDefault();event.stopPropagation();void showGeneratedFile({roomId:receipt.file.roomId,toolCallId:receipt.id});}}>{children}</a>:<WebLink href={href}>{children}</WebLink>;},
+  a:({children,href})=>{const receipt=receiptForLink(href,files);return receipt?<a className="message-file-link" href="#" title={'在 KTeam 中查看 '+receipt.file.name} onClick={event=>{event.preventDefault();event.stopPropagation();void showGeneratedFile({roomId:receipt.file.roomId,toolCallId:receipt.id});}}><FileText size={14} strokeWidth={1.6} aria-hidden="true"/>{children}</a>:<WebLink href={href}>{children}</WebLink>;},
  }}>{text}</ReactMarkdown>;
 });
