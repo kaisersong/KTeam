@@ -36,3 +36,9 @@ test('reviewed routine local shell work can offer a persistent grant without bei
  assert.equal(routineShell(String.raw`U=/work/upstreams; mkdir -p \"$U\" && git -C /work/repo worktree add --detach \"$U/child\" HEAD 2>&1 | tail -1`),true);
  for(const command of ['U=/work; git push origin main','U=/work; rm -rf "$U"','U=/work; sudo mkdir "$U"','U=/work; bash -c "$U"'])assert.equal(routineShell(command),false);
 });
+
+
+test('branch creation and ordinary merge are reusable human grants, never automatic reads',()=>{
+ for(const command of ['git checkout -b release/1.1.6 origin/release/1.1.6','git switch -c feature/local origin/main','git merge origin/main --no-edit']){assert.equal(routineShell(command),true,command);assert.equal(readOnlyShell(command),false,command);}
+ for(const command of ['git checkout -f main','git checkout -- file','git checkout -B main','git switch -C main','git merge --abort','git merge -s custom main','git merge --strategy-option=theirs main','git merge --upload-pack=bad main'])assert.equal(routineShell(command),false,command);
+});

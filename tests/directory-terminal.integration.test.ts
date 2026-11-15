@@ -65,3 +65,19 @@ test('legacy file-only directory grants require an explicit new decision before 
  const result=registry.executeTool('bash',{command:'mkdir -p terminal-granted'}),pending=await f.pending();await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});await result;assert.equal(f.approvals.permissions.list()[0]!.operations,'routine');assert.equal(await h.registryOptions.permissionManager.check('bash',{command:'mkdir -p terminal-granted'}),'allow');
  }finally{f.close();}
 });
+
+
+test('the screenshot branch-and-merge workflow offers repository authorization, survives restart and respects deny',async()=>{
+ if(process.platform==='win32')return;
+ const f=await fixture();try{
+  const git=(...args:string[])=>execFileSync('git',['-C',f.workspace,...args],{encoding:'utf8'}).trim();
+  git('init','--quiet');writeFileSync(join(f.workspace,'proof.txt'),'base');git('add','.');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m','base');git('branch','origin/release/1.1.6');git('branch','origin/main');
+  const command=`cd ${f.workspace} && git checkout -b release/1.1.6 origin/release/1.1.6 2>&1 | tail -1 && git merge origin/main --no-edit 2>&1 | tail -6; echo ===; git status -s | head`;
+  let current=await f.make(f.root);assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'prompt');
+  const execution=current.registry.executeTool('bash',{command,workdir:f.root}),pending=await f.pending();assert.equal(pending.canAlways,true);assert.deepEqual(pending.directories,[realpathSync(f.workspace)]);assert.equal(git('branch','--list','release/1.1.6'),'');
+  await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});assert.match(await execution,/===/);assert.equal(git('branch','--show-current'),'release/1.1.6');
+  f.restart();current=await f.make(f.root);assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'allow');
+  for(const unsafe of ['git checkout -f origin/main','git checkout -- proof.txt','git merge --abort','git merge -s custom origin/main','git push origin main'])assert.notEqual(await current.h.registryOptions.permissionManager.check('bash',{command:`cd ${f.workspace} && ${unsafe}`,workdir:f.root}),'allow',unsafe);
+  writeFileSync(join(f.workspace,'blocked.txt'),'keep');writeFileSync(join(f.root,'config/settings.json'),JSON.stringify({permissions:{deny:['bash:git merge*']}}));const denied=await f.make(f.root);assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'deny');
+ }finally{f.close();}
+});

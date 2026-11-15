@@ -61,12 +61,12 @@ export class ToolApprovals{
   if(!this.durableGuard||this.closed)return;
   const core=await sharedRuntime();
   for(const row of this.store.operationsWithPrefix('tool-approval:').filter(row=>row.durable&&row.status==='pending'&&row.toolName==='bash'&&row.expiresAt>Date.now()&&this.store.job(row.jobId)?.state==='waiting')){
-   const readOnly=!!readOnlyTerminalCommands(core,String(row.input?.command??'')),canAlways=persistentToolEligible(core,'bash',row.input??{});if(!readOnly&&(!canAlways||row.canAlways))continue;
+   const readOnly=!!readOnlyTerminalCommands(core,String(row.input?.command??'')),access=this.access(core,row,'bash',row.input??{},row.requireFreshApproval===true),canAlways=access.canAlways;if(!readOnly&&(!canAlways||row.canAlways))continue;
    try{
     const guard=async()=>{await this.validateDurablePolicy(row);await this.durableGuard!(row);};await guard();
     const harness=await createHarness({workspace:row.sessionCwd??row.cwd,permissions:{store:this.permissions,botId:row.botId,bindingRevision:row.bindingRevision},signal:AbortSignal.timeout(10000),assertCurrent:guard});
     const decision=await harness.registryOptions.permissionManager.check('bash',row.input);if(decision==='deny'||readOnly&&decision!=='allow')continue;
-    await guard();const current=this.store.operation(row.id);if(!this.closed&&current?.status==='pending'&&current.revision===row.revision)this.store.saveOperation(readOnly?{...current,status:'allowed',decision:'policy_allow',policyReconciledAt:new Date().toISOString()}:{...current,canAlways:true},current.revision);
+    await guard();const current=this.store.operation(row.id);if(!this.closed&&current?.status==='pending'&&current.revision===row.revision)this.store.saveOperation(readOnly?{...current,status:'allowed',decision:'policy_allow',policyReconciledAt:new Date().toISOString()}:{...current,...access},current.revision);
    }catch{/* Changed or unavailable scope keeps its existing approval. */}
   }
  }

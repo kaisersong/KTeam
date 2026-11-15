@@ -1,3 +1,4 @@
+import {localGitWorkflow} from './git-local-workflow.js';
 import {createHash} from 'node:crypto';
 import {readFileSync,realpathSync,statSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
@@ -9,7 +10,7 @@ const commands=new Set(['git','ls','pwd','echo','printf','cat','head','tail','wc
 /** Literal shell words only. Dynamic programs and shell expansion never become directory-wide grants. */
 function words(segment:string){
  const result:string[]=[];let word='',quote='',started=false;
- for(let i=0;i<segment.length;i++){const c=segment[i]!;if(quote){if(c===quote)quote='';else if(c==='\\')return;else word+=c;started=true;}else if(c==='"'||c==="'"){quote=c;started=true;}else if(/\s/.test(c)){if(started){result.push(word);word='';started=false;}}else if(c==='>'||c==='<'){if(started){result.push(word);word='';started=false;}const op=segment[i+1]===c?c+c:c;if(op.length===2)i++;result.push(op);}else if(/[\\`$*?{}\[\]()]/.test(c))return;else{word+=c;started=true;}}
+ for(let i=0;i<segment.length;i++){const c=segment[i]!;if(!quote&&!started){const fd=/^[12]>&[12](?=\s|$)/.exec(segment.slice(i));if(fd){i+=fd[0].length-1;continue;}}if(quote){if(c===quote)quote='';else if(c==='\\')return;else word+=c;started=true;}else if(c==='"'||c==="'"){quote=c;started=true;}else if(/\s/.test(c)){if(started){result.push(word);word='';started=false;}}else if(c==='>'||c==='<'){if(started){result.push(word);word='';started=false;}const op=segment[i+1]===c?c+c:c;if(op.length===2)i++;result.push(op);}else if(/[\\`$*?{}\[\]()]/.test(c))return;else{word+=c;started=true;}}
  if(quote)return;if(started)result.push(word);return result;
 }
 const readGit=new Set(['status','diff','log','show','rev-parse','ls-files','ls-tree','describe','check-ignore','check-attr','version','--version','add','commit','branch']);
@@ -31,7 +32,9 @@ export function terminalPaths(core:any,command:string,cwd:string):string[]|undef
    while(args[0]?.startsWith('-')&&args[0]!=='--version'){
     const option=args.shift();if(option==='-C'){const target=args.shift();if(!target)return;repo=resolve(repo,target);}else if(option!=='--no-pager'&&option!=='--literal-pathspecs')return;
    }
-   const subcommand=args.shift();if(!subcommand||!readGit.has(subcommand))return;
+   const subcommand=args.shift();if(!subcommand)return;
+   if(['checkout','switch','merge'].includes(subcommand)){if(!localGitWorkflow(subcommand,args))return;paths.add(repo);continue;}
+   if(!readGit.has(subcommand))return;
    if(args.some(arg=>/^(?:--delete|-D|-d|--exec|--ext-diff|--textconv|--output|--config-env)(?:=|$)/.test(arg)))return;
    paths.add(repo);
    // Explicit absolute/path arguments require their own directory authority.
