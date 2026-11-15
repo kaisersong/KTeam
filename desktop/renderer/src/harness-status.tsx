@@ -1,3 +1,4 @@
+import {showGeneratedFile} from './artifact-viewer';
 import {toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
@@ -24,7 +25,7 @@ export function toolActivity(events:any[],bots:Bot[]){
  if(event.name==='contact_bot'){try{const input=typeof event.input==='string'?JSON.parse(event.input):event.input;const name=bots.find(b=>b.id===input.botId)?.name;return name?'正在与'+name+'核对，等待对方答复':'正在与另一位成员核对';}catch{return '正在与另一位成员核对';}}
  return descriptions[event.name];
 }
-function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);setError('');void api.openGeneratedFile({roomId:event.file.roomId,toolCallId:event.id}).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
+function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);setError('');void showGeneratedFile({roomId:event.file.roomId,toolCallId:event.id}).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
 export function ToolTrace({events}:{events:any[]}){if(!events.length)return null;return <><div className="generated-files">{events.filter(e=>e.state==='completed'&&e.file).map(e=><GeneratedFileButton key={e.id} event={e}/>)}</div><details className="tool-trace"><summary><Terminal size={13}/>工具记录 · {[...new Set(events.map(e=>e.name))].join('、')} · {events.length} 条记录</summary>{events.map(e=><div key={e.id}><strong>{e.name}<small>{e.state==='completed'?'已返回':e.state==='running'?'执行中':'未完成'}</small></strong>{e.input&&<pre>{typeof e.input==='string'?e.input:JSON.stringify(e.input,null,2)}</pre>}{e.result&&<pre>{typeof e.result==='string'?e.result:JSON.stringify(e.result,null,2)}</pre>}{e.code&&<p>{explain(e.code)}</p>}</div>)}</details></>;}
 
 export function RuntimeMessageContent({text,cards=[]}:{text:string;cards?:any[]}){
