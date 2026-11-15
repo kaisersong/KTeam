@@ -1,3 +1,4 @@
+import {kteamRequestFetch,kteamLogicalStream} from '../runtime/kteam-request-accounting.js';
 import type {AdapterCredentialResolver} from '../providers/model-harness-profile.js';
 import {createOriginalModelSdkAttemptTransport,finishOriginalModelSdkAttempt} from '../runtime/original-model-sdk-attempt.js';
 import { resolveObservationProviderDisclosure } from '../../runtime/sol-pi/observation-execution-scope.js';
@@ -127,7 +128,8 @@ export class ClaudeAdapter implements ModelAdapter {
     return this.clientPromise;
   }
 
-  async *stream(
+  stream(...args:Parameters<ClaudeAdapter['streamOwned']>):AsyncIterable<StreamChunk>{return kteamLogicalStream(()=>this.streamOwned(...args));}
+  private async *streamOwned(
     messages: Message[],
     tools: ToolDefinition[],
     systemPrompt: string,
@@ -244,10 +246,8 @@ export class ClaudeAdapter implements ModelAdapter {
     const modelPhysical=createOriginalModelSdkAttemptTransport(signal,options?.providerDisclosure);let originalFailure:{raw:unknown}|undefined;
     try {
     const sharedClient = await this.getClient();
-    const physicalFetch=modelPhysical?.fetch??globalThis.fetch.bind(globalThis);
-    const client = options?.providerDisclosure||modelPhysical
-      ? sharedClient.withOptions({ fetch: options?.providerDisclosure?createProviderDisclosureFetch(options.providerDisclosure, physicalFetch):physicalFetch,...(modelPhysical?{maxRetries:0}:{}) })
-      : sharedClient;
+    const physicalFetch=modelPhysical?.fetch??kteamRequestFetch('anthropic',globalThis.fetch.bind(globalThis));
+    const client = sharedClient.withOptions({ fetch: options?.providerDisclosure?createProviderDisclosureFetch(options.providerDisclosure, physicalFetch):physicalFetch,...(modelPhysical?{maxRetries:0}:{}) });
     const parameters={
       model: this.model,
       max_tokens: options?.maxOutputTokens ?? CLAUDE_REQUEST_MAX_OUTPUT_TOKENS,

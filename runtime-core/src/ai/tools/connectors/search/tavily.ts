@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { SearchProviderError, type SearchHit, type SearchProvider, type SearchRunInput } from './types.js';
 
 // Tavily Search API (https://docs.tavily.com/docs/rest-api/api-reference)
@@ -30,7 +31,7 @@ export function createTavilySearchProvider(options: TavilyOptions): SearchProvid
     throw new SearchProviderError('missing tavily api key', { kind: 'auth' });
   }
   const endpoint = options.endpoint ?? 'https://api.tavily.com/search';
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-search-tavily',options.fetchFn ?? fetch,'tool-web');
 
   return {
     name: 'web_search.tavily',

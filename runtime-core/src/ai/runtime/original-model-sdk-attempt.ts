@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from './kteam-request-accounting.js';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import {Completions} from 'openai/resources/chat/completions';
@@ -214,7 +215,7 @@ export function createOriginalModelSdkAttemptTransport(signal?:AbortSignal,discl
     attachOriginalSingleRequestResourceGate(transport,{beforeSource,afterSourceLocal,observeRawFailure});
     frame.fetch=transport;
     const signals:AbortSignal[]=[];if(signal)signals[signals.length]=signal;if(init.signal)signals[signals.length]=init.signal;
-    response=await frame.network.sdk<Response>(semantic?.fetch??transport,undefined,[input,{...init,signal:apply(signalAny,AbortSignal,[signals]) as AbortSignal}],{
+    response=await frame.network.sdk<Response>(kteamRequestFetch('original-sdk-bridge',semantic?.fetch??transport),undefined,[input,{...init,signal:apply(signalAny,AbortSignal,[signals]) as AbortSignal}],{
      accept:value=>isOriginalSingleRequestResponse(transport,value),
      consumer:consumeResponse,
     });

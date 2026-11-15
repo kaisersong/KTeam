@@ -1,3 +1,4 @@
+import {withKTeamRequestKind} from './kteam-request-accounting.js';
 import type { Message, ModelAdapter } from '../../types.js';
 import type { StreamOptions } from './model-capabilities.js';
 import {
@@ -39,13 +40,13 @@ export class CompactRunner {
 
   async run(messages: Message[], streamOptions?: StreamOptions, onProgress?: () => void): Promise<string> {
     const prepared = this.prepareRequest(messages);
-    return collectCompactionResponse(streamCliCompactionProviderConversation({
+    return withKTeamRequestKind('distill',()=>collectCompactionResponse(streamCliCompactionProviderConversation({
       adapter: this.adapter,
       messages: prepared.messages,
       tools: [],
       systemPrompt: prepared.systemPrompt,
       options: { ...streamOptions, requireCompleteResponse: true },
       invocationId: `inv_${randomUUID()}`,
-    }), { signal: streamOptions?.signal, onProgress });
+    }), { signal: streamOptions?.signal, onProgress }));
   }
 }

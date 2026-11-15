@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { SearchProviderError, type SearchHit, type SearchProvider, type SearchRunInput } from './types.js';
 
 // Brave Search API (https://api.search.brave.com/app/documentation/web-search/get-started)
@@ -25,7 +26,7 @@ export function createBraveSearchProvider(options: BraveOptions): SearchProvider
     throw new SearchProviderError('missing brave api key', { kind: 'auth' });
   }
   const endpoint = options.endpoint ?? 'https://api.search.brave.com/res/v1/web/search';
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-search-brave',options.fetchFn ?? fetch,'tool-web');
 
   return {
     name: 'web_search.brave',

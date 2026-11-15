@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { SearchProviderError, type SearchHit, type SearchProvider, type SearchRunInput } from './types.js';
 
 // DeepSeek Search API (https://api-docs.deepseek.com/guides/search)
@@ -49,7 +50,7 @@ export function createDeepSeekSearchProvider(options: DeepSeekSearchOptions): Se
     throw new SearchProviderError(INVALID_KEY_MESSAGE, { kind: 'auth' });
   }
   const endpoint = options.endpoint ?? 'https://api.deepseek.com/v1/tools/search';
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-search-deepseek',options.fetchFn ?? fetch,'tool-web');
   const toMessage = (error: unknown): string =>
     error instanceof Error ? redact(error.message, apiKey) : redact(String(error), apiKey);
 

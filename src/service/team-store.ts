@@ -152,14 +152,19 @@ export class TeamStore {
   const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND (json_extract(value_json,'$.afterJobId') IS NULL OR json_extract(value_json,'$.afterJobId') IN (SELECT id FROM team_jobs WHERE state IN ('delivered','noop'))) AND (room_id NOT IN (SELECT value FROM json_each(?)) OR json_extract(value_json,'$.trigger') IN ('group-response','group-discussion') OR json_extract(value_json,'$.groupPlanPending')=1) AND (?=0 OR json_extract(value_json,'$.groupPlanPending')=1 OR json_extract(value_json,'$.trigger') IN ('peer','assistant-relay','group-response','group-discussion')) AND (CASE WHEN json_extract(value_json,'$.trigger')='group-discussion' OR json_extract(value_json,'$.groupPlanPending')=1 THEN '' ELSE coalesce(json_extract(value_json,'$.groupResponse.botId'),json_extract(value_json,'$.peer.toBotId'),json_extract(value_json,'$.groupPlan.ownerId'),json_extract(value_json,'$.execution.botId'),json_extract(value_json,'$.activeBotId'),'') END) NOT IN (SELECT value FROM json_each(?)) AND NOT EXISTS (SELECT 1 FROM json_each(team_jobs.value_json,'$.dependsOnJobIds') dependency LEFT JOIN team_jobs parent ON parent.id=dependency.value WHERE parent.id IS NULL OR parent.state NOT IN ('delivered','noop')) ORDER BY CASE WHEN json_extract(value_json,'$.trigger') IN ('peer','assistant-relay','group-response','group-discussion') THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0,JSON.stringify(availability.bots??[]));if(!row)return null;
   const job=JSON.parse(String(row.value_json));job.state='routing';job.claimedAt=new Date().toISOString();const changed=this.db.prepare("UPDATE team_jobs SET state='routing',value_json=? WHERE id=? AND state='queued'").run(JSON.stringify(job),job.id);return changed.changes===1?job:null;
  }
- reserveCall(job:any,team:TeamSettings,persistJob=true){
+ reserveCall(job:any,team:TeamSettings,persistJob=true,witness?:any){
   const previousCalls=job.calls;
   this.db.exec('BEGIN IMMEDIATE');try{
+   const receiptId=witness?'request-attempt:'+witness.attemptId:undefined;if(receiptId&&this.operation(receiptId)?.counted){this.db.exec('COMMIT');return;}
    const day=calendarWindow().today+':'+team.roomId;const calls=Number(this.db.prepare('SELECT calls FROM team_call_budgets WHERE day=?').get(day)?.calls??0);
    if(job.calls>=team.maxRuns||calls>=team.dailyCalls)throw new KTeamError('team_budget_exhausted',409);
    this.db.prepare('INSERT INTO team_call_budgets VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1').run(day);
-   job.calls++;if(persistJob)this.save(job);this.db.exec('COMMIT');
+   job.calls++;if(persistJob)this.save(job);if(receiptId){const prior=this.operation(receiptId);this.saveOperation({...prior,id:receiptId,roomId:job.roomId,jobId:job.id,witness,counted:true,createdAt:prior?.createdAt??Date.now()},prior?.revision??0);}this.db.exec('COMMIT');
   }catch(e){this.db.exec('ROLLBACK');job.calls=previousCalls;throw e;}
+ }
+ observeRequest(job:any,witness:any){
+  if(!witness||witness.version!==1||typeof witness.attemptId!=='string'||!/^[a-z0-9-]{36}$/.test(witness.attemptId)||!['reserved','responded','unknown'].includes(witness.phase))throw new KTeamError('request_witness_invalid');
+  this.transaction(()=>{const id='request-attempt:'+witness.attemptId,prior=this.operation(id);if(prior&&JSON.stringify([prior.witness.logicalCallId,prior.witness.adapter,prior.witness.kind,prior.witness.requestDigest])!==JSON.stringify([witness.logicalCallId,witness.adapter,witness.kind,witness.requestDigest]))throw new KTeamError('request_witness_changed',409);if(prior?.witness.phase==='responded')return;this.saveOperation({...prior,id,roomId:job.roomId,jobId:job.id,witness,counted:prior?.counted??false,createdAt:prior?.createdAt??Date.now()},prior?.revision??0);});
  }
  markSeen(roomId:string,sequences:number[]){const statement=this.db.prepare('INSERT OR IGNORE INTO team_seen VALUES(?,?)');for(const seq of sequences)statement.run(roomId,seq);}
  seen(roomId:string):number[]{return this.db.prepare('SELECT sequence FROM team_seen WHERE room_id=? ORDER BY sequence').all(roomId).map(row=>Number(row.sequence));}

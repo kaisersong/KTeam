@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { FetchProviderError, type FetchProvider, type FetchResult, type FetchRunInput } from './types.js';
 
 // Basic fetch: legacy behaviour migrated from web-fetch.ts.
@@ -19,7 +20,7 @@ function stripHtml(html: string): string {
 }
 
 export function createBasicFetchProvider(options: BasicFetchOptions = {}): FetchProvider {
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-fetch-basic',options.fetchFn ?? fetch,'tool-web');
   return {
     name: 'web_fetch.basic',
     displayName: 'Basic',

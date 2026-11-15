@@ -10,7 +10,7 @@
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
-      "revision": "6463548129b75d2535645babcdd362433d577789",
+      "revision": "44057e7d5daff7a4e0bd2d219bdd5bb55c3f4967",
       "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     }
   ],
@@ -228,7 +228,7 @@
   },
   "documentation": {
     "repository": "https://github.com/kaisersong/mydocs",
-    "revision": "7e5548fa1850b89d86264c2ea8714f60a72ce40c",
+    "revision": "de01dfe5fe1f106d33328ec5e7e2b5d535b43538",
     "directory": "kteam",
     "link": "../mydocs/kteam"
   },

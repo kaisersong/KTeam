@@ -196,5 +196,13 @@
   ],
   "src/a2ui/validator.ts": [
     "assertRenderUiInput"
+  ],
+  "src/ai/runtime/kteam-request-accounting.ts": [
+    "withKTeamRequestScope",
+    "withKTeamRequestKind",
+    "kteamRequestFetch",
+    "isKTeamPhysicalRequest",
+    "kteamLogicalStream",
+    "kteamRequestOperation"
   ]
 }

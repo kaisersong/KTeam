@@ -65,6 +65,7 @@ export interface AgentRuntimeOptions {
   /** Host diagnostics only; cannot enable the semantic executor. */
   onSemanticCompactionDecision?: (decision: CompactionCandidateDecision) => void;
   onActivity?: (activity: RuntimeActivity) => void;
+  contextRecovery?: () => Promise<string>;
   takePendingInput?: () => string | undefined;
   adapter: ModelAdapter;
   registry: ToolRegistry;
@@ -100,6 +101,7 @@ export class AgentRuntime {
   }
 
   private readonly onActivity?: (activity: RuntimeActivity) => void;
+  private readonly contextRecovery?: () => Promise<string>;
   private readonly takePendingInput?: () => string | undefined;
   private adapter: ModelAdapter;
   private readonly registry: ToolRegistry;
@@ -132,6 +134,7 @@ export class AgentRuntime {
     this.onSemanticCompactionDecision = options.onSemanticCompactionDecision;
     this.onActivity = options.onActivity;
     this.takePendingInput = options.takePendingInput;
+    this.contextRecovery = options.contextRecovery;
     this.adapter = options.adapter;
     this.registry = options.registry;
     this.session = options.session;
@@ -290,7 +293,7 @@ export class AgentRuntime {
               adapter:this.adapter,tools:this.registry.getToolDefinitions(),systemPrompt:this.systemPrompt,signal:mergedSignal});
             if(outcome.attempted)autoCompactionBlocked=true;
             try { this.onSemanticCompactionOutcome?.(outcome); } catch { /* Host diagnostics do not alter the result. */ }
-            if(outcome.status==='compacted' && outcome.record)onEvent({type:'compact_triggered',runId:run.runId,summary:outcome.record.summary,compactionId:outcome.record.id});
+            if(outcome.status==='compacted' && outcome.record){onEvent({type:'compact_triggered',runId:run.runId,summary:outcome.record.summary,compactionId:outcome.record.id});if(this.contextRecovery)this.session.appendUserText(await this.contextRecovery());}
             if(outcome.status==='failed')onEvent({type:'compact_failed',runId:run.runId,error:outcome.reason??'semantic_compaction_failed'});
           } else {
           const plan = this.session.planCompaction();
@@ -374,6 +377,7 @@ export class AgentRuntime {
                     + estimateRequestOverheadTokens(this.systemPrompt, this.registry.getToolDefinitions()),
                 },
               });
+              if(this.contextRecovery)this.session.appendUserText(await this.contextRecovery());
               try {
                 await this.injectMemoryAfterCompact();
               } catch (memoryError) {
@@ -432,7 +436,7 @@ export class AgentRuntime {
           this.reportActivity({ phase: chunk.type === 'thinking' ? 'thinking' : 'model' });
           if (chunk.type === 'usage') {
             const usage = this.session.updateUsage(chunk.usage);
-            onEvent({ type: 'usage_updated', runId: run.runId, usage });
+            onEvent({ type: 'usage_updated', runId: run.runId, usage,providerUsage:chunk.usage,providerInvocationId:toolProviderInvocationId });
             continue;
           }
 

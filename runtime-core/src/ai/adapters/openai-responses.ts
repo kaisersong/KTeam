@@ -1,3 +1,4 @@
+import {kteamRequestFetch,kteamLogicalStream} from '../runtime/kteam-request-accounting.js';
 import type {AdapterCredentialResolver} from '../providers/model-harness-profile.js';
 import {createOriginalModelSdkAttemptTransport,finishOriginalModelSdkAttempt} from '../runtime/original-model-sdk-attempt.js';
 import { resolveObservationProviderDisclosure } from '../../runtime/sol-pi/observation-execution-scope.js';
@@ -89,7 +90,8 @@ export class OpenAIResponsesAdapter implements ModelAdapter {
     );
   }
 
-  async *stream(
+  stream(...args:Parameters<OpenAIResponsesAdapter['streamOwned']>):AsyncIterable<StreamChunk>{return kteamLogicalStream(()=>this.streamOwned(...args));}
+  private async *streamOwned(
     messages: Message[],
     tools: ToolDefinition[],
     systemPrompt: string,
@@ -145,7 +147,7 @@ export class OpenAIResponsesAdapter implements ModelAdapter {
     try {
       const fetchImpl = options?.providerDisclosure
         ? createProviderDisclosureFetch(options.providerDisclosure, modelPhysical?.fetch??globalThis.fetch.bind(globalThis)) : modelPhysical?.fetch??fetch;
-      response = await fetchImpl(endpoint, {
+      response = await (modelPhysical?fetchImpl:kteamRequestFetch('openai-responses',fetchImpl))(endpoint, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${credentials?.apiKey ?? this.apiKey}`,
