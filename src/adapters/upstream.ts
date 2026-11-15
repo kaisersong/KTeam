@@ -115,6 +115,8 @@ export class Upstreams {
   messages(roomId: string, after: number, limit: number,before?:number,tail=false) {
     return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages?afterSequence=${after}&limit=${limit}${before!==undefined?'&beforeSequence='+before:''}${tail?'&direction=backward':''}`);
   }
+  masterMessagingProtocol(){return this.request('broker','/rooms/workspace-protocol');}
+  sendOwnerAgentRelay(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/owner-agent-messages`,'POST',input);}
   sendBotPrivate(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/bot-messages`,'POST',input);}
   sendMessage(roomId: string, input: Record<string, unknown>) {
     return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages`, 'POST', input);

@@ -41,8 +41,9 @@ export async function openHarnessSession(input:{core:any;toolApprovalPort?:any;t
   session.restoreSnapshot(previous??{...session.exportSnapshot(),sessionId,cwd,lineage:[sessionId]});
   const pendingBatch=session.getToolBatch();
   if(pendingBatch&&(!input.toolApprovalPort||pendingBatch.ownerId!==input.toolApprovalPort.ownerId)){
-   if(pendingBatch.state!=='waiting_approval')throw new KTeamError('tool_batch_execution_unknown',409);
-   if(!input.toolApprovalPort?.retireStaleBatch||!await input.toolApprovalPort.retireStaleBatch(pendingBatch))throw new KTeamError('harness_session_busy',409);
+   if(pendingBatch.state!=='waiting_approval'){
+    if(!input.toolApprovalPort?.retireUnknownBatch||!await input.toolApprovalPort.retireUnknownBatch(pendingBatch))throw new KTeamError('tool_batch_execution_unknown',409);
+   }else if(!input.toolApprovalPort?.retireStaleBatch||!await input.toolApprovalPort.retireStaleBatch(pendingBatch))throw new KTeamError('harness_session_busy',409);
    // Checkpointed results have not necessarily reached message history yet.
    const seen=new Set(session.getMessages().flatMap((message:any)=>message.content.filter((block:any)=>block.type==='tool_result').map((block:any)=>block.tool_use_id)));
    const missing:any[]=[];let include=false;

@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {buildTooltip} from '../desktop/renderer/src/build-info.js';
+test('wordmark shows actual branch build facts and hides them for official releases',()=>{const info={version:'0.6.0',revision:'abcdef123456',buildNumber:'123',builtAt:'2026-11-15T01:00:54.000Z'};const tooltip=buildTooltip(info)!;assert.match(tooltip,/版本：0.6.0/);assert.match(tooltip,/构建号：123/);assert.match(tooltip,/提交：abcdef1/);assert.match(tooltip,/构建时间：/);assert.equal(buildTooltip({...info,official:true}),undefined);assert.equal(buildTooltip(undefined),undefined);assert.equal(buildTooltip({...info,builtAt:'invalid'}),undefined);});
