@@ -64,12 +64,15 @@ export class WorkRecovery {
    // event alone does not prove that external effects or child processes ended.
    const trace=job.toolTrace??[];
    const pending=new Map<string,number>();let unknown=false;for(const event of trace){const key=JSON.stringify([event.runId,event.name]);if(event.type==='tool_started')pending.set(key,(pending.get(key)??0)+1);else if(event.type==='tool_finished'){if(event.state!=='completed')unknown=true;pending.set(key,Math.max(0,(pending.get(key)??0)-1));}}
-   if(unknown||[...pending.values()].some(count=>count>0))continue;
+   if(unknown)continue;
+   const suspended=[...pending].filter(([,count])=>count>0);
+   if(suspended.some(([key,count])=>count!==1||!trace.some((event:any)=>event.type==='run_suspended'&&event.runId===JSON.parse(key)[0])))continue;
    if(this.store.operationsWithPrefix('harness-process:'+job.id+':').some(row=>row.state!=='stopped'||row.stopConfirmed!==true)||this.store.state('harness-fence:'+job.activeBotId))continue;
    const approvals=this.store.operationsWithPrefix('tool-approval:').filter(row=>row.jobId===job.id);
    if(approvals.some(row=>row.durable?!['completed','denied','superseded'].includes(row.status):row.status==='pending'))continue;
    try{
     const binding=this.store.binding(job.activeBotId);if(!binding||binding.revision!==job.task?.bindingRevision)continue;
+    if(suspended.length&&!await this.completedSuspendedTools(job,binding,suspended,approvals))continue;
     if(job.executionScope){const captured=job.executionScope.binding;if(captured?.revision!==binding.revision||captured?.fingerprint!==binding.fingerprint)continue;const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===job.activeBotId&&!bot.archivedAt);if(!bot||profile(bot).revision!==job.executionScope.profileRevision)continue;}
     const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
     const old=tasks.find(task=>task.taskRef===job.task?.taskRef);
@@ -77,6 +80,23 @@ export class WorkRecovery {
     await this.continue(roomId,{jobId:job.id,requestId:'auto-admission:'+job.id},'auto-admission:'+job.id);
    }catch{/* Retry observations later. Explicit denial never changes this job's eligibility. */}
   }
+ }
+ /** A suspended tool emits started before asking for approval, then completes
+  * under another run id. Check the real checkpoint instead of pairing run ids. */
+ private async completedSuspendedTools(job:any,binding:any,suspended:[string,number][],approvals:any[]){
+  if(binding.kind!=='xiaok-hosted'||typeof job.harness?.cwd!=='string')return false;
+  const required=new Map<string,number>();for(const [key]of suspended){const name=JSON.parse(key)[1];required.set(name,(required.get(name)??0)+1);}
+  for(const [name,count]of required)if(approvals.filter(row=>row.durable&&row.status==='completed'&&row.toolName===name&&row.bindingRevision===binding.revision&&row.modelFingerprint===binding.fingerprint).length<count)return false;
+  let release:(()=>void)|undefined;
+  try{
+   const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===job.activeBotId&&!bot.archivedAt);if(!bot||harnessWorkspace(profile(bot).workspace)!==job.harness.cwd)return false;
+   if(approvals.some(row=>row.durable&&row.profileRevision!==profile(bot).revision))return false;
+   const {identity,directory}=harnessLocation({root:this.store.root,roomId:job.roomId,botId:job.activeBotId,bindingRevision:binding.revision,fingerprint:binding.fingerprint},job.harness.cwd);
+   release=acquireHarnessStorage(directory);const core=await sharedRuntime(),snapshot=await new core.FileSessionStore(join(directory,'sessions')).load('kteam_'+identity);
+   if(!snapshot||snapshot.cwd!==job.harness.cwd||snapshot.toolBatch||!JSON.stringify(snapshot.messages).includes(job.originId))return false;
+   const calls=new Set<string>(),results=new Set<string>();for(const message of snapshot.messages??[])for(const block of message.content??[]){if(block.type==='tool_use'){if(!block.id||calls.has(block.id))return false;calls.add(block.id);}else if(block.type==='tool_result'){if(!block.tool_use_id||results.has(block.tool_use_id))return false;results.add(block.tool_use_id);}}
+   return calls.size>0&&[...calls].every(id=>results.has(id))&&[...results].every(id=>calls.has(id));
+  }catch{return false;}finally{release?.();}
  }
  /** Reconcile only the legacy checkpoint-only fence. Unknown process shutdowns stay fenced. */
  private async reconcileCheckpointFence(roomId:string,botId:string){

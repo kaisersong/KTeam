@@ -136,6 +136,15 @@ test('expired model admission recovers once after terminal old execution; unknow
   job.toolTrace=[{type:'tool_started',runId:'1',name:'write'}];store.save(job);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'unfinished effect cannot restart');
   job.toolTrace.push({type:'tool_finished',runId:'1',name:'write',state:'completed'});job.failure.code='execution_lease_lost';store.save(job);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'explicit revocation cannot auto restart');
   job.failure.code='execution_admission_unverified';store.save(job);store.pause(roomId);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1);store.resume(roomId);
+  const bot=((await f.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId),binding=store.binding(botId)!,cwd=(await import('../src/runtime/harness.js')).harnessWorkspace(bot.kteamProfile?.workspace);
+  job.harness={cwd};job.toolTrace=[{type:'tool_started',runId:'before-approval',name:'write'},{type:'run_suspended',runId:'before-approval'}];store.save(job);
+  const {harnessLocation,acquireHarnessStorage}=await import('../src/runtime/harness-storage.js'),core=await sharedRuntime(),{identity,directory}=harnessLocation({root:store.root,roomId,botId,bindingRevision:binding.revision,fingerprint:binding.fingerprint},cwd),session=new core.AgentSessionState();
+  session.restoreSnapshot({...session.exportSnapshot(),sessionId:'kteam_'+identity,cwd,lineage:['kteam_'+identity]});session.appendUserText(job.originId);session.appendAssistantBlocks([{type:'tool_use',id:'approved-call',name:'write',input:{file_path:join(f.root,'fixture.txt')}}]);
+  const sessions=new core.FileSessionStore(join(directory,'sessions'));await sessions.save(session.exportSnapshot());
+  store.saveOperation({id:'tool-approval:completed-admission',jobId:job.id,roomId,botId,durable:true,status:'completed',toolName:'write',bindingRevision:binding.revision,profileRevision:bot.kteamProfile?.revision??0,modelFingerprint:binding.fingerprint},0);
+  await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'approval alone is not an execution result');
+  session.appendUserToolResults([{type:'tool_result',tool_use_id:'approved-call',content:'actual checkpoint result'}]);await sessions.save(session.exportSnapshot());
+  const release=acquireHarnessStorage(directory);try{await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'live runtime storage owner prevents recovery');}finally{release();}
   await recovery.wakeSafe();await recovery.wakeSafe();const next=store.jobs(roomId)[0];assert.equal(store.jobs(roomId).length,2);assert.equal(next.recoveryOf,job.id);assert.equal(next.recoveryAutomatic,true);assert.equal(next.recoveryContext.draft,'保留的草稿');assert.equal(next.task,undefined);assert.equal(next.toolTrace,undefined);
  }finally{store.close();await f.close();}
 });
