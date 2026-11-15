@@ -1,3 +1,4 @@
+import {GroupMembers} from './group-members.js';
 import {MailConnectors} from './mail-connectors.js';
 import https from 'node:https';
 import {ConversationSidebar} from './sidebar.js';
@@ -98,6 +99,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const approvals=new ToolApprovals(teamStore);
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
+  const groupMembers=new GroupMembers(upstream,teamStore);
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
   const composerAttachments=new ComposerAttachments(options.root,upstream,teamStore,conversations,roomId=>automation.reconcileSubmissions(roomId),(roomId,id,messageId)=>automation.automatic!.accept(roomId,id,messageId));
@@ -272,9 +274,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
       const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
       if(rolesRoute){const roomId=decodeURIComponent(rolesRoute[1]!);if(req.method==='GET')return send(res,200,await teamRoles.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);const input=record(await body(req));if(input.action==='ensure'){fields(input,['action','force']);if(input.force!==undefined&&typeof input.force!=='boolean')throw new KTeamError('invalid_input');return send(res,202,await teamRoles.start(roomId,input.force===true));}if(input.action==='assign'){delete input.action;return send(res,200,await teamRoles.assign(roomId,input));}throw new KTeamError('invalid_input');}}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|members|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
+        if(action==='members'){if(client.id!=='kteam-main')throw new KTeamError('room_actor_forbidden',403);if(req.method==='GET')return send(res,200,await groupMembers.view(roomId));if(req.method==='POST'){const result=await groupMembers.control(roomId,await body(req),{requestSource:'user'});directoryMembers.delete(roomId);return send(res,200,result);}throw new KTeamError('route_not_found',404);}
         if(req.method==='POST'&&action==='sidebar'){if(client.id!=='kteam-main')throw new KTeamError('sidebar_conversation_forbidden',403);return send(res,200,await sidebar.control(roomId,await body(req)));}
         const membership=await upstream.membership(roomId);
         if(req.method==='POST'&&action==='edit')return send(res,200,await coordinator.editGroup({...record(await body(req)),roomId}));
