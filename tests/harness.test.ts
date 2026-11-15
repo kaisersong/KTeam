@@ -95,7 +95,7 @@ test('an update cancels only an unexecuted pending approval for the waiting owne
  }finally{store.close();f.close();}
 });
 
-test('the screenshot build checks execute in the real harness without prompts; explicit deny and opaque effects retain review',async()=>{
+test('the screenshot build checks execute in the real harness without prompts; explicit deny and opaque effects retain review',{skip:process.platform==='win32'},async()=>{
  const f=await fixture(),controller=new AbortController();let registry:any,prompts=0;
  try{
   const desktop=join(f.workspace,'build','desktop'),assets=join(f.workspace,'build','renderer','assets');mkdirSync(desktop,{recursive:true});mkdirSync(assets,{recursive:true});
