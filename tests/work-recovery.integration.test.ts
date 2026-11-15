@@ -109,3 +109,12 @@ test('safe automatic recovery checks current profile, storage exclusion and unkn
   store.close();const reopened=new TeamStore(f.root);try{await new WorkRecovery(f.upstream,reopened,coordinator).wakeSafe();assert.equal(reopened.jobs(roomId).length,4);}finally{reopened.close();}
  }finally{try{store.close();}catch{}await f.close();}
 });
+
+test('dependent queued messages do not deadlock original-work recovery and follow its new owner exactly once',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),recovery=new WorkRecovery(f.upstream,store,coordinator);
+ try{const bot=await coordinator.createMember({name:'接续队列验证员',modelId:'fixture',requestId:'recover-dependency'},user),roomId=bot.roomId;const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'dependency',from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'继续完成合成原工作。'});store.enqueue('parent',roomId,String(sent.messageId));const old=store.job('parent');Object.assign(old,{state:'blocked',reason:'handoff_scope_changed',activeBotId:bot.bot.id,members:[bot.bot.id]});store.save(old);
+  store.enqueue('followup',roomId,'later-message');const child=store.job('followup');child.afterJobId=old.id;store.save(child);assert.equal(recovery.view(roomId,[])?.jobId,old.id);assert.equal(recovery.view(roomId,[])?.canContinue,true);
+  const next=await recovery.continue(roomId,{jobId:old.id,requestId:'continue'});assert.equal(store.job('followup').afterJobId,next.jobId);assert.equal(store.claim().id,next.jobId);assert.equal(store.claim(),null);assert.equal((await recovery.continue(roomId,{jobId:old.id,requestId:'again'})).jobId,next.jobId);
+  const resumed=store.job(next.jobId);resumed.state='delivered';store.save(resumed);assert.equal(store.claim().id,'followup');assert.equal(store.job(old.id).state,'blocked');
+ }finally{store.close();await f.close();}
+});

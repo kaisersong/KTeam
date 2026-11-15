@@ -1,4 +1,4 @@
-import {findOwnerMessage} from './room-reads.js';
+import {originalMessage} from './room-reads.js';
 import {WorkConditions} from './work-conditions.js';
 import {createHash} from 'node:crypto';
 import {KTeamError,fields,record,text} from '../errors.js';
@@ -23,12 +23,12 @@ export class WorkHandoffs {
   const snapshot=await this.upstream.membership(job.roomId),bots=((await this.upstream.listBots()).agents as any[]),members=snapshot.members as any[];
   const bindings=Object.fromEntries([botId,...targetIds].map(id=>{const bot=bots.find(bot=>bot.id===id&&!bot.archivedAt),binding=this.store.binding(id);if(!bot||!binding||this.store.state('source-changing:'+id)||!members.some(member=>member.status==='active'&&member.subject?.logicalAgentId===id))throw new KTeamError('handoff_scope_changed',409);return [id,{binding,profileRevision:profile(bot).revision}];}));
   const settings=this.store.settings(job.roomId);if(!settings||settings.paused)throw new KTeamError('handoff_scope_changed',409);
-  return {settingsRevision:settings.revision,roomRevision:(snapshot.room as any).revision,bindings,sourceTailId:(await findOwnerMessage(this.upstream,job.roomId,message=>message.sender?.kind==='user'&&!['aimp_event','bot_question_answer'].includes(message.sourceRef?.kind)))?.messageId??null,rolesRevision:this.store.state<any>('team-role-policy:'+job.roomId)?.revision??0,disabledSkills:appPreferences(this.store).disabledSkills};
+  return {settingsRevision:settings.revision,roomRevision:(snapshot.room as any).revision,bindings,sourceOrigin:job.routine?{routineId:job.routine.id}:{messageId:job.originId,bodyHash:hash((await originalMessage(this.upstream,job.roomId,job.originId)).text)},rolesRevision:this.store.state<any>('team-role-policy:'+job.roomId)?.revision??0,disabledSkills:appPreferences(this.store).disabledSkills};
  }
  async guard(job:any){
   if(!job?.currentHandoffId)return;
   const op=this.store.operation(job.currentHandoffId);if(!op||['failed','unknown','cancelled'].includes(op.status))throw new KTeamError('handoff_scope_changed',409);
-  try{if(['waiting','parking','parked','resuming'].includes(op.status)&&this.now()>op.deadline)throw new KTeamError(op.condition?'condition_wait_expired':'handoff_wait_expired',409);await this.conditions.assertScope(op);await this.assertRoutine(job);const current=await this.capture(job,op.botId,op.requests.map((request:any)=>request.botId));if(hash(current)!==hash(op.captured))throw new KTeamError('handoff_scope_changed',409);for(const child of op.children??[])await this.coordinator.guardConversation(child.roomId);}
+  try{if(['waiting','parking','parked','resuming'].includes(op.status)&&this.now()>op.deadline)throw new KTeamError(op.condition?'condition_wait_expired':'handoff_wait_expired',409);await this.conditions.assertScope(op);await this.assertRoutine(job);const current=await this.capture(job,op.botId,op.requests.map((request:any)=>request.botId));const {sourceTailId:legacyTail,...captured}=op.captured;const comparable={...current};if(!captured.sourceOrigin)delete (comparable as any).sourceOrigin;if(hash(comparable)!==hash(captured))throw new KTeamError('handoff_scope_changed',409);for(const child of op.children??[])await this.coordinator.guardConversation(child.roomId);}
   catch(error){if(error instanceof KTeamError&&([403,404].includes(error.status)||['conversation_identity_changed','conversation_contract_changed','routine_scope_changed','bot_profile_changed','model_binding_changed'].includes(error.code)))throw new KTeamError('handoff_scope_changed',409);throw error;}
  }
  async guardApproval(approval:any){

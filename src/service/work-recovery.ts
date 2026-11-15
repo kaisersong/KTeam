@@ -15,8 +15,9 @@ import type {TeamCoordinator} from './coordination.js';
 import type {TeamStore} from './team-store.js';
 
 const interrupted = (job: any) => job && ['stopped','unknown','blocked'].includes(job.state) && !['peer','followup','assistant-notice','regenerate'].includes(job.trigger);
-const active = (job: any) => ['queued','held','routing','running','stopping'].includes(job.state);
-const latestWork = (jobs:any[]) => jobs.find(job=>!['assistant-notice','peer','followup','regenerate'].includes(job.trigger));
+const dependent = (job:any) => ['queued','held'].includes(job.state)&&typeof job.afterJobId==='string';
+const active = (job: any) => !dependent(job)&&['queued','held','routing','running','stopping'].includes(job.state);
+const latestWork = (jobs:any[]) => jobs.find(job=>!dependent(job)&&!['assistant-notice','peer','followup','regenerate'].includes(job.trigger));
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
 /** Link a user-requested continuation to preserved evidence. Old runs stay immutable. */
@@ -164,6 +165,7 @@ export class WorkRecovery {
     recoveryContext: {sourceJobId: jobId, failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
      completedReplies: prior.results ?? [], recentTools: (prior.toolTrace ?? []).slice(-12)},
     recoveryBindings: Object.fromEntries(botIds.map(id => [id, this.store.binding(id)]))});
+   for(const queued of this.store.jobs(roomId).filter(job=>dependent(job)&&job.afterJobId===prior.id)){queued.afterJobId=nextId;this.store.save(queued);}
    return {ok: true, jobId: nextId, reused: false};
   });
  }
