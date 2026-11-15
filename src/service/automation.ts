@@ -121,8 +121,8 @@ export class TeamAutomation {
  private async tickBody():Promise<Promise<void>[]>{
   if(!this.accepting||this.starting||this.polling)return [];this.polling=true;const completions:Promise<void>[]=[];
   try{if(this.coordinator)await new WorkRecovery(this.upstream,this.store,this.coordinator).wakeSafe();this.automatic?.wakePending();await this.routines.wake();await this.handoffs?.wake();await this.wakeFollowups();while(this.accepting&&this.active.size<6){
-   const ordinary=[...this.active.values()].filter(v=>!['peer','assistant-relay','group-response','group-discussion'].includes(v.job.trigger)).length;
-   const job=this.store.claim([...new Set([...this.active.values()].map(v=>v.job.roomId).concat(memoryReviewRooms(this.store.root),this.automatic?.busyRooms()??[]))],ordinary>=3,{bots:[...this.active.values()].filter(v=>v.job.trigger!=='group-discussion').map(v=>v.job.groupResponse?.botId??v.job.peer?.toBotId??v.job.groupPlan?.ownerId??v.job.execution?.botId??v.job.activeBotId).filter(Boolean),discussions:[...this.active.values()].map(v=>v.job.groupResponse?.sourceJobId).filter(Boolean)});if(!job)break;
+   const ordinary=[...this.active.values()].filter(v=>!v.job.groupPlanPending&&!['peer','assistant-relay','group-response','group-discussion'].includes(v.job.trigger)).length;
+   const job=this.store.claim([...new Set([...this.active.values()].map(v=>v.job.roomId).concat(memoryReviewRooms(this.store.root),this.automatic?.busyRooms()??[]))],ordinary>=3,{bots:[...this.active.values()].filter(v=>v.job.trigger!=='group-discussion'&&!v.job.groupPlanPending).map(v=>v.job.groupResponse?.botId??v.job.peer?.toBotId??v.job.groupPlan?.ownerId??v.job.execution?.botId??v.job.activeBotId).filter(Boolean),discussions:[...this.active.values()].map(v=>v.job.groupResponse?.sourceJobId).filter(Boolean)});if(!job)break;
    const controller=new AbortController();const completion=this.run(job,controller.signal).finally(()=>{this.active.delete(job.id);});
    this.active.set(job.id,{job,controller,completion});completions.push(completion);
   }}finally{this.polling=false;}
@@ -205,6 +205,7 @@ export class TeamAutomation {
    if(team.kind==='group'&&team.mode==='auto'&&groupRoles?.status==='needs_choice'&&!selected.length&&!['peer','followup','regenerate','recovery'].includes(job.trigger)&&groupRoles){const primary=groupRoles.spokespersonBotId;if(primary&&eligible.some(bot=>bot.id===primary)){selected=[primary];job.routing={members:selected,reason:coordinatorChanged?'用户指定负责人':groupRoles.status==='needs_choice'?'一位成员协助确认负责人':'负责人接续',source:'team-coordinator',roleRevision:groupRoles.revision};this.store.save(job);}}
    if(team.kind==='assistant'||team.kind==='direct')selected=eligible.slice(0,1).map(bot=>bot.id);
    const groupPlanning=team.kind==='group'&&team.mode==='auto'&&groupRoles?.status==='ready'&&eligible.length>0&&!continuation&&(!job.trigger||job.trigger==='group-discussion'||job.trigger==='recovery'&&job.groupPlanPending)&&!job.groupPlan;
+   if(job.groupPlanPending&&!groupPlanning&&!job.groupPlan&&job.trigger!=='group-discussion'){job.groupPlanPending=false;job.state='queued';this.store.save(job);return;}
    if(job.trigger==='group-discussion'&&!groupPlanning){job.state='noop';job.reason='group_participation_unavailable';this.store.save(job);return;}
    if(groupPlanning){selected=[];job.groupPlanPending=true;this.store.save(job);}
    if(job.groupPlan?.mode==='work'&&job.trigger!=='group-response')selected=[job.groupPlan.ownerId];

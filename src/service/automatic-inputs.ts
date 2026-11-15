@@ -16,6 +16,7 @@ export class AutomaticInputs {
  private save(op:any,changes:any){const current=this.store.operation(op.id);return this.store.saveOperation({...current,...changes},current.revision);}
  private records(roomId?:string){return this.store.automaticInputRecords(roomId);}
  busyRooms(){return this.store.automaticInputRooms();}
+ private markGroupPlanning(roomId:string,messageId:string){const settings=this.store.settings(roomId);if(settings?.kind!=='group'||settings.mode!=='auto'||this.store.state<any>('team-role-policy:'+roomId)?.status!=='ready')return;const job=this.store.job('job-'+messageId);if(job?.state==='queued'){job.groupPlanPending=true;this.store.save(job);}}
  wakePending(){for(const room of this.busyRooms())this.start(room);}
  receipts(roomId:string){return this.records(roomId).filter(op=>op.status==='needs_review'||pending.has(op.status)).slice(0,20).map(op=>({id:op.id,messageId:op.messageId,status:op.status==='needs_review'?'needs_review':'handling'}));}
  private async source(roomId:string,id:string,messageId:string){
@@ -33,7 +34,7 @@ export class AutomaticInputs {
   const hosted=members.some(member=>member.status==='active'&&member.subject?.kind==='agent'&&this.store.binding(member.subject.logicalAgentId));
   if(!settings||!hosted||settings.delivery==='external-agent'){this.store.completeSubmission(id,messageId,false);return;}
   const jobs=this.store.jobs(roomId).filter(job=>job.originId!==messageId&&!job.peer&&!job.groupResponse&&!job.groupInput),active=jobs.filter(job=>['routing','running','waiting','stopping','queued'].includes(job.state));const targets=(active.length?active:jobs.slice(0,1).filter(job=>['unknown','blocked','held'].includes(job.state))).slice(0,3).map(job=>({jobId:job.id,originId:job.originId,botId:job.activeBotId,state:job.state}));
-  if(!targets.length&&!this.busyRooms().includes(roomId)){this.store.completeSubmission(id,messageId,true);return;}
+  if(!targets.length&&!this.busyRooms().includes(roomId)){this.store.completeSubmission(id,messageId,true);this.markGroupPlanning(roomId,messageId);return;}
   const bindings=members.filter(member=>member.status==='active'&&member.subject?.kind==='agent').flatMap(member=>{const binding=this.store.binding(member.subject.logicalAgentId);return binding?[{botId:binding.botId,revision:binding.revision,fingerprint:binding.fingerprint}]:[];});
   this.store.completeSubmission(id,messageId,false,{id:key,roomId,envelopeId:id,messageId,bodyHash:hash(message.text),sequence:message.roomSequence,roomRevision:(snapshot.room as any).revision,settingsRevision:settings.revision,bindings,targets,status:'pending',createdAt:Date.now()});this.start(roomId);
  }
@@ -69,7 +70,7 @@ export class AutomaticInputs {
    }
    await guard();op=this.save(op,{status:'decided',chosen});
   }
-  await guard();if(chosen==='new')this.store.enqueue('job-'+op.messageId,op.roomId,op.messageId);else{
+  await guard();if(chosen==='new'){this.store.enqueue('job-'+op.messageId,op.roomId,op.messageId);this.markGroupPlanning(op.roomId,op.messageId);}else{
    const match=/^(append|queue)_(\d+)$/.exec(chosen),target=match?op.targets[Number(match[2])]:undefined;if(!target)throw new KTeamError('work_input_target_changed',409);
    await this.inputs.acceptPublished({roomId:op.roomId,jobId:target.jobId,id:op.envelopeId,messageId:op.messageId,mode:match![1] as 'append'|'queue'});
    const settings=this.store.settings(op.roomId);if(settings?.kind==='group'&&settings.mode==='auto'&&this.store.state<any>('team-role-policy:'+op.roomId)?.status==='ready')this.store.enqueueFollowup({id:'job-group-discussion:'+hash([op.roomId,op.messageId]),roomId:op.roomId,originId:op.messageId,trigger:'group-discussion',groupInput:{sourceJobId:target.jobId,handlingId:op.id}});
