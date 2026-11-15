@@ -55,6 +55,7 @@ export class WorkRecovery {
  /** Reconcile only the legacy checkpoint-only fence. Unknown process shutdowns stay fenced. */
  private async reconcileCheckpointFence(roomId:string,botId:string){
   const fence=this.store.state<any>('harness-fence:'+botId);if(!fence)return true;
+  if(fence.reason!=='harness_runtime_close_failed'||typeof fence.jobId!=='string')return false;
   const job=this.store.job(fence.jobId),binding=this.store.binding(botId);
   if(fence.reason!=='harness_runtime_close_failed'||!job||job.roomId!==roomId||job.activeBotId!==botId||job.state!=='blocked'||job.stopResultUnknown||[...(job.toolTrace??[])].reverse().find((event:any)=>['run_failed','run_aborted'].includes(event.type))?.code!=='session_save_locked'||!binding||binding.kind!=='xiaok-hosted')return false;
   const captured=job.recoveryBindings?.[botId];if(!captured||captured.revision!==binding.revision||captured.fingerprint!==binding.fingerprint)return false;
