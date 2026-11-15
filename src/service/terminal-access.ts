@@ -114,6 +114,13 @@ export function terminalWorkingPaths(core:any,command:string,cwd:string):string[
   // A dynamic directory change cannot inherit an unrelated directory's grant.
   if(/(?:^|[;&|]\s*)(?:cd|pushd|popd)\b/.test(raw))return;
   paths.add(directory);
+  // Remote command paths belong to the remote host, not this machine. Local
+  // redirects still go through normal path coverage; quoted remote redirects do not.
+  if(/^(?:\/[^\s]+\/)?(?:ssh|sftp)(?:\s|$)/.test(raw)){
+   let quote='',escaped=false,redirect=false;
+   for(const char of raw){if(escaped){escaped=false;continue;}if(char==='\\'&&quote!=="'"){escaped=true;continue;}if(quote){if(char===quote)quote='';continue;}if(char==='"'||char==="'"){quote=char;continue;}if(char==='>'||char==='<')redirect=true;}
+   if(!redirect)continue;
+  }
   // Explicit absolute path arguments and redirection targets retain their own directory authority.
   for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
    const path=match[1]??match[2]??match[3]!;if(path!=='/dev/null')paths.add(expand(path));
