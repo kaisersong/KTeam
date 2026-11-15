@@ -42,3 +42,11 @@ test('branch creation and ordinary merge are reusable human grants, never automa
  for(const command of ['git checkout -b release/1.1.6 origin/release/1.1.6','git switch -c feature/local origin/main','git merge origin/main --no-edit']){assert.equal(routineShell(command),true,command);assert.equal(readOnlyShell(command),false,command);}
  for(const command of ['git checkout -f main','git checkout -- file','git checkout -B main','git switch -C main','git merge --abort','git merge -s custom main','git merge --strategy-option=theirs main','git merge --upload-pack=bad main'])assert.equal(routineShell(command),false,command);
 });
+
+
+test('literal find searches with escaped spaces and a grep tail are read-only, but find actions never are',()=>{
+ const command=String.raw`find ~/Library/Application\ Support -name "3bd8bdec*" 2>/dev/null | head -3; find ~/.kteam -name "3bd8bdec*" 2>/dev/null | head -3; grep -rn "Content-Security-Policy\\|img-src" /work/index.html /work/main.ts 2>/dev/null | head -10`;
+ assert.equal(readOnlyShell(command),true);
+ assert.equal(readOnlyShell('find . -maxdepth 3 -type f -iname "*.png" -print'),true);
+ for(const command of ['find . -delete','find . -exec rm {} \\;','find . -execdir sh -c bad \\;','find . -ok rm {} \\;','find . -fprint output','find . -fprintf output x','find . -name *','find $ROOT -name x'])assert.equal(readOnlyShell(command),false,command);
+});

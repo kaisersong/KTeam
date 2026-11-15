@@ -26,3 +26,15 @@ test('a previously parked read approval is reconciled by current policy without 
 
  }finally{chats?.close();f.close();await up.close();}
 });
+
+
+test('the screenshot find and grep check executes without prompts through the real registry; find mutations and explicit deny remain effective',{skip:process.platform==='win32'},async()=>{
+ const f=await fixture();let registry:any;try{
+  const directory=join(f.repo,'Application Support');mkdirSync(directory);writeFileSync(join(directory,'3bd8bdec-proof.png'),'synthetic');writeFileSync(join(f.repo,'index.html'),'Content-Security-Policy fixture');
+  let prompts=0;const h=await createHarness({workspace:f.repo,recoveryReview:true,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{},onPrompt:async()=>{prompts++;return false;}});registry=new f.core.ToolRegistry(h.registryOptions,h.tools);
+  const command=`find ${directory.replaceAll(' ','\\ ')} -name "3bd8bdec*" 2>/dev/null | head -3; grep -rn "Content-Security-Policy" "${f.repo}/index.html" 2>/dev/null | head -10`;
+  assert.equal(await h.registryOptions.permissionManager.check('bash',{command}),'allow');const result=await registry.executeTool('bash',{command});assert.match(result,/3bd8bdec-proof/);assert.match(result,/Content-Security-Policy fixture/);assert.equal(prompts,0);
+  const deletion=`find "${directory}" -name "3bd8bdec*" -delete`;assert.notEqual(await h.registryOptions.permissionManager.check('bash',{command:deletion}),'allow');await registry.executeTool('bash',{command:deletion});assert.equal(existsSync(join(directory,'3bd8bdec-proof.png')),true);
+  writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['bash:find*']}}));const denied=await createHarness({workspace:f.repo,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{}});assert.equal(await denied.registryOptions.permissionManager.check('bash',{command}),'deny');
+ }finally{registry?.dispose();f.close();}
+});
