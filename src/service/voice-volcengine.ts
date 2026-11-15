@@ -1,6 +1,6 @@
 import {createRequire} from 'node:module';
 import type {IncomingMessage,ClientRequest} from 'node:http';
-const WebSocket=createRequire(import.meta.url)('ws');
+const WebSocket=createRequire(typeof __filename==='string'?__filename:import.meta.url)('ws');
 import {gzipSync,gunzipSync} from 'node:zlib';
 import {randomUUID} from 'node:crypto';
 import {KTeamError} from '../errors.js';
