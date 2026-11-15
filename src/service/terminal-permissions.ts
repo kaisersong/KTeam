@@ -1,3 +1,4 @@
+import {readOnlyShell} from './read-only-shell.js';
 /** Conservative command inspection for reusable directory grants, never an execution replay rule. */
 export function terminalCommands(core:any,command:string):string[]|undefined{
  if(!command||/[\n\r`$]/.test(command))return;
@@ -8,6 +9,7 @@ function unquotedEscape(text:string){
  let quote='';for(let index=0;index<text.length;index++){const char=text[index];if(quote){if(char===quote)quote='';else if(char==='\\'&&quote==='"')index++;}else if(char==='"'||char==="'")quote=char;else if(char==='\\')return true;}return false;
 }
 export function terminalRequiresConfirmation(core:any,command:string){
+ if(core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return false;
  const segments=terminalCommands(core,command);
  if(!segments||core.requiresAlwaysCommandConfirmation(command)||core.classifyBashCommand(command).level!=='safe')return true;
  // Keep deletion, credential/security changes, remote mutations and opaque wrappers per-call.
@@ -22,6 +24,7 @@ export function terminalRequiresConfirmation(core:any,command:string){
  });
 }
 export function lowRiskTerminalQuery(core:any,command:string){
+ if(core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return true;
  if(terminalRequiresConfirmation(core,command))return false;
  const segments=terminalCommands(core,command)!;
  return segments.every((raw:string)=>{
@@ -31,4 +34,9 @@ export function lowRiskTerminalQuery(core:any,command:string){
   // Read-only gh forms. Unknown subcommands/options remain covered by the explicit grant path.
   return /^gh\s+(?:run\s+(?:view|list)|pr\s+(?:view|list|checks|status)|issue\s+(?:view|list|status)|release\s+(?:view|list)|repo\s+view)(?:\s|$)/.test(segment);
  });
+}
+
+/** Individual read commands also pass through original deny rules, including inside branches. */
+export function readOnlyTerminalCommands(core:any,command:string):string[]|undefined{
+ const commands:string[]=[];if(core.classifyBashCommand(command).level!=='safe'||!readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word}),value=>commands.push(value)))return;return commands;
 }
