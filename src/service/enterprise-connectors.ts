@@ -1,3 +1,4 @@
+import {defaultMessageChannel} from '../runtime/message-channel.js';
 import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {join} from 'node:path';
@@ -19,8 +20,8 @@ export class EnterpriseConnectors{
  }
  private seed(){return this.cloudBinary=ensureBundledYzjCli({configDir:this.options.configRoot,packageRoot:this.options.packageRoot}).binaryPath;}
  private async load(){if(this.closed)throw new KTeamError('connector_closed',409);return this.loading??=(async()=>{try{this.seed();const r=await connectorCommand(this.cloudBinary,['--version']);this.cloudVersion=/^yzj-cli (\d+\.\d+\.\d+)\s*$/.exec(r.stdout)?.[1]??'';}catch{this.cloudBinary='';} })();}
- private cloudState(){return {provider:'yzj',...this.cloud.getState(),...(this.update?{phase:'updating'}:{}),installed:!!this.cloudBinary,version:this.cloudVersion||undefined,bundled:true,updateError:this.updateError};}
- async view(){await this.load();return {ok:true,connectors:[this.cloudState(),...[...this.enterprise].map(([,service])=>({...service.getState(),bundled:false}))].map(row=>({...row,revision:createHash('sha256').update(JSON.stringify(row)).digest('hex')}))};}
+ private cloudState(){return {provider:'yzj',defaultMessageChannel:true,...this.cloud.getState(),...(this.update?{phase:'updating'}:{}),installed:!!this.cloudBinary,version:this.cloudVersion||undefined,bundled:true,updateError:this.updateError};}
+ async view(){await this.load();return {ok:true,messageChannel:defaultMessageChannel,connectors:[this.cloudState(),...[...this.enterprise].map(([,service])=>({...service.getState(),bundled:false}))].map(row=>({...row,revision:createHash('sha256').update(JSON.stringify(row)).digest('hex')}))};}
  async control(value:unknown){const input=record(value);fields(input,['provider','action','expectedRevision']);await this.load();const row=(await this.view()).connectors.find(r=>r.provider===input.provider);if(!row)throw new KTeamError('connector_not_found',404);if(row.revision!==input.expectedRevision)throw new KTeamError('connector_changed',409);const action=String(input.action);if(input.provider!=='yzj'){if(!['install','login','setup','check','cancel'].includes(action))throw new KTeamError('connector_action_invalid');await this.enterprise.get(String(input.provider))!.control(action as never,'user');return this.view();}
   if(action==='cancel'){if(this.update){this.update.controller.abort();await this.update.done;}else await this.cloud.control('cancel','user');return this.view();}
   if(this.update||working.has(this.cloud.getState().phase))throw new KTeamError('connector_busy',409);

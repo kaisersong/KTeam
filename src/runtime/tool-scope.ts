@@ -33,7 +33,8 @@ export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string)
   if(name==='bash')return scope.terminal==='inherit'&&opaqueAllowed;
   if(['web_fetch','web_search','read_mail','search_mail','send_mail','send_connected_mail','mail_search','mail_read'].includes(name))return scope.network==='inherit';
   if(name.startsWith('mcp__')){const split=name.indexOf('__',5);return split>5&&mcpAllowed(name.slice(5,split));}
-  if(['render_ui','install_skill','uninstall_skill','lsp'].includes(name))return opaqueAllowed;
+  if(name==='render_ui')return !args.output_path||opaqueAllowed;
+  if(['install_skill','uninstall_skill','lsp'].includes(name))return opaqueAllowed;
   if(['subagent','spawn_agent'].includes(name)&&!opaqueAllowed&&(args.agent||args.isolation==='worktree'))return false;
   return localTools.has(name);
  };

@@ -45,7 +45,7 @@ test('real host exposes connector semantic routes only to authenticated main cli
  try{
   await assert.rejects(hostRequest(root,'kteam-companion','/v1/app/enterprise-connectors'),/app_settings_forbidden/);
   await assert.rejects(hostRequest(root,'kteam-companion','/v1/app/enterprise-connectors',{provider:'yzj',action:'login',expectedRevision:'forged'}),/app_settings_forbidden/);
-  const state:any=await hostRequest(root,'kteam-main','/v1/app/enterprise-connectors');assert.equal(state.connectors.length,4);
+  const state:any=await hostRequest(root,'kteam-main','/v1/app/enterprise-connectors');assert.equal(state.connectors.length,4);assert.equal(state.messageChannel.provider,'yzj');assert.equal(state.messageChannel.nativeCards,false);assert.equal(state.connectors[0].defaultMessageChannel,true);
   await assert.rejects(hostRequest(root,'kteam-main','/v1/app/enterprise-connectors',{provider:'yzj',action:'check',expectedRevision:'forged'}),/connector_changed/);
  }finally{await host.close();rmSync(root,{recursive:true,force:true});}
 });

@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { Tool } from '../../types.js';
@@ -131,7 +132,7 @@ export function createRenderUiTool(options: WorkspaceToolOptions = {}): Tool {
       const taskId = typeof input.task_id === 'string' && input.task_id.trim()
         ? input.task_id.trim()
         : context?.session?.sessionId ?? 'local';
-      const toolUseId = `tool_${Date.now().toString(36)}`;
+      const toolUseId = `tool_${randomUUID()}`;
       const compiled = compileRenderUiToA2ui(input as never, { taskId, toolUseId });
       const defaultFilename = `${sanitizeA2UIIdPart(compiled.surfaceId)}.a2ui.json`;
       const explicitOutputPath = typeof input.output_path === 'string' ? input.output_path.trim() : '';
@@ -145,7 +146,7 @@ export function createRenderUiTool(options: WorkspaceToolOptions = {}): Tool {
 
       const payload = JSON.stringify(compiled.messages);
       mkdirSync(dirname(outputPath), { recursive: true });
-      const tmp = join(dirname(outputPath), `.kteam-a2ui-${Date.now()}.tmp`);
+      const tmp = join(dirname(outputPath), `.kteam-a2ui-${randomUUID()}.tmp`);
       writeFileSync(tmp, payload, 'utf8');
       renameSync(tmp, outputPath);
 
