@@ -66,7 +66,7 @@ export function readOnlyShell(command:string,literalAllowed:(word:string)=>boole
    if(head==='git'){
     let args=words.slice(1);while(fixed(args[0])==='--no-pager'||fixed(args[0])==='-C'){if(fixed(args[0])==='-C'){if(!args[1]||args[1].subs.length||args[1].refs.some(name=>!safeGitVariables.has(name))||args[1].value.startsWith('-')){good=false;return;}args=args.slice(2);}else args=args.slice(1);}
     const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version'].includes(verb)){good=false;return;}
-    if(args.some(word=>word.subs.length||word.refs.some(name=>!safeGitVariables.has(name))||/^--(?:output|ext-diff|textconv|filters|open-files-in-pager|exec|upload-pack|receive-pack)(?:=|$)/.test(word.value))){good=false;return;}
+    if(args.some(word=>word.subs.length||word.refs.some(name=>!safeGitVariables.has(name))||/[*?\[]/.test(word.value)||word.value==='-o'||['--output','--ext-diff','--textconv','--filters','--open-files-in-pager','--exec','--upload-pack','--receive-pack'].some(option=>{const name=word.value.split('=')[0]!;return name.startsWith('--')&&name!=='--'&&option.startsWith(name);}))){good=false;return;}
    }
    onCommand(words.map(word=>word.raw).join(' '));
    if(head==='printf'){const format=fixed(words[1]);if(!format||format.startsWith('-')||/%(?:[-+ #0]*[0-9]*(?:\.[0-9]+)?)n/.test(format.replaceAll('%%','')))good=false;}
