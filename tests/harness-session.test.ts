@@ -198,6 +198,25 @@ test('durable terminal approvals carry the actual command directory separately f
  }finally{await owner?.close();f.close();}
 });
 
+
+test('default inline cards execute in the real platform registry without write prompts and prepare Yunzhijia delivery',async()=>{
+ const f=await fixture();let owner:any;try{
+  let prompts=0;const events:any[]=[];
+  const h=await createHarness({scope:f.scope,workspace:f.cwd,signal:AbortSignal.timeout(20000),assertCurrent:async()=>{},onPrompt:async()=>{prompts++;return false;},onTool:event=>events.push(event)});
+  assert.match(h.system,/默认企业消息渠道是云之家/);
+  owner=await h.prepare!({},'fixture',h.system,[]);
+  const input={title:'业务摘要',sections:[{kind:'metric',label:'订单',value:42,change:'+2'},{kind:'table',columns:['项目','完成'],rows:[['上线',true],['等待',null]]},{kind:'chart',title:'趋势',chartType:'line',points:[{label:'昨天',value:1},{label:'今天',value:3}]}]};
+  const result=JSON.parse(await owner.registry.executeTool('render_ui',input));
+  assert.equal(result.ok,true);assert.equal(prompts,0);assert.equal(result.delivery.provider,'yzj');assert.equal(result.delivery.requiresConfirmation,true);assert.match(result.delivery.content,/业务摘要/);assert.match(result.delivery.content,/42/);assert.match(result.delivery.content,/上线/);assert.match(result.delivery.content,/今天/);
+  const card=events.find(event=>event.card)?.card;assert.ok(card);assert.equal(card.content,readFileSync(result.artifactPath,'utf8'));assert.ok(result.artifactPath.startsWith(f.scope.root));
+  owner.session.appendAssistantBlocks([{type:'tool_use',id:'card-call',name:'render_ui',input}]);owner.session.appendUserToolResults([{type:'tool_result',tool_use_id:'card-call',content:JSON.stringify(result)}]);await owner.persist();await owner.close();owner=undefined;
+  owner=await h.prepare!({},'fixture',h.system,[]);assert.match(JSON.stringify(owner.session.getMessages()),/业务摘要/);
+  assert.equal(await h.registryOptions.permissionManager.check('render_ui',{...input,output_path:join(f.cwd,'explicit.a2ui.json')}),'prompt');
+  const blocked=await owner.registry.executeTool('render_ui',{...input,sections:[{kind:'text',content:'bad',actions:[{type:'send'}]}]});assert.match(blocked,/Error|error|字段|invalid/i);
+  assert.equal(events.filter(event=>event.card).length,1);
+ }finally{await owner?.close();f.close();}
+});
+
 test('transient checkpoint locks retry without losing history, and permanent checkpoint failure drains and releases the scope without a process fence',async()=>{
  const f=await fixture(),prototype=f.core.FileSessionStore.prototype,original=prototype.save;let owner:any,failures=0,mode='normal',fences=0;
  prototype.save=function(...args:any[]){if(mode==='permanent'||mode==='transient'&&failures++<2)return Promise.reject(Error('session_save_locked'));return original.apply(this,args);};
