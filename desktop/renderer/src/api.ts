@@ -76,7 +76,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
- inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
+ tool_command_changed:'命令或本地脚本内容已有变化，请重新确认',inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
  agent_link_windows_unsupported:'当前服务暂不能链接这个本机 Agent，请检查服务版本与检测结果',
  host_operation_unknown:'请求结果待核对，请先核对原记录',
  tool_output_not_saved:'原工作没有可核验的完整输出，仅保留记录预览',tool_output_changed:'完整输出已变化或不可用，无法核验原始字节',tool_output_scope_changed:'成员或会话范围已变化，请重新核对来源',tool_output_invalid:'输出读取位置无效，请重新打开',

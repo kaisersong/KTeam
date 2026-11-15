@@ -9,14 +9,14 @@ async function fixture(){const root=realpathSync(mkdtempSync(join(tmpdir(),'ktea
 
 test('one real directory approval covers write/edit/read and queued sibling files; persists and revokes',async()=>{const f=await fixture();try{
  const {registry,h}=await f.make(),directory=join(f.workspace,'reports','today'),one=join(directory,'one.csv'),two=join(directory,'two.json');
- const work1=registry.executeTool('write',{file_path:one,content:'first'}),work2=registry.executeTool('write',{file_path:two,content:'second'});const p=await f.pending(2);assert.equal(p.directory,directory);assert.equal(f.approvals.list().length,1);assert.equal(p.pendingOperationCount,2);
+ const work1=registry.executeTool('write',{file_path:one,content:'first'}),work2=registry.executeTool('write',{file_path:two,content:'second'});const p=await f.pending(2);assert.equal(p.directory,f.workspace);assert.equal(f.approvals.list().length,1);assert.equal(p.pendingOperationCount,2);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:'forged',decision:'allow_directory'}),/tool_approval_changed/);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory',directory:f.root}),/unknown_field/);
  await f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory'});await Promise.all([work1,work2]);assert.equal(f.approvals.list().length,0);assert.equal(readFileSync(one,'utf8'),'first');assert.equal(readFileSync(two,'utf8'),'second');
  await registry.executeTool('edit',{file_path:one,old_string:'first',new_string:'edited'});assert.match(await registry.executeTool('read',{file_path:one}),/edited/);await registry.executeTool('write',{file_path:join(directory,'nested','three.bin'),content:'third'});assert.equal(f.approvals.list().length,0);assert.equal(f.approvals.permissions.list().length,1);
  f.restart();const restored=await f.make();await restored.registry.executeTool('write',{file_path:join(directory,'four.csv'),content:'four'});assert.equal(f.approvals.list().length,0);
  for(const alternative of [await f.make('other'),await f.make('bot',2)])assert.equal(await alternative.h.registryOptions.permissionManager.check('write',{file_path:one,content:'no'}),'prompt');
- assert.equal(await restored.h.registryOptions.permissionManager.check('write',{file_path:join(f.workspace,'other.csv'),content:'no'}),'prompt');
+ assert.equal(await restored.h.registryOptions.permissionManager.check('write',{file_path:join(f.root,'other.csv'),content:'no'}),'prompt');
  const grant=f.approvals.permissions.list()[0]!;f.approvals.permissions.revoke({id:grant.id});await assert.rejects(restored.h.assertCurrent(),/harness_permissions_changed/);assert.equal(f.approvals.permissions.list().length,0);assert.equal((await f.make()).h.registryOptions.permissionManager.getMode(),'default');
  }finally{f.close();}});
 
@@ -24,13 +24,13 @@ test('directory grants cannot cover sensitive/system files, sibling prefixes, sy
  const dir=join(f.workspace,'reports');mkdirSync(dir);const scope={botId:'bot',bindingRevision:1,cwd:f.workspace},target=join(dir,'one.csv'),access=directoryAccess(f.core,'write',{file_path:target},f.workspace)!;f.approvals.permissions.rememberDirectory(scope,access);
  const {h}=await f.make(),pm=h.registryOptions.permissionManager;assert.equal(await pm.check('write',{file_path:join(dir,'.env'),content:'secret'}),'deny');assert.equal(f.approvals.permissions.findDirectory(scope,'write',{file_path:join(dir,'credentials.json')},f.core),null);
  assert.equal(directoryAccess(f.core,'write',{file_path:process.platform==='win32'?join(process.env.SystemRoot??'C:\\Windows','synthetic-report.txt'):'/etc/synthetic-report.txt'},f.workspace),undefined);assert.equal(directoryAccess(f.core,'write',{file_path:process.platform==='win32'?join(process.env.ProgramFiles??'C:\\Program Files','synthetic-report.txt'):'/SYSTEM/synthetic-report.txt'},f.workspace),undefined);assert.equal(directoryAccess(f.core,'write',{file_path:process.platform==='win32'?join(process.env.APPDATA??'C:\\Users\\example\\AppData\\Roaming','report.txt'):'/Users/example/Library/report.txt'},f.workspace),undefined);
- assert.equal(f.approvals.permissions.findDirectory(scope,'write',{file_path:dir+'-other/file.txt'},f.core),null);
+ assert.equal(f.approvals.permissions.findDirectory(scope,'write',{file_path:f.workspace+'-other/file.txt'},f.core),null);
  const outside=join(f.root,'outside');mkdirSync(outside);writeFileSync(join(outside,'secret.txt'),'unchanged');symlinkSync(outside,join(dir,'escape'),process.platform==='win32'?'junction':'dir');assert.equal(f.approvals.permissions.findDirectory(scope,'write',{file_path:join(dir,'escape','secret.txt')},f.core),null);assert.equal(readFileSync(join(outside,'secret.txt'),'utf8'),'unchanged');
  writeFileSync(join(f.workspace,'.kteam-permission-proof'),'');writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['write:*']}}));const denied=await f.make();assert.equal(await denied.h.registryOptions.permissionManager.check('write',{file_path:target,content:'no'}),'deny');
  }finally{f.close();}});
 
 test('directory identity changes while prompting are rejected; one-file permission and recovery stay fresh',async()=>{const f=await fixture();try{
- const dir=join(f.workspace,'reports');mkdirSync(dir);const {registry}=await f.make(),target=join(dir,'one.csv'),work=registry.executeTool('write',{file_path:target,content:'one'}),p=await f.pending();renameSync(dir,dir+'-old');mkdirSync(dir);
+ const dir=join(f.workspace,'reports');mkdirSync(dir);const {registry}=await f.make(),target=join(dir,'one.csv'),work=registry.executeTool('write',{file_path:target,content:'one'}),p=await f.pending();renameSync(f.workspace,f.workspace+'-old');mkdirSync(f.workspace);mkdirSync(dir);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory'}),/tool_directory_changed/);await f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'deny'});await work;assert.equal(existsSync(target),false);
  const next=registry.executeTool('write',{file_path:target,content:'one'}),single=await f.pending();await f.approvals.decide({id:single.id,expectedHash:single.hash,decision:'allow_once'});await next;assert.equal(f.approvals.permissions.list().length,0);
  const scope={botId:'bot',bindingRevision:1,cwd:f.workspace};f.approvals.permissions.rememberDirectory(scope,directoryAccess(f.core,'write',{file_path:target},f.workspace)!);

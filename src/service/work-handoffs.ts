@@ -18,7 +18,7 @@ export class WorkHandoffs {
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private chats:PrivateConversations,
   private assertRoutine:(job:any)=>Promise<void>,private invalidateChildren:(rootId:string)=>void,private now=Date.now){this.conditions=new WorkConditions(upstream,store);chats.setQuestionGuard(async question=>{const job=store.job(question.jobId),op=job?.currentHandoffId?store.operation(job.currentHandoffId):undefined;if(job?.state!=='waiting'||op?.questionId!==question.id||!['parked','parking'].includes(op.status))throw new KTeamError('bot_question_expired',409);await this.guard(job);},question=>{const job=store.job(question.jobId),op=job?.currentHandoffId?store.operation(job.currentHandoffId):undefined;if(op?.questionId===question.id&&op.status==='parked')store.saveOperation({...op,pollAt:0},op.revision);});}
  private conditions:WorkConditions;
- private budget(job:any,limit:number,code:string){if(this.store.waitingJobs().length>=100)throw new KTeamError('work_wait_queue_full',409);if((job.handoffVersion??0)>=limit)throw new KTeamError(code,409);}
+ private budget(job:any,limit:number,code:string){if(this.store.waitingJobs().length>=100)throw new KTeamError('work_wait_queue_full',409);const approvals=this.store.operationsWithPrefix('work-handoff:').filter(op=>op.jobId===job.id&&op.approvalId).length;if((job.handoffVersion??0)-approvals>=limit)throw new KTeamError(code,409);}
  private async capture(job:any,botId:string,targetIds:string[]){
   await this.coordinator.guardConversation(job.roomId);
   const snapshot=await this.upstream.membership(job.roomId),bots=((await this.upstream.listBots()).agents as any[]),members=snapshot.members as any[];
@@ -39,7 +39,8 @@ export class WorkHandoffs {
  }
  async waitForApproval(scope:BotContactScope,job:any,approval:any){
   await scope.assertCurrent();
-  this.budget(job,8,'work_approval_limit');
+  // Human-reviewed approvals do not consume the automatic collaboration/wait budget.
+  this.budget(job,Infinity,'work_approval_limit');
   const previous=job.currentHandoffId?this.store.operation(job.currentHandoffId):undefined;
   if(previous&&!['returned','cancelled','failed'].includes(previous.status))throw new KTeamError('handoff_result_unknown',409);
   const captured=await this.capture(job,scope.botId,[]),id='work-handoff:'+hash([job.id,approval.id]),version=(job.handoffVersion??0)+1;

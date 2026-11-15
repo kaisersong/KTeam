@@ -44,11 +44,13 @@ export async function createHarness(input:HarnessContext){
    const normalized=normalize(name,args,this.base);if(!toolPolicy.permits(name,normalized,this.base))return 'deny';
    const decision=await super.check(name,normalized);if(decision==='deny')return 'deny';
    if(decision!=='allow'&&sensitiveFileInvocation(core,name,normalized,this.base))return 'prompt';
-   if(['send_mail','send_connected_mail','install_skill','uninstall_skill','mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
+   if(['send_mail','send_connected_mail','install_skill','uninstall_skill'].includes(name))return 'prompt';
    const effective=name==='bash'?harnessWorkspace(String(normalized.workdir)):this.base,scope=permissionScope(effective);
    if(scope&&!permissionEpochs.has(effective))permissionEpochs.set(effective,input.permissions!.store.revision(scope));
+   if(name==='bash'&&scope&&input.permissions!.store.findCommand(scope,normalized,core))return 'allow';
    if(name==='bash'&&terminalRequiresConfirmation(core,String(normalized.command??'')))return 'prompt';
    if((!input.recoveryReview||name==='bash')&&scope&&persistentToolEligible(core,name,normalized)&&(input.permissions!.store.findDirectory(scope,name,normalized,core)||input.permissions!.store.find(scope,name,normalized,core)))return 'allow';
+   if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
    if(name==='bash'&&lowRiskTerminalQuery(core,String(normalized.command??'')))return 'allow';
    if(input.recoveryReview&&!['read','glob','grep','read_material','get_team_work','read_runtime_output'].includes(name))return 'prompt';
    return decision;

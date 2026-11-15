@@ -29,11 +29,23 @@ test('a forged answer source is rejected even when its metadata claims the quest
 
 
 test('waiting limits distinguish approvals, questions, delegation, conditions and a full queue before effects',async()=>{const f=await fixture();try{
- f.job.handoffVersion=8;await assert.rejects(f.handoffs.waitForApproval(f.scope,f.job,{}),/work_approval_limit/);
+
  f.job.handoffVersion=2;await assert.rejects(f.handoffs.delegate(f.scope,f.job,{requests:[{botId:'synthetic-other',message:'核对资料'}],doneWhen:'返回结果'}),/work_delegation_limit/);
  const condition=f.handoffs.tools(f.scope,f.job).find(tool=>tool.definition.name==='wait_for_condition')!;
  await assert.rejects(condition.execute({condition:{kind:'file_exists',path:'fictional.txt'},reason:'等待资料',timeoutMinutes:1}),/work_condition_limit/);
  f.job.handoffVersion=0;for(let n=0;n<100;n++){f.store.enqueue('waiting-limit-'+n,f.roomId,'fictional-'+n);const waiting=f.store.job('waiting-limit-'+n);waiting.state='waiting';f.store.save(waiting);}
  assert.equal(f.store.waitingJobs().length,100);await assert.rejects(f.handoffs.questionTool(f.scope,f.job).execute({question:'核对合成范围'}),/work_wait_queue_full/);
  assert.equal(f.store.operationsWithPrefix('bot-question:').length,0);assert.equal(f.store.operationsWithPrefix('work-handoff:').length,0);
+ }finally{await f.close();}});
+
+
+test('human-approved tool waits can exceed eight without consuming automatic collaboration waits',async()=>{const f=await fixture();try{
+ for(let n=0;n<10;n++){
+  if(f.job.currentHandoffId){const prior=f.store.operation(f.job.currentHandoffId);f.store.saveOperation({...prior,status:'returned'},prior.revision);}
+  const approval={id:'tool-approval:budget-'+n,jobId:f.job.id,status:'pending',expiresAt:Date.now()+60000};f.store.saveOperation(approval,0);
+  await f.handoffs.waitForApproval(f.scope,f.job,approval);
+ }
+ assert.equal(f.job.handoffVersion,10);assert.equal(f.store.operationsWithPrefix('work-handoff:').filter(op=>op.approvalId).length,10);
+ const prior=f.store.operation(f.job.currentHandoffId);f.store.saveOperation({...prior,status:'returned'},prior.revision);
+ const result=JSON.parse(await f.handoffs.questionTool(f.scope,f.job).execute({question:'请选择本轮合成范围'}));assert.equal(result.waiting,true);assert.equal(f.job.handoffVersion,11);
  }finally{await f.close();}});

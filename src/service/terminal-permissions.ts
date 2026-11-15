@@ -17,6 +17,9 @@ export function terminalRequiresConfirmation(core:any,command:string){
   if(/(?:^|[\s/])(?:rm|rmdir|unlink|shred|truncate|del|erase|Remove-Item|sudo|chmod|chown|eval|exec|xargs|ssh|scp|sftp|curl|wget|sh|bash|zsh|dash|ksh)(?:\s|$)/i.test(plain))return true;
   if(/\bgit\b.*\s(?:-c|--config-env|--exec-path)(?:[=\s]|$)/.test(plain))return true;
   if(/\bgit\b.*\b(?:push|reset|clean|restore|checkout|rebase|filter-branch)\b/.test(plain))return true;
+  if(/(?:\.git|\$gitdir|\$GIT_DIR)\/(?:hooks|config)(?:\/|\s|$)/i.test(plain)||/\bcp\b.*--remove-destination/.test(plain)||/\bgit\b.*\bcommit\b.*--amend/.test(plain))return true;
+  if(/\bgit\b.*\b(?:branch|tag)\b.*(?:\s-[dD](?:\s|$)|--delete)/.test(plain))return true;
+  if(/\bgit\b.*\b(?:config|remote|worktree|stash|reflog|gc)\b/.test(plain))return true;
   if(/\bgh\b.*\b(?:create|edit|delete|merge|close|reopen|rerun|cancel|upload|fork|sync|auth|api|secret|variable)\b/.test(plain))return true;
   return /\bfind\b.*(?:-delete|-exec|-ok)/.test(plain);
  });
