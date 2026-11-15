@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {readOnlyShell} from '../src/service/read-only-shell.js';
+import {readOnlyShell,routineShell} from '../src/service/read-only-shell.js';
 test('bounded read-only shell checks support variables, safe substitutions, finite loops and conditional reads',()=>{
  for(const command of [
   'cd /work && ls build 2>/dev/null | head; BUNDLE=$(ls build/*.js 2>/dev/null | head -1); echo "BUNDLE=$BUNDLE"; if [ -n "$BUNDLE" ]; then grep -c "attachment-thumb" "$BUNDLE" || echo "none"; fi',
@@ -27,4 +27,12 @@ test('Git object reads and repository version probes stay read-only inside the c
   'git status --short; git log -3 --oneline; git --no-pager diff --no-ext-diff --no-textconv',
  ])assert(readOnlyShell(command),command);
  for(const command of ['git push origin main','git -c alias.inspect="!touch bad" inspect','git show HEAD --output=bad','git show HEAD --out=bad','git show *','git diff --ext-diff','git cat-file --filters HEAD:file','R=$(cat file); git show $R','for rev in --output=bad; do git show $rev; done','sed -i s/a/b/ file','sed -n "1e touch bad" file','sed -n "1w bad" file'])assert.equal(readOnlyShell(command),false,command);
+});
+
+
+test('reviewed routine local shell work can offer a persistent grant without being auto-approved as a read',()=>{
+ const command='U=/work/upstreams; mkdir -p "$U" && git -C /work/repo worktree add --detach "$U/child" HEAD 2>&1 | tail -1';
+ assert.equal(readOnlyShell(command),false);assert.equal(routineShell(command),true);
+ assert.equal(routineShell(String.raw`U=/work/upstreams; mkdir -p \"$U\" && git -C /work/repo worktree add --detach \"$U/child\" HEAD 2>&1 | tail -1`),true);
+ for(const command of ['U=/work; git push origin main','U=/work; rm -rf "$U"','U=/work; sudo mkdir "$U"','U=/work; bash -c "$U"'])assert.equal(routineShell(command),false);
 });

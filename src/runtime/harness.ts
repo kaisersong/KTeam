@@ -1,4 +1,4 @@
-import {lowRiskTerminalQuery,terminalRequiresConfirmation,readOnlyTerminalCommands} from '../service/terminal-permissions.js';
+import {lowRiskTerminalQuery,terminalRequiresConfirmation,routineTerminalCommands} from '../service/terminal-permissions.js';
 import {textPrefix} from '../protocol/text.js';
 import {harnessLocation} from './harness-storage.js';
 import {captureGeneratedFile,generatedFileExtension} from './generated-files.js';
@@ -47,7 +47,7 @@ export async function createHarness(input:HarnessContext){
    if(['send_mail','send_connected_mail','install_skill','uninstall_skill','mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
    const effective=name==='bash'?harnessWorkspace(String(normalized.workdir)):this.base,scope=permissionScope(effective);
    if(scope&&!permissionEpochs.has(effective))permissionEpochs.set(effective,input.permissions!.store.revision(scope));
-   if(name==='bash'){const checks=readOnlyTerminalCommands(core,String(normalized.command??''));if(checks)for(const command of checks)if(await super.check(name,{...normalized,command})==='deny')return 'deny';}
+   if(name==='bash'){const checks=routineTerminalCommands(core,String(normalized.command??''));if(checks)for(const command of checks)if(await super.check(name,{...normalized,command})==='deny')return 'deny';}
    if(name==='bash'&&terminalRequiresConfirmation(core,String(normalized.command??'')))return 'prompt';
    if((!input.recoveryReview||name==='bash')&&scope&&persistentToolEligible(core,name,normalized)&&(input.permissions!.store.findDirectory(scope,name,normalized,core)||input.permissions!.store.find(scope,name,normalized,core)))return 'allow';
    if(name==='bash'&&lowRiskTerminalQuery(core,String(normalized.command??'')))return 'allow';

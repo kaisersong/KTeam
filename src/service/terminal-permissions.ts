@@ -1,5 +1,5 @@
 export const HARNESS_PERMISSION_POLICY_VERSION='read-only-shell-1';
-import {readOnlyShell} from './read-only-shell.js';
+import {readOnlyShell,routineShell} from './read-only-shell.js';
 /** Conservative command inspection for reusable directory grants, never an execution replay rule. */
 export function terminalCommands(core:any,command:string):string[]|undefined{
  if(!command||/[\n\r`$]/.test(command))return;
@@ -11,6 +11,7 @@ function unquotedEscape(text:string){
 }
 export function terminalRequiresConfirmation(core:any,command:string){
  if(process.platform!=='win32'&&core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return false;
+ if(routineTerminalCommands(core,command))return false;
  const segments=terminalCommands(core,command);
  if(!segments||core.requiresAlwaysCommandConfirmation(command)||core.classifyBashCommand(command).level!=='safe')return true;
  // Keep deletion, credential/security changes, remote mutations and opaque wrappers per-call.
@@ -27,7 +28,7 @@ export function terminalRequiresConfirmation(core:any,command:string){
 export function lowRiskTerminalQuery(core:any,command:string){
  if(process.platform!=='win32'&&core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return true;
  if(terminalRequiresConfirmation(core,command))return false;
- const segments=terminalCommands(core,command)!;
+ const segments=terminalCommands(core,command);if(!segments)return false;
  return segments.every((raw:string)=>{
   const segment=raw.replace(/(?:^|\s)2>\s*\/dev\/null(?=\s|$)/g,' ').trim();
   if(/[<>]/.test(segment))return false;
@@ -40,4 +41,9 @@ export function lowRiskTerminalQuery(core:any,command:string){
 /** Individual read commands also pass through original deny rules, including inside branches. */
 export function readOnlyTerminalCommands(core:any,command:string):string[]|undefined{
  const commands:string[]=[];if(process.platform==='win32')return;if(core.classifyBashCommand(command).level!=='safe'||!readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word}),value=>commands.push(value)))return;return commands;
+}
+
+/** These commands still require an initial human grant; they are never read-only auto approval. */
+export function routineTerminalCommands(core:any,command:string):string[]|undefined{
+ const commands:string[]=[];if(process.platform==='win32')return;if(core.classifyBashCommand(command).level!=='safe'||!routineShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word}),value=>commands.push(value)))return;return commands;
 }

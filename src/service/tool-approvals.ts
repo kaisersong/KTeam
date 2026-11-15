@@ -52,16 +52,16 @@ export class ToolApprovals{
   try{await onWait(saved);}catch(error){const current=this.store.operation(id);this.store.saveOperation({...current,status:'cancelled',reason:'handoff_unavailable'},current.revision);throw error;}
   throw core.toolApprovalPause(id);
  }
- async reconcileReadOnlyPending(){
+ async reconcilePendingPolicy(){
   if(!this.durableGuard||this.closed)return;
   const core=await sharedRuntime();
   for(const row of this.store.operationsWithPrefix('tool-approval:').filter(row=>row.durable&&row.status==='pending'&&row.toolName==='bash'&&row.expiresAt>Date.now()&&this.store.job(row.jobId)?.state==='waiting')){
-   if(!readOnlyTerminalCommands(core,String(row.input?.command??'')))continue;
+   const readOnly=!!readOnlyTerminalCommands(core,String(row.input?.command??'')),canAlways=persistentToolEligible(core,'bash',row.input??{});if(!readOnly&&(!canAlways||row.canAlways))continue;
    try{
     const guard=async()=>{await this.validateDurablePolicy(row);await this.durableGuard!(row);};await guard();
     const harness=await createHarness({workspace:row.sessionCwd??row.cwd,permissions:{store:this.permissions,botId:row.botId,bindingRevision:row.bindingRevision},signal:AbortSignal.timeout(10000),assertCurrent:guard});
-    if(await harness.registryOptions.permissionManager.check('bash',row.input)!=='allow')continue;
-    await guard();const current=this.store.operation(row.id);if(!this.closed&&current?.status==='pending'&&current.revision===row.revision)this.store.saveOperation({...current,status:'allowed',decision:'policy_allow',policyReconciledAt:new Date().toISOString()},current.revision);
+    const decision=await harness.registryOptions.permissionManager.check('bash',row.input);if(decision==='deny'||readOnly&&decision!=='allow')continue;
+    await guard();const current=this.store.operation(row.id);if(!this.closed&&current?.status==='pending'&&current.revision===row.revision)this.store.saveOperation(readOnly?{...current,status:'allowed',decision:'policy_allow',policyReconciledAt:new Date().toISOString()}:{...current,canAlways:true},current.revision);
    }catch{/* Changed or unavailable scope keeps its existing approval. */}
   }
  }
