@@ -8,7 +8,10 @@ export function terminalCommands(core:any,command:string):string[]|undefined{
 }
 /** A trusted working directory admits commands by risk, never by a command-name allowlist. */
 export function terminalRequiresConfirmation(core:any,command:string){
- if(!command.trim()||command.length>65536||command.includes('\0')||core.classifyBashCommand(command).level!=='safe')return true;
+ const classification=core.classifyBashCommand(command);
+ // Generic interpreter capability warnings are not evidence of a dangerous action.
+ // Actual destructive operations below and core hard denies still require confirmation.
+ if(!command.trim()||command.length>65536||command.includes('\0')||(classification.level!=='safe'&&!(classification.level==='warn'&&classification.reason==='interpreter eval may execute system commands')))return true;
  if(readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return false;
  const plain=command.replace(/["']/g,'');
  return /(?:^|[\s/;&|=])(?:rm|rmdir|unlink|shred|truncate|del|erase|Remove-Item|sudo|chmod|chown|ssh|scp|sftp)(?:\s|$)/i.test(plain)
