@@ -17,3 +17,12 @@ export function retireStaleToolBatch(store:TeamStore,batch:any,scope:Parameters<
   return true;
  });
 }
+
+/** Only a linked recovery may quarantine its own ended execution; never resume an unknown call. */
+export function retireUnknownToolBatch(store:TeamStore,batch:any,scope:Parameters<typeof staleToolBatchApproval>[2],recoveryJobId:string){
+ const job=store.job(recoveryJobId),old=store.job(batch?.ownerId);
+ if(!batch||!['executing','preparing'].includes(batch.state)||!job||job.trigger!=='recovery'||job.state!=='running'||job.roomId!==scope.roomId||job.activeBotId!==scope.botId||!old||old.roomId!==scope.roomId||old.activeBotId!==scope.botId||old.originId!==job.originId||!['stopped','blocked','unknown'].includes(old.state)||old.stopResultUnknown||store.state('harness-fence:'+scope.botId))return false;
+ const binding=job.recoveryBindings?.[scope.botId];if(binding?.revision!==scope.bindingRevision||binding?.fingerprint!==scope.fingerprint)return false;
+ let parent=job;const seen=new Set<string>();while(parent?.recoveryOf&&!seen.has(parent.id)){seen.add(parent.id);parent=store.job(parent.recoveryOf);if(!parent||parent.roomId!==scope.roomId||parent.originId!==job.originId)return false;if(parent.id===old.id){const id='quarantined-tool-batch:'+batch.id;if(!store.operation(id))store.saveOperation({id,status:'unknown',sourceJobId:old.id,recoveryJobId,roomId:scope.roomId,botId:scope.botId,batch:structuredClone(batch),reason:'ended_owner_reconcile_without_replay'},0);return true;}}
+ return false;
+}

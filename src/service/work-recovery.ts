@@ -22,6 +22,7 @@ const digest = (value: string) => createHash('sha256').update(value).digest('hex
 export class WorkRecovery {
  constructor(private upstream: Upstreams, private store: TeamStore, private coordinator: TeamCoordinator) {}
  async wakeSafe(){
+  await this.wakeUnknownBatch();
   // Only stale approval waits / busy recovery chains are eligible. No unknown runs.
   const rooms=new Set(this.store.jobs().map(job=>job.roomId));
   for(const roomId of rooms){
@@ -47,6 +48,24 @@ export class WorkRecovery {
      await this.continue(roomId,{jobId:job.id,requestId:'auto-stale-approval:'+job.id},autoId);break;
     }catch{/* Scope changes, active locks and unknown evidence remain blocked. */}finally{release?.();}
    }
+  }
+ }
+ private async wakeUnknownBatch(){
+  for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
+   const job=latestWork(this.store.jobs(roomId));
+   if(!job||!interrupted(job)||!(job.reason==='tool_batch_execution_unknown'||executionFailure(job)?.code==='host_restarted_result_unknown')||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   const botId=job.activeBotId,binding=this.store.binding(botId);if(!binding||binding.kind!=='xiaok-hosted'||job.stopResultUnknown||this.store.state('harness-fence:'+botId))continue;
+   let release:(()=>void)|undefined;
+   try{
+    const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId&&!bot.archivedAt);if(!bot)continue;
+    const cwd=harnessWorkspace(profile(bot).workspace),{identity,directory}=harnessLocation({root:this.store.root,roomId,botId,bindingRevision:binding.revision,fingerprint:binding.fingerprint},cwd);
+    release=acquireHarnessStorage(directory);const core=await sharedRuntime(),snapshot=await new core.FileSessionStore(join(directory,'sessions')).load('kteam_'+identity),batch=snapshot?.toolBatch;
+    if(!batch||!['executing','preparing'].includes(batch.state))continue;
+    let owner=job;const seen=new Set<string>();while(owner&&owner.id!==batch.ownerId&&!seen.has(owner.id)){seen.add(owner.id);owner=this.store.job(owner.recoveryOf);}
+    if(!owner||owner.id!==batch.ownerId||owner.roomId!==roomId||owner.originId!==job.originId||owner.activeBotId!==botId||!interrupted(owner)||owner.stopResultUnknown)continue;
+    const autoId='auto-unknown-batch:'+botId+':'+batch.id;if(this.store.operation(autoId))continue;
+    release();release=undefined;await this.continue(roomId,{jobId:job.id,requestId:'auto-result-check:'+job.id},autoId);
+   }catch{/* Active owners and unverifiable sources are never replayed. */}finally{release?.();}
   }
  }
  view(roomId: string, tasks: any[]) {

@@ -24,3 +24,15 @@ test('stale approval retirement requires terminal scoped owner and exact unconsu
   assert.equal(batch.results[0]!.content,'REAL_RESULT');
  }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('unknown batches can only be quarantined by their exact recovery chain, never an active or foreign owner',async()=>{
+ const {retireUnknownToolBatch}=await import('../src/service/stale-tool-batch.js');const root=privateTempDir(join(tmpdir(),'unknown-batch-')),store=new TeamStore(root),scope={roomId:'room',botId:'bot',bindingRevision:1,profileRevision:1,fingerprint:'fp',cwd:root};
+ try{store.enqueue('old','room','origin');const old=store.job('old');Object.assign(old,{state:'stopped',activeBotId:'bot'});store.save(old);
+ store.enqueueFollowup({id:'new',roomId:'room',originId:'origin',trigger:'recovery',state:'running',recoveryOf:'old',activeBotId:'bot',recoveryBindings:{bot:{revision:1,fingerprint:'fp'}}});const job=store.job('new');job.state='running';store.save(job);
+ const batch={id:'batch_123',ownerId:'old',state:'executing',calls:[{id:'done'},{id:'unknown'}],results:[{type:'tool_result',tool_use_id:'done',content:'REAL_RESULT'}]};
+ for(const patch of [{roomId:'foreign'},{botId:'foreign'},{bindingRevision:2}])assert.equal(retireUnknownToolBatch(store,batch,{...scope,...patch},'new'),false);
+ old.state='running';store.save(old);assert.equal(retireUnknownToolBatch(store,batch,scope,'new'),false);old.state='stopped';old.stopResultUnknown=true;store.save(old);assert.equal(retireUnknownToolBatch(store,batch,scope,'new'),false);delete old.stopResultUnknown;store.save(old);
+ job.originId='other';store.save(job);assert.equal(retireUnknownToolBatch(store,batch,scope,'new'),false);job.originId='origin';store.save(job);
+ assert.equal(retireUnknownToolBatch(store,batch,scope,'new'),true);assert.equal(retireUnknownToolBatch(store,batch,scope,'new'),true);assert.deepEqual(store.operation('quarantined-tool-batch:'+batch.id).batch,batch);assert.equal(store.job('old').state,'stopped');
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
