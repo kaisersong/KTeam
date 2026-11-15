@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {join} from 'node:path';
 import {mkdirSync,writeFileSync,unlinkSync} from 'node:fs';
 import {captureGeneratedFile,generatedFilePreview} from '../src/runtime/generated-files.js';
+import {recordGeneratedFile} from '../src/runtime/generated-file-receipts.js';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
@@ -39,7 +40,7 @@ test('verified previews preserve UTF-8 and image bytes while large or unsupporte
  try{
   const samples=[{name:'分析.md',content:Buffer.from('# 中文分析\n已完成'),kind:'markdown'}, {name:'result.json',content:Buffer.from('{"result":"正确"}'),kind:'text'}, {name:'chart.png',content:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB','base64'),kind:'image'}, {name:'large.html',content:Buffer.from('x'.repeat(1600*1024)),kind:'unsupported'}, {name:'report.pdf',content:Buffer.from('%PDF-1.7'),kind:'unsupported'}];
   for(const [index,sample]of samples.entries()){
-   const path=join(f.root,sample.name),toolCallId='preview-'+index;writeFileSync(path,sample.content);store.enqueue('job-'+index,'room','origin-'+index);const job=store.job('job-'+index);job.state='delivered';job.toolTrace=[{id:toolCallId,name:'write',state:'completed',file:captureGeneratedFile(path,root,'room')}];store.save(job);
+   const path=join(f.root,sample.name),toolCallId='preview-'+index;writeFileSync(path,sample.content);store.enqueue('job-'+index,'room','origin-'+index);const job=store.job('job-'+index);job.state='delivered';job.toolTrace=[{id:toolCallId,name:'write',state:'completed',file:captureGeneratedFile(path,root,'room')}];store.save(job);recordGeneratedFile(store,job,job.toolTrace[0]);
    const preview=generatedFilePreview(store,'room',toolCallId);assert.equal(preview.kind,sample.kind);assert.equal(preview.name,sample.name);assert.equal(preview.bytes,sample.content.length);assert.equal('path'in preview,false);
    if(sample.kind==='image')assert.deepEqual(Buffer.from(preview.content,'base64'),sample.content);else if(sample.kind==='unsupported')assert.equal(preview.content,'');else assert.equal(preview.content,sample.content.toString('utf8'));
    if(sample.name==='large.html')assert.equal('reason'in preview?preview.reason:undefined,'preview_too_large');

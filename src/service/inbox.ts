@@ -9,7 +9,8 @@ export class InboxState {
  constructor(private store:TeamStore){}
  private key(kind:string,id:string){return 'inbox-receipt:'+hash([kind,id]);}
  project(kind:string,item:any){
-  const id=String(item.id),version=hash([kind,Object.fromEntries(contentFields.filter(key=>Object.hasOwn(item,key)).map(key=>[key,item[key]]))]),receipt=this.store.state<any>(this.key(kind,id));
+  // Attention's source revision advances on every scan, even when the notice content is unchanged.
+  const id=String(item.id),version=hash([kind,Object.fromEntries(contentFields.filter(key=>Object.hasOwn(item,key)&&!(kind==='attention'&&key==='revision')).map(key=>[key,item[key]]))]),receipt=this.store.state<any>(this.key(kind,id));
   const inbox:InboxReceipt={kind,id,version,revision:receipt?.revision??0,read:receipt?.version===version&&receipt.read===true,deleted:receipt?.version===version&&receipt.deleted===true};
   return {...item,inbox};
  }
