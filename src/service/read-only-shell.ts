@@ -33,10 +33,10 @@ export function readOnlyShell(command:string,literalAllowed:(word:string)=>boole
   }
   if(sub)fail();return tokens;
  }
- function inspect(tokens:Token[],variables=new Set<string>(),depth=0):boolean{
+ function inspect(tokens:Token[],variables=new Set<string>(),depth=0,safeGitVariables=new Set<string>()):boolean{
   if(depth>4||!tokens.length)return false;
   const blocks:('test'|'body'|'else'|'loop-await'|'loop')[]=[];let segment:Token[]=[];let good=true,seen=false;
-  const wordOK=(word:Word)=>word.refs.every(name=>variables.has(name))&&word.subs.every(sub=>inspect(sub,new Set(variables),depth+1));
+  const wordOK=(word:Word)=>word.refs.every(name=>variables.has(name))&&word.subs.every(sub=>inspect(sub,new Set(variables),depth+1,new Set(safeGitVariables)));
   function check(){
    if(!segment.length)return;seen=true;let words:Word[]=[];
    for(let i=0;i<segment.length;i++){
@@ -55,13 +55,19 @@ export function readOnlyShell(command:string,literalAllowed:(word:string)=>boole
    }
    if(head==='do'){if(blocks.at(-1)!=='loop-await'){good=false;return;}blocks[blocks.length-1]='loop';words=words.slice(1);if(!words.length)return;head=fixed(words[0]);}
    if(head==='done'){if(words.length!==1||blocks.pop()!=='loop')good=false;return;}
-   if(head==='for'){const variable=fixed(words[1]);if(!variable||!/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable)||(reserved.test(variable)||Object.hasOwn(process.env,variable))||fixed(words[2])!=='in'||words.length<4||words.length>35||words.slice(3).some(word=>fixed(word)===undefined||/[?*\[]/.test(word.value))){good=false;return;}variables.add(variable);blocks.push('loop-await');return;}
+   if(head==='for'){const variable=fixed(words[1]);if(!variable||!/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable)||(reserved.test(variable)||Object.hasOwn(process.env,variable))||fixed(words[2])!=='in'||words.length<4||words.length>35||words.slice(3).some(word=>fixed(word)===undefined||/[?*\[]/.test(word.value))){good=false;return;}variables.add(variable);if(words.slice(3).every(word=>/^[A-Za-z0-9_./:@~+-]+$/.test(word.value)&&!word.value.startsWith('-')))safeGitVariables.add(variable);else safeGitVariables.delete(variable);blocks.push('loop-await');return;}
    if(head==='fi'){if(words.length!==1||!['body','else'].includes(blocks.pop()??''))good=false;return;}
    if(head==='if'){blocks.push('test');words=words.slice(1);head=fixed(words[0]);}
-   if(head==='['){onCommand(words.map(word=>word.raw).join(' '));if(words.length!==4||!['-n','-z'].includes(fixed(words[1])??'')||fixed(words[3])!==']')good=false;return;}
+   if(head==='['){onCommand(words.map(word=>word.raw).join(' '));if(words.length!==4||!['-n','-z','-d','-f','-e','-r','-s','-L','-h'].includes(fixed(words[1])??'')||fixed(words[3])!==']')good=false;return;}
    const assignment=words[0]?.value.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
-   if(assignment){if(words.length!==1||(reserved.test(assignment[1]!)||Object.hasOwn(process.env,assignment[1]!))){good=false;return;}variables.add(assignment[1]!);return;}
-   if(!head||!['ls','pwd','echo','head','grep','cd','cat','printf','true','false'].includes(head)){good=false;return;}
+   if(assignment){if(words.length!==1||(reserved.test(assignment[1]!)||Object.hasOwn(process.env,assignment[1]!))){good=false;return;}variables.add(assignment[1]!);const value=words[0]!.value.slice(assignment[0].length);if(!words[0]!.refs.length&&!words[0]!.subs.length&&/^[A-Za-z0-9_./:@~+-]+$/.test(value)&&!value.startsWith('-'))safeGitVariables.add(assignment[1]!);else safeGitVariables.delete(assignment[1]!);return;}
+   if(!head||!['ls','pwd','echo','head','grep','cd','cat','printf','true','false','git','cut','wc','sed'].includes(head)){good=false;return;}
+   if(head==='sed'){const script=fixed(words[2]);if(fixed(words[1])!=='-n'||!script||!/^([0-9]+|\$)?(,([0-9]+|\$))?p$/.test(script)||words.slice(3).some(word=>word.value.startsWith('-')||word.subs.length||word.refs.some(name=>!safeGitVariables.has(name)))){good=false;return;}}
+   if(head==='git'){
+    let args=words.slice(1);while(fixed(args[0])==='--no-pager'||fixed(args[0])==='-C'){if(fixed(args[0])==='-C'){if(!args[1]||args[1].subs.length||args[1].refs.some(name=>!safeGitVariables.has(name))||args[1].value.startsWith('-')){good=false;return;}args=args.slice(2);}else args=args.slice(1);}
+    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version'].includes(verb)){good=false;return;}
+    if(args.some(word=>word.subs.length||word.refs.some(name=>!safeGitVariables.has(name))||/^--(?:output|ext-diff|textconv|filters|open-files-in-pager|exec|upload-pack|receive-pack)(?:=|$)/.test(word.value))){good=false;return;}
+   }
    onCommand(words.map(word=>word.raw).join(' '));
    if(head==='printf'){const format=fixed(words[1]);if(!format||format.startsWith('-')||/%(?:[-+ #0]*[0-9]*(?:\.[0-9]+)?)n/.test(format.replaceAll('%%','')))good=false;}
    if(head==='cd'&&(words.length!==2||!words[1]!.value||words[1]!.value.startsWith('-')))good=false;
