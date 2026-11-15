@@ -102,6 +102,7 @@ export class Upstreams {
   }
   async requireExternalMessages(){const result=await this.probe();if(!result.ready||!result.broker.externalAgentMessages)throw new KTeamError('agent_service_upgrade_required',503);}
   deleteTeam(roomId:string,expectedRoomRevision:number){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/delete`,'POST',{expectedRoomRevision});}
+  updateMembers(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/members`,'PUT',input);}
   updateTeam(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/metadata`,'PUT',input);}
   externalReply(roomId:string,input:Record<string,unknown>){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/agent-messages`,'POST',input);}
   registerNativeParticipant(input:Record<string,unknown>){return this.request('broker','/participants/register','POST',input);}
