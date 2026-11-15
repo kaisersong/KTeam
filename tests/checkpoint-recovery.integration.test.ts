@@ -1,3 +1,5 @@
+import {spawnSync} from 'node:child_process';
+import {processBirth} from '../src/runtime/platform-process.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
@@ -20,6 +22,9 @@ test('legacy checkpoint-only fences reconcile after the real scope is drained; l
   store.enqueue('legacy-checkpoint',roomId,String(sent.messageId));const job=store.job('legacy-checkpoint');Object.assign(job,{state:'blocked',reason:'harness_runtime_close_failed',activeBotId:botId,recoveryBindings:{[botId]:store.binding(botId)},harness:{cwd:workspace},toolTrace:[{type:'run_failed',code:'session_save_locked'}]});store.save(job);store.setState('harness-fence:'+botId,{reason:'harness_runtime_close_failed',jobId:job.id});const recovery=new WorkRecovery(f.upstream,store,coordinator);
   await recovery.wakeSafe();assert(store.state('harness-fence:'+botId),'live storage owner must not be bypassed');assert.equal(store.operation('work-recovery:'+job.id),null);
   await owner.close();owner=undefined;store.setState('harness-fence:'+botId,{reason:'native_stop_unconfirmed',processId:'unconfirmed'});await recovery.wakeSafe();assert.equal(store.state<any>('harness-fence:'+botId).reason,'native_stop_unconfirmed');
-  store.setState('harness-fence:'+botId,{reason:'harness_runtime_close_failed',jobId:job.id});await recovery.wakeSafe();assert.equal(store.state('harness-fence:'+botId),null);assert(store.state('harness-checkpoint-reconciled:'+job.id));const receipt=store.operation('work-recovery:'+job.id);assert(receipt);assert.equal(store.job(receipt.jobId).state,'queued');assert.equal(store.job(receipt.jobId).recoveryOf,job.id);await recovery.wakeSafe();assert.equal(store.operationsWithPrefix('work-recovery:').length,1);
+  store.setState('harness-fence:'+botId,{reason:'harness_runtime_close_failed',jobId:job.id});
+  const processId='harness-process:'+job.id+':prior-shell';store.saveOperation({id:processId,state:'stopped',pid:process.pid,birth:processBirth(process.pid)},0);await recovery.wakeSafe();assert(store.state('harness-fence:'+botId),'a still-live recorded process must remain fenced');
+  const ended=spawnSync(process.execPath,['-e','process.exit(0)']);assert.equal(ended.status,0);const row=store.operation(processId);store.saveOperation({...row,pid:ended.pid},row.revision);
+  await recovery.wakeSafe();assert.equal(store.state('harness-fence:'+botId),null);assert(store.state('harness-checkpoint-reconciled:'+job.id));const receipt=store.operation('work-recovery:'+job.id);assert(receipt);assert.equal(store.job(receipt.jobId).state,'queued');assert.equal(store.job(receipt.jobId).recoveryOf,job.id);await recovery.wakeSafe();assert.equal(store.operationsWithPrefix('work-recovery:').length,1);
  }finally{await owner?.close();store.close();await f.close();}
 });

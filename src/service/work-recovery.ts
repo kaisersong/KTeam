@@ -60,7 +60,12 @@ export class WorkRecovery {
   if(fence.reason!=='harness_runtime_close_failed'||!job||job.roomId!==roomId||job.activeBotId!==botId||job.state!=='blocked'||job.stopResultUnknown||[...(job.toolTrace??[])].reverse().find((event:any)=>['run_failed','run_aborted'].includes(event.type))?.code!=='session_save_locked'||!binding||binding.kind!=='xiaok-hosted')return false;
   const captured=job.recoveryBindings?.[botId];if(!captured||captured.revision!==binding.revision||captured.fingerprint!==binding.fingerprint)return false;
   if(this.store.jobs().some(candidate=>candidate.activeBotId===botId&&(active(candidate)||candidate.state==='waiting')))return false;
-  const processes=this.store.operationsWithPrefix('harness-process:'+job.id+':');if(processes.some(row=>row.state!=='stopped'||row.pid&&sameProcessBirth(processBirth(row.pid),row.birth)))return false;
+  const processes=this.store.operationsWithPrefix('harness-process:'+job.id+':');
+  for(const row of processes){
+   if(row.state!=='stopped')return false;if(!row.pid)continue;
+   try{process.kill(row.pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')continue;return false;}
+   try{if(sameProcessBirth(processBirth(row.pid),row.birth))return false;}catch{return false;}
+  }
   const task=((await this.upstream.aimp(roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===job.task?.taskRef);if(task&&!['halted','delivered','rejected','expired','cancelled'].includes(task.state))return false;
   let release:(()=>void)|undefined;
   try{
