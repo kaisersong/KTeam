@@ -53,16 +53,18 @@ jobs:
         run: |
           mkdir -p .artifacts
           cat > .artifacts/release-notes.md <<'NOTES'
-          KTeam 桌面安装包（草稿，待验收后手动发布）。
+          KTeam 桌面安装包（构建中，全部校验通过后自动发布）。
 
           - macOS Apple Silicon：Developer ID 签名，已公证并装订；提供 dmg 与 zip（zip 供自动更新使用）。
           - Windows x64：NSIS 安装包与便携版 exe（当前均未签名，首次运行会有 SmartScreen 提示）；NSIS 附带 latest.yml 与 blockmap 供自动更新使用，便携版不自动更新。
           - 自动更新只认 KTeam 自己的 GitHub Releases（kaisersong/KTeam）。
-          - 本工作流只创建或更新草稿，不会自动正式发布。质量书面通过后，由发布负责人执行：
-            `gh release edit <tag> --draft=false [--prerelease | --latest] --notes-file <final notes>`
+          - GitHub Actions 在 Mac、Windows 构建及跨平台检查全部通过，且安装包与更新元数据校验完成后自动发布。失败时保留草稿。
 
           当前未提供 Intel Mac 或 Linux 安装包。SHA256SUMS 用于校验安装包与更新元数据。
           NOTES
+          if [ -f "release-notes/${RELEASE_TAG#v}.md" ]; then
+            cp "release-notes/${RELEASE_TAG#v}.md" .artifacts/release-notes.md
+          fi
           if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > .artifacts/existing-draft.txt 2>/dev/null; then
             test "$(cat .artifacts/existing-draft.txt)" = true || { echo 'Refusing to replace a published release'; exit 1; }
           else
@@ -83,6 +85,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
       RELEASE_SHA: ${{ needs.create-release.outputs.sha }}
+      KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
     steps:
       - name: Check macOS signing secrets
         working-directory: .
@@ -115,7 +118,7 @@ jobs:
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const lock = JSON.parse(fs.readFileSync('sources.lock.json', 'utf8'));
-          for (const source of lock.sources.filter((s) => ['kswarm', 'intent-broker'].includes(s.name))) {
+          for (const source of [...lock.sources.filter((s) => ['kswarm', 'intent-broker'].includes(s.name)), {name: 'creator-plugins', revision: lock.creatorPlugins.revision}]) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-', '_') + '=' + source.revision + '\n');
           }
           JS
@@ -130,6 +133,13 @@ jobs:
           repository: kaisersong/intent-broker
           ref: ${{ steps.pins.outputs.intent_broker }}
           path: intent-broker
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kai-xiaok-plugins
+          ref: ${{ steps.pins.outputs.creator_plugins }}
+          path: creator-plugins
+          token: ${{ secrets.SIBLING_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -367,6 +377,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.create-release.outputs.tag }}
       RELEASE_SHA: ${{ needs.create-release.outputs.sha }}
+      KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
@@ -380,7 +391,7 @@ jobs:
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const lock = JSON.parse(fs.readFileSync('sources.lock.json', 'utf8'));
-          for (const source of lock.sources.filter((s) => ['kswarm', 'intent-broker'].includes(s.name))) {
+          for (const source of [...lock.sources.filter((s) => ['kswarm', 'intent-broker'].includes(s.name)), {name: 'creator-plugins', revision: lock.creatorPlugins.revision}]) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, source.name.replaceAll('-', '_') + '=' + source.revision + '\n');
           }
           JS
@@ -395,6 +406,13 @@ jobs:
           repository: kaisersong/intent-broker
           ref: ${{ steps.pins.outputs.intent_broker }}
           path: intent-broker
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: kaisersong/kai-xiaok-plugins
+          ref: ${{ steps.pins.outputs.creator_plugins }}
+          path: creator-plugins
+          token: ${{ secrets.SIBLING_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -468,13 +486,20 @@ jobs:
           done < .artifacts/windows-upload.txt
           gh release upload "$RELEASE_TAG" "${uploads[@]}" --clobber
 
+  release-checks:
+    needs: create-release
+    uses: ./.github/workflows/check.yml
+    with:
+      revision: ${{ needs.create-release.outputs.sha }}
+    secrets: inherit
+
   finalize-release:
-    needs: [create-release, build-mac, build-windows]
+    needs: [create-release, build-mac, build-windows, release-checks]
     # Run after both platform jobs finish, including when one failed, so a failed
     # platform shows up as a red finalize step. Skip if the workflow was cancelled.
     # Any SHA256SUMS already on the draft is deleted first so a re-run cannot leave a
     # stale checksum file. SHA256SUMS is rewritten only when every platform succeeded;
-    # the release stays a draft either way.
+    # publication happens only after all checks and artifact validation succeed.
     if: ${{ !cancelled() && needs.create-release.result == 'success' }}
     permissions:
       contents: write
@@ -499,46 +524,39 @@ jobs:
         env:
           MAC_RESULT: ${{ needs.build-mac.result }}
           WINDOWS_RESULT: ${{ needs.build-windows.result }}
+          CHECKS_RESULT: ${{ needs.release-checks.result }}
         run: |
-          echo "build-mac: $MAC_RESULT, build-windows: $WINDOWS_RESULT"
-          if [[ "$MAC_RESULT" != success || "$WINDOWS_RESULT" != success ]]; then
-            echo "::error::Not finalizing $RELEASE_TAG: build-mac=$MAC_RESULT build-windows=$WINDOWS_RESULT. The draft keeps whatever platform artifacts were uploaded and has no SHA256SUMS; fix and re-run the failed job(s)."
+          echo "build-mac: $MAC_RESULT, build-windows: $WINDOWS_RESULT, release-checks: $CHECKS_RESULT"
+          if [[ "$MAC_RESULT" != success || "$WINDOWS_RESULT" != success || "$CHECKS_RESULT" != success ]]; then
+            echo "::error::Not finalizing $RELEASE_TAG: build-mac=$MAC_RESULT build-windows=$WINDOWS_RESULT release-checks=$CHECKS_RESULT. The draft keeps whatever platform artifacts were uploaded and has no SHA256SUMS; fix and re-run the failed job(s)."
             exit 1
           fi
-      - name: Write SHA256SUMS and confirm the release stays a draft
+      - name: Validate all artifacts and write SHA256SUMS
         run: |
           set -euo pipefail
           work="$(mktemp -d)"
           gh release download "$RELEASE_TAG" --dir "$work"
           python3 - "$work" <<'PY'
           import hashlib
+          import os
           import sys
           from pathlib import Path
 
           root = Path(sys.argv[1])
           names = sorted(p.name for p in root.iterdir() if p.is_file() and p.name != "SHA256SUMS")
-          required_exact = {"latest-mac.yml", "latest.yml"}
-          missing_exact = sorted(required_exact - set(names))
-          has_dmg = any(name.endswith(".dmg") for name in names)
-          has_zip = any(name.endswith("-mac.zip") for name in names)
-          has_exe = any(name.startswith("KTeam-setup-") and name.endswith(".exe") for name in names)
-          has_portable = any(name.startswith("KTeam-portable-") and name.endswith(".exe") for name in names)
-          has_blockmap = any(name.startswith("KTeam-setup-") and name.endswith(".exe.blockmap") for name in names)
-          problems = []
-          if missing_exact:
-              problems.append("missing " + ", ".join(missing_exact))
-          if not has_dmg:
-              problems.append("missing dmg")
-          if not has_zip:
-              problems.append("missing mac zip")
-          if not has_exe:
-              problems.append("missing NSIS exe")
-          if not has_portable:
-              problems.append("missing portable exe")
-          if not has_blockmap:
-              problems.append("missing NSIS blockmap")
-          if problems:
-              raise SystemExit("Draft assets incomplete: " + "; ".join(problems) + "\n" + "\n".join(names))
+          version = os.environ["RELEASE_TAG"].removeprefix("v")
+          required = {
+              "latest-mac.yml", "latest.yml",
+              f"KTeam-{version}-arm64-mac.dmg", f"KTeam-{version}-arm64-mac.zip",
+              f"KTeam-setup-{version}.exe", f"KTeam-setup-{version}.exe.blockmap",
+              f"KTeam-portable-{version}.exe",
+          }
+          optional = {f"KTeam-{version}-arm64-mac.dmg.blockmap", f"KTeam-{version}-arm64-mac.zip.blockmap"}
+          missing = sorted(required - set(names))
+          unexpected = sorted(set(names) - required - optional)
+          empty = sorted(name for name in names if (root / name).stat().st_size == 0)
+          if missing or unexpected or empty:
+              raise SystemExit(f"Invalid release assets: missing={missing}, unexpected={unexpected}, empty={empty}")
           lines = []
           for name in names:
               digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
@@ -548,4 +566,14 @@ jobs:
           PY
           gh release upload "$RELEASE_TAG" "$work/SHA256SUMS" --clobber
           test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = true
-          echo "Draft $RELEASE_TAG uploaded with SHA256SUMS; waiting for QA written pass before publishing."
+      - name: Publish verified release
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = true
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+          fi
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = false
+          echo "Published verified release $RELEASE_TAG."

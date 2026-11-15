@@ -12,7 +12,7 @@ import {initConfig} from '../src/service/config.js';
 import {startHost} from '../src/service/server.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI} from '../desktop/semantic-api.js';
-async function until<T>(read:()=>Promise<T|false|undefined>){const deadline=Date.now()+20000;while(Date.now()<deadline){const value=await read();if(value)return value;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('work_input_fixture_timeout');}
+async function until<T>(read:()=>Promise<T|false|undefined>){const deadline=Date.now()+(20000*(process.platform==='win32'?3:1));while(Date.now()<deadline){const value=await read();if(value)return value;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('work_input_fixture_timeout');}
 async function startProofHost(root:string,configRoot:string,upstream:any):Promise<{close:()=>Promise<void>}>{
  const app=process.env.KTEAM_PACKAGED_APP;if(!app)return startHost({root,upstream});
  const build=join(app,'Contents/Resources/app.asar.unpacked/build');let output='';

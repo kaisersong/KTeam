@@ -38,7 +38,7 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 
 ---
 
-## What's in 0.7
+## What's in 0.7.2
 
 - **Voice input.** Microphone input with Doubao and Qwen ASR configuration, recording status and editable transcription.
 - **Team participation and delivery.** Relevant members can reply publicly while work continues and acknowledge user validation feedback; private member stages return actual results for coordinator review. Add and remove group members from conversation details.
@@ -159,6 +159,8 @@ node dist/src/cli.js teams
 Never put credentials in command arguments or commit them to Git.
 
 ---
+
+Official releases are published automatically by GitHub Actions after Mac and Windows builds, cross-platform checks and artifact verification pass. Failed builds remain drafts.
 
 ## Version History
 
