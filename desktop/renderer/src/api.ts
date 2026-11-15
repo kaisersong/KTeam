@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ openWebLink(input:{url:string}):Promise<{ok:true}>;
  openSplash(input:{requestId:string}):Promise<{ok:true;opened:true;mode:'local';url:string}>;
  controlCua(input:any):Promise<any>;openComputerPermissionSettings(input:{permission:string}):Promise<any>;
  ensureAssistant():Promise<any>;
@@ -76,7 +77,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
- tool_command_changed:'命令或本地脚本内容已有变化，请重新确认',attachment_image_invalid:'这张图片暂时无法解码，请检查原文件',inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
+ tool_command_changed:'命令或本地脚本内容已有变化，请重新确认',attachment_image_invalid:'这张图片暂时无法解码，请检查原文件',web_link_invalid:'此链接无法作为网页打开',inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
  agent_link_windows_unsupported:'当前服务暂不能链接这个本机 Agent，请检查服务版本与检测结果',
  host_operation_unknown:'请求结果待核对，请先核对原记录',
  tool_output_not_saved:'原工作没有可核验的完整输出，仅保留记录预览',tool_output_changed:'完整输出已变化或不可用，无法核验原始字节',tool_output_scope_changed:'成员或会话范围已变化，请重新核对来源',tool_output_invalid:'输出读取位置无效，请重新打开',
