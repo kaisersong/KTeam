@@ -82,12 +82,13 @@ export class PrivateConversations {
   if(this.master.isMaster(scope.botId))return this.master.contact(scope,input);
   const args=record(input);fields(args,['botId','message','wait']);const toId=text(args.botId,'bot_id'),body=text(args.message,'message',6000),path=scope.path??[scope.botId],rootJobId=scope.rootJobId??scope.jobId;
   if(path.includes(toId)||path.length>=3)throw new KTeamError('bot_contact_cycle_denied');await this.source(scope,toId);
+  const handoff=this.store.operation(invocationId),durable=invocationId.startsWith('work-handoff:')&&handoff?.jobId===scope.jobId&&handoff?.botId===scope.botId&&handoff?.status==='creating'&&handoff.requests?.some((request:any)=>request.botId===toId&&request.message===body);
   const id='bot-contact:'+hash([scope.jobId,scope.botId,toId,body]);
   let op=this.store.transaction(()=>{
    if(this.store.operationsWithPrefix('bot-contact:').some(r=>r.sourceJobId===scope.jobId&&r.status==='unknown'))throw new KTeamError('bot_contact_result_unknown',409);
    if(this.store.operation(id))throw new KTeamError('bot_contact_already_requested');
-   if(this.store.operationsWithPrefix('bot-contact:').filter(r=>r.rootJobId===rootJobId).length>=8)throw new KTeamError('bot_contact_budget_exhausted');
-   return this.store.saveOperation({id,status:'preparing',sourceRoomId:scope.roomId,sourceJobId:scope.jobId,originMessageId:scope.originId,rootJobId,fromBotId:scope.botId,toBotId:toId,path:[...path,toId]},0);
+   if(!durable&&this.store.operationsWithPrefix('bot-contact:').filter(r=>r.rootJobId===rootJobId&&!r.handoffId).length>=8)throw new KTeamError('bot_contact_budget_exhausted');
+   return this.store.saveOperation({id,handoffId:durable?invocationId:undefined,status:'preparing',sourceRoomId:scope.roomId,sourceJobId:scope.jobId,originMessageId:scope.originId,rootJobId,fromBotId:scope.botId,toBotId:toId,path:[...path,toId]},0);
   });
   let room;try{room=await this.coordinator.privatePair(scope.botId,toId,scope.roomId,()=>this.source(scope,toId).then(()=>{}));}catch(error){this.store.saveOperation({...op,status:'failed'},op.revision);throw error;}
   op=this.store.saveOperation({...op,status:'sending',roomId:room.roomId},op.revision);

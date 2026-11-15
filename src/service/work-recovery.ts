@@ -161,7 +161,7 @@ export class WorkRecovery {
    const nextId = 'job-recovery-' + digest(jobId).slice(0, 32);
    if(autoId)this.store.saveOperation({id:autoId,sourceJobId:jobId,status:'queued'},0);
    this.store.saveOperation({id: operationId, jobId: nextId, sourceJobId: jobId, requestId, status: 'queued'}, 0);
-   this.store.enqueueFollowup({id: nextId, roomId, originId: prior.originId, trigger: 'recovery', ...(prior.groupPlan?{groupPlan:structuredClone(prior.groupPlan)}:{}), ...(prior.groupResponse?{groupResponse:structuredClone(prior.groupResponse)}:{}), ...(routine?{routine}:{}), recoveryOf: jobId, recoveryAutomatic:!!autoId, recoveryBotIds: botIds,
+   this.store.enqueueFollowup({id: nextId, roomId, originId: prior.originId, trigger: 'recovery', ...(prior.groupPlanPending?{groupPlanPending:true}:{}), ...(prior.groupPlan?{groupPlan:structuredClone(prior.groupPlan)}:{}), ...(prior.groupResponse?{groupResponse:structuredClone(prior.groupResponse)}:{}), ...(routine?{routine}:{}), recoveryOf: jobId, recoveryAutomatic:!!autoId, recoveryBotIds: botIds,
     recoveryContext: {sourceJobId: jobId, failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
      completedReplies: prior.results ?? [], recentTools: (prior.toolTrace ?? []).slice(-12)},
     recoveryBindings: Object.fromEntries(botIds.map(id => [id, this.store.binding(id)]))});
