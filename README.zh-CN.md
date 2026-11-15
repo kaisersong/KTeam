@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.7.2。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.8.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -34,9 +34,20 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 - L0 预览从不把「接受」「批准」或工具调用之类的文字当成授权。
 - 已接通 intent-broker 的实验性讨论生命周期。
 
-**KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活、完整的状态迁移和执行副作用登记等还没有完成。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
+**KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活和完整状态迁移等仍未完成。本版新增限作用域的 effect 只读核对及 HTML/邮件宿主回执，不代表所有工具已认证，也不代替业务验收。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
 
 ---
+
+## 0.8.0 有什么
+
+- **独立群回应默认并行。** 多名成员可以同时回应，只有确实依赖前序结果时才串行；私聊工作阶段与负责人复核继续和公开讨论分开。
+- **按真实请求尝试计量。** 可信传输见证区分 SDK 重试与辅助请求，持久预算预留避免重复扣同一次尝试。适配器已接线不等于所有第三方 SDK bridge 都已获得实机资格。
+- **压缩后保留原要求。** 内置执行器可以恢复冻结的完整要求与来源资料；上下文已纳入不代表模型已理解或任务已完成。
+- **先核实产物与邮件结果。** HTML 在私有候选区验证后发布；邮件使用稳定意图与原审批。结果未知先核对，不盲目重发；结构验证不代替业务验收。
+- **报告可在 KTeam 内直接打开。** 有真实产物回执的 HTML/Markdown 链接与文件按钮不再受最近工具窗口截断影响；打开时核对会话、主机与文件摘要。
+- **经验来自已验收证据。** Reward Memory 只从明确的人类验收和可核对交付证据形成，支持过期与撤销，不授予工具权限。
+
+已终审的[合并优化路线图](https://github.com/kaisersong/mydocs/blob/master/kteam/design/desktop/2026-11-16-grok-bot-combined-optimization-plan.md)还包含后续工作；本版已实现范围以以上清单为准。真实 Mac 睡眠唤醒与全部第三方 SDK bridge 仍需分别取得运行资格。
 
 ## 0.7.2 有什么
 
@@ -107,8 +118,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.7.2.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.7.2.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.8.0.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.8.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -163,6 +174,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.8.0
+
+群内独立回应并行、真实请求计量、冻结上下文恢复、HTML/邮件结果核验、持久报告链接与证据约束的经验记忆。见 [0.8.0 发布页](https://github.com/kaisersong/KTeam/releases/tag/v0.8.0)。
 
 ### v0.7.2
 
