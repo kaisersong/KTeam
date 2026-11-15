@@ -1,3 +1,4 @@
+import {ConversationSidebar} from '../src/service/sidebar.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join,resolve} from 'node:path';
@@ -8,7 +9,7 @@ import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamAutomation} from '../src/service/automation.js';
 import {ConversationService} from '../src/service/conversation.js';
 import {ComposerAttachments} from '../src/service/composer-attachments.js';
-import {parseAttachmentMessage,attachmentMessageView,messageDisplayText} from '../src/protocol/message-attachments.js';
+import {parseAttachmentMessage,attachmentMessageView,messageDisplayText,messagePreviewText} from '../src/protocol/message-attachments.js';
 import {CollaborationService} from '../src/service/collaboration.js';
 import {intentHash,validateL0} from '../src/protocol/aimp.js';
 import {initConfig} from '../src/service/config.js';
@@ -44,3 +45,23 @@ test('desktop semantic send persists stable member identities and rejects a fore
  const sent=await api.send(input),message=(await f.upstream.conversationMessage(f.a.roomId,sent.messageId)).message;assert.deepEqual(message.sourceRef.envelope.mentions,input.mentions);
  await api.send(input);await assert.rejects(api.send({...input,mentions:[]}),/aimp_id_conflict/);assert.equal((await f.upstream.messages(f.a.roomId,0,100)).messages.filter((m:any)=>m.sender.kind==='user').length,1);
  }finally{await f.close();}});
+
+
+test('real image messages provide verified image bytes and human sidebar summaries, including image-only and mixed attachments',async()=>{const f=await fixture();try{
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3XcAAAAASUVORK5CYII=','base64');
+ const staged=await f.attachments.stage(upload(f.a.roomId,'a',{name:'pasted.png',data:png.toString('base64')}));const result=await f.attachments.send(send(f.a.roomId,[staged.upload!.id],{text:'请看截图'})),identity={roomId:f.a.roomId,messageId:result.messageId,fileId:staged.upload!.file.fileId};
+ const preview=await f.attachments.preview(identity);assert.equal(preview.preview,null);assert.equal('path'in preview,false);assert.ok('image'in preview&&preview.image);if('image'in preview&&preview.image){assert.equal(preview.image.mediaType,'image/png');assert.deepEqual(Buffer.from(preview.image.base64,'base64'),png);}
+ const sidebar=new ConversationSidebar(f.upstream,f.store,async()=>{});assert.equal((await sidebar.preview(f.a.roomId))?.text,'请看截图 [图片]');assert.doesNotMatch((await sidebar.preview(f.a.roomId))!.text,/kteam_message_with_attachments|fileId|sha256/);
+ const source=(await f.upstream.conversationMessage(f.a.roomId,result.messageId!)).message;assert.equal(messagePreviewText(source),'请看截图 [图片]');assert.equal(messagePreviewText({...source,sender:{kind:'agent'}}),source.text);
+ await assert.rejects(f.attachments.preview({...identity,roomId:f.b.roomId}));await assert.rejects(f.attachments.preview({...identity,fileId:'0'.repeat(64)}),/attachment_not_found/);
+ const stagedOnly=await f.attachments.stage(upload(f.a.roomId,'b',{name:'only.png',data:png.toString('base64')}));await f.attachments.send(send(f.a.roomId,[stagedOnly.upload!.id],{id:'msg_'+'1'.repeat(32),text:''}));assert.equal((await sidebar.preview(f.a.roomId))?.text,'[图片]');
+ const actual=f.conversations.libraryDirectory(f.a.roomId);writeFileSync(join(actual,staged.upload!.file.fileId+'.png'),'changed');await assert.rejects(f.attachments.preview(identity),/library_file_changed/);
+ }finally{await f.close();}});
+
+test('authenticated semantic image preview carries a maximum-size upload beyond the normal JSON response limit and survives restart',async()=>{const f=await fixture();let host:Awaited<ReturnType<typeof startHost>>|undefined;try{
+ const prefix=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3XcAAAAASUVORK5CYII=','base64'),bytes=Buffer.concat([prefix,Buffer.alloc(4*1024*1024-prefix.length)]),staged=await f.attachments.stage(upload(f.a.roomId,'a',{name:'large.png',data:bytes.toString('base64')})),sent=await f.attachments.send(send(f.a.roomId,[staged.upload!.id],{text:'大图片'}));
+ initConfig(f.root,{version:1,brokerUrl:f.upstream.options.brokerUrl,kswarmUrl:f.upstream.options.kswarmUrl});host=await startHost({root:f.root,upstream:f.upstream.options});const api=createDesktopAPI((route,value)=>hostRequest(f.root,'kteam-main',route,value)),input={roomId:f.a.roomId,messageId:sent.messageId,fileId:staged.upload!.file.fileId};
+ const value=await api.previewMessageAttachment({...input,variant:'thumbnail'});assert.equal(value.image.mediaType,'image/png');assert.deepEqual(Buffer.from(value.image.base64,'base64'),bytes);assert.equal('path'in value,false);
+ await assert.rejects(hostRequest(f.root,'kteam-companion','/v1/composer-attachments/preview',input),/attachment_client_forbidden/);await assert.rejects(api.previewMessageAttachment({...input,path:'/etc/passwd'}),/unknown_field/);
+ await host.close();host=await startHost({root:f.root,upstream:f.upstream.options});assert.equal((await api.previewMessageAttachment(input)).image.base64,value.image.base64);
+ }finally{await host?.close();await f.close();}});

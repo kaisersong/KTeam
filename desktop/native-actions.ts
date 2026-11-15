@@ -4,7 +4,7 @@ import {randomBytes} from 'node:crypto';
 import {messageDisplayText,attachmentMessageView} from '../src/protocol/message-attachments.js';
 import {parseSystemVoices} from './system-voices.js';
 import {promisify} from 'node:util';
-import {app,clipboard,dialog,shell,type BrowserWindow} from 'electron';
+import {app,clipboard,dialog,shell,nativeImage,type BrowserWindow} from 'electron';
 import {execFile,spawn,type ChildProcess} from 'node:child_process';
 import {writeFile} from 'node:fs/promises';
 import {hostRequest} from '../src/service/client.js';
@@ -23,6 +23,7 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
  const voiceSettings=async()=>{const value=await hostRequest(root,'kteam-main','/v1/app/integrations');return (value.settings as any).voice;};
  const speak=async(text:string,id:string)=>{if(process.platform!=='darwin')fail('speech_unavailable');const config=await voiceSettings();await stop();const child=spawn('/usr/bin/say',[...(config.voice?['-v',config.voice]:[]),'-r',String(config.rate),'--',text.slice(0,32768)],{stdio:'ignore'});await new Promise<void>((resolve,reject)=>{child.once('spawn',resolve);child.once('error',()=>reject(Object.assign(Error('speech_unavailable'),{code:'speech_unavailable'})));});speech=child;speakingId=id;child.once('close',()=>{if(speech===child){speech=undefined;speakingId=undefined;}});return {ok:true,speakingId};};
  return {
+  previewMessageAttachment:async(input:any)=>{const value=record(input);fields(value,['roomId','messageId','fileId','variant']);if(value.variant!==undefined&&!['thumbnail','full'].includes(String(value.variant)))fail('attachment_invalid');const result=await hostRequest(root,'kteam-main','/v1/composer-attachments/preview',{roomId:field(value.roomId),messageId:field(value.messageId),fileId:field(value.fileId)});if(value.variant==='thumbnail'&&result.image){const image=result.image as any,bitmap=nativeImage.createFromBuffer(Buffer.from(image.base64,'base64'));if(bitmap.isEmpty())fail('attachment_image_invalid');const size=bitmap.getSize(),scale=Math.min(1,480/size.width,360/size.height),thumbnail=bitmap.resize({width:Math.max(1,Math.round(size.width*scale)),height:Math.max(1,Math.round(size.height*scale)),quality:'good'});return {...result,image:{mediaType:'image/png',base64:thumbnail.toPNG().toString('base64')}};}return result;},
   openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId']);const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));if(!view.canAttach)fail('attachment_owner_required');
    const files=await clipboardAttachments(await clipboard.read());
