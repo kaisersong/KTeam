@@ -14,7 +14,7 @@ export function parseToolScope(value:unknown):BotToolScope{
  }catch{throw new KTeamError('bot_tool_scope_invalid',409);}
 }
 export const restrictedToolScope=(scope:BotToolScope)=>JSON.stringify(scope)!==JSON.stringify(defaultToolScope());
-const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','delegate_work','wait_for_condition','read_runtime_output','notebook_read','notebook_write','tool_search','skill','skillFetchAssets','validate_skill','list_mail_accounts','mail_list_accounts','subagent','spawn_agent','send_message','followup_task','wait_agent','list_agents','interrupt_agent','close_agent']);
+const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','delegate_work','wait_for_condition','read_runtime_output','read_context_capture','mail_intent_status','notebook_read','notebook_write','tool_search','skill','skillFetchAssets','validate_skill','list_mail_accounts','mail_list_accounts','subagent','spawn_agent','send_message','followup_task','wait_agent','list_agents','interrupt_agent','close_agent']);
 /** A tool-admission restriction, never an OS sandbox or an authority grant. */
 export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string){
  const restricted=restrictedToolScope(scope),opaqueAllowed=scope.files.mode==='inherit'&&scope.files.write&&scope.network==='inherit';
