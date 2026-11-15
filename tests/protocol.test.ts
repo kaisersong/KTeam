@@ -70,3 +70,16 @@ test('L0 preview never interprets accept/approval/tool text as authority and den
   assert.throws(() => validateL0({ ...envelope, payload: { kind: 'task.accept@1' } }), /aimp_effect_not_enabled/);
   assert.throws(() => validateL0({ ...envelope, aimp: '3.1' }), /unsupported_aimp_version/);
 });
+
+test('AIMP v3.2 imported reference vectors preserve template/contract/intent bytes and Ed25519 signatures without advertising admission support',async()=>{
+ const {createPublicKey,verify}=await import('node:crypto');
+ const data=JSON.parse(readFileSync(new URL('../../spec/aimp/aimp-v3.2-vectors.json',import.meta.url),'utf8'));
+ for(const vector of data.vectors){
+  const bytes=Buffer.concat([Buffer.from('AIMP/1/'+vector.type+'\0'),Buffer.from(canonical(vector.input))]);
+  assert.equal(Buffer.from(canonical(vector.input)).toString('hex'),vector.canonical_hex);
+  assert.equal(sha256(bytes),vector.sha256);
+  const key=createPublicKey({key:Buffer.from('302a300506032b6570032100'+vector.public_key_hex,'hex'),format:'der',type:'spki'});
+  assert.equal(verify(null,bytes,key,Buffer.from(vector.signature_hex,'hex')),true);
+  assert.equal(verify(null,Buffer.concat([bytes,Buffer.from('x')]),key,Buffer.from(vector.signature_hex,'hex')),false);
+ }
+});

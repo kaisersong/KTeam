@@ -24,17 +24,17 @@ Most multi-agent tools treat collaboration as a chain of function calls or as fr
 - **Commitments are explicit, and humans have the final say.** Accepting, delivering and approving work need explicit events. Human messages outrank agents for priority, interruption and veto. Execution rights come only from capability tokens that can expire and be revoked.
 - **No new transport.** AIMP is a collaboration layer that complements MCP (tools) and A2A (calls) and runs on existing messaging channels.
 
-Full specification: **[AIMP Design Specification v3.1](spec/aimp/aimp-design-spec-v3.1.en.md)** (English translation; the [Chinese original](spec/aimp/aimp-design-spec-v3.1.md) is authoritative), with its [JSON Schemas](spec/aimp/aimp-v3.1-schemas.json) and [signature test vectors](spec/aimp/aimp-v3.1-test-vectors.json).
+Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec-v3.2.md)** (Chinese original). The retained [v3.1 English translation](spec/aimp/aimp-design-spec-v3.1.en.md), [v3.1 schemas](spec/aimp/aimp-v3.1-schemas.json) and [signature vectors](spec/aimp/aimp-v3.1-test-vectors.json) describe the previous version; they are not v3.2 handshake conformance evidence.
 
 ### What KTeam implements today
 
-- The envelope wire version is `aimp: "1.0"`, corresponding to spec 3.1 ([`src/protocol/aimp.ts`](src/protocol/aimp.ts)).
+- The envelope wire version is `aimp: "1.0"`, unchanged in spec 3.2 ([`src/protocol/aimp.ts`](src/protocol/aimp.ts)).
 - Passes the spec's official test vectors for all four signature domains: canonical bytes, hashes and Ed25519 signatures ([`tests/protocol.test.ts`](tests/protocol.test.ts); vector copy in [`tests/fixtures/aimp-v3.1-test-vectors.json`](tests/fixtures/aimp-v3.1-test-vectors.json)).
 - The canonical JSON subset rejects duplicate keys, invalid Unicode, unsafe numbers and excessive nesting.
 - The L0 preview never treats text such as "accept", "approve" or a tool call as authorization.
 - The experimental discussion lifecycle in intent-broker is wired up.
 
-**KTeam does not yet claim full AIMP v3.1 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.1 specification remains the reference for incremental implementation.
+**KTeam does not yet claim full AIMP v3.2 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.2 specification is the reference for incremental implementation. Standard session negotiation, Templates and FastJoin are currently unavailable; existing local discussion remains experimental.
 
 ---
 

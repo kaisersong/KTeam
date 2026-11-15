@@ -148,7 +148,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         return send(res, 200, { ok: true, product: 'KTeam', clientId: client.id,
           apiVersion: API_VERSION, schemaVersion: SCHEMA_VERSION, ownerEpoch: owner.epoch, instanceId,
           access: compatible ? 'read_write' : 'read_only',
-          aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, enabledLevels: ['L0'], compatibilityClaim: null,
+          aimp: { specification: AIMP_SPEC, wire: AIMP_WIRE, implementedBaseline:'3.1-experimental', sessionNegotiation:false, templates:false, fastJoin:false, enabledLevels: ['L0'], compatibilityClaim: null,
             executionEnabled: false, localDiscussionPolicy:'experimental',reason:'full_core_l2_profile_not_verified' },
           capabilities: ['independent-model-settings','bundled-services','conversation-pins','peer-exchange-summary','working-bot-presence','master-team-awareness','bot-private-conversations','owned-platform-runtime','inline-a2ui','kteam-harness','existing-agent-roster','broker-owned-teams','aimp-l0-message','bounded-history','bounded-model-discussion','human-delivery-review','conversation-first-coordinator','guided-onboarding','original-agent-session-link','direct-local-agents','builtin-runtime-readiness','conversation-workspace'],
         });

@@ -1,0 +1,18 @@
+{
+  "schema": "aimp.domain-snapshot@1",
+  "version": 1,
+  "notice": "Fictional public test fixture; not real authorization or a production policy",
+  "values": {
+    "parties": ["human://test.example/owner", "agent://test.example/report"],
+    "bootstrap_binding": {"hash": "0000000000000000000000000000000000000000000000000000000000000000", "authority": "domain-root://test.example", "notice": "Placeholder binding in fictional fixture, not a real authenticated bootstrap"},
+    "sequencer": {"id": "sequencer://test.example/primary", "backup": "sequencer://test.example/backup", "ordering_seconds": 30, "authority_thread": "thread_bootstrap", "failover_rule": "fenced-full-prefix-recovery@1"},
+    "dispute": {"resolver": "human://test.example/reviewer", "alternate": "human://test.example/alternate", "conflicts": [], "ruling_seconds": 259200, "no_ruling": "freeze-and-escalate", "nonneutral_accepted": false},
+    "escalation": {"review_timeout": {"to": ["human://test.example/owner"], "backup": ["human://test.example/controller"], "disclosure": "need-to-know"}, "reconcile_timeout": {"to": ["human://test.example/owner"], "backup": ["human://test.example/controller"], "disclosure": "metadata"}, "clarify_limit": {"to": ["human://test.example/owner", "agent://test.example/report"], "backup": ["human://test.example/controller"], "disclosure": "metadata"}, "blocked_timeout": {"to": ["human://test.example/owner", "agent://test.example/report"], "backup": ["human://test.example/controller"], "disclosure": "metadata"}},
+    "roles": [{"subject": "agent://test.example/report", "events": ["accept", "reject", "deliver", "clarify", "escalate", "dispute"], "level": 2, "task_scope": {"room": "room_test", "assignee": "agent://test.example/report"}, "source": "signed-domain-rule@1", "valid_until": "2026-12-14T00:00:00Z", "revocable": true}],
+    "stop_scopes": [{"subject": "human://test.example/owner", "task_scope": "room_test", "source": "signed-domain-rule@1", "valid_until": "2026-12-14T00:00:00Z"}],
+    "receipts": {"endpoint": "receipt://test.example/principal", "sequencer": "sequencer://test.example/primary", "executor_id": "agent://test.example/report", "independence_declaration": "signed-independence@1", "pending_limit": 20, "activation_seconds": 86400},
+    "retention": {"minimum_months": 24, "applicable_evidence_months": 24, "retain_unresolved": true, "artifacts_retrievable": true},
+    "effect_quota": {"scope": "room_test", "count_limit": 100, "window_seconds": 86400, "does_not_authorize_execution": true},
+    "admission_rule": {"issuer": "human://test.example/owner", "confirmer": "human://test.example/owner", "confirmation_level": "human-account", "scope": "room_test", "requires_all_signatures_unless_explicitly_delegated": true}
+  }
+}

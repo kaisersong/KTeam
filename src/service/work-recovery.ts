@@ -24,6 +24,7 @@ const digest = (value: string) => createHash('sha256').update(value).digest('hex
 export class WorkRecovery {
  constructor(private upstream: Upstreams, private store: TeamStore, private coordinator: TeamCoordinator) {}
  async wakeSafe(){
+  await this.wakeAdmissionRecovery();
   await this.wakeCheckpointRecovery();
   await this.wakeUnknownBatch();
   // Only stale approval waits / busy recovery chains are eligible. No unknown runs.
@@ -51,6 +52,30 @@ export class WorkRecovery {
      await this.continue(roomId,{jobId:job.id,requestId:'auto-stale-approval:'+job.id},autoId);break;
     }catch{/* Scope changes, active locks and unknown evidence remain blocked. */}finally{release?.();}
    }
+  }
+ }
+ /** A lost transport observation is recoverable only after the old run is proved inert.
+  * Re-enter normal admission with saved receipts, never replay a tool invocation. */
+ private async wakeAdmissionRecovery(){
+  for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
+   const job=latestWork(this.store.jobs(roomId)),failure=job&&executionFailure(job);
+   if(!job||job.state!=='blocked'||failure?.code!=='execution_admission_unverified'||failure.phase!=='model'||job.stopResultUnknown||!job.finishedAt||Date.now()-Date.parse(job.finishedAt)<5000||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   // Every started tool needs its own durable finished receipt. A later model
+   // event alone does not prove that external effects or child processes ended.
+   const trace=job.toolTrace??[];
+   const pending=new Map<string,number>();let unknown=false;for(const event of trace){const key=JSON.stringify([event.runId,event.name]);if(event.type==='tool_started')pending.set(key,(pending.get(key)??0)+1);else if(event.type==='tool_finished'){if(event.state!=='completed')unknown=true;pending.set(key,Math.max(0,(pending.get(key)??0)-1));}}
+   if(unknown||[...pending.values()].some(count=>count>0))continue;
+   if(this.store.operationsWithPrefix('harness-process:'+job.id+':').some(row=>row.state!=='stopped'||row.stopConfirmed!==true)||this.store.state('harness-fence:'+job.activeBotId))continue;
+   const approvals=this.store.operationsWithPrefix('tool-approval:').filter(row=>row.jobId===job.id);
+   if(approvals.some(row=>row.durable?!['completed','denied','superseded'].includes(row.status):row.status==='pending'))continue;
+   try{
+    const binding=this.store.binding(job.activeBotId);if(!binding||binding.revision!==job.task?.bindingRevision)continue;
+    if(job.executionScope){const captured=job.executionScope.binding;if(captured?.revision!==binding.revision||captured?.fingerprint!==binding.fingerprint)continue;const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===job.activeBotId&&!bot.archivedAt);if(!bot||profile(bot).revision!==job.executionScope.profileRevision)continue;}
+    const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
+    const old=tasks.find(task=>task.taskRef===job.task?.taskRef);
+    if(!old||old.state!=='halted')continue;
+    await this.continue(roomId,{jobId:job.id,requestId:'auto-admission:'+job.id},'auto-admission:'+job.id);
+   }catch{/* Retry observations later. Explicit denial never changes this job's eligibility. */}
   }
  }
  /** Reconcile only the legacy checkpoint-only fence. Unknown process shutdowns stay fenced. */
