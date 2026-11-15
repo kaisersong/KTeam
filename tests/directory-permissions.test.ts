@@ -29,12 +29,12 @@ test('directory grants cannot cover sensitive/system files, sibling prefixes, sy
  writeFileSync(join(f.workspace,'.kteam-permission-proof'),'');writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['write:*']}}));const denied=await f.make();assert.equal(await denied.h.registryOptions.permissionManager.check('write',{file_path:target,content:'no'}),'deny');
  }finally{f.close();}});
 
-test('directory identity changes while prompting are rejected; one-file permission and recovery stay fresh',async()=>{const f=await fixture();try{
+test('directory identity changes are rejected; recovery still prompts but offers a new persistent directory decision',async()=>{const f=await fixture();try{
  const dir=join(f.workspace,'reports');mkdirSync(dir);const {registry}=await f.make(),target=join(dir,'one.csv'),work=registry.executeTool('write',{file_path:target,content:'one'}),p=await f.pending();renameSync(f.workspace,f.workspace+'-old');mkdirSync(f.workspace);mkdirSync(dir);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory'}),/tool_directory_changed/);await f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'deny'});await work;assert.equal(existsSync(target),false);
  const next=registry.executeTool('write',{file_path:target,content:'one'}),single=await f.pending();await f.approvals.decide({id:single.id,expectedHash:single.hash,decision:'allow_once'});await next;assert.equal(f.approvals.permissions.list().length,0);
  const scope={botId:'bot',bindingRevision:1,cwd:f.workspace};f.approvals.permissions.rememberDirectory(scope,directoryAccess(f.core,'write',{file_path:target},f.workspace)!);
- const recovery=await f.make('bot',1,true),review=recovery.registry.executeTool('write',{file_path:join(dir,'review.txt'),content:'review'}),pending=await f.pending();assert.equal(pending.directory,undefined);await assert.rejects(f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory'}),/tool_directory_changed/);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'deny'});await review;assert.equal(existsSync(join(dir,'review.txt')),false);
+ const recovery=await f.make('bot',1,true),review=recovery.registry.executeTool('write',{file_path:join(dir,'review.txt'),content:'review'}),pending=await f.pending();assert.equal(pending.directory,f.workspace);assert.equal(existsSync(join(dir,'review.txt')),false);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory'});await review;assert.equal(readFileSync(join(dir,'review.txt'),'utf8'),'review');
  }finally{f.close();}});
 
 

@@ -6,27 +6,26 @@ export function terminalCommands(core:any,command:string):string[]|undefined{
  const parsed=core.parseCommandSegments(command);if(!parsed.valid||!parsed.segments.length)return;
  return parsed.segments;
 }
-function unquotedEscape(text:string){
- let quote='';for(let index=0;index<text.length;index++){const char=text[index];if(quote){if(char===quote)quote='';else if(char==='\\'&&quote==='"')index++;}else if(char==='"'||char==="'")quote=char;else if(char==='\\')return true;}return false;
-}
+/** A trusted working directory admits commands by risk, never by a command-name allowlist. */
 export function terminalRequiresConfirmation(core:any,command:string){
- if(process.platform!=='win32'&&core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return false;
- if(routineTerminalCommands(core,command))return false;
- const segments=terminalCommands(core,command);
- if(!segments||core.requiresAlwaysCommandConfirmation(command)||core.classifyBashCommand(command).level!=='safe')return true;
- // Keep deletion, credential/security changes, remote mutations and opaque wrappers per-call.
- return segments.some((segment:string)=>{
-  const plain=segment.replace(/["']/g,'');
-  if(unquotedEscape(segment))return true;
-  if(/(?:^|[\s/])(?:rm|rmdir|unlink|shred|truncate|del|erase|Remove-Item|sudo|chmod|chown|eval|exec|xargs|ssh|scp|sftp|curl|wget|sh|bash|zsh|dash|ksh)(?:\s|$)/i.test(plain))return true;
-  if(/\bgit\b.*\s(?:-c|--config-env|--exec-path)(?:[=\s]|$)/.test(plain))return true;
-  if(/\bgit\b.*\b(?:push|reset|clean|restore|checkout|rebase|filter-branch)\b/.test(plain))return true;
-  if(/(?:\.git|\$gitdir|\$GIT_DIR)\/(?:hooks|config)(?:\/|\s|$)/i.test(plain)||/\bcp\b.*--remove-destination/.test(plain)||/\bgit\b.*\bcommit\b.*--amend/.test(plain))return true;
-  if(/\bgit\b.*\b(?:branch|tag)\b.*(?:\s-[dD](?:\s|$)|--delete)/.test(plain))return true;
-  if(/\bgit\b.*\b(?:config|remote|worktree|stash|reflog|gc)\b/.test(plain))return true;
-  if(/\bgh\b.*\b(?:create|edit|delete|merge|close|reopen|rerun|cancel|upload|fork|sync|auth|api|secret|variable)\b/.test(plain))return true;
-  return /\bfind\b.*(?:-delete|-exec|-ok)/.test(plain);
- });
+ if(!command.trim()||command.length>65536||command.includes('\0')||core.classifyBashCommand(command).level!=='safe')return true;
+ if(readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return false;
+ const plain=command.replace(/["']/g,'');
+ return /(?:^|[\s/;&|=])(?:rm|rmdir|unlink|shred|truncate|del|erase|Remove-Item|sudo|chmod|chown|ssh|scp|sftp)(?:\s|$)/i.test(plain)
+  || /\bgit\b[^;|&\n]*\b(?:push|reset|clean|restore|rebase|filter-branch)\b/.test(plain)
+  || /\bgit\b[^;|&\n]*(?:\s(?:-c|--config-env|--exec-path)(?:[=\s]|$)|\b(?:config|remote|gc)\b)/.test(plain)
+  || /\bgit\b[^;|&\n]*\b(?:checkout|switch)\b[^;|&\n]*(?:\s(?:-[fBC]|--force|--discard-changes|--force-create)(?:\s|=|$)|\s--\s)/.test(plain)
+  || /\bgit\b[^;|&\n]*\bmerge\b[^;|&\n]*(?:--abort|--strategy|\s-s(?:\s|$))/.test(plain)
+  || /(?:^|[;\s])(?:PATH|ENV|BASH_ENV|LD_PRELOAD|DYLD_INSERT_LIBRARIES)=/.test(plain)
+  || /(?:^|[;&|]\s*)\$[A-Za-z_{]/.test(plain)
+  || /\bgit\b[^;|&\n]*\b(?:branch|tag)\b[^;|&\n]*(?:\s-[dD](?:\s|$)|--delete)/.test(plain)
+  || /\bgit\b[^;|&\n]*\bworktree\s+(?:remove|prune|move|repair)\b/.test(plain)
+  || /\bgit\b[^;|&\n]*\bcommit\b[^;|&\n]*--amend/.test(plain)
+  || /(?:\.git|\$gitdir|\$GIT_DIR)\/(?:hooks|config)(?:\/|\s|$)/i.test(plain)
+  || /\bgh\b[^;|&\n]*\b(?:create|edit|delete|merge|close|reopen|rerun|cancel|upload|fork|sync|auth|api|secret|variable)\b/.test(plain)
+  || /\bfind\b[^;|&\n]*(?:-delete|-exec|-ok|-fprint)/.test(plain)
+  || /\b(?:unlinkSync|rmdirSync|rmSync|rmtree|remove|unlink|system|popen)\s*\(/.test(plain)
+  || /\b(?:curl|wget)\b[^;|&\n]*(?:--upload-file|--data|-d\s|-X\s+(?:POST|PUT|PATCH|DELETE))/.test(plain);
 }
 export function lowRiskTerminalQuery(core:any,command:string){
  if(process.platform!=='win32'&&core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return true;

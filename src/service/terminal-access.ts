@@ -1,3 +1,5 @@
+import {localGitWorkflow} from './git-local-workflow.js';
+import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {readFileSync,realpathSync,statSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
@@ -9,7 +11,7 @@ const commands=new Set(['git','ls','pwd','echo','printf','cat','head','tail','wc
 /** Literal shell words only. Dynamic programs and shell expansion never become directory-wide grants. */
 function words(segment:string){
  const result:string[]=[];let word='',quote='',started=false;
- for(let i=0;i<segment.length;i++){const c=segment[i]!;if(quote){if(c===quote)quote='';else if(c==='\\')return;else word+=c;started=true;}else if(c==='"'||c==="'"){quote=c;started=true;}else if(/\s/.test(c)){if(started){result.push(word);word='';started=false;}}else if(c==='>'||c==='<'){if(started){result.push(word);word='';started=false;}const op=segment[i+1]===c?c+c:c;if(op.length===2)i++;result.push(op);}else if(/[\\`$*?{}\[\]()]/.test(c))return;else{word+=c;started=true;}}
+ for(let i=0;i<segment.length;i++){const c=segment[i]!;if(!quote&&!started){const fd=/^[12]>&[12](?=\s|$)/.exec(segment.slice(i));if(fd){i+=fd[0].length-1;continue;}}if(quote){if(c===quote)quote='';else if(c==='\\')return;else word+=c;started=true;}else if(c==='"'||c==="'"){quote=c;started=true;}else if(/\s/.test(c)){if(started){result.push(word);word='';started=false;}}else if(c==='>'||c==='<'){if(started){result.push(word);word='';started=false;}const op=segment[i+1]===c?c+c:c;if(op.length===2)i++;result.push(op);}else if(/[\\`$*?{}\[\]()]/.test(c))return;else{word+=c;started=true;}}
  if(quote)return;if(started)result.push(word);return result;
 }
 const readGit=new Set(['status','diff','log','show','rev-parse','ls-files','ls-tree','describe','check-ignore','check-attr','version','--version','add','commit','branch']);
@@ -31,7 +33,9 @@ export function terminalPaths(core:any,command:string,cwd:string):string[]|undef
    while(args[0]?.startsWith('-')&&args[0]!=='--version'){
     const option=args.shift();if(option==='-C'){const target=args.shift();if(!target)return;repo=resolve(repo,target);}else if(option!=='--no-pager'&&option!=='--literal-pathspecs')return;
    }
-   const subcommand=args.shift();if(!subcommand||!readGit.has(subcommand))return;
+   const subcommand=args.shift();if(!subcommand)return;
+   if(['checkout','switch','merge'].includes(subcommand)){if(!localGitWorkflow(subcommand,args))return;paths.add(repo);continue;}
+   if(!readGit.has(subcommand))return;
    if(args.some(arg=>/^(?:--delete|-D|-d|--exec|--ext-diff|--textconv|--output|--config-env)(?:=|$)/.test(arg)))return;
    paths.add(repo);
    // Explicit absolute/path arguments require their own directory authority.
@@ -64,7 +68,7 @@ export function terminalPaths(core:any,command:string,cwd:string):string[]|undef
 type SourceFile={path:string;requestedPath:string;sha256:string};
 export interface CommandAccess {commandHash:string;directory:string;anchor:{dev:number;ino:number};scripts:SourceFile[];directories:{path:string;requestedPath:string;dev:number;ino:number}[];gitFiles:SourceFile[]}
 /** Full-command approval, never a wildcard grant for an unparseable shell program. */
-export function commandAccess(core:any,command:string,cwd:string):CommandAccess|undefined{try{return inspectCommand(core,command,cwd);}catch{return undefined;}}
+export function commandAccess(core:any,command:string,cwd:string):CommandAccess|undefined{try{const strict=inspectCommand(core,command,cwd);if(strict)return strict;if(!command.trim()||command.length>65536||core.classifyBashCommand(command).level==='block')return;const root=realpathSync(cwd),stat=statSync(root);if(!stat.isDirectory())return;return {commandHash:digest([command,root]),directory:root,anchor:{dev:stat.dev,ino:stat.ino},scripts:[],directories:[{path:root,requestedPath:root,dev:stat.dev,ino:stat.ino}],gitFiles:[]};}catch{return undefined;}}
 function inspectCommand(core:any,command:string,cwd:string):CommandAccess|undefined{
  if(!command||command.length>16384||/[`\\]/.test(command)||core.classifyBashCommand(command).level!=='safe'||core.requiresAlwaysCommandConfirmation(command)||core.isSensitiveToolInvocation('bash',{command,workdir:cwd}))return;
  const segments=core.parseCommandSegments(command).segments as string[];if(!segments.length||segments.length>100)return;
@@ -98,3 +102,22 @@ function inspectCommand(core:any,command:string,cwd:string):CommandAccess|undefi
  return {commandHash:digest([command,root]),directory:root,anchor:{dev:stat.dev,ino:stat.ino},scripts,directories:[...directories.values()],gitFiles};
 }
 export function commandAccessCurrent(access:CommandAccess){try{const stat=statSync(access.directory);return realpathSync(access.directory)===access.directory&&stat.dev===access.anchor.dev&&stat.ino===access.anchor.ino&&access.directories.every(directory=>{const current=statSync(directory.path);return realpathSync(directory.requestedPath)===directory.path&&current.dev===directory.dev&&current.ino===directory.ino;})&&[...access.scripts,...access.gitFiles].every(script=>statSync(script.path).isFile()&&statSync(script.path).size<=1024*1024&&realpathSync(script.requestedPath)===script.path&&createHash('sha256').update(readFileSync(script.path)).digest('hex')===script.sha256);}catch{return false;}}
+
+/** Working-directory authority for general tools and scripts; no program-name allowlist. */
+export function terminalWorkingPaths(core:any,command:string,cwd:string):string[]|undefined{
+ if(terminalRequiresConfirmation(core,command))return;
+ const paths=new Set<string>();let directory=realpathSync(cwd);
+ const expand=(path:string)=>resolve(directory,path==='~'?homedir():path.startsWith('~/')?join(homedir(),path.slice(2)):path);
+ for(const segment of core.parseCommandSegments(command).segments as string[]){
+  const raw=segment.trim(),cd=/^(?:do\s+)?cd\s+(?:"([^"$`]+)"|'([^']+)'|([^\s;$`]+))\s*$/.exec(raw);
+  if(cd){directory=expand(cd[1]??cd[2]??cd[3]!);continue;}
+  // A dynamic directory change cannot inherit an unrelated directory's grant.
+  if(/(?:^|[;&|]\s*)(?:cd|pushd|popd)\b/.test(raw))return;
+  paths.add(directory);
+  // Explicit absolute path arguments and redirection targets retain their own directory authority.
+  for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
+   const path=match[1]??match[2]??match[3]!;if(path!=='/dev/null')paths.add(expand(path));
+  }
+ }
+ return paths.size?[...paths]:[directory];
+}

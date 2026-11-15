@@ -1,3 +1,4 @@
+import {localGitWorkflow} from './git-local-workflow.js';
 /** A bounded recognizer for local read-only shell checks, not a general shell parser.
  * Unknown grammar stays on the ordinary approval path. No shell is run to classify it. */
 type Word={kind:'word';value:string;raw:string;refs:string[];subs:Token[][]};
@@ -23,7 +24,7 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
     if(!quote&&(/[\s;&|<>()]/.test(c)))break;
     if(c==="'"&&quote!=='"'){quote=quote==="'"?'':"'";index++;continue;}
     if(c==='"'&&quote!=="'"){quote=quote==='"'?'':'"';index++;continue;}
-    if(c==='\\'&&!quote&&['"',"'"].includes(command[index+1]??'')){word.value+=command[index+1];index+=2;continue;}
+    if(c==='\\'&&!quote&&['"',"'",' ','\t'].includes(command[index+1]??'')){word.value+=command[index+1];index+=2;continue;}
     if(c==='\\'&&quote==='"'){const next=command[index+1];if(!next||next==='\n')fail();word.value+=['$','"','\\'].includes(next!)?next:'\\'+next;index+=2;continue;}
     if(quote!=="'"&&c==='$'){
      if(command[index+1]==='('){index+=2;word.subs.push(scan(depth+1,true));word.value+='@sub';continue;}
@@ -64,11 +65,24 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
    if(head==='['){onCommand(words.map(word=>word.raw).join(' '));if(words.length!==4||!['-n','-z','-d','-f','-e','-r','-s','-L','-h'].includes(fixed(words[1])??'')||fixed(words[3])!==']')good=false;return;}
    const assignment=words[0]?.value.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
    if(assignment){if(words.length!==1||(reserved.test(assignment[1]!)||Object.hasOwn(process.env,assignment[1]!))){good=false;return;}variables.add(assignment[1]!);const value=words[0]!.value.slice(assignment[0].length);if(!words[0]!.refs.length&&!words[0]!.subs.length&&/^[A-Za-z0-9_./:@~+-]+$/.test(value)&&!value.startsWith('-'))safeGitVariables.add(assignment[1]!);else safeGitVariables.delete(assignment[1]!);return;}
-   if(!head||!['ls','pwd','echo','head','grep','cd','cat','printf','tail','stat','du','true','false','git','cut','wc','sed',...(allowLocalChanges?['mkdir','cp','mv','ln','touch','tee','npm','pnpm','yarn','make','cmake','swift','xcodebuild','cargo','go']:[])].includes(head)){good=false;return;}
+   if(!head||!['find','ls','pwd','echo','head','grep','cd','cat','printf','tail','stat','du','true','false','git','cut','wc','sed',...(allowLocalChanges?['mkdir','cp','mv','ln','touch','tee','npm','pnpm','yarn','make','cmake','swift','xcodebuild','cargo','go']:[])].includes(head)){good=false;return;}
+   if(head==='find'){
+    const args=words.slice(1);let position=0;
+    while(position<args.length&&!args[position]!.value.startsWith('-')){const path=fixed(args[position]);if(!path||/[?*\[]/.test(path)){good=false;return;}position++;}
+    if(!position){good=false;return;}
+    while(position<args.length){const option=fixed(args[position++]);if(option==='-print'||option==='-print0'||option==='-empty')continue;
+     const value=fixed(args[position++]);if(value===undefined){good=false;return;}
+     if(['-name','-iname','-path','-ipath'].includes(option??'')){const raw=args[position-1]!.raw;if(/[*?\[]/.test(value)&&!['"',"'"].includes(raw[0]??'')&&!['"',"'"].includes(value[0]??'')){good=false;return;}continue;}
+     if(option==='-type'&&/^[fdlbcps]$/.test(value))continue;
+     if(['-maxdepth','-mindepth'].includes(option??'')&&/^\d{1,4}$/.test(value)&&Number(value)<=1024)continue;
+     good=false;return;
+    }
+   }
    if(head==='sed'){const script=fixed(words[2]);if(fixed(words[1])!=='-n'||!script||!/^([0-9]+|\$)?(,([0-9]+|\$))?p$/.test(script)||words.slice(3).some(word=>word.value.startsWith('-')||word.subs.length||word.refs.some(name=>!safeGitVariables.has(name)))){good=false;return;}}
    if(head==='git'){
     let args=words.slice(1);while(fixed(args[0])==='--no-pager'||fixed(args[0])==='-C'){if(fixed(args[0])==='-C'){if(!args[1]||args[1].subs.length||args[1].refs.some(name=>!safeGitVariables.has(name))||args[1].value.startsWith('-')){good=false;return;}args=args.slice(2);}else args=args.slice(1);}
-    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version',...(allowLocalChanges?['add','commit','worktree']:[])].includes(verb)){good=false;return;}
+    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version',...(allowLocalChanges?['add','commit','worktree','checkout','switch','merge']:[])].includes(verb)){good=false;return;}
+    if(['checkout','switch','merge'].includes(verb)&&(!allowLocalChanges||args.some(word=>fixed(word)===undefined)||!localGitWorkflow(verb,args.map(word=>word.value)))){good=false;return;}
     if(verb==='worktree'&&(fixed(args[0])!=='add'||!args.some(word=>fixed(word)==='--detach'))){good=false;return;}
     if(args.some(word=>word.subs.length||word.refs.some(name=>!safeGitVariables.has(name))||/[*?\[]/.test(word.value)||word.value==='-o'||['--output','--ext-diff','--textconv','--filters','--open-files-in-pager','--exec','--upload-pack','--receive-pack'].some(option=>{const name=word.value.split('=')[0]!;return name.startsWith('--')&&name!=='--'&&option.startsWith(name);}))){good=false;return;}
    }
