@@ -256,7 +256,7 @@ export class TeamAutomation {
     job.task=task;this.store.save(job);this.current(team,signal);
     }
     const started=await this.upstream.aimp(job.roomId,'begin-execution',{logicalAgentId:botId,taskRef:task.taskRef,requestId:job.id+':'+botId+(continuation?':handoff:'+continuation.version:''),expectedRevision:task.revision,bindingRevision:binding.revision,hostFence:this.hostFence});
-    task=started.task;job.task=task;job.activeBotId=botId;this.store.save(job);
+    task=started.task;job.task=task;job.activeBotId=botId;job.executionScope={binding:structuredClone(binding),profileRevision:profile(bot).revision};this.store.save(job);
     this.current(team,signal);
     const admission={logicalAgentId:botId,roomId:job.roomId,taskRef:task.taskRef,epoch:task.epoch,bindingRevision:binding.revision,hostFence:this.hostFence};
     const child=new AbortController();const childSignal=AbortSignal.any([signal,child.signal,AbortSignal.timeout(30*60_000)]);executionSignal=childSignal;job.execution={phase:'preparing',botId,model:binding.model};this.store.save(job);

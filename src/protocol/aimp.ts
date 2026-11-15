@@ -2,7 +2,7 @@ import { createHash, createPublicKey, sign, verify, type KeyLike } from 'node:cr
 import { canonical } from './json.js';
 import { KTeamError, record, text } from '../errors.js';
 
-export const AIMP_SPEC = '3.1';
+export const AIMP_SPEC = '3.2';
 export const AIMP_WIRE = '1.0';
 const intentFields = ['aimp','id','thread_id','room_id','task_ref','control_ref','target_event','from','to','mentions','audience','exp','key_id','reply_to','act','source_level','classification','capability_token','intent_origin'];
 const recordFields = ['intent_hash','sender_sig','seq','term','recorded_at','prev_hash','verdict'];

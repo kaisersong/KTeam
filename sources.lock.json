@@ -10,7 +10,7 @@
     {
       "name": "intent-broker",
       "repository": "https://github.com/kaisersong/intent-broker",
-      "revision": "7deb93a8801bd8dfef3cfa9773b9466ff38bbd86",
+      "revision": "6463548129b75d2535645babcdd362433d577789",
       "usage": "authoritative service; exact pinned source bundled for standalone startup and isolated integration tests"
     }
   ],
@@ -179,6 +179,46 @@
     {
       "file": "desktop/splash-runtime-identity.ts",
       "sha256": "9e0260a921d9cb88c0907109051d35b307c5c6414f3fb60a89c81fa3ce9d5859"
+    },
+    {
+      "file": "spec/aimp/example-policy.json",
+      "sha256": "6dd5522a33674f2c156397aacbf32f75839e9d80506b74efc69cfd475200bf1d"
+    },
+    {
+      "file": "spec/aimp/aimp-v3.2-vectors.json",
+      "sha256": "f72f333952933aaa888b147a2c3db45ea482a2c592d3fc3a1361049baebe52b4"
+    },
+    {
+      "file": "spec/aimp/aimp-design-spec-v3.1.en.md",
+      "sha256": "74a8bee253fbaf4193efbdd23cf2ae49d9d3ab37189a60bd3b191195d989771a"
+    },
+    {
+      "file": "spec/aimp/verify_v32.py",
+      "sha256": "da51f24c1e8eb164128c6f033ad899b7edaecafb1936bafc45b9a8fa0fcef65a"
+    },
+    {
+      "file": "spec/aimp/template-core-l2.json",
+      "sha256": "1611633b35dc0c0a24d098ff01a7ecfaedc1d80c3c17fadd85f95e01591c4308"
+    },
+    {
+      "file": "spec/aimp/aimp-design-spec-v3.2.md",
+      "sha256": "9dd4bf7d9c99dfa63132739aa2da2549204c625826fa05cc9aa115eb0248bee0"
+    },
+    {
+      "file": "spec/aimp/test_schemas.py",
+      "sha256": "c222a63f4b73661ef4d4259abc9e04686db76bf57c5f84c2c965a3111e966876"
+    },
+    {
+      "file": "spec/aimp/aimp-v3.2-handshake-schemas.json",
+      "sha256": "43e791bbb807ad8e25e48cef02e97787cc711595c39f4ed1f005233bc38e2ad4"
+    },
+    {
+      "file": "spec/aimp/test_handshake_model.py",
+      "sha256": "3fd508de86a08f6630aef1dbc36a61b93e52ba3838fe207bbe0221cda23c4502"
+    },
+    {
+      "file": "spec/aimp/template-sandbox.json",
+      "sha256": "e00547cec6c6c19f64cb055cf54fa61278b04800cc8291e42cbcd4bc0e6a3dc7"
     }
   ],
   "productBaseline": {

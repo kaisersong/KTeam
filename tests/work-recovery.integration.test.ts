@@ -118,3 +118,24 @@ test('dependent queued messages do not deadlock original-work recovery and follo
   const resumed=store.job(next.jobId);resumed.state='delivered';store.save(resumed);assert.equal(store.claim().id,'followup');assert.equal(store.job(old.id).state,'blocked');
  }finally{store.close();await f.close();}
 });
+
+test('expired model admission recovers once after terminal old execution; unknown tools and explicit revocation stay blocked',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),recovery=new WorkRecovery(f.upstream,store,coordinator);
+ try{
+  const member=await coordinator.createMember({name:'续租恢复验证员',modelId:'fixture',requestId:'lease-recovery'},user),roomId=member.roomId,botId=member.bot.id;
+  const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'thread-'+roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'核对已有结果后继续'});
+  store.enqueue('lease-old',roomId,String(sent.messageId));const job=store.job('lease-old');
+  const actor={sessionId:'test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};
+  const created=f.broker.aimp.submit({id:'msg_'+randomBytes(16).toString('hex'),roomId,threadId:'thread-'+roomId,act:'request',body:'fixture',payload:{kind:'task.request@1',must_understand:true,description:'fixture',deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',acceptance:{predicates:['artifact_hash']},assignee:'agent://kteam.local/'+botId,reviewer:LOCAL_HUMAN}},actor);
+  assert.equal(created.ok,true);let task=created.task;const agent={...actor,requestSource:'agent',actor:{kind:'agent',logicalAgentId:botId},allowedLogicalAgentIds:[botId]};
+  task=f.broker.aimp.submit({id:'msg_'+randomBytes(16).toString('hex'),roomId,threadId:task.threadId,taskRef:task.taskRef,act:'accept',body:'accept',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.accept@1',must_understand:true,terms_hash:task.termsHash,caveats:[]}},agent).task;
+  task=(await f.upstream.aimp(roomId,'begin-execution',{logicalAgentId:botId,taskRef:task.taskRef,requestId:'real-lease-recovery',expectedRevision:task.revision,bindingRevision:store.binding(botId)!.revision,hostFence:1})).task;
+  Object.assign(job,{state:'blocked',activeBotId:botId,members:[botId],task,reason:'execution_admission_unverified',finishedAt:new Date(Date.now()-10000).toISOString(),partialText:'保留的草稿',failure:{code:'execution_admission_unverified',phase:'model',evidence:'captured'},toolTrace:[]});store.save(job);
+  await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'live task cannot restart');
+  assert.equal(f.broker.aimp.submit({id:'msg_'+randomBytes(16).toString('hex'),roomId,threadId:task.threadId,taskRef:task.taskRef,act:'stop',body:'fixture stop',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.stop@1',must_understand:true,reason:'fixture stop'}},actor).ok,true);
+  job.toolTrace=[{type:'tool_started',runId:'1',name:'write'}];store.save(job);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'unfinished effect cannot restart');
+  job.toolTrace.push({type:'tool_finished',runId:'1',name:'write',state:'completed'});job.failure.code='execution_lease_lost';store.save(job);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'explicit revocation cannot auto restart');
+  job.failure.code='execution_admission_unverified';store.save(job);store.pause(roomId);await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1);store.resume(roomId);
+  await recovery.wakeSafe();await recovery.wakeSafe();const next=store.jobs(roomId)[0];assert.equal(store.jobs(roomId).length,2);assert.equal(next.recoveryOf,job.id);assert.equal(next.recoveryAutomatic,true);assert.equal(next.recoveryContext.draft,'保留的草稿');assert.equal(next.task,undefined);assert.equal(next.toolTrace,undefined);
+ }finally{store.close();await f.close();}
+});
