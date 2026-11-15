@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { FetchProviderError, type FetchProvider, type FetchResult, type FetchRunInput } from './types.js';
 
 // DeepSeek Fetch API (https://api-docs.deepseek.com/guides/search)
@@ -37,7 +38,7 @@ export function createDeepSeekFetchProvider(options: DeepSeekFetchOptions): Fetc
     throw new FetchProviderError(INVALID_KEY_MESSAGE, { kind: 'auth' });
   }
   const endpoint = options.endpoint ?? 'https://api.deepseek.com/v1/tools/fetch';
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-fetch-deepseek',options.fetchFn ?? fetch,'tool-web');
   const toMessage = (error: unknown): string =>
     error instanceof Error ? redact(error.message, apiKey) : redact(String(error), apiKey);
 

@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { FetchProviderError, type FetchProvider, type FetchResult, type FetchRunInput } from './types.js';
 
 export interface FirecrawlFetchOptions {
@@ -20,7 +21,7 @@ interface FirecrawlScrapeResponse {
 
 export function createFirecrawlFetchProvider(options: FirecrawlFetchOptions = {}): FetchProvider {
   const endpoint = options.endpoint ?? 'https://api.firecrawl.dev/v2/scrape';
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-fetch-firecrawl',options.fetchFn ?? fetch,'tool-web');
 
   return {
     name: 'web_fetch.firecrawl',

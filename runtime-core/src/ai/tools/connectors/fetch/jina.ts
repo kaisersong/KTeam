@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { FetchProviderError, type FetchProvider, type FetchResult, type FetchRunInput } from './types.js';
 
 // Jina Reader (https://jina.ai/reader/). Endpoint pattern:
@@ -12,7 +13,7 @@ export interface JinaFetchOptions {
 
 export function createJinaFetchProvider(options: JinaFetchOptions = {}): FetchProvider {
   const endpoint = options.endpoint ?? 'https://r.jina.ai';
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-fetch-jina',options.fetchFn ?? fetch,'tool-web');
   return {
     name: 'web_fetch.jina',
     displayName: 'Jina Reader',

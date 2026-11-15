@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../../../runtime/kteam-request-accounting.js';
 import { SearchProviderError, type SearchHit, type SearchProvider, type SearchRunInput } from './types.js';
 
 // DuckDuckGo HTML scraper. Free fallback. Migrated from the original
@@ -53,7 +54,7 @@ function parseDuckDuckGoResults(html: string): SearchHit[] {
 }
 
 export function createDuckDuckGoSearchProvider(options: DuckDuckGoOptions = {}): SearchProvider {
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = kteamRequestFetch('tool-search-duckduckgo',options.fetchFn ?? fetch,'tool-web');
   return {
     name: 'web_search.duckduckgo',
     displayName: 'DuckDuckGo',

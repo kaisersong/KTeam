@@ -1,3 +1,4 @@
+import {kteamRequestFetch,kteamLogicalStream} from '../runtime/kteam-request-accounting.js';
 import {createOriginalModelSdkAttemptTransport,finishOriginalModelSdkAttempt} from '../runtime/original-model-sdk-attempt.js';
 import type {Stream as OriginalOpenAiStream} from 'openai/core/streaming';
 import { associateModelFailure, createModelProviderError, getModelFailure, type ModelFailureProvider } from '../runtime/model-failure.js';
@@ -566,7 +567,8 @@ export class OpenAIAdapter implements ModelAdapter {
     return clone;
   }
 
-  async *stream(
+  stream(...args:Parameters<OpenAIAdapter['streamOwned']>):AsyncIterable<StreamChunk>{return kteamLogicalStream(()=>this.streamOwned(...args));}
+  private async *streamOwned(
     messages: Message[],
     tools: ToolDefinition[],
     systemPrompt: string,
@@ -1057,9 +1059,9 @@ export class OpenAIAdapter implements ModelAdapter {
     let originalFailure:{raw:unknown}|undefined;
     try {
     const transport = modelPhysical?.fetch ?? semantic?.fetch ?? globalThis.fetch.bind(globalThis);
-    const guardedFetch = options?.providerDisclosure ? createProviderDisclosureFetch(options.providerDisclosure, transport) : transport;
+    const guardedFetch = modelPhysical?transport:kteamRequestFetch('openai-legacy',options?.providerDisclosure ? createProviderDisclosureFetch(options.providerDisclosure, transport) : transport);
     const client = semantic || modelPhysical ? this.client.withOptions({ fetch: guardedFetch, maxRetries: 0 })
-      : options?.providerDisclosure ? this.client.withOptions({ fetch: guardedFetch }) : this.client;
+      : this.client.withOptions({ fetch: guardedFetch });
     authorizeDispatch?.();
     const identity = this.harnessContext.identity;
     const diagnosticProvider: ModelFailureProvider | undefined = identity.providerType === 'first_party' && (identity.providerId === 'glm' || identity.providerId === 'kimi') ? identity.providerId : undefined;

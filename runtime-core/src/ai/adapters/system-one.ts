@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../runtime/kteam-request-accounting.js';
 import {createOriginalModelSdkAttemptTransport,finishOriginalModelSdkAttempt} from '../runtime/original-model-sdk-attempt.js';
 import type { ModelAdapter, Message, StreamChunk, ToolDefinition } from '../../types.js';
 import type { ModelCapabilities, StreamOptions } from '../runtime/model-capabilities.js';
@@ -188,7 +189,7 @@ export class SystemOneAdapter implements ModelAdapter {
 
     let resp: Response;
     try {
-      resp = await (modelPhysical?.fetch??fetch)(this.endpoint(), {
+      resp = await (modelPhysical?.fetch??kteamRequestFetch('system-one',fetch,'routing'))(this.endpoint(), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.apiKey}`,

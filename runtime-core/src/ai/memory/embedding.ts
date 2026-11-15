@@ -1,3 +1,4 @@
+import {kteamRequestFetch} from '../runtime/kteam-request-accounting.js';
 import Database from 'better-sqlite3';
 import * as crypto from 'node:crypto';
 import { OnnxEmbeddingEngine, type OnnxStatus } from './onnx-engine.js';
@@ -187,7 +188,7 @@ export class EmbeddingClient {
       throw new Error('embedding unavailable: onnx engine not ready and no explicit embedding api configured');
     }
 
-    const resp = await fetch(`${this.config.apiUrl}/embeddings`, {
+    const resp = await kteamRequestFetch('embedding-api',fetch,'embedding')(`${this.config.apiUrl}/embeddings`, {
       method: 'POST',signal:AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
