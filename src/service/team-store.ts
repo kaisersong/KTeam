@@ -148,7 +148,7 @@ export class TeamStore {
  }
  save(job:any){this.db.prepare('UPDATE team_jobs SET state=?,value_json=? WHERE id=?').run(job.state,JSON.stringify(job),job.id);}
  claim(excludedRooms:string[]=[],peerOnly=false){
-  const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND (json_extract(value_json,'$.afterJobId') IS NULL OR json_extract(value_json,'$.afterJobId') IN (SELECT id FROM team_jobs WHERE state IN ('delivered','noop'))) AND room_id NOT IN (SELECT value FROM json_each(?)) AND (?=0 OR json_extract(value_json,'$.trigger') IN ('peer','assistant-relay')) ORDER BY CASE WHEN json_extract(value_json,'$.trigger') IN ('peer','assistant-relay') THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0);if(!row)return null;
+  const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND (json_extract(value_json,'$.afterJobId') IS NULL OR json_extract(value_json,'$.afterJobId') IN (SELECT id FROM team_jobs WHERE state IN ('delivered','noop'))) AND room_id NOT IN (SELECT value FROM json_each(?)) AND (?=0 OR json_extract(value_json,'$.trigger') IN ('peer','assistant-relay')) ORDER BY CASE WHEN json_extract(value_json,'$.trigger') IN ('peer','assistant-relay','group-response') THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0);if(!row)return null;
   const job=JSON.parse(String(row.value_json));job.state='routing';this.save(job);return job;
  }
  reserveCall(job:any,team:TeamSettings,persistJob=true){
