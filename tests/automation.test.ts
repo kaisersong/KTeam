@@ -13,6 +13,7 @@ import {KTeamError} from '../src/errors.js';
 
 const user={sessionId:'test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};
 function originalReads(broker:any,roomId:string){const unwrap=(result:any)=>{if(!result.ok)throw new KTeamError(result.code);return result;};return {
+ aimpEffects:async(_room:string,taskRef:string)=>unwrap(broker.aimp.getEffects(taskRef,user)),
  membership:async()=>unwrap(broker.room.getRoomMembership({roomId},user)),
  messages:async(_room:string,afterSequence:number,limit:number,beforeSequence?:number,tail=false)=>unwrap(broker.room.listRoomMessages({roomId,afterSequence,limit,beforeSequence,direction:tail?'backward':'forward'},user)),
  conversationMessage:async(_room:string,messageId:string)=>unwrap(broker.room.workspace.getConversationMessage({roomId,messageId},user)),
