@@ -32,14 +32,14 @@ export function toolActivity(events:any[],bots:Bot[]){
 function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);setError('');void showGeneratedFile({roomId:event.file.roomId,toolCallId:event.id}).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
 export function ToolTrace({events}:{events:any[]}){if(!events.length)return null;return <><div className="generated-files">{events.filter(e=>e.state==='completed'&&e.file).map(e=><GeneratedFileButton key={e.id} event={e}/>)}</div><details className="tool-trace"><summary><Terminal size={13}/>工具记录 · {[...new Set(events.map(e=>e.name))].join('、')} · {events.length} 条记录</summary>{events.map(e=><div key={e.id}><strong>{e.name}<small>{e.state==='completed'?'已返回':e.state==='running'?'执行中':'未完成'}</small></strong>{e.input&&<pre>{typeof e.input==='string'?e.input:JSON.stringify(e.input,null,2)}</pre>}{e.result&&<pre>{typeof e.result==='string'?e.result:JSON.stringify(e.result,null,2)}</pre>}{e.code&&<p>{explain(e.code)}</p>}</div>)}</details></>;}
 
-export function RuntimeMessageContent({text,cards=[]}:{text:string;cards?:any[]}){
+export function RuntimeMessageContent({text,cards=[],files=[]}:{text:string;cards?:any[];files?:any[]}){
  const parts:React.ReactNode[]=[];let start=0;
  for(const [index,card]of cards.entries()){
   const offset=Math.max(start,Math.min(text.length,Number.isSafeInteger(card.offset)?card.offset:text.length));
-  if(offset>start)parts.push(<Markdown key={'text-'+index} text={text.slice(start,offset)}/>);
+  if(offset>start)parts.push(<Markdown key={'text-'+index} text={text.slice(start,offset)} files={files}/>);
   parts.push(<div className="runtime-card" key={card.artifactId??index}><A2uiArtifactRenderer artifactContent={card.content} artifactRef={{key:card.artifactId,artifactId:card.artifactId}}/></div>);start=offset;
  }
- if(start<text.length||!parts.length)parts.push(<Markdown key="text-final" text={text.slice(start)}/>);
+ if(start<text.length||!parts.length)parts.push(<Markdown key="text-final" text={text.slice(start)} files={files}/>);
  return <>{parts}</>;
 }
 

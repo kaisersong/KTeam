@@ -1,5 +1,5 @@
 import {installViewRevisions} from './view-revisions.js';
-import {workPage} from './work-projection.js';
+import {workPage,projectGeneratedFiles} from './work-projection.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
@@ -120,6 +120,7 @@ export class TeamStore {
 
  seenWithin(roomId:string,sequences:number[]){if(!sequences.length)return [];return this.db.prepare('SELECT sequence FROM team_seen WHERE room_id=? AND sequence IN ('+sequences.map(()=>'?').join(',')+') ORDER BY sequence').all(roomId,...sequences).map(row=>Number(row.sequence));}
  viewRevision(roomId?:string){return Number(this.db.prepare('SELECT revision FROM view_revisions WHERE scope=?').get(roomId?'room:'+roomId:'global')?.revision??0);}
+ generatedFilesForJob(roomId:string,jobId:string){return projectGeneratedFiles(this.db,roomId,jobId);}
  workPage(roomId:string,before?:number,activeOnly=false){return workPage(this.db,roomId,before,activeOnly); }
  workRecordVersion(id:string){return Number(this.db.prepare('SELECT revision FROM job_view_revisions WHERE job_id=?').get(id)?.revision??0);}
  memoryBusy(roomId:string){return !!this.db.prepare("SELECT 1 FROM team_jobs WHERE room_id=? AND state IN ('routing','running','stopping','waiting') LIMIT 1").get(roomId);}
