@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.7.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.7.1.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -107,8 +107,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.7.0.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.7.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.7.1.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.7.1.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -162,9 +162,9 @@ Never put credentials in command arguments or commit them to Git.
 
 ## Version History
 
-### v0.7.0
+### v0.7.1
 
-Voice input, public group participation with private execution stages, continuous work and reusable permissions, image previews, conversation paging, default analysis cards and approval history. See the [0.7.0 release](https://github.com/kaisersong/KTeam/releases/tag/v0.7.0).
+Voice input, public group participation with private execution stages, continuous work and reusable permissions, image previews, conversation paging, default analysis cards and approval history. See the [0.7.1 release](https://github.com/kaisersong/KTeam/releases/tag/v0.7.1).
 
 ### v0.6.0
 

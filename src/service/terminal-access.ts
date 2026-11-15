@@ -122,6 +122,9 @@ export function terminalWorkingPaths(core:any,command:string,cwd:string):string[
    if(!redirect)continue;
   }
   // Explicit absolute path arguments and redirection targets retain their own directory authority.
+  // Drive-rooted and UNC paths are absolute on Windows, including local
+  // output redirections; they cannot inherit an unrelated working directory.
+  if(process.platform==='win32')for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:[A-Za-z]:[\\/]|\\\\)[^"$`]+)"|'((?:[A-Za-z]:[\\/]|\\\\)[^']+)'|((?:[A-Za-z]:[\\/]|\\\\)[^\s;|&<>"'$`]+))/g))paths.add(expand(match[1]??match[2]??match[3]!));
   for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
    const path=match[1]??match[2]??match[3]!;if(path!=='/dev/null')paths.add(expand(path));
   }
