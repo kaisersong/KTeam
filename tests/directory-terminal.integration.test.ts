@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
-import {mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {chmodSync,mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync,existsSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {privateTempDir} from './helpers/private-temp.js';
@@ -38,25 +38,21 @@ test('granting one directory never approves a simultaneously pending operation i
  const f=await fixture();try{const {registry}=await f.make(),other=join(f.root,'other');mkdirSync(other);const a=registry.executeTool('write',{file_path:'one.txt',content:'allowed'}),b=registry.executeTool('write',{file_path:join(other,'two.txt'),content:'forbidden'});await f.pending(2);const pending=f.approvals.list().find(item=>item.directory===f.workspace)!;assert.ok(pending);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});await a;assert.equal(f.approvals.list().length,1);assert.equal(existsSync(join(other,'two.txt')),false);const remaining=f.approvals.list()[0]!;await f.approvals.decide({id:remaining.id,expectedHash:remaining.hash,decision:'deny'});await b;assert.equal(existsSync(join(other,'two.txt')),false);}finally{f.close();}
 });
 
-test('the supplied compound Git workflow supports exact persistent approval and rejects changed commands or changed local scripts',async()=>{
+test('the supplied compound Git workflow reuses its directory grant across changed scripts, commands and restart',async()=>{
  if(process.platform==='win32')return; // The supplied for/do shell syntax is POSIX; other directory tests execute on Windows too.
  const f=await fixture();try{
   const seed=join(f.root,'seed'),upstreams=join(f.root,'upstreams');mkdirSync(seed);mkdirSync(upstreams);execFileSync('git',['init','--quiet',seed]);writeFileSync(join(seed,'proof.txt'),'fixture');execFileSync('git',['-C',seed,'add','.']);execFileSync('git',['-C',seed,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m','fixture']);const revision=execFileSync('git',['-C',seed,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
   for(const name of ['kswarm','intent-broker'])execFileSync('git',['-C',seed,'worktree','add','--quiet','--detach',join(upstreams,name),'HEAD']);
   mkdirSync(join(f.workspace,'scripts'));writeFileSync(join(f.workspace,'scripts/verify-sources.mjs'),readFileSync(resolve('scripts/verify-sources.mjs')));writeFileSync(join(f.workspace,'baseline.txt'),'fixture');writeFileSync(join(f.workspace,'sources.lock.json'),JSON.stringify({vendoredFiles:[],references:[],productBaseline:{file:'baseline.txt',sha256:createHash('sha256').update('fixture').digest('hex')},sources:['kswarm','intent-broker'].map(name=>({name,revision}))}));
   const command=`git -C ${upstreams}/kswarm status --porcelain | head -3; git -C ${upstreams}/intent-broker status --porcelain | head -3; for repo in kswarm intent-broker; do d=${upstreams}/$repo; gitdir=$(git -C "$d" rev-parse --git-dir); mkdir -p "$gitdir/info"; echo node_modules >> "$gitdir/info/exclude"; done; cd ${f.workspace} && KTEAM_UPSTREAM_ROOT=${upstreams} node scripts/verify-sources.mjs && echo SOURCES-OK`;
-  assert.ok(commandAccess(f.core,command,f.root));let current=await f.make(f.root);const first=current.registry.executeTool('bash',{command,timeout_ms:10000,workdir:f.root}),pending=await f.pending();assert.equal(pending.canAlways,true);assert.equal(pending.commandScoped,true);assert.equal(pending.directory,undefined);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_always'});assert.match(await first,/SOURCES-OK/);assert.equal(f.approvals.permissions.list()[0]!.kind,'command');assert.ok(f.approvals.permissions.list()[0]!.access.gitFiles.length>=2);assert.match(f.approvals.permissions.list()[0]!.display,/verify-sources/);
+  let current=await f.make(f.root);const first=current.registry.executeTool('bash',{command,timeout_ms:10000,workdir:f.root}),pending=await f.pending();assert.equal(pending.canAlways,true);assert.equal(pending.commandScoped,false);assert.deepEqual(pending.directories,[realpathSync(f.root)]);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});assert.match(await first,/SOURCES-OK/);
   assert.match(await current.registry.executeTool('bash',{command,timeout_ms:10000,workdir:f.root}),/SOURCES-OK/);assert.equal(f.approvals.list().length,0);
-  assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:command+'; echo CHANGED',workdir:f.root}),'prompt');
-  assert.equal(commandAccess(f.core,command+'; rm -rf '+f.workspace,f.root),undefined);
-  for(const unsafe of ['PATH=/unexpected; git status','for PATH in unexpected; do git status; done','x=rm; $x keep.txt','git config core.sshCommand unsafe'])assert.equal(commandAccess(f.core,unsafe,f.root),undefined,unsafe);
-  const dot=join(upstreams,'kswarm','.git'),originalDot=readFileSync(dot,'utf8');writeFileSync(dot,readFileSync(join(upstreams,'intent-broker','.git'),'utf8'));assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'prompt');writeFileSync(dot,originalDot);
+  assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:command+'; echo CHANGED',workdir:f.root}),'allow');
   f.restart();current=await f.make(f.root);assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'allow');
-  writeFileSync(join(f.workspace,'scripts/verify-sources.mjs'),'throw new Error("changed script must not execute")');assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'prompt');
-  const next=current.registry.executeTool('bash',{command,workdir:f.root});const changed=await f.pending();writeFileSync(join(f.workspace,'scripts/verify-sources.mjs'),'throw new Error("changed again")');await assert.rejects(f.approvals.decide({id:changed.id,expectedHash:changed.hash,decision:'allow_always'}),/tool_command_changed/);await next;assert.equal(f.approvals.list().length,0);
+  writeFileSync(join(f.workspace,'scripts/verify-sources.mjs'),'console.log("changed script inside approved directory")');assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'allow');
+  for(const highRisk of ['rm -rf '+f.workspace,'git reset --hard','git push origin main'])assert.notEqual(await current.h.registryOptions.permissionManager.check('bash',{command:highRisk,workdir:f.root}),'allow');
  }finally{f.close();}
 });
-
 
 test('legacy file-only directory grants require an explicit new decision before covering terminal commands',async()=>{
  const f=await fixture();try{execFileSync('git',['init','--quiet',f.workspace]);const scope={botId:'member',bindingRevision:1,cwd:f.workspace};f.approvals.permissions.rememberDirectory(scope,directoryAccess(f.core,'write',{file_path:join(f.workspace,'legacy.txt')},f.workspace)!);
@@ -79,5 +75,25 @@ test('the screenshot branch-and-merge workflow offers repository authorization, 
   f.restart();current=await f.make(f.root);assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'allow');
   for(const unsafe of ['git checkout -f origin/main','git checkout -- proof.txt','git merge --abort','git merge -s custom origin/main','git push origin main'])assert.notEqual(await current.h.registryOptions.permissionManager.check('bash',{command:`cd ${f.workspace} && ${unsafe}`,workdir:f.root}),'allow',unsafe);
   writeFileSync(join(f.workspace,'blocked.txt'),'keep');writeFileSync(join(f.root,'config/settings.json'),JSON.stringify({permissions:{deny:['bash:git merge*']}}));const denied=await f.make(f.root);assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'deny');
+ }finally{f.close();}
+});
+
+
+test('one trusted directory covers new programs, multiline scripts and changed syntax; high-risk commands have separate persistent approval',async()=>{
+ if(process.platform==='win32')return;
+ const f=await fixture();try{
+  const tool=join(f.workspace,'novel-project-audit');writeFileSync(tool,'#!/bin/sh\nprintf NOVEL_TOOL_OK\n');chmodSync(tool,0o700);
+  let current=await f.make();const first=current.registry.executeTool('write',{file_path:'grant.txt',content:'directory grant'}),pending=await f.pending();await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});await first;
+  const script="python3 - <<'PY'\nfrom pathlib import Path\nPath('script-output.txt').write_text('TRUSTED_SCRIPT_OK')\nprint('TRUSTED_SCRIPT_OK')\nPY";
+  for(const command of [script,'./novel-project-audit',"sh -c 'printf WRAPPER_OK'",'git checkout -b a-new-branch'])assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command}),'allow',command);
+  assert.match(await current.registry.executeTool('bash',{command:script}),/TRUSTED_SCRIPT_OK/);assert.match(await current.registry.executeTool('bash',{command:'./novel-project-audit'}),/NOVEL_TOOL_OK/);assert.equal(f.approvals.list().length,0);
+  f.restart();current=await f.make();assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:script}),'allow');
+  writeFileSync(join(f.workspace,'remove-me.txt'),'not deleted before explicit approval');const command='rm -f remove-me.txt',removal=current.registry.executeTool('bash',{command}),highRisk=await f.pending();assert.equal(highRisk.highRisk,true);assert.equal(highRisk.commandScoped,true);assert.equal(highRisk.canAlways,true);assert.equal(existsSync(join(f.workspace,'remove-me.txt')),true);
+  await f.approvals.decide({id:highRisk.id,expectedHash:highRisk.hash,decision:'allow_always'});await removal;assert.equal(existsSync(join(f.workspace,'remove-me.txt')),false);
+  f.restart();current=await f.make();assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command}),'allow');assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:'rm -f another.txt'}),'prompt');
+  const sibling=join(f.root,'sibling');mkdirSync(sibling);assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:'./novel-project-audit --output=../sibling/result.txt'}),'prompt');
+  const other=await createHarness({workspace:f.workspace,permissions:{store:f.approvals.permissions,botId:'another-member',bindingRevision:1},signal:AbortSignal.timeout(10000),assertCurrent:async()=>{}});assert.equal(await other.registryOptions.permissionManager.check('bash',{command:script}),'prompt');assert.equal(await other.registryOptions.permissionManager.check('bash',{command}),'prompt');
+  const exact=f.approvals.permissions.list().find(grant=>grant.kind==='command')!;f.approvals.permissions.revoke({id:exact.id});const after=await f.make();assert.equal(await after.h.registryOptions.permissionManager.check('bash',{command}),'prompt');assert.equal(await after.h.registryOptions.permissionManager.check('bash',{command:script}),'allow');
+  writeFileSync(join(f.root,'config/settings.json'),JSON.stringify({permissions:{deny:['bash:rm*','bash:python3*']}}));const denied=await f.make();assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command}),'deny');assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command:script}),'deny');
  }finally{f.close();}
 });

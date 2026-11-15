@@ -47,7 +47,7 @@ export async function createHarness(input:HarnessContext){
    if(['send_mail','send_connected_mail','install_skill','uninstall_skill'].includes(name))return 'prompt';
    const effective=name==='bash'?harnessWorkspace(String(normalized.workdir)):this.base,scope=permissionScope(effective);
    if(scope&&!permissionEpochs.has(effective))permissionEpochs.set(effective,input.permissions!.store.revision(scope));
-   if(name==='bash'){const checks=routineTerminalCommands(core,String(normalized.command??''));if(checks)for(const command of checks)if(await super.check(name,{...normalized,command})==='deny')return 'deny';}
+   if(name==='bash'){const command=String(normalized.command??''),checks=[...new Set([...(routineTerminalCommands(core,command)??[]),...core.parseCommandSegments(command).segments])];if(checks)for(const command of checks)if(await super.check(name,{...normalized,command})==='deny')return 'deny';}
    if(name==='bash'&&scope&&input.permissions!.store.findCommand(scope,normalized,core))return 'allow';
    if(name==='bash'&&terminalRequiresConfirmation(core,String(normalized.command??'')))return 'prompt';
    if((!input.recoveryReview||name==='bash')&&scope&&persistentToolEligible(core,name,normalized)&&(input.permissions!.store.findDirectory(scope,name,normalized,core)||input.permissions!.store.find(scope,name,normalized,core)))return 'allow';
