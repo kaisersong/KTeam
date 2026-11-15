@@ -20,7 +20,7 @@ jobs:
         node: ['22.22.0', '24.16.0']
     runs-on: ${{ matrix.os }}
     # A hung test process must not hold a runner for the 6h default.
-    timeout-minutes: 40
+    timeout-minutes: 50
     # All platforms are blocking, including Windows.
     env:
       KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
@@ -81,8 +81,8 @@ jobs:
         timeout-minutes: 5
         working-directory: kteam
       - run: npm run check
-        # Node 22 on Windows was still passing cases at the measured 25 minute cutoff.
-        # Keep a finite 35 minute suite budget within the 40 minute job watchdog.
+        # Windows Node 24 completed all 675 tests and CLI cleanup at the 35 minute cutoff.
+        # Allow the 40 minute test watchdog plus build/cleanup overhead within a 50 minute job.
         # Every original matrix job and assertion still runs, and any failed test remains a failure.
-        timeout-minutes: ${{ runner.os == 'Windows' && 35 || 10 }}
+        timeout-minutes: ${{ runner.os == 'Windows' && 45 || 10 }}
         working-directory: kteam
