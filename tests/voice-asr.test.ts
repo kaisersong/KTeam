@@ -72,3 +72,8 @@ test('豆包 native WebSocket sends PCM packets and accepts only final bounded r
   await assert.rejects(transcribeAudio({...audio,audioBase64:'YWJj'}),/voice_audio_unsupported/);assert.equal(connections,3);
  }finally{for(const socket of wss.clients)socket.terminate();await new Promise<void>(r=>wss.close(()=>r()));await f.close();}
 });
+
+test('native ASR adapter is self-contained in a packaged CommonJS bundle outside node_modules',async()=>{
+ const {build}=await import('esbuild'),{rmSync}=await import('node:fs');const root=privateTempDir(join(tmpdir(),'kteam-asr-cjs-')),file=join(root,'adapter.cjs');
+ try{await build({entryPoints:['src/service/voice-volcengine.ts'],outfile:file,bundle:true,platform:'node',format:'cjs'});const adapter=createRequire(import.meta.url)(file);assert.equal(typeof adapter.transcribeVolcengineSocket,'function');}finally{rmSync(root,{recursive:true,force:true});}
+});
