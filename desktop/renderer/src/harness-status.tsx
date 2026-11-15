@@ -18,6 +18,10 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
   <div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className={approval.directory||approval.commandScoped?'secondary':'primary'} disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>允许本次</button>{approval.directory?<button className="primary" disabled={busy} onClick={()=>void decide(approval.directoryOperations==='routine'?'allow_directory_routine':'allow_directory')}>{approval.directoryOperations==='routine'?(approval.directories?.length>1?'长期允许所列目录':'长期允许此目录'):'长期允许此目录读写'}</button>:approval.canAlways&&<button className={approval.commandScoped?'primary':'secondary'} disabled={busy} onClick={()=>void decide('allow_always')}>{approval.commandScoped?'长期允许此命令':approval.toolName==='bash'?'长期允许此目录常规命令':'长期允许此类操作'}</button>}</div>
  </section>;
 }
+export function ExpiredApprovalNotice({approval,bot}:{approval:any;bot?:Bot}){
+ const description=toolApprovalSummary(approval.toolName,approval.display);
+ return <section className="tool-approval expired" aria-label="审批已过期"><h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 的一项操作未获批准</h3><p>{description.summary}{description.target?'：'+description.target:''}</p><small>已过期，工作已暂停，可重新发起。{typeof approval.cancelledAt==='number'?new Date(approval.cancelledAt).toLocaleString('zh-CN'):''}</small></section>;
+}
 export function toolActivity(events:any[],bots:Bot[]){
  const descriptions:Record<string,string>={read:'正在查阅本机资料',glob:'正在定位资料',grep:'正在检索资料',bash:'正在检查本机资料',web_fetch:'正在核对网络资料',web_search:'正在查找公开来源',update_shared_context:'正在整理共享纪要',ask_user:'等待你在私聊中确认'};
  const event=[...events].reverse().find(e=>(e.name==='contact_bot'||descriptions[e.name]));

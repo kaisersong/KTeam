@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.6.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.7.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -37,6 +37,15 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 **KTeam does not yet claim full AIMP v3.2 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.2 specification is the reference for incremental implementation. Standard session negotiation, Templates and FastJoin are currently unavailable; existing local discussion remains experimental.
 
 ---
+
+## What's in 0.7
+
+- **Voice input.** Microphone input with Doubao and Qwen ASR configuration, recording status and editable transcription.
+- **Team participation and delivery.** Relevant members can reply publicly while work continues; private member stages return actual results for coordinator review. Add and remove group members from conversation details.
+- **Continuous work.** New messages steer or queue existing work. Durable handoffs, approval recovery and deadline-based execution leases preserve progress across interruptions.
+- **Reusable permissions.** Existing directory grants cover routine scripts, interpreter pipelines, Shell eval and remote commands; actual dangerous actions retain separate confirmation. Recent cancelled or expired approvals remain inspectable.
+- **Conversation improvements.** Image previews, resolved receipt cleanup, automatic history paging and jump-to-latest navigation. Analysis cards are enabled by default; Yunzhijia rich-text preparation still requires approval before sending.
+- **AIMP 3.2 reference.** Updated specification, schemas, templates and test vectors; the implementation remains an experimental subset, with standard negotiation, Templates and FastJoin explicitly unavailable.
 
 ## What's in 0.6
 
@@ -98,8 +107,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.6.0.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.6.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.7.0.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.7.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -152,6 +161,10 @@ Never put credentials in command arguments or commit them to Git.
 ---
 
 ## Version History
+
+### v0.7.0
+
+Voice input, public group participation with private execution stages, continuous work and reusable permissions, image previews, conversation paging, default analysis cards and approval history. See the [0.7.0 release](https://github.com/kaisersong/KTeam/releases/tag/v0.7.0).
 
 ### v0.6.0
 
