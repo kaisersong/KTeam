@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.6.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.7.0。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -24,19 +24,28 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 - **承诺必须显形，人类有最终决定权。** 接单、交付、验收要有显式事件；人的消息在优先级、打断和否决上高于 Agent；执行权限只来自可过期、可撤销的能力令牌。
 - **不重造传输层。** AIMP 是协作层，跟 MCP（工具层）、A2A（调用层）分工互补，可以跑在现有消息通道上。
 
-完整规范：**[AIMP 协议设计规范 v3.1](spec/aimp/aimp-design-spec-v3.1.md)**（另有[英文译本](spec/aimp/aimp-design-spec-v3.1.en.md)，以中文版为准），配套 [JSON Schema](spec/aimp/aimp-v3.1-schemas.json) 和 [签名测试向量](spec/aimp/aimp-v3.1-test-vectors.json)。
+当前规范：**[AIMP 协议设计规范 v3.2](spec/aimp/aimp-design-spec-v3.2.md)**。保留的 [v3.1 英文译本](spec/aimp/aimp-design-spec-v3.1.en.md)、[v3.1 Schema](spec/aimp/aimp-v3.1-schemas.json) 和[签名向量](spec/aimp/aimp-v3.1-test-vectors.json) 仍按旧版本解释，不作为 3.2 握手实现证明。
 
 ### KTeam 现在实现了哪些
 
-- 信封线格式版本为 `aimp: "1.0"`，对应规范 3.1（[`src/protocol/aimp.ts`](src/protocol/aimp.ts)）。
+- 信封线格式版本为 `aimp: "1.0"`，在规范 3.2 中保持不变（[`src/protocol/aimp.ts`](src/protocol/aimp.ts)）。
 - 通过规范官方的四个签名域测试向量：规范化字节、哈希和 Ed25519 签名（[`tests/protocol.test.ts`](tests/protocol.test.ts)，向量副本见 [`tests/fixtures/aimp-v3.1-test-vectors.json`](tests/fixtures/aimp-v3.1-test-vectors.json)）。
 - 规范化 JSON 子集会拒绝重复键、非法 Unicode、不安全的数字和过深嵌套。
 - L0 预览从不把「接受」「批准」或工具调用之类的文字当成授权。
 - 已接通 intent-broker 的实验性讨论生命周期。
 
-**KTeam 目前不声明完整兼容 AIMP v3.1，也不声明通过 Core-L2 认证。** 生产身份根、收据激活、完整的状态迁移和执行副作用登记等还没有完成。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现继续按 v3.1 规范逐条核对。
+**KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活、完整的状态迁移和执行副作用登记等还没有完成。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
 
 ---
+
+## 0.7 有什么
+
+- **语音输入。** 输入栏提供麦克风入口，支持豆包、千问 ASR 配置、录音状态和可编辑的识别文字。
+- **团队交流与分工。** 相关成员可在原工作继续期间公开回应；实际执行通过私聊分工，成员返回结果后由负责人核对。会话详情支持添加和移除群成员。
+- **持续工作。** 新消息可改向或排队接续原工作；持久交接、审批恢复及按任务期限计算的执行租约保留已有进展。
+- **长期授权复用。** 常规脚本、解释器管道、Shell eval 和远程命令沿用已有目录授权，实际危险操作仍单独确认；可查看近期取消或过期的审批记录。
+- **会话体验。** 修复图片预览和已解决回执残留，自动加载历史并一键回到最新。默认开放分析卡片；云之家富文本准备与实际发送审批分离。
+- **AIMP 3.2 参考规范。** 更新正文、Schema、模板和测试向量，保留实验性实现边界，不声称完成标准握手、Templates、FastJoin 或 Core-L2 认证。
 
 ## 0.6 有什么
 
@@ -98,8 +107,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.6.0.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.6.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.7.0.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.7.0.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -152,6 +161,10 @@ node dist/src/cli.js teams
 ---
 
 ## 版本日志
+
+### v0.7.0
+
+语音输入、群内多人互动与私聊分工、持续工作和长期授权复用、图片预览、会话历史分页、默认分析卡片与审批历史。见 [0.7.0 发布页](https://github.com/kaisersong/KTeam/releases/tag/v0.7.0)。
 
 ### v0.6.0
 
