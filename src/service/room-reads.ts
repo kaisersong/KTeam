@@ -33,7 +33,7 @@ export async function recentContext(upstream:Upstreams,roomId:string,limit=60){
  while(selected.length<limit){
   const page=await ownerPage(upstream,roomId,{before,tail:true,limit:Math.min(60,limit-selected.length)}),messages=(page.messages as any[]).sort((a,b)=>a.roomSequence-b.roomSequence);
   for(const message of [...messages].reverse()){
-   const text=String(message.text??''),view={messageId:message.messageId,roomId:message.roomId,roomSequence:message.roomSequence,sender:message.sender,text:text.slice(0,6000),replyToMessageId:message.replyToMessageId,createdAt:message.createdAt};
+   const text=String(message.text??''),view={messageId:message.messageId,roomId:message.roomId,roomSequence:message.roomSequence,sender:message.sender,text:text.slice(0,6000),replyToMessageId:message.replyToMessageId,createdAt:message.createdAt,...(message.sourceRef?.kind==='aimp_event'?{internal:true}:{})};
    const size=Buffer.byteLength(JSON.stringify(view));
    if(bytes+size>192*1024)return {messages:selected.reverse(),limited:true,limit,bytes};
    selected.push(view);bytes+=size;if(text.length>6000)limited=true;

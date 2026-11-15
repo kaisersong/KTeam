@@ -32,7 +32,8 @@ export function reviewUnansweredGroupTurns(store:any,now=Date.now()){
   if(job.trigger||job.groupResponse||job.groupInput||latest.has(job.roomId))continue;
   latest.add(job.roomId);
   const team=store.settings(job.roomId),at=Date.parse(job.createdAt);
-  if(team?.kind!=='group'||team.mode!=='auto'||team.paused||team.quiet||store.state('team-role-policy:'+job.roomId)?.status!=='ready'||job.state!=='noop'||job.reason!=='group_discussion_dispatched'||job.groupPlan?.mode!=='discussion'||!Array.isArray(job.groupPlan.members)||job.groupPlan.members.length!==0||!Number.isFinite(at)||now-at<0||now-at>86400000)continue;
+  if(team?.kind!=='group'||team.mode!=='auto'||team.paused||team.quiet||store.state('team-role-policy:'+job.roomId)?.status!=='ready'||job.state!=='noop'||job.reason!=='group_discussion_dispatched'||job.groupPlan?.mode!=='discussion'||!Array.isArray(job.groupPlan.members)||!Number.isFinite(at)||now-at<0||now-at>86400000)continue;
+  if(job.groupPlan.members.length){const replies=store.jobs(job.roomId).filter((row:any)=>row.groupResponse?.sourceJobId===job.id);if(!replies.some((row:any)=>row.reason==='iteration_budget_exhausted')||replies.some((row:any)=>row.state==='delivered'||!['blocked','noop'].includes(row.state)))continue;}
   const id='job-group-engagement:'+createHash('sha256').update(job.id).digest('hex');if(store.job(id))continue;
   store.enqueueFollowup({id,roomId:job.roomId,originId:job.originId,trigger:'group-discussion',groupInput:{sourceJobId:job.id,handlingId:id,reason:'unanswered_feedback'}});
  }

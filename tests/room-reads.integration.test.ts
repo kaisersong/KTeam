@@ -46,3 +46,11 @@ test('lost send receipts reconcile through original bounded pages past the conte
 test('a bounded receipt search cannot report absence when the original history budget is exhausted',async()=>{
  const f=await fixture();try{f.fill(210);await assert.rejects(findOwnerMessage(f.upstream,f.roomId,message=>message.messageId==='not-a-real-message'),/conversation_history_limit/);assert.equal(f.store.jobs().length,0);assert.equal((await f.upstream.messages(f.roomId,0,1)).totalMessages,211);}finally{await f.close();}
 });
+
+test('protocol stop records are marked internal and cannot supersede the last real human turn',async()=>{
+ const f=await fixture();try{
+  const created=await f.upstream.aimp(f.roomId,'event',{id:'msg_'+crypto.randomUUID().replaceAll('-',''),roomId:f.roomId,threadId:'thread-'+f.roomId,act:'request',body:'synthetic protocol task',payload:{kind:'task.request@1',must_understand:true,description:'fixture',deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',acceptance:{predicates:['artifact_hash']},assignee:'agent://kteam.local/'+f.member.bot.id,reviewer:LOCAL_HUMAN}}),task=created.task as any;
+  await f.upstream.aimp(f.roomId,'event',{id:'msg_'+crypto.randomUUID().replaceAll('-',''),roomId:f.roomId,threadId:task.threadId,taskRef:task.taskRef,act:'stop',body:'synthetic internal stop',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.stop@1',must_understand:true,reason:'fixture stop'}});
+  const context=await recentContext(f.upstream,f.roomId);assert.equal(context.messages.find(message=>message.text==='synthetic internal stop').internal,true);assert.equal(context.messages.filter(message=>message.sender?.kind==='user'&&!message.internal).at(-1).messageId,f.origin.messageId);
+ }finally{await f.close();}
+});
