@@ -1,3 +1,4 @@
+import {MailNotSubmitted} from './mail-send-errors.js';
 import { MailSubmissionRejected } from './mail-send-errors.js';
 import { createHash } from 'node:crypto';
 import { MAIL_SEND_SCHEMA,MAIL_SEND_RESULT_SCHEMA,MAIL_ACCESS_SCHEMA,MAIL_CONNECT_SCHEMA,MAIL_ACCOUNT_REQUEST_SCHEMA,MAIL_OAUTH_INPUT_SCHEMA,MAIL_SEARCH_SCHEMA,MAIL_READ_SCHEMA,MAIL_SEARCH_RESULT_SCHEMA,MAIL_READ_RESULT_SCHEMA,MAIL_ERROR_CODES,type MailAccountDto,type MailConnectInput,type MailOAuthInput,type MailRequestSource,type MailSearchInput,type MailReadInput,type MailSearchResult,type MailReadResult,type MailSendInput,type MailSendResult } from '../shared/mail-connectors-ipc-contract.js';
@@ -54,9 +55,9 @@ export class MailConnectorService {
  read(raw:MailReadInput,source:MailRequestSource):Promise<MailReadResult>{const input=MAIL_READ_SCHEMA.parse(raw);return this.use(input.accountId,source,async a=>MAIL_READ_RESULT_SCHEMA.parse(await this.reader.read(a,input)));}
  async setAccess(raw:{id:string;expectedRevision:number;allowSend:boolean;smtpHost?:string;smtpPort?:number},source:MailRequestSource):Promise<MailAccountDto>{requireMailUser(source);const input=MAIL_ACCESS_SCHEMA.parse(raw),a=this.account(input.id,'user');if(a.revision!==input.expectedRevision)throw Error('mail_stale_account');if(input.allowSend&&a.auth.kind==='oauth'&&!a.auth.sendAuthorized)throw Error('mail_send_reauthorize');if(input.allowSend&&a.provider==='imap'&&!(input.smtpHost??a.smtpHost))throw Error('mail_invalid_input');this.deps.store.put({...a,allowSend:input.allowSend,...(input.smtpHost?{smtpHost:input.smtpHost,smtpPort:input.smtpPort??465}:{}),revision:a.revision+1},a.revision,'user');this.invalidate(a.id);return this.list().find(row=>row.id===a.id)!;}
  async send(raw:MailSendInput,source:MailRequestSource):Promise<MailSendResult>{
-  if(source!=='user')throw Error('mail_send_denied');
-  let input:MailSendInput;try{input=MAIL_SEND_SCHEMA.parse(raw);}catch{throw Error('mail_invalid_input');}
-  const account=this.account(input.accountId,source);if(!account.allowSend)throw Error('mail_send_denied');if(account.auth.kind==='oauth'&&!account.auth.sendAuthorized)throw Error('mail_send_reauthorize');
+  if(source!=='user')throw new MailNotSubmitted('mail_send_denied');
+  let input:MailSendInput;try{input=MAIL_SEND_SCHEMA.parse(raw);}catch{throw new MailNotSubmitted('mail_invalid_input');}
+  let account:MailAccountRecord;try{account=this.account(input.accountId,source);if(!account.allowSend)throw Error('mail_send_denied');if(account.auth.kind==='oauth'&&!account.auth.sendAuthorized)throw Error('mail_send_reauthorize');}catch(error){throw new MailNotSubmitted(error instanceof Error?error.message:'mail_invalid_input');}
   const begin=this.deps.store.beginSend,finish=this.deps.store.finishSend;if(!begin||!finish)throw Error('mail_store_unavailable');
   const payloadHash=createHash('sha256').update(JSON.stringify([account.id,input.to,input.subject,input.text])).digest('hex');
   const receipt=begin.call(this.deps.store,{requestId:input.requestId,accountId:account.id,revision:account.revision,payloadHash,status:'pending',createdAt:Date.now()},source);if(receipt.status==='accepted'&&receipt.result)return MAIL_SEND_RESULT_SCHEMA.parse(receipt.result);

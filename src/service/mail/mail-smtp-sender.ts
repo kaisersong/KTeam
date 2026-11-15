@@ -1,3 +1,4 @@
+import {MailSubmissionRejected} from './mail-send-errors.js';
 import SMTPConnection from 'nodemailer/lib/smtp-connection';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import type { MailAccountRecord } from './mail-account-store.js';
@@ -14,7 +15,7 @@ export class MailSmtpSender implements MailSender {
   const mime=await composeMail(account,input);const connection=this.makeConnection({host,port,secure:port===465,requireTLS:port!==465,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},logger:false,debug:false,connectionTimeout:15000,greetingTimeout:10000,socketTimeout:20000});this.active.set(connection,account.id);
   try{return await new Promise((resolve,reject)=>{
    let settled=false;const finish=(error:unknown,result?:Omit<MailSendResult,'requestId'>)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(result!);};const timer=setTimeout(()=>{finish(Error('mail_timeout'));connection.close();},45000);timer.unref?.();connection.on('error',error=>finish(error));connection.on('end',()=>finish(Error('mail_account_changed')));
-   connection.connect(error=>{if(settled)return;if(error)return finish(error);connection.login({user:account.email,pass:account.auth.kind==='password'?account.auth.password:''},error=>{if(settled)return;if(error)return finish(error);try{assertSubmission();}catch(error){finish(error);connection.close();return;}connection.send({from:account.email,to:input.to},mime,(error,info)=>{if(error)return finish(error);finish(null,{status:'accepted',accepted:(info.accepted??[]).map(String),rejected:(info.rejected??[]).map(String)});});});});
+   connection.connect(error=>{if(settled)return;if(error)return finish(error);connection.login({user:account.email,pass:account.auth.kind==='password'?account.auth.password:''},error=>{if(settled)return;if(error)return finish(error);try{assertSubmission();}catch(error){finish(error);connection.close();return;}connection.send({from:account.email,to:input.to},mime,(error,info)=>{if(error){const responseCode=(error as any).responseCode;return finish(Number.isInteger(responseCode)&&responseCode>=400&&responseCode<=599?new MailSubmissionRejected('mail_send_rejected'):error);}finish(null,{status:'accepted',accepted:(info.accepted??[]).map(String),rejected:(info.rejected??[]).map(String)});});});});
   });}finally{this.active.delete(connection);connection.close();}
  }
 }

@@ -1,3 +1,4 @@
+import {RewardMemory} from './reward-memory.js';
 import {GroupMembers} from './group-members.js';
 import {InboxState,projectInbox} from './inbox.js';
 import {MailConnectors} from './mail-connectors.js';
@@ -319,6 +320,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           const input=record(await body(req));if(typeof input.taskRef!=='string'||input.decision!=='pass')throw new KTeamError('review_decision_not_supported');
           const tasks=(await upstream.aimp(roomId,'tasks')).tasks as any[],task=tasks.find(task=>task.taskRef===input.taskRef);if(!task)throw new KTeamError('task_not_found');
           const result=await upstream.aimp(roomId,'event',{id:'msg_'+createHash('sha256').update(String(input.taskRef)+String(task.revision)+String(input.decision)).digest('hex').slice(0,32),roomId,threadId:task.threadId,taskRef:task.taskRef,targetEvent:{id:task.headId,hash:task.headHash},act:'review',body:input.decision==='pass'?'用户验收通过。':'用户要求返工。',payload:{kind:'task.review@1',must_understand:true,decision:input.decision,findings:[],trust_root:'human://kteam.local/user.local'}});
+          if((result as any).ok!==false){try{const accepted=((await upstream.aimp(roomId,'tasks')).tasks as any[]).find(t=>t.taskRef===task.taskRef);if(accepted)new RewardMemory(teamStore).recordAccepted(roomId,accepted);}catch{/* Optional memory never changes the accepted task or blocks its response. */}}
           return send(res,200,result);
         }
       }

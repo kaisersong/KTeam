@@ -158,7 +158,7 @@ export class ConversationUpdates {
    return value;
   };
   // Select display fields before redaction; never send the entire internal job or harness configuration.
-  const summary={...projectWork(job,version),toolTrace:(job.toolTrace??[]).map(projectWorkEvent),toolTraceLimited:(job.toolTrace??[]).length>=100};
+  const summary={...projectWork(job,version),generatedFiles:this.store.generatedFilesForJob(roomId,job.id),toolTrace:(job.toolTrace??[]).map(projectWorkEvent),toolTraceLimited:(job.toolTrace??[]).length>=100};
   const selected=input.part==='summary'?summary:input.part==='draft'?{id:job.id,state:job.state,answerDraft:job.answerDraft??job.partialText}:input.part==='cards'?{id:job.id,cards:job.cards??[]}:{...summary,toolTrace:(job.toolTrace??[]).map((event:any)=>({...event,output:undefined,outputAvailable:event.type==='tool_output_saved'&&!!event.output})),answerDraft:job.answerDraft,cards:job.cards??[],harness:job.harness?{toolNames:job.harness.toolNames,memoryBackend:job.harness.memoryBackend}:undefined};
   const result=bounded(event?{...event,output:undefined,outputAvailable:event.type==='tool_output_saved'&&!!event.output}:selected);
   if(Buffer.byteLength(JSON.stringify(result))>1750*1024)throw new KTeamError('conversation_projection_too_large',413);

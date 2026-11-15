@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.7.2.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.8.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -34,9 +34,20 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 - The L0 preview never treats text such as "accept", "approve" or a tool call as authorization.
 - The experimental discussion lifecycle in intent-broker is wired up.
 
-**KTeam does not yet claim full AIMP v3.2 compliance or Core-L2 certification.** A production identity root, receipt activation, complete state transitions and side-effect registration are still to be done. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.2 specification is the reference for incremental implementation. Standard session negotiation, Templates and FastJoin are currently unavailable; existing local discussion remains experimental.
+**KTeam does not yet claim full AIMP v3.2 compliance or Core-L2 certification.** A production identity root, receipt activation and complete state transitions are still unavailable. This release adds scoped effect observation and verified host receipts for typed HTML and mail paths; these do not certify every tool or replace business acceptance. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.2 specification is the reference for incremental implementation. Standard session negotiation, Templates and FastJoin are currently unavailable; existing local discussion remains experimental.
 
 ---
+
+## What's in 0.8.0
+
+- **Independent group replies run concurrently.** Members can respond together; only explicit result dependencies serialize their replies. Private work stages and coordinator review remain separate from public discussion.
+- **Actual request attempts are counted.** Verified transport witnesses distinguish SDK retries and auxiliary requests, retain durable quota reservations and avoid charging the same attempt twice. Adapter wiring does not certify every third-party SDK bridge.
+- **Context survives compaction.** Hosted work can recover its frozen requirements and source material. A context checkpoint proves inclusion, not that a model understood or completed the request.
+- **Verified HTML and mail outcomes.** HTML is validated in a private candidate before publication; mail uses stable intents and original approvals. Unknown outcomes are checked instead of blindly repeated, and structural validation does not mean business acceptance.
+- **Reports open inside KTeam.** Receipt-backed HTML/Markdown links and file buttons remain available beyond the recent tool-output window. Opening checks the current conversation, host and file digest.
+- **Evidence-based experience.** Reward Memory uses explicit human acceptance and verified delivery evidence, with expiry and revocation. It never grants tool permissions.
+
+The reviewed [combined optimization roadmap](https://github.com/kaisersong/mydocs/blob/master/kteam/design/desktop/2026-11-16-grok-bot-combined-optimization-plan.md) also contains future work; this version's implemented features are listed above. Full Mac sleep/wake recovery and every third-party SDK bridge remain separately qualified.
 
 ## What's in 0.7.2
 
@@ -107,8 +118,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.7.2.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.7.2.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.8.0.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.8.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -163,6 +174,10 @@ Never put credentials in command arguments or commit them to Git.
 Official releases are published automatically by GitHub Actions after Mac and Windows builds, cross-platform checks and artifact verification pass. Failed builds remain drafts.
 
 ## Version History
+
+### v0.8.0
+
+Concurrent independent group replies, durable physical-request accounting, frozen-context recovery, verified HTML/mail outcomes, persistent report links and evidence-based experience. See the [0.8.0 release](https://github.com/kaisersong/KTeam/releases/tag/v0.8.0).
 
 ### v0.7.2
 
