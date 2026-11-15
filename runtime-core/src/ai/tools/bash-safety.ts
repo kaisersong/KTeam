@@ -21,7 +21,6 @@ const BLOCK_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /chmod\s+-R\s+777\s+\/\s*$/, reason: 'chmod 777 /' },
   { pattern: /\b(curl|wget)\s+[^\|]*\|\s*(sh|bash|zsh)\b/, reason: 'remote code execution via pipe' },
   { pattern: /\b(base64|openssl)\s+[^\|]*(-d|--decode|-D|dec)\b[^\|]*\|\s*(sh|bash|zsh)\b/, reason: 'encoded payload piped to shell' },
-  { pattern: /\|\s*(sh|bash|zsh)\s*$/, reason: 'arbitrary pipe to shell interpreter' },
 ];
 
 const WARN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
@@ -52,6 +51,7 @@ const WARN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\b(python[23]?|ruby|perl|node)\s+(-[ce]|--eval)\b/, reason: 'interpreter eval may execute system commands' },
   { pattern: /\|\s*(python[23]?|ruby|perl|node)\b/, reason: 'pipe to interpreter' },
   { pattern: /(?:^|[;&|]\s*)eval\b/, reason: 'eval executes dynamically constructed commands' },
+  { pattern: /\|\s*(sh|bash|zsh)\s*$/, reason: 'pipe to shell interpreter' },
 ];
 
 const AUTO_PROMPT_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
