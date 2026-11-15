@@ -4,6 +4,8 @@ import {dirname,join,extname} from 'node:path';
 import type {TeamStore} from '../service/team-store.js';
 import {KTeamError} from '../errors.js';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+// Replace encoded string content so Windows separators and quoted paths stay valid JSON.
+export const publishedArtifactResult=(value:unknown,candidate:string,target:string)=>JSON.stringify(value)!.split(JSON.stringify(candidate).slice(1,-1)).join(JSON.stringify(target).slice(1,-1));
 const fileHash=(path:string)=>{if(!existsSync(path))return null;const stat=lstatSync(path);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>20*1024*1024||realpathSync(path)!==path)throw new KTeamError('artifact_target_invalid',409);return createHash('sha256').update(readFileSync(path)).digest('hex');};
 export function validateHtmlCandidate(path:string){const sha256=fileHash(path);if(!sha256)throw new KTeamError('artifact_candidate_missing',409);const bytes=readFileSync(path),html=bytes.toString('utf8');if(bytes.length<32||html.includes('\u0000')||!/<html\b/i.test(html)||!/<\/html\s*>/i.test(html)||!/<body\b/i.test(html)||!/<\/body\s*>/i.test(html))throw new KTeamError('artifact_validation_failed',409);return {validatorId:'kteam-html-structure',validatorVersion:1,sha256,bytes:bytes.length,checks:[{id:'html-document',passed:true},{id:'bounded-regular-file',passed:true}],businessAcceptance:'requires-review' as const};}
 /** A typed HTML pilot. This does not wrap arbitrary bash or assert semantic correctness. */
@@ -57,13 +59,13 @@ export class ArtifactDelivery {
   try{
    await update('registered');registered=true;await this.guard();await update('executing');row=this.save(row,{status:'executing'});entered=true;
    const result=await execute({...args,output_path:candidate});let parsed:any;try{parsed=JSON.parse(String(result));}catch{throw new KTeamError('artifact_renderer_response_invalid',409);}if(parsed.success!==true)throw new KTeamError('artifact_render_failed',409);
-   const validation=validateHtmlCandidate(candidate);await this.guard();row=this.save(row,{status:'validated',validation:{...validation,contractDigest:row.contractDigest,bindingRevision:this.scope.bindingRevision,profileRevision:this.scope.profileRevision,sourceMessageId:this.scope.originId},result:JSON.stringify(parsed).split(candidate).join(target)});
+   const validation=validateHtmlCandidate(candidate);await this.guard();row=this.save(row,{status:'validated',validation:{...validation,contractDigest:row.contractDigest,bindingRevision:this.scope.bindingRevision,profileRevision:this.scope.profileRevision,sourceMessageId:this.scope.originId},result:publishedArtifactResult(parsed,candidate,target)});
    if(fileHash(target)!==before)throw new KTeamError('artifact_target_changed',409);
    // Preserve old bytes for this published version. No receipt is inferred from an LLM assertion.
    if(before){const archive=join(this.store.root,'artifact-versions');mkdirSync(archive,{recursive:true,mode:0o700});const old=join(archive,before+'.html');if(!existsSync(old))writeFileSync(old,readFileSync(target),{flag:'wx',mode:0o600});}
    await this.guard();if(fileHash(target)!==before)throw new KTeamError('artifact_target_changed',409);renameSync(candidate,target);published=true;
    if(fileHash(target)!==validation.sha256)throw new KTeamError('artifact_published_changed',409);
-   const encoded=JSON.stringify(parsed).split(candidate).join(target),receipt={...row.validation,ref:target,publishedAt:Date.now()};row=this.save(row,{status:'published',receipt,result:encoded});row=await this.settle(row);rmSync(candidateDir,{recursive:true,force:true});return encoded;
+   const encoded=publishedArtifactResult(parsed,candidate,target),receipt={...row.validation,ref:target,publishedAt:Date.now()};row=this.save(row,{status:'published',receipt,result:encoded});row=await this.settle(row);rmSync(candidateDir,{recursive:true,force:true});return encoded;
   }catch(error){
    if(published||row.status==='published')throw error;
    const notApplied=!published&&fileHash(target)===before;row=this.save(row,{status:notApplied?'failed':'unknown',failure:error instanceof KTeamError?error.code:'artifact_render_failed',notApplied:notApplied?{kind:'target-unchanged',before,target}:undefined});
