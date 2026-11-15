@@ -8,6 +8,8 @@ import { versionHeaders } from './api-version.js';
 /** Shared by KTeam main and the secondary KTeam companion client. Tokens never enter renderer. */
 export async function hostRequest(root: string, client: ClientId, route: string, value?: unknown) {
   const token = clientToken(root, client);
+  // Only the authenticated, receipt-scoped image preview can return a 4 MiB upload as base64.
+  const maxResponseBytes=client==='kteam-main'&&route==='/v1/composer-attachments/preview'?6*1024*1024:2*1024*1024;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const req = localRequest(root,{ path: route, agent: false, method: value === undefined ? 'GET' : 'POST',
       headers: { authorization: 'Bearer ' + token, ...versionHeaders(), ...(value !== undefined ? { 'content-type': 'application/json' } : {}) },
@@ -15,13 +17,13 @@ export async function hostRequest(root: string, client: ClientId, route: string,
       const chunks: Buffer[] = []; let size = 0;
       res.on('data', (chunk: Buffer) => {
         size += chunk.length;
-        if (size > 2 * 1024 * 1024) { res.destroy(new KTeamError('host_response_too_large')); return; }
+        if (size > maxResponseBytes) { res.destroy(new KTeamError('host_response_too_large')); return; }
         chunks.push(chunk);
       });
       res.on('error', reject);
       res.on('end', () => {
         try {
-          const result = record(parseDataJson(Buffer.concat(chunks).toString('utf8'), 2 * 1024 * 1024));
+          const result = record(parseDataJson(Buffer.concat(chunks).toString('utf8'), maxResponseBytes));
           if (!res.statusCode || res.statusCode >= 400 || result.ok === false) throw new KTeamError(String(result.code ?? 'host_request_failed'), res.statusCode, result.details);
           resolve(result);
         } catch (error) { reject(error); }

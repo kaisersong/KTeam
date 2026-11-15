@@ -3,6 +3,7 @@ export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:bo
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
  groupMembers(roomId:string):Promise<any>;changeGroupMembers(input:any):Promise<any>;
+ openWebLink(input:{url:string}):Promise<{ok:true}>;
  openSplash(input:{requestId:string}):Promise<{ok:true;opened:true;mode:'local';url:string}>;
  controlCua(input:any):Promise<any>;openComputerPermissionSettings(input:{permission:string}):Promise<any>;
  ensureAssistant():Promise<any>;
@@ -11,7 +12,7 @@ export interface KTeamAPI {
  conversationUpdates(input:{roomId:string;cursor?:string;resumeAfter?:number;tail?:boolean;messageIds?:string[];sequences?:number[];force?:boolean}):Promise<any>;conversationHistory(input:{roomId:string;after?:number;before?:number;tail?:boolean}):Promise<any>;workRecords(input:{roomId:string;before?:number}):Promise<any>;workRecord(input:{roomId:string;jobId?:string;messageId?:string;eventId?:string;part?:'summary'|'draft'|'cards'}):Promise<any>;
  memberWorkspace(input:{botId:string;roomId:string}):Promise<any>;memberLibrary(input:{botId:string;roomId:string}):Promise<any>;openMemberWorkspace(input:{botId:string;roomId:string;expectedProfileRevision:number}):Promise<any>;
  botMemory(input:any):Promise<any>;botMemoryDetail(input:any):Promise<any>;previewBotMemory(input:any):Promise<any>;changeBotMemory(input:any):Promise<any>;undoBotMemory(input:any):Promise<any>;
- cancelAttachmentSend(input:any):Promise<any>;composerAttachments(roomId:string):Promise<any>;stageAttachment(input:any):Promise<any>;cancelAttachment(input:any):Promise<any>;sendAttachments(input:any):Promise<any>;previewMessageAttachment(input:any):Promise<any>;attachmentContent(input:{roomId:string;id:string}):Promise<any>;
+ cancelAttachmentSend(input:any):Promise<any>;composerAttachments(roomId:string):Promise<any>;stageAttachment(input:any):Promise<any>;cancelAttachment(input:any):Promise<any>;sendAttachments(input:any):Promise<any>;previewMessageAttachment(input:{roomId:string;messageId:string;fileId:string;variant?:'thumbnail'|'full'}):Promise<any>;attachmentContent(input:{roomId:string;id:string}):Promise<any>;
  generatedFiles(input:{roomId:string;cursor?:string;botId?:string}):Promise<any>;
  teamRecipeImports():Promise<any>;exportTeamRecipe(roomId:string):Promise<any>;previewTeamRecipe(input:any):Promise<any>;importTeamRecipe(input:any):Promise<any>;
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
@@ -23,7 +24,8 @@ export interface KTeamAPI {
  skillLearning(input:{botId:string;roomId?:string}):Promise<any>;saveLearnedSkill(input:any):Promise<any>;undoLearnedSkill(input:any):Promise<any>;dismissLearnedSkill(input:any):Promise<any>;
  botCapabilities(input:string|{botId:string;roomId:string}):Promise<any>;previewBotSkill(input:any):Promise<any>;pinBotSkill(input:any):Promise<any>;saveBotSkills(input:{botId:string;expectedRevision:number;disabledSkills:string[]}):Promise<any>;botFollowups(botId:string):Promise<any>;cancelBotFollowup(input:{botId:string;id:string;expectedRevision:number}):Promise<any>;
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
- openGeneratedFile(input:{roomId:string;toolCallId:string}):Promise<any>;
+ previewGeneratedFile(input:{roomId:string;toolCallId:string}):Promise<{ok:true;name:string;bytes:number;kind:string;content:string;mediaType?:string;reason?:string}>;
+ openGeneratedFile(input:{roomId:string;toolCallId:string;target?:'browser'|'system'}):Promise<any>;
  conversationAction(input:any):Promise<any>;
  mailConnectors:()=>Promise<any>;controlMailConnector:(input:unknown)=>Promise<any>;
  enterpriseConnectors():Promise<any>;controlEnterpriseConnector(input:any):Promise<any>;
@@ -59,7 +61,7 @@ export interface KTeamAPI {
 
  builtinAgent(modelId?:string):Promise<any>;probeBuiltinAgent(input:{modelId:string}):Promise<any>;
  localAgents():Promise<any>;probeLocalAgent(input:any):Promise<any>;localAgentProbe(driver:string):Promise<any>;bindLocalAgent(input:any):Promise<any>;createLocalBot(input:any):Promise<any>;saveBot(input:any):Promise<any>;onboarding():Promise<any>;saveOnboarding(input:any):Promise<any>;createFirstBot(input:any):Promise<any>;finishOnboarding(input:any):Promise<any>;agentConnections():Promise<any>;inviteAgent(input:any):Promise<any>;agentInvitation(id:string):Promise<any>;approveAgent(input:any):Promise<any>;revokeAgent(id:string):Promise<any>;useSystemAgent(input:any):Promise<any>;editGroup(input:any):Promise<any>;
- resumeCreation(input:{id:string}):Promise<any>;inbox():Promise<any>;bootstrap():Promise<{roomId:string;botId:string}>;direct(input:{botId:string}):Promise<{roomId:string}>;proposals(roomId:string):Promise<any>;acceptProposal(input:{roomId:string;proposalId:string;expectedHash:string}):Promise<{roomId:string}>;
+ resumeCreation(input:{id:string}):Promise<any>;inbox():Promise<any>;changeInbox(input:import('../../../src/protocol/inbox').InboxChange):Promise<any>;bootstrap():Promise<{roomId:string;botId:string}>;direct(input:{botId:string}):Promise<{roomId:string}>;proposals(roomId:string):Promise<any>;acceptProposal(input:{roomId:string;proposalId:string;expectedHash:string}):Promise<{roomId:string}>;
  status():Promise<any>;bots():Promise<{bots:Bot[]}>;teams():Promise<{rooms:Room[]}>;models():Promise<any>;runtimes():Promise<any>;
  createBot(input:{name:string;modelId:string;requestId:string;expectedFingerprint?:string}):Promise<any>;
  createTeam(input:{title:string;goal?:string;memberAgentIds:string[];requestId:string}):Promise<any>;
@@ -76,6 +78,7 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ tool_command_changed:'命令或本地脚本内容已有变化，请重新确认',attachment_image_invalid:'这张图片暂时无法解码，请检查原文件',web_link_invalid:'此链接无法作为网页打开',inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
  agent_link_windows_unsupported:'当前服务暂不能链接这个本机 Agent，请检查服务版本与检测结果',
  host_operation_unknown:'请求结果待核对，请先核对原记录',
  tool_output_not_saved:'原工作没有可核验的完整输出，仅保留记录预览',tool_output_changed:'完整输出已变化或不可用，无法核验原始字节',tool_output_scope_changed:'成员或会话范围已变化，请重新核对来源',tool_output_invalid:'输出读取位置无效，请重新打开',

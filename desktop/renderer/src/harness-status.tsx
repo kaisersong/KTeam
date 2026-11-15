@@ -1,20 +1,21 @@
+import {showGeneratedFile} from './artifact-viewer';
 import {toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
 import React,{useState}from'react';
 import{Terminal,Check,ShieldCheck,X}from'lucide-react';
 import{api,explain,type Bot}from'./api';
-export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'deny')=>Promise<void>}){
- const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision);}catch(e){setError(explain(e));}finally{setBusy(false);}};
+export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>Promise<void>}){
+ const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision);}catch(e){setError(explain(e));}finally{setBusy(false);}};
  const description=toolApprovalSummary(approval.toolName,approval.display);
  return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
   <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
   <p>{description.summary}</p>{description.target&&<small>操作对象：{description.target}</small>}
-  {approval.directory&&<><small>允许本次只处理当前文件；允许目录读写后，此成员可在该目录及子目录读取、保存和修改文件。</small><p className="directory-permission-path">{approval.directory}</p>{approval.pendingOperationCount>1&&<small>此目录还有 {approval.pendingOperationCount-1} 项待处理操作，允许目录读写后一起继续。</small>}</>}
-  {!approval.directory&&approval.canAlways&&<small>{approval.toolName==='bash'?'长期允许此成员在该目录下执行常规命令；删除、重置、外发等操作仍需单独确认。':'长期允许将覆盖此成员在该工作目录下的同类操作。'}</small>}
+  {approval.directory&&<><small>{approval.directoryOperations==='routine'?'长期允许后，此成员可在所列目录及子目录进行常规读写、Git 和本地命令操作；删除、重置、推送及敏感操作仍需单独确认。':'长期允许后，此成员可在此目录及子目录进行普通文件读写。'}</small><div className="directory-permission-path">{(approval.directories?.length?approval.directories:[approval.directory]).map((path:string)=><p key={path}>{path}</p>)}</div>{approval.pendingOperationCount>1&&<small>此目录还有 {approval.pendingOperationCount-1} 项待处理操作，长期允许目录后一起继续。</small>}</>}
+  {!approval.directory&&approval.canAlways&&<small>{approval.commandScoped?'只长期允许当前这条完整命令；命令、目录或本地脚本内容变化后需重新确认。':approval.toolName==='bash'?'长期允许此成员在该目录下执行常规命令；删除、重置、外发等操作仍需单独确认。':'长期允许将覆盖此成员在该工作目录下的同类操作。'}</small>}
   <details className="operation-details"><summary>技术详情</summary><pre>{approval.display}</pre>{approval.cwd&&<small>工作目录：{approval.cwd}</small>}<small>工具：{approval.toolName}</small></details>
   {error&&<p className="flow-error" role="alert">{error}</p>}
-  <div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className="primary" disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>{approval.directory?'仅允许本次文件操作':'允许本次'}</button>{approval.directory?<button className="secondary" disabled={busy} onClick={()=>void decide('allow_directory')}>允许此目录读写</button>:approval.canAlways&&<button className="secondary" disabled={busy} onClick={()=>void decide('allow_always')}>{approval.toolName==='bash'?'长期允许此目录常规命令':'长期允许此类操作'}</button>}</div>
+  <div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className={approval.directory||approval.commandScoped?'secondary':'primary'} disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>允许本次</button>{approval.directory?<button className="primary" disabled={busy} onClick={()=>void decide(approval.directoryOperations==='routine'?'allow_directory_routine':'allow_directory')}>{approval.directoryOperations==='routine'?(approval.directories?.length>1?'长期允许所列目录':'长期允许此目录'):'长期允许此目录读写'}</button>:approval.canAlways&&<button className={approval.commandScoped?'primary':'secondary'} disabled={busy} onClick={()=>void decide('allow_always')}>{approval.commandScoped?'长期允许此命令':approval.toolName==='bash'?'长期允许此目录常规命令':'长期允许此类操作'}</button>}</div>
  </section>;
 }
 export function toolActivity(events:any[],bots:Bot[]){
@@ -24,7 +25,7 @@ export function toolActivity(events:any[],bots:Bot[]){
  if(event.name==='contact_bot'){try{const input=typeof event.input==='string'?JSON.parse(event.input):event.input;const name=bots.find(b=>b.id===input.botId)?.name;return name?'正在与'+name+'核对，等待对方答复':'正在与另一位成员核对';}catch{return '正在与另一位成员核对';}}
  return descriptions[event.name];
 }
-function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);setError('');void api.openGeneratedFile({roomId:event.file.roomId,toolCallId:event.id}).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
+function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);setError('');void showGeneratedFile({roomId:event.file.roomId,toolCallId:event.id}).catch(e=>setError(explain(e))).finally(()=>setBusy(false));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
 export function ToolTrace({events}:{events:any[]}){if(!events.length)return null;return <><div className="generated-files">{events.filter(e=>e.state==='completed'&&e.file).map(e=><GeneratedFileButton key={e.id} event={e}/>)}</div><details className="tool-trace"><summary><Terminal size={13}/>工具记录 · {[...new Set(events.map(e=>e.name))].join('、')} · {events.length} 条记录</summary>{events.map(e=><div key={e.id}><strong>{e.name}<small>{e.state==='completed'?'已返回':e.state==='running'?'执行中':'未完成'}</small></strong>{e.input&&<pre>{typeof e.input==='string'?e.input:JSON.stringify(e.input,null,2)}</pre>}{e.result&&<pre>{typeof e.result==='string'?e.result:JSON.stringify(e.result,null,2)}</pre>}{e.code&&<p>{explain(e.code)}</p>}</div>)}</details></>;}
 
 export function RuntimeMessageContent({text,cards=[]}:{text:string;cards?:any[]}){

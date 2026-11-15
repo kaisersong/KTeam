@@ -1,3 +1,4 @@
+import {showGeneratedFile} from './artifact-viewer';
 import {Markdown} from './Markdown';
 import {useEffect,useState,type ComponentProps} from 'react';
 import {api,explain} from './api';
@@ -24,7 +25,7 @@ function ToolOutputPage({roomId,jobId,eventId}:{roomId:string;jobId:string;event
  useEffect(()=>{let live=true;setData(undefined);setError('');setLoading(true);void api.toolOutput({roomId,jobId,eventId,offset}).then(value=>{if(live)setData(value);}).catch(error=>{if(live){setData(undefined);setError(explain(error));}}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[roomId,jobId,eventId,offset,attempt]);
  return <>{loading&&<p className="muted" role="status">正在核验完整输出…</p>}{error&&<p className="flow-error" role="alert">{error}<button type="button" className="text-button" onClick={()=>setAttempt(value=>value+1)}>重新读取</button></p>}{data&&<><p className="muted">已保存输出 {data.originalBytes.toLocaleString()} 字节 · 当前第 {(trail.length+1).toLocaleString()} 段{data.redacted?' · 已脱敏':''}</p><pre>{data.text}</pre><p className="muted">此处为原运行器保存的返回正文；工具自身可能限制了输出范围。</p><div className="activity-pager"><button type="button" className="text-button" disabled={!trail.length} onClick={()=>{setOffset(trail.at(-1)!);setTrail(value=>value.slice(0,-1));}}>上一段</button><button type="button" className="text-button" disabled={!data.hasMore} onClick={()=>{setTrail(value=>[...value,offset]);setOffset(data.nextOffset);}}>下一段</button></div></>}</>;
 }
-function FileEffect({roomId,event}:{roomId:string;event:any}){const[error,setError]=useState('');return <div><button type="button" className="secondary" onClick={()=>{setError('');void api.openGeneratedFile({roomId,toolCallId:event.id}).catch(error=>setError(explain(error)));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
+function FileEffect({roomId,event}:{roomId:string;event:any}){const[error,setError]=useState('');return <div><button type="button" className="secondary" onClick={()=>{setError('');void showGeneratedFile({roomId,toolCallId:event.id}).catch(error=>setError(explain(error)));}}>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
 export function ConversationMessage({job,onReading,...row}:ComponentProps<typeof MessageRow>&{job?:any;onReading?:(id:string,open:boolean)=>void}){
  const roomId=row.message.roomId!,messageId=row.message.messageId,[open,setOpen]=useState(false),summary=useRecord({roomId,messageId,part:'summary'},open,job?.viewRevision),record=summary.data?.job;
  useEffect(()=>()=>onReading?.(messageId,false),[messageId,onReading]);

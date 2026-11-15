@@ -44,12 +44,14 @@ export async function createHarness(input:HarnessContext){
    const normalized=normalize(name,args,this.base);if(!toolPolicy.permits(name,normalized,this.base))return 'deny';
    const decision=await super.check(name,normalized);if(decision==='deny')return 'deny';
    if(decision!=='allow'&&sensitiveFileInvocation(core,name,normalized,this.base))return 'prompt';
-   if(['send_mail','send_connected_mail','install_skill','uninstall_skill','mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
+   if(['send_mail','send_connected_mail','install_skill','uninstall_skill'].includes(name))return 'prompt';
    const effective=name==='bash'?harnessWorkspace(String(normalized.workdir)):this.base,scope=permissionScope(effective);
    if(scope&&!permissionEpochs.has(effective))permissionEpochs.set(effective,input.permissions!.store.revision(scope));
    if(name==='bash'){const checks=routineTerminalCommands(core,String(normalized.command??''));if(checks)for(const command of checks)if(await super.check(name,{...normalized,command})==='deny')return 'deny';}
+   if(name==='bash'&&scope&&input.permissions!.store.findCommand(scope,normalized,core))return 'allow';
    if(name==='bash'&&terminalRequiresConfirmation(core,String(normalized.command??'')))return 'prompt';
    if((!input.recoveryReview||name==='bash')&&scope&&persistentToolEligible(core,name,normalized)&&(input.permissions!.store.findDirectory(scope,name,normalized,core)||input.permissions!.store.find(scope,name,normalized,core)))return 'allow';
+   if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
    if(name==='bash'&&lowRiskTerminalQuery(core,String(normalized.command??'')))return 'allow';
    if(input.recoveryReview&&!['read','glob','grep','read_material','get_team_work','read_runtime_output'].includes(name))return 'prompt';
    return decision;
@@ -74,7 +76,6 @@ export async function createHarness(input:HarnessContext){
  if(bindingRoot&&name==='install_skill')tool=core.createInstallSkillTool({cwd:toolCwd,configDir:bindingRoot,onInstall:()=>catalog.reload()});
  if(bindingRoot&&name==='uninstall_skill')tool=core.createUninstallSkillTool({cwd:toolCwd,configDir:bindingRoot,onUninstall:()=>catalog.reload()});
  if(bindingRoot&&name==='render_ui')tool=core.createRenderUiTool({cwd:toolCwd,artifactRoot:join(bindingRoot,'artifacts')});
- if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))tool={...tool,permission:'write'};
  if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))tool={...tool,permission:'write'};
  const wrapped={...tool,definition:{...tool.definition,...(integrations.tools.descriptions[name]?{description:integrations.tools.descriptions[name]}:{})},...(tool.companionTools?{companionTools:tool.companionTools.filter((child:any)=>!integrations.tools.disabled.includes(child.definition.name)).map((child:any)=>bind(child,toolCwd))}:{}),async execute(raw:Record<string,unknown>,context:any){
   input.signal.throwIfAborted();await guard();if(harnessWorkspace(input.workspace)!==cwd)throw new KTeamError('bot_workspace_changed',409);
