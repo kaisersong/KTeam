@@ -42,7 +42,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "sign:ios-simulator": "node scripts/sign-ios-simulator.cjs"
+    "build:ios-simulator": "node scripts/build-ios-simulator.cjs"
   },
   "private": true
 }
