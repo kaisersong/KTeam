@@ -61,6 +61,13 @@ export class MobileDevices {
   get port() {
     return Number(this.state.port) || 0;
   }
+  rememberPort(port: number) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw new KTeamError("mobile_port_invalid");
+    if (this.state.port === port) return;
+    this.state.port = port;
+    this.save();
+  }
   view() {
     return {
       ok: true,

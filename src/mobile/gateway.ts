@@ -85,6 +85,7 @@ export class MobileGateway {
       throw error;
     }
     this.actualPort = (s.address() as any).port;
+    this.devices.rememberPort(this.actualPort);
     this.syncRelay();
     try {
       this.discovery = new Bonjour({}, () => {});
