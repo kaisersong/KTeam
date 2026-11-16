@@ -1,0 +1,5 @@
+const fs=require('fs'),path=require('path');
+const root=path.resolve(__dirname,'..'),lock=JSON.parse(fs.readFileSync(path.join(root,'package-lock.json')));const notices=[];
+for(const [dir,facts]of Object.entries(lock.packages)){if(!dir||facts.dev||!dir.includes('node_modules/'))continue;const base=path.join(root,dir);if(!fs.existsSync(base))continue;const pkg=JSON.parse(fs.readFileSync(path.join(base,'package.json')));const texts=fs.readdirSync(base).filter(n=>/^(licen[sc]e|notice)(\..*)?$/i.test(n)&&fs.statSync(path.join(base,n)).isFile()).map(n=>fs.readFileSync(path.join(base,n),'utf8'));if(texts.length)notices.push({name:pkg.name,version:pkg.version,license:pkg.license??facts.license,text:texts.join('\n\n')});}
+notices.push({name:'Expo application template',version:'58',license:'MIT',text:fs.readFileSync(path.join(root,'licenses/Expo-template-LICENSE'),'utf8')});
+const unique=[...new Map(notices.map(n=>[n.name+'@'+n.version,n])).values()].sort((a,b)=>a.name.localeCompare(b.name));fs.writeFileSync(path.join(root,'third-party-notices.json'),JSON.stringify(unique,null,2)+'\n');console.log('Recorded production dependency notices:',unique.length);

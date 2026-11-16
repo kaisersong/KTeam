@@ -2,6 +2,7 @@ export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{model
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
+ mobileSettings():Promise<any>;changeMobileSettings(input:any):Promise<any>;
  groupMembers(roomId:string):Promise<any>;changeGroupMembers(input:any):Promise<any>;
  openWebLink(input:{url:string}):Promise<{ok:true}>;
  openSplash(input:{requestId:string}):Promise<{ok:true;opened:true;mode:'local';url:string}>;
