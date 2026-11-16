@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.8.6.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.8.7.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -118,8 +118,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.8.6.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.8.6.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.8.7.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.8.7.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -177,11 +177,13 @@ Official releases are published automatically by GitHub Actions after Mac and Wi
 
 ## Version History
 
-### v0.8.6
+### v0.8.7
 
 Quoted group replies prioritize the addressed member. Source and GitHub fact checks use bounded read-only tools and require an actual read receipt before delivering a verified conclusion. Blocked work no longer reduces fresh research to tool-free chat, and public replies do not lock the whole room out of work.
 
-Updates use a persistent bottom-left entry: click to download, then restart to install, without an update modal. Redirected `git ls-remote` queries reuse routine directory grants. See the [0.8.6 release](https://github.com/kaisersong/KTeam/releases/tag/v0.8.6).
+Updates use a persistent bottom-left entry: click to download, then restart to install, without an update modal. Redirected `git ls-remote` queries reuse routine directory grants. See the [0.8.7 release](https://github.com/kaisersong/KTeam/releases/tag/v0.8.7).
+
+Inherited Windows file scopes work across drives while file access set to none still denies every drive. Accepted notarization tickets use bounded download retries with validation preserved.
 
 ### v0.8.4
 
