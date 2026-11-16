@@ -1,3 +1,6 @@
+import {MobileDevices} from '../mobile/devices.js';
+import {MobileGateway} from '../mobile/gateway.js';
+import {MobileFacade} from '../mobile/facade.js';
 import {RewardMemory} from './reward-memory.js';
 import {GroupMembers} from './group-members.js';
 import {InboxState,projectInbox} from './inbox.js';
@@ -114,6 +117,19 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const inboxState=new InboxState(teamStore);
   const inboxSource=()=>({ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),recentApprovals:approvals.recent().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.inboxJobs().filter(item=>!teamStore.state('deleted-conversation:'+item.roomId))});
+  const sendHumanMessage=async(value:unknown)=>{
+        const input=validateL0(value);
+        await new BotCapabilities(upstream,teamStore).validateCommand(input.room_id,String(input.body??''));
+        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);if(teamStore.operation('composer-send:'+input.id))throw new KTeamError('attachment_id_conflict',409);if(teamStore.operation('work-input:'+input.id)&&!teamStore.operation('work-input:'+input.id).automatic)throw new KTeamError('work_input_id_conflict',409);
+        await coordinator.guardConversation(input.room_id);
+        const managed=!!teamStore.settings(input.room_id);
+        const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
+        if(managed) {const settings=teamStore.settings(input.room_id)!;const membership=await upstream.membership(input.room_id);const hasHosted=(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='agent'&&teamStore.binding(m.subject.logicalAgentId));if(hasHosted&&settings.delivery!=='external-agent')await automation.automatic!.accept(input.room_id,input.id,String(result.messageId));else teamStore.completeSubmission(input.id,String(result.messageId),false);void automation.tick();}
+        return result;
+  };
+  const mobileDevices=new MobileDevices(teamStore);
+  const mobileFacade=new MobileFacade({collaboration,sidebar,upstream,conversations,conversationUpdates,automation,approvals,composerAttachments,inboxSource,inboxState,sendHumanMessage,epoch:owner.epoch},teamStore,mobileDevices);
+  const mobileGateway=new MobileGateway(mobileDevices,(p,method,input)=>mobileFacade.call(p,method,input));
   const instanceId = randomUUID();
   const directoryMembers=new Map<string,{revision:number;at:number;ids:string[]}>();
   const sourceChanges=new Set<string>();
@@ -155,6 +171,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
+      if(url.pathname==='/v1/mobile/settings'){if(client.id!=='kteam-main')throw new KTeamError('mobile_admin_forbidden',403);if(req.method==='GET')return send(res,200,{...mobileDevices.view(),port:mobileGateway.port,relayStatus:mobileGateway.relayStatus});if(req.method==='POST'){const input=record(await body(req));if(input.action==='invite')return send(res,200,mobileDevices.invite(mobileGateway.port));const before=mobileDevices.enabled;const result=mobileDevices.configure(input);mobileGateway.reconcile();if(!mobileDevices.enabled)await mobileGateway.close();else if(!before)await mobileGateway.start();return send(res,200,{...result,port:mobileGateway.port,relayStatus:mobileGateway.relayStatus});}throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/host/stop'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('host_stop_forbidden',403);fields(record(await body(req)),[]);if(!shutdown)throw new KTeamError('host_starting',503);send(res,200,{ok:true,stopping:true});setImmediate(()=>{void shutdown!().catch(()=>{process.exitCode=1;});});return;}
       if(url.pathname.startsWith('/v1/conversation-view/')){
         if(client.id!=='kteam-main')throw new KTeamError('conversation_view_forbidden',403);
@@ -265,16 +282,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       if(url.pathname.startsWith('/v1/composer-attachments')){if(client.id!=='kteam-main')throw new KTeamError('attachment_client_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/composer-attachments')return send(res,200,await composerAttachments.view(url.searchParams.get('roomId')??''));if(req.method==='GET'&&url.pathname==='/v1/composer-attachments/content')return send(res,200,await composerAttachments.content({roomId:url.searchParams.get('roomId')??'',id:url.searchParams.get('id')??''}));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/upload')return send(res,201,await composerAttachments.stage(await body(req,8*1024*1024)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel')return send(res,200,await composerAttachments.cancel(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/send'){const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));const result=await composerAttachments.send(input);void automation.tick();return send(res,201,result);}if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel-send')return send(res,200,await composerAttachments.cancelSend(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/preview')return send(res,200,await composerAttachments.preview(await body(req)));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/work-inputs'||url.pathname==='/v1/work-inputs/release'){if(client.id!=='kteam-main')throw new KTeamError('work_input_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/work-inputs')return send(res,200,await automation.inputs!.view(url.searchParams.get('roomId')??''));if(req.method==='POST'){const result=url.pathname.endsWith('/release')?await automation.inputs!.release(await body(req)):await (async()=>{const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));return automation.inputs!.submit(input);})();void automation.tick();return send(res,201,result);}throw new KTeamError('route_not_found',404);}
-      if (url.pathname === '/v1/messages' && req.method === 'POST') {
-        const input=validateL0(await body(req));
-        await new BotCapabilities(upstream,teamStore).validateCommand(input.room_id,String(input.body??''));
-        if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);if(teamStore.operation('composer-send:'+input.id))throw new KTeamError('attachment_id_conflict',409);if(teamStore.operation('work-input:'+input.id)&&!teamStore.operation('work-input:'+input.id).automatic)throw new KTeamError('work_input_id_conflict',409);
-        await coordinator.guardConversation(input.room_id);
-        const managed=!!teamStore.settings(input.room_id);
-        const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
-        if(managed) {const settings=teamStore.settings(input.room_id)!;const membership=await upstream.membership(input.room_id);const hasHosted=(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='agent'&&teamStore.binding(m.subject.logicalAgentId));if(hasHosted&&settings.delivery!=='external-agent')await automation.automatic!.accept(input.room_id,input.id,String(result.messageId));else teamStore.completeSubmission(input.id,String(result.messageId),false);void automation.tick();}
-        return send(res,201,result);
-      }
+      if (url.pathname === '/v1/messages' && req.method === 'POST')return send(res,201,await sendHumanMessage(await body(req)));
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
       const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
@@ -351,12 +359,14 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     await new Promise<void>((resolve, reject) => { server.once('error', reject); if(windows)server.listen(0,'127.0.0.1',resolve);else server.listen(path, resolve); });
     if(windows){const address=server.address();if(!address||typeof address==='string')throw new KTeamError('host_endpoint_invalid');await publishWindowsEndpoint(options.root,address.port,certificate!.ca,owner.epoch);}
     else chmodSync(path, 0o600);
+    await mobileGateway.start();
     automation.start();
-  } catch (error) { server.close();teamStore.close(); owner.release(); throw error; }
+  } catch (error) { await mobileGateway.close();server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
   const host={ epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
+        await mobileGateway.close();
         links.close();approvals.close();await enterpriseConnectors.close();await mailConnectors.close();await integrationSettings.close();
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

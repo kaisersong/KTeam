@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "KTeam",
+    "slug": "kteam-mobile",
+    "version": "0.8.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kteam.mobile",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "连接你自己的电脑，在手机上继续 KTeam 会话。",
+        "NSCameraUsageDescription": "扫描电脑上的 KTeam 配对二维码。",
+        "NSPhotoLibraryUsageDescription": "选择要发送到会话的图片。",
+        "NSBonjourServices": [
+          "_kteam-mobile._tcp"
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#e6efe2"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.kteam.mobile",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.CAMERA"
+      ],
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "扫描电脑上的 KTeam 配对二维码。"
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-sharing",
+      "./plugins/with-mobile-network.cjs"
+    ],
+    "scheme": "kteam"
+  }
+}
