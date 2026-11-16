@@ -261,7 +261,8 @@ describe('settings 检查更新 presentation', () => {
     assert.match(main, /updateStatus/);
     assert.match(main, /openKTeamReleases/);
     assert.match(main, /KTEAM_RELEASES_URL/);
-    assert.match(main, /showPortableOrUnsupportedUpdateDialog/);
+    assert.doesNotMatch(main, /promptRestartForUpdate|showMessageBox/);
+    assert.match(main, /downloadUpdate/);
     const ui = readFileSync(join(repoRoot, 'desktop', 'update-ui.ts'), 'utf8');
     const updater = readFileSync(join(repoRoot, 'desktop', 'updater.ts'), 'utf8');
     assert.doesNotMatch(ui, /xiaok/i);

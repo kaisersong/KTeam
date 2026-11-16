@@ -37,3 +37,16 @@ test('presentation-only cards work with files, terminal and network off while ex
   owner=await f.open(defaultToolScope());const result=await owner.registry.executeTool('render_ui',{title:'禁止卡片',sections:[{kind:'text',content:'BLOCKED'}]});assert.match(result,/权限不足: render_ui/);assert.equal(f.prompts(),0);
  }finally{await owner?.close();f.close();}
 });
+
+test('inherited file scopes span drives while none and selected modes retain strict file boundaries',async()=>{
+ const {toolScopePolicy}=await import('../src/runtime/tool-scope.js'),f=await fixture();try{
+  const inherited=toolScopePolicy(f.core,defaultToolScope(),f.scope.root);assert.equal(inherited.sandbox.checkPath(join(f.cwd,'ordinary.txt')).allowed,true);assert.equal(inherited.sandbox.checkPath(join(f.scope.root,'secret.txt')).allowed,false);
+  const blocked=toolScopePolicy(f.core,{...defaultToolScope(),files:{mode:'none',paths:[],write:false}},f.scope.root),selected=toolScopePolicy(f.core,{...defaultToolScope(),files:{mode:'selected',paths:[f.allowed],write:false}},f.scope.root);
+  for(const path of [join(f.cwd,'ordinary.txt'),join(f.allowed,'ordinary.txt'),join(f.outside,'ordinary.txt'),...(process.platform==='win32'?['C:\\ordinary.txt','D:\\ordinary.txt','Z:\\ordinary.txt','\\\\fixture-server\\share\\ordinary.txt']:['/ordinary.txt'])]){
+   assert.equal(blocked.sandbox.checkPath(path).allowed,false,path);
+   assert.equal(blocked.permits('read',{file_path:path},f.cwd),false,path);
+  }
+  assert.equal(selected.sandbox.checkPath(join(f.outside,'ordinary.txt')).allowed,false);assert.equal(selected.sandbox.checkPath(join(f.allowed,'ordinary.txt')).allowed,true);
+  if(process.platform==='win32')for(const path of ['C:\\ordinary.txt','D:\\ordinary.txt','Z:\\ordinary.txt','\\\\fixture-server\\share\\ordinary.txt'])assert.equal(inherited.sandbox.checkPath(path).allowed,true,path);
+ }finally{f.close();}
+});

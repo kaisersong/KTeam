@@ -130,3 +130,15 @@ test('one trusted directory covers new programs, multiline scripts and changed s
   writeFileSync(join(f.root,'config/settings.json'),JSON.stringify({permissions:{deny:['bash:rm*','bash:python3*']}}));const denied=await f.make();assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command}),'deny');assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command:script}),'deny');
  }finally{f.close();}
 });
+
+test('ls-remote with redirected tag results is ordinary and reuses its directory grant after restart',{skip:process.platform==='win32'},async()=>{
+ const f=await fixture();try{
+  const {terminalRequiresConfirmation}=await import('../src/service/terminal-permissions.js'),{directoryGrantAccess}=await import('../src/service/directory-access.js');
+  const exact=`git ls-remote https://github.com/kaisersong/KTeam.git 'refs/tags/v0.8.0*' > /tmp/kteam-qa-v080-20261115/tags-v080.txt 2>&1; echo "EXIT=$?"; cat /tmp/kteam-qa-v080-20261115/tags-v080.txt`;
+  assert.equal(terminalRequiresConfirmation(f.core,exact),false);
+  const remote=join(f.root,'remote.git');execFileSync('git',['init','--quiet','--bare',remote]);f.approvals.permissions.rememberDirectory({botId:'member',bindingRevision:1,cwd:f.root},directoryGrantAccess(f.core,f.root)!,'routine');
+  for(let attempt=0;attempt<2;attempt++){if(attempt)f.restart();const {h,registry}=await f.make();const output=join(f.workspace,'tags-'+attempt+'.txt'),command=`git ls-remote "${remote}" 'refs/tags/v0.8.0*' > "${output}" 2>&1; echo "EXIT=$?"; cat "${output}"`;
+   assert.equal(await h.registryOptions.permissionManager.check('bash',{command,workdir:f.workspace}),'allow');assert.match(await registry.executeTool('bash',{command,workdir:f.workspace}),/EXIT=0/);assert(existsSync(output));assert.equal(f.approvals.list().length,0);
+  }
+ }finally{f.close();}
+});

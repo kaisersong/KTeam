@@ -95,10 +95,24 @@ print(data.get(sys.argv[2]) or "")
 NJSON
 }
 
+staple_verified_ticket() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if xcrun stapler staple "$target_path" && xcrun stapler validate "$target_path"; then
+      return 0
+    fi
+    if ((attempt < 5)); then
+      echo "Ticket download/validation unavailable (attempt $attempt/5); retrying" >&2
+      sleep 10
+    fi
+  done
+  echo "Could not staple and validate the accepted notarization ticket" >&2
+  return 1
+}
+
 try_staple_existing_ticket() {
   echo "Checking for an existing notarization ticket"
-  if xcrun stapler staple "$target_path"; then
-    xcrun stapler validate "$target_path"
+  if xcrun stapler staple "$target_path" && xcrun stapler validate "$target_path"; then
     echo "Existing notarization ticket stapled successfully"
     return 0
   fi
@@ -191,8 +205,7 @@ poll_submission() {
       case "$status" in
         Accepted)
           echo "Stapling notarization ticket to $target_path"
-          xcrun stapler staple "$target_path"
-          xcrun stapler validate "$target_path"
+          staple_verified_ticket
           exit 0
           ;;
         Invalid | Rejected)

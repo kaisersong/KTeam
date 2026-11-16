@@ -19,7 +19,7 @@ const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','u
 export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string){
  const restricted=restrictedToolScope(scope),opaqueAllowed=scope.files.mode==='inherit'&&scope.files.write&&scope.network==='inherit';
  const paths=scope.files.mode==='selected'?scope.files.paths:[],denied=[...(privateRoot?[privateRoot]:[]),...(scope.files.mode==='none'?[resolve('/')]:[])];
- const sandbox=core.createSandboxPolicy({pathAllowlist:scope.files.mode==='selected'?paths:scope.files.mode==='none'?[]:[resolve('/')],pathDenylist:denied,network:scope.network==='off'?'deny':'allow'});
+ const sandbox=core.createSandboxPolicy({pathAllowlist:scope.files.mode==='selected'?paths:scope.files.mode==='none'?[resolve('/')]:[],pathDenylist:denied,network:scope.network==='off'?'deny':'allow'});
  const validate=()=>{for(const path of paths){try{if(realpathSync(path)!==path||!statSync(path).isDirectory())throw Error();}catch{throw new KTeamError('bot_tool_scope_path_changed',409);}}};
  const mcpAllowed=(name:string)=>opaqueAllowed&&(scope.mcp.mode==='inherit'||scope.mcp.servers.includes(name));
  const permits=(name:string,args:Record<string,unknown>={},base:string)=>{

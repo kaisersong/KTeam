@@ -153,7 +153,7 @@ describe('KTeam update feed', () => {
     assert.deepEqual(updater.setFeedURL.calls, [[{ provider: 'github', owner: 'kaisersong', repo: 'KTeam' }]]);
     assert.equal(updater.allowPrerelease, false);
     assert.equal(updater.allowDowngrade, false);
-    assert.equal(updater.autoDownload, true);
+    assert.equal(updater.autoDownload, false);
     assert.equal(updater.autoInstallOnAppQuit, true);
     assert.equal(updater.channel, 'latest');
   });
@@ -417,4 +417,14 @@ it('the real update SDK refuses an older stable version after channel setup',asy
  assert.equal(await (updater as any).isUpdateAvailable(candidate('0.4.0')),false);
  assert.equal(await (updater as any).isUpdateAvailable(candidate('0.5.0')),false);
  assert.equal(await (updater as any).isUpdateAvailable(candidate('0.5.1')),true);
+});
+
+it('only a user download action starts one download; discovery stays non-modal and duplicate clicks coalesce',async()=>{
+ const updater=fakeAutoUpdater();let finish!:()=>void;updater.downloadUpdate=fn(()=>new Promise<void>(r=>finish=r));const {environment}=fakeEnvironment({},updater),subject=createKTeamUpdater(environment);
+ await subject.setup(undefined,{requestSource:'scheduler'});updater.emit('update-available',{version:'0.8.5'});assert.equal(updater.autoDownload,false);assert.equal(updater.downloadUpdate.calls.length,0);assert.equal(subject.getStatus().downloading,false);
+ await assert.rejects(subject.downloadUpdate({requestSource:'scheduler'} as any),/updater_request_source/);assert.equal(updater.downloadUpdate.calls.length,0);
+ const first=subject.downloadUpdate({requestSource:'user'}),again=subject.downloadUpdate({requestSource:'user'});assert.equal(updater.downloadUpdate.calls.length,1);assert.equal(subject.getStatus().downloading,true);finish();await Promise.all([first,again]);updater.emit('update-downloaded',{version:'0.8.5'});await subject.downloadUpdate({requestSource:'user'});assert.equal(updater.downloadUpdate.calls.length,1);assert.equal(subject.getStatus().downloaded,true);assert.equal(updater.quitAndInstall.calls.length,0);
+});
+it('download failures remain visible and permit a user retry without an install handoff',async()=>{
+ const updater=fakeAutoUpdater();updater.downloadUpdate=fn(async()=>{throw Error('download offline')});const {environment}=fakeEnvironment({},updater),subject=createKTeamUpdater(environment);await subject.setup(undefined,{requestSource:'scheduler'});updater.emit('update-available',{version:'0.8.5'});await subject.downloadUpdate({requestSource:'user'});assert.equal(subject.getStatus().downloading,false);assert.equal(subject.getStatus().error,'download offline');await subject.downloadUpdate({requestSource:'user'});assert.equal(updater.downloadUpdate.calls.length,2);assert.equal(updater.quitAndInstall.calls.length,0);
 });

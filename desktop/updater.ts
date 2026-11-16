@@ -198,7 +198,7 @@ export async function skipUpdateCodeSignature(_publisherNames: string[], _file: 
 
 /** Stable builds never move to a prerelease or an older version. */
 export function configureAutoUpdater(updater: Record<string, unknown>): void {
-  updater.autoDownload = true;
+  updater.autoDownload = false;
   updater.autoInstallOnAppQuit = true;
   updater.channel = 'latest';
   if (typeof updater.setFeedURL === 'function') (updater.setFeedURL as (feed: unknown) => void)({ ...KTEAM_UPDATE_FEED });
@@ -228,6 +228,7 @@ function sdkScalar(raw: unknown, key: string): unknown {
 export interface KTeamUpdater {
   setup(logger: UpdaterLogger | undefined, context: UpdaterRequestContext): Promise<void>;
   checkForUpdates(context: UpdaterRequestContext): Promise<void>;
+  downloadUpdate(context: UpdaterRequestContext): Promise<void>;
   getStatus(): UpdateStatus;
   getChannel(): AutoUpdateChannel;
   hasCompletedCheck(): boolean;
@@ -458,9 +459,23 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     }
   }
 
+  let downloadingRequest:Promise<void>|undefined;
+  async function downloadUpdate(context:UpdaterRequestContext):Promise<void>{
+    assertUpdaterSource(context,'user');
+    if(attemptLocked()||updateStatus.downloaded)return;
+    if(downloadingRequest)return downloadingRequest;
+    const reason=inactiveReason??resolveInactiveReason();
+    if(reason){setUpdateStatus({error:inactiveUpdateMessage(reason)});return;}
+    if(!updateStatus.available||!autoUpdater||typeof autoUpdater.downloadUpdate!=='function'){setUpdateStatus({error:'请先检查可用更新'});return;}
+    setUpdateStatus({downloading:true,progress:0,error:undefined});
+    downloadingRequest=(async()=>{try{await autoUpdater.downloadUpdate();}catch(error){setUpdateStatus({downloading:false,error:toError(error).message});}})();
+    try{await downloadingRequest;}finally{downloadingRequest=undefined;}
+  }
+
   return {
     setup,
     checkForUpdates,
+    downloadUpdate,
     getStatus,
     getChannel: currentChannel,
     hasCompletedCheck: () => completedCheck,
