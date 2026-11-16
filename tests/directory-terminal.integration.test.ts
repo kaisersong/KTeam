@@ -17,7 +17,7 @@ const pause=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function fixture(){
  const root=privateTempDir(join(tmpdir(),'kteam-directory-terminal-')),workspace=join(root,'project'),config=join(root,'config');mkdirSync(workspace);mkdirSync(config);const previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=config;
  const core=await sharedRuntime();let store=new TeamStore(root),approvals=new ToolApprovals(store);const controller=new AbortController(),registries:any[]=[];
- const make=async(base=workspace)=>{const h=await createHarness({workspace:base,permissions:{store:approvals.permissions,botId:'member',bindingRevision:1},signal:controller.signal,assertCurrent:async()=>{},onPrompt:(name,input,meta)=>{const {assertCurrent,...facts}=meta;return approvals.ask({roomId:'room',jobId:'job',botId:'member',bindingRevision:1,...facts},name,input,controller.signal,assertCurrent);}});const registry=new core.ToolRegistry(h.registryOptions,h.tools);registries.push(registry);return {h,registry};};
+ const make=async(base=workspace,bindingRevision=1,botId='member')=>{const h=await createHarness({workspace:base,permissions:{store:approvals.permissions,botId,bindingRevision},signal:controller.signal,assertCurrent:async()=>{},onPrompt:(name,input,meta)=>{const {assertCurrent,...facts}=meta;return approvals.ask({roomId:'room',jobId:'job',botId,bindingRevision,...facts},name,input,controller.signal,assertCurrent);}});const registry=new core.ToolRegistry(h.registryOptions,h.tools);registries.push(registry);return {h,registry};};
  const pending=async(count=1)=>{const until=Date.now()+5000;while(approvals.list().reduce((n,item)=>n+item.pendingOperationCount,0)<count){if(Date.now()>until)throw Error('approval_timeout');await pause();}return approvals.list()[0]!;};
  return {root,workspace,core,make,pending,get store(){return store;},get approvals(){return approvals;},restart(){approvals.close();for(const registry of registries)registry.dispose();store.close();store=new TeamStore(root);approvals=new ToolApprovals(store);},close(){controller.abort();approvals.close();for(const registry of registries)registry.dispose();store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}};
 }
@@ -140,5 +140,27 @@ test('ls-remote with redirected tag results is ordinary and reuses its directory
   for(let attempt=0;attempt<2;attempt++){if(attempt)f.restart();const {h,registry}=await f.make();const output=join(f.workspace,'tags-'+attempt+'.txt'),command=`git ls-remote "${remote}" 'refs/tags/v0.8.0*' > "${output}" 2>&1; echo "EXIT=$?"; cat "${output}"`;
    assert.equal(await h.registryOptions.permissionManager.check('bash',{command,workdir:f.workspace}),'allow');assert.match(await registry.executeTool('bash',{command,workdir:f.workspace}),/EXIT=0/);assert(existsSync(output));assert.equal(f.approvals.list().length,0);
   }
+ }finally{f.close();}
+});
+
+for(const kind of ['legacy','directory'] as const)test(`routine ${kind} member grants survive model binding changes and restart while revocation fences the new binding`,{skip:process.platform==='win32'},async()=>{
+ const f=await fixture();try{
+  const scope={botId:'member',bindingRevision:1,cwd:f.workspace};
+  const {directoryGrantAccess}=await import('../src/service/directory-access.js');
+  const grant=kind==='legacy'?f.approvals.permissions.remember(scope,'bash'):f.approvals.permissions.rememberDirectory(scope,directoryGrantAccess(f.core,f.workspace)!,'routine');
+  const exact=commandAccess(f.core,'git push origin main',f.workspace)!;f.approvals.permissions.rememberCommand(scope,exact);
+  f.restart();const next=await f.make(f.workspace,2),pm=next.h.registryOptions.permissionManager;
+  const command='git fetch origin --tags --prune 2>&1 | tail -20; git log -1 --format=\'%h %ad %s\' --date=iso origin/main; git tag --sort=-creatordate | head -10';
+  assert.equal(await pm.check('bash',{command}),'allow');
+  await next.registry.executeTool('bash',{command:'printf MODEL_ROTATION_OK > model-rotation-proof.txt',timeout_ms:5000});
+  assert.equal(readFileSync(join(f.workspace,'model-rotation-proof.txt'),'utf8'),'MODEL_ROTATION_OK');assert.equal(f.approvals.list().length,0);
+  assert.notEqual(await pm.check('bash',{command:'git push origin main'}),'allow');
+  assert.notEqual(await pm.check('bash',{command:'git reset --hard'}),'allow');
+  assert.notEqual(await pm.check('bash',{command:'printf OUTSIDE > "'+join(f.root,'outside.txt')+'"'}),'allow');
+  const other=await f.make(f.workspace,2,'other-member');assert.notEqual(await other.h.registryOptions.permissionManager.check('bash',{command}),'allow');
+  const settings=join(f.root,'config/settings.json');writeFileSync(settings,JSON.stringify({permissions:{deny:['bash:git*']}}));
+  const denied=await f.make(f.workspace,2);assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command}),'deny');rmSync(settings);await next.h.assertCurrent();
+  f.approvals.permissions.revoke({id:grant.id});await assert.rejects(next.h.assertCurrent(),/harness_permissions_changed/);
+  const after=await f.make(f.workspace,3);assert.notEqual(await after.h.registryOptions.permissionManager.check('bash',{command}),'allow');
  }finally{f.close();}
 });

@@ -1,4 +1,4 @@
-export const HARNESS_PERMISSION_POLICY_VERSION='directory-shell-3';
+export const HARNESS_PERMISSION_POLICY_VERSION='directory-shell-4';
 import {readOnlyShell,routineShell} from './read-only-shell.js';
 import {readOnlyWindowsShell} from './windows-shell.js';
 import {gitCommandRisk} from './git-command-risk.js';
