@@ -163,14 +163,20 @@ export async function cacheMessages(
 ) {
   if (!messages.length) return;
   const db = await cache(c);
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  // SQLCipher keys belong to this configured connection. An exclusive transaction
+  // opens another connection without its key; keep atomic row upserts on this one.
+  const statement = await db.prepareAsync(
+    "INSERT INTO messages(room,id,seq,value) VALUES(?,?,?,?) ON CONFLICT(room,id) DO UPDATE SET seq=excluded.seq,value=excluded.value WHERE value<>excluded.value",
+  );
+  try {
     for (const message of messages)
-      await tx.runAsync(
-        "INSERT INTO messages(room,id,seq,value) VALUES(?,?,?,?) ON CONFLICT(room,id) DO UPDATE SET seq=excluded.seq,value=excluded.value WHERE value<>excluded.value",
+      await statement.executeAsync(
         room,
         message.messageId,
         message.roomSequence,
         JSON.stringify(message),
       );
-  });
+  } finally {
+    await statement.finalizeAsync();
+  }
 }

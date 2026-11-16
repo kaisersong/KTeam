@@ -102,7 +102,10 @@ import {
   mentionAgentAddress,
   type MentionToken,
 } from "../src/protocol/mentions";
-import { mergeMessages, visibleRooms } from "../src/protocol/mobile-message-cache";
+import {
+  mergeMessages,
+  visibleRooms,
+} from "../src/protocol/mobile-message-cache";
 const uid = () => Crypto.randomUUID().replace(/-/g, "");
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const names: Record<string, string> = {
@@ -173,39 +176,49 @@ const MessageRow = memo(function MessageRow({
           ] as any)
         }
       >
-        <Markdown
-          style={{
-            body: {
-              color: colors.text,
-              fontSize: 15,
-              lineHeight: 23,
-            },
-            link: { color: colors.green },
-            code_inline: {
-              backgroundColor: colors.user,
-              color: colors.text,
-            },
-            fence: {
-              backgroundColor: colors.user,
-              color: colors.text,
-            },
-            table: { borderColor: colors.line },
-          }}
-          onLinkPress={(url) => {
-            let filename = "";
-            try {
-              filename = decodeURIComponent(url).split("/").pop() ?? "";
-            } catch {}
-            const found = receipts.filter(
-              (f: any) => (f.file?.name ?? f.name) === filename,
-            );
-            if (found.length === 1) void viewFile(found[0]);
-            else if (/^https?:\/\//i.test(url)) void Linking.openURL(url);
-            return false;
-          }}
-        >
-          {messageDisplayText(m)}
-        </Markdown>
+        {/^[^\n`*_#\[\]<>]*$/.test(messageDisplayText(m)) &&
+        !/https?:\/\//i.test(messageDisplayText(m)) ? (
+          <Text
+            selectable
+            style={{ color: colors.text, fontSize: 15, lineHeight: 23 }}
+          >
+            {messageDisplayText(m)}
+          </Text>
+        ) : (
+          <Markdown
+            style={{
+              body: {
+                color: colors.text,
+                fontSize: 15,
+                lineHeight: 23,
+              },
+              link: { color: colors.green },
+              code_inline: {
+                backgroundColor: colors.user,
+                color: colors.text,
+              },
+              fence: {
+                backgroundColor: colors.user,
+                color: colors.text,
+              },
+              table: { borderColor: colors.line },
+            }}
+            onLinkPress={(url) => {
+              let filename = "";
+              try {
+                filename = decodeURIComponent(url).split("/").pop() ?? "";
+              } catch {}
+              const found = receipts.filter(
+                (f: any) => (f.file?.name ?? f.name) === filename,
+              );
+              if (found.length === 1) void viewFile(found[0]);
+              else if (/^https?:\/\//i.test(url)) void Linking.openURL(url);
+              return false;
+            }}
+          >
+            {messageDisplayText(m)}
+          </Markdown>
+        )}
       </Pressable>
       {attachmentMessageView(m)?.attachments.map((file) => (
         <Attachment
@@ -302,6 +315,8 @@ function AppBody() {
     [preview, setPreview] = useState<any>(),
     [latest, setLatest] = useState(true),
     [permission, requestPermission] = useCameraPermissions();
+  const followLatest = useRef(true);
+  const followAfterLayout = useRef(true);
   const returnView = useRef<any>(undefined);
   const previewRequest = useRef(0);
   const viewability = useRef({
@@ -437,6 +452,7 @@ function AppBody() {
         const incoming = v.messages?.messages ?? [];
         const all = mergeMessages(messagesRef.current, incoming);
         if (all !== messagesRef.current) {
+          followAfterLayout.current = followLatest.current;
           messagesRef.current = all;
           setMessages(all);
         }
@@ -459,7 +475,7 @@ function AppBody() {
                 botId: m.subject.logicalAgentId,
               })),
           );
-        await cacheMessages(computer, r.roomId, incoming);
+        void cacheMessages(computer, r.roomId, incoming).catch(() => {});
       }
       if (g === generation.current) {
         setOffline(false);
@@ -539,6 +555,9 @@ function AppBody() {
     if (!computer) return;
     cursor.current = undefined;
     setDraftReady(false);
+    followLatest.current = true;
+    followAfterLayout.current = true;
+    setLatest(true);
     generation.current++;
     messagesRef.current = [];
     setMessages([]);
@@ -641,6 +660,14 @@ function AppBody() {
       current = false;
     };
   }, [room?.roomId, members.map((m) => m.botId).join(",")]);
+  useEffect(() => {
+    const listener = Keyboard.addListener("keyboardDidHide", () => {
+      if (followAfterLayout.current) {
+        list.current?.scrollToOffset({ offset: 0, animated: false });
+      }
+    });
+    return () => listener.remove();
+  }, []);
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       if (room) {
@@ -748,7 +775,13 @@ function AppBody() {
       const local = await cachedMessages(c, r.roomId, before);
       const rows = local.length
         ? local
-        : (await call("messages.page", { roomId: r.roomId, before })).messages;
+        : (
+            await call("messages.page", {
+              roomId: r.roomId,
+              before,
+              tail: true,
+            })
+          ).messages;
       if (!local.length) await cacheMessages(c, r.roomId, rows);
       if (g !== generation.current || roomRef.current?.roomId !== r.roomId)
         return;
@@ -856,6 +889,9 @@ function AppBody() {
       setReply(undefined);
       await getPending(computer);
       await refresh();
+      followLatest.current = true;
+      followAfterLayout.current = true;
+      setLatest(true);
       list.current?.scrollToOffset({ offset: 0 });
     } catch (e) {
       tell(e);
@@ -1427,11 +1463,36 @@ function AppBody() {
               inverted
               keyExtractor={(m) => m.messageId}
               onEndReached={() => void loadOlder()}
-              onEndReachedThreshold={0.1}
-              onScroll={(e) => setLatest(e.nativeEvent.contentOffset.y < 100)}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={button(
+                "加载更早消息",
+                () => void loadOlder(),
+              )}
+              onScroll={(e) => {
+                const { contentOffset, contentSize, layoutMeasurement } =
+                  e.nativeEvent;
+                followLatest.current = contentOffset.y < 100;
+                setLatest(followLatest.current);
+                if (
+                  contentSize.height -
+                    layoutMeasurement.height -
+                    contentOffset.y <
+                  500
+                )
+                  void loadOlder();
+              }}
+              onContentSizeChange={() => {
+                if (followAfterLayout.current) {
+                  followAfterLayout.current = false;
+                  list.current?.scrollToOffset({ offset: 0, animated: false });
+                }
+              }}
               onViewableItemsChanged={markSeen}
               viewabilityConfig={viewability}
-              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+                autoscrollToTopThreshold: 100,
+              }}
               contentContainerStyle={{ padding: 16 }}
               renderItem={({ item: m }) => (
                 <MessageRow
@@ -1449,7 +1510,11 @@ function AppBody() {
             {!latest && (
               <Pressable
                 accessibilityLabel="到最新消息"
-                onPress={() => list.current?.scrollToOffset({ offset: 0 })}
+                onPress={() => {
+                  followLatest.current = true;
+                  setLatest(true);
+                  list.current?.scrollToOffset({ offset: 0 });
+                }}
                 style={[
                   s.latest,
                   { backgroundColor: colors.panel, borderColor: colors.line },
