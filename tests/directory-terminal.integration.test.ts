@@ -12,6 +12,7 @@ import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {directoryAccess} from '../src/service/directory-access.js';
 import {commandAccess} from '../src/service/terminal-access.js';
+import {analystQuery} from './helpers/analyst-query.js';
 const pause=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function fixture(){
  const root=privateTempDir(join(tmpdir(),'kteam-directory-terminal-')),workspace=join(root,'project'),config=join(root,'config');mkdirSync(workspace);mkdirSync(config);const previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=config;
@@ -54,6 +55,19 @@ test('a shell starting in a parent does not require granting that parent to writ
   const {registry,h}=await f.make(f.root),command=process.platform==='win32'?`cd /d "${f.workspace}" && echo CHILD_PROOF > child.txt`:`cd "${f.workspace}" && printf CHILD_PROOF > child.txt`;
   await registry.executeTool('bash',{command,workdir:f.root});assert.match(readFileSync(join(f.workspace,'child.txt'),'utf8'),/CHILD_PROOF/);assert.equal(f.approvals.list().length,0);
   const outside=join(f.root,'outside.txt');assert.notEqual(await h.registryOptions.permissionManager.check('bash',{command:`echo OUTSIDE > "${outside}"`,workdir:f.root}),'allow');assert.equal(existsSync(outside),false);
+ }finally{f.close();}
+});
+for(const grant of ['legacy','directory'])test(`the exact analyst fetch and grep query reuses its ${grant} grant, including count flags and restart`,{skip:process.platform==='win32'},async()=>{
+ const f=await fixture();try{
+  const seed=join(f.root,'remote');mkdirSync(seed);execFileSync('git',['init','--quiet','-b','main',seed]);mkdirSync(join(seed,'src','service'),{recursive:true});
+  writeFileSync(join(seed,'src','service','conversation.ts'),'sourceMessageIds:[]\ncost:null\nriskTags\n');writeFileSync(join(seed,'src','service','coordination.ts'),'sourceMessageIds:[]\npauseAll\n');writeFileSync(join(seed,'src','service','server.ts'),'findings:[]\nsuppressReplies\n');
+  execFileSync('git',['-C',seed,'add','.']);execFileSync('git',['-C',seed,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m','fixture']);execFileSync('git',['clone','--quiet',seed,f.workspace]);
+  const {directoryGrantAccess}=await import('../src/service/directory-access.js');if(grant==='legacy')f.approvals.permissions.remember({botId:'member',bindingRevision:1,cwd:f.root},'bash');else f.approvals.permissions.rememberDirectory({botId:'member',bindingRevision:1,cwd:f.workspace},directoryGrantAccess(f.core,f.workspace)!,'routine');
+  const command=analystQuery.replace('/Users/kai/projects/KTeam',f.workspace);let current=await f.make(f.root);
+  const output=await current.registry.executeTool('bash',{command,workdir:f.root,timeout_ms:90000});assert.match(output,/---O锚点快核---/);assert.match(output,/cost:null/);assert.equal(f.approvals.list().length,0);
+  f.restart();current=await f.make(f.root);assert.match(await current.registry.executeTool('bash',{command,workdir:f.root,timeout_ms:90000}),/cost:null/);assert.equal(f.approvals.list().length,0);
+  for(const unsafe of ['git -c core.sshCommand=unexpected fetch origin','git push origin main','git reset --hard'])assert.notEqual(await current.h.registryOptions.permissionManager.check('bash',{command:`cd ${f.workspace} && ${unsafe}`,workdir:f.root}),'allow',unsafe);
+  writeFileSync(join(f.root,'config','settings.json'),JSON.stringify({permissions:{deny:['bash:git fetch*']}}));const denied=await f.make(f.root);assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'deny');
  }finally{f.close();}
 });
 
