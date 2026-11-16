@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.8.5。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.8.6。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -118,8 +118,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.8.5.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.8.5.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.8.6.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.8.6.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -177,11 +177,11 @@ node dist/src/cli.js teams
 
 ## 版本日志
 
-### v0.8.5
+### v0.8.6
 
 群里引用回复某成员时，优先由被回复的成员接话。查看源码、GitHub 和当前事实可使用受限只读工具，取得真实读取回执后再给出查证结论；旧任务受阻不再把新查证降成无工具闲聊，普通群内回复也不会占住整个群的工作通道。
 
-更新提示改为左下角常驻入口：点击下载，下载完成后点击重启安装，不再弹出更新模态窗。`git ls-remote` 保存查询结果可复用目录常规授权；长期允许按钮保留简洁措辞。见 [0.8.5 发布说明](https://github.com/kaisersong/KTeam/releases/tag/v0.8.5)。
+更新提示改为左下角常驻入口：点击下载，下载完成后点击重启安装，不再弹出更新模态窗。`git ls-remote` 保存查询结果可复用目录常规授权；长期允许按钮保留简洁措辞。见 [0.8.6 发布说明](https://github.com/kaisersong/KTeam/releases/tag/v0.8.6)。
 
 ### v0.8.4
 
