@@ -155,3 +155,6 @@
 .message-file-link svg{display:inline-block;vertical-align:-2px;margin-right:5px;flex-shrink:0}.generated-files button svg{flex-shrink:0}
 
 .mobile-pairing{padding:20px 0;max-width:480px}.mobile-pairing p{margin:12px 0}.mobile-pairing textarea{width:100%;min-height:100px;overflow-wrap:anywhere}
+
+.sidebar-mobile-entry{display:flex;align-items:center;gap:10px;margin:8px 16px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;color:var(--muted);text-align:left;background:transparent}.sidebar-mobile-entry:hover{color:var(--text-primary);background:var(--surface-panel)}
+.mobile-pairing img{display:block;border-radius:16px;border:12px solid white;background:white}.mobile-pairing-steps{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0;padding:0;list-style:none}.mobile-pairing-steps li{display:flex;align-items:center;gap:8px}.mobile-pairing-steps b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--surface-panel)}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { Smartphone, RefreshCw, ShieldCheck } from "lucide-react";
+import { Smartphone, QrCode, RefreshCw, ShieldCheck } from "lucide-react";
 import { api, explain } from "./api";
 export function MobileSettings() {
   const [data, setData] = useState<any>(),
@@ -10,6 +10,7 @@ export function MobileSettings() {
     [busy, setBusy] = useState(false),
     [relayUrl, setRelayUrl] = useState(""),
     [relayToken, setRelayToken] = useState("");
+  const [now, setNow] = useState(Date.now());
   const load = async () => {
     try {
       const v = await api.mobileSettings();
@@ -21,7 +22,11 @@ export function MobileSettings() {
   useEffect(() => {
     void load();
     const id = setInterval(() => void load(), 3000);
-    return () => clearInterval(id);
+    const clock = setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      clearInterval(id);
+      clearInterval(clock);
+    };
   }, []);
   const change = async (input: any) => {
     setBusy(true);
@@ -48,14 +53,49 @@ export function MobileSettings() {
       setBusy(false);
     }
   };
+  const showCode = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      if (!data.enabled)
+        setData(await api.changeMobileSettings({ action: "enable" }));
+      const next = await api.changeMobileSettings({ action: "invite" });
+      const image = await QRCode.toDataURL(next.link, {
+        width: 256,
+        margin: 2,
+        errorCorrectionLevel: "M",
+      });
+      setInvite(next);
+      setQr(image);
+      setNow(Date.now());
+    } catch (e) {
+      setError(explain(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const expiresAt = invite?.payload?.expiresAt ?? 0;
+  const expired = !!invite && now >= expiresAt;
   return (
     <section>
       <h2>
         <Smartphone size={22} /> 手机连接
       </h2>
       <p className="settings-description">
-        在手机上继续会话、查看产物和处理审批。电脑需要保持开机联网。
+        在手机上继续会话、查看产物和处理审批。首次连接请让手机和电脑使用同一
+        Wi-Fi，并保持电脑唤醒。
       </p>
+      <ol className="mobile-pairing-steps">
+        <li>
+          <b>1</b>显示二维码
+        </li>
+        <li>
+          <b>2</b>手机 KTeam 扫码
+        </li>
+        <li>
+          <b>3</b>在此确认连接
+        </li>
+      </ol>
       {error && (
         <p role="alert" className="flow-error">
           {error}
@@ -64,23 +104,14 @@ export function MobileSettings() {
       <button
         className="primary"
         disabled={busy || !data}
-        onClick={() =>
-          void change({ action: data.enabled ? "disable" : "enable" })
-        }
+        onClick={() => void showCode()}
       >
-        {data?.enabled ? "关闭手机连接" : "开启手机连接"}
+        <QrCode size={18} />
+        {invite ? "刷新配对二维码" : "显示配对二维码"}
       </button>
       {data?.enabled && (
         <>
           <div className="settings-toolbar">
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={() => void change({ action: "invite" })}
-            >
-              <Smartphone size={16} />
-              连接新手机
-            </button>
             <button
               className="icon-button"
               aria-label="刷新手机状态"
@@ -91,12 +122,24 @@ export function MobileSettings() {
           </div>
           {invite && (
             <div className="mobile-pairing">
-              <img width={256} height={256} src={qr} alt="手机配对二维码" />
-              <p>用 KTeam 手机 App 扫码，随后在此确认。二维码两分钟内有效。</p>
-              <details>
-                <summary>手动配对链接</summary>
-                <textarea aria-label="配对链接" readOnly value={invite.link} />
-              </details>
+              {!expired && (
+                <img width={256} height={256} src={qr} alt="手机配对二维码" />
+              )}
+              <p role="status">
+                {expired
+                  ? "二维码已过期，请刷新后再扫描。"
+                  : `打开手机 KTeam，点“扫码连接电脑”。二维码还剩 ${Math.max(0, Math.ceil((expiresAt - now) / 1000))} 秒。`}
+              </p>
+              {!expired && (
+                <details>
+                  <summary>手动配对链接</summary>
+                  <textarea
+                    aria-label="配对链接"
+                    readOnly
+                    value={invite.link}
+                  />
+                </details>
+              )}
             </div>
           )}
           {data.requests?.map((r: any) => (
@@ -180,6 +223,13 @@ export function MobileSettings() {
               </p>
             )}
           </details>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => void change({ action: "disable" })}
+          >
+            关闭手机连接
+          </button>
         </>
       )}
     </section>
