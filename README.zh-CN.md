@@ -158,6 +158,8 @@ npm run pack:desktop
 
 `pack:desktop` 打出的是本地 ad-hoc 签名的开发包；正式签名、公证和发布由 GitHub Actions 的发版流程完成。
 
+从本地 ad-hoc 签名的 Mac 开发包切换到正式版时，需要下载官方 DMG，覆盖安装一次。Squirrel 无法跨越这种签名变化自动更新；后续保持官方应用签名，即可继续自动更新。
+
 ## CLI
 
 ```sh

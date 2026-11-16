@@ -14,7 +14,7 @@ import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
 import {NotificationDelivery} from './notification-delivery.js';
 import {createNotificationActivationRouter,KTEAM_APP_ID,nativeNotificationOptions} from './notification-activation.js';
 import {hostConnection} from './host-connection.js';
-import {KTEAM_RELEASES_URL,showPortableOrUnsupportedUpdateDialog} from './update-ui.js';
+import {KTEAM_RELEASES_URL,showPortableOrUnsupportedUpdateDialog,updateErrorPresentation} from './update-ui.js';
 import {defaultDeps} from '../src/runtime/platform-process.js';
 import {WINDOWS_SYSTEM_ENV} from '../src/runtime/local-agents.js';
 import {captureWindowsHostIdentity,stopWindowsHostTree,type WindowsHostIdentity} from './windows-host-shutdown.js';
@@ -63,10 +63,23 @@ function projectUpdate(subject:KTeamUpdater){
  return {ok:true as const,channel,autoUpdateEnabled:autoUpdateEnabledForChannel(channel),currentVersion:app.getVersion(),status:subject.getStatus(),checked:subject.hasCompletedCheck()};
 }
 async function openKTeamReleases(){await shell.openExternal(KTEAM_RELEASES_URL);return {ok:true as const};}
+async function showUpdateFailure(error:string){
+ const failure=updateErrorPresentation(redactUpdaterDiagnostic(error));
+ const picked=await dialog.showMessageBox({type:'warning',buttons:failure.showReleasesLink?['打开下载页','稍后']:['好'],defaultId:0,cancelId:failure.showReleasesLink?1:0,title:'KTeam 更新',message:failure.message});
+ if(failure.showReleasesLink&&picked.response===0)await openKTeamReleases();
+}
 async function promptRestartForUpdate(version:string){
+ const initial=updater.getStatus();
+ if(initial.error||!initial.downloaded||initial.version!==version)return;
  const options={type:'info' as const,buttons:['立即重启并更新','稍后'],defaultId:0,cancelId:1,title:'KTeam 更新',message:`KTeam ${version} 已下载`,detail:'重启 KTeam 即可完成更新。选择「稍后」的话，下次退出 KTeam 时会自动安装。'};
  const picked=window&&!window.isDestroyed()?await dialog.showMessageBox(window,options):await dialog.showMessageBox(options);
- if(picked.response===0){if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);}
+ if(picked.response===0){
+  const current=updater.getStatus();
+  if(current.error){await showUpdateFailure(current.error);return;}
+  if(process.platform==='win32')await stopWindowsHostIfNeeded();
+  const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);
+  const failure=updater.getStatus().error;if(failure)await showUpdateFailure(failure);
+ }
 }
 async function checkForUpdatesFromMenu(){
  const channel=updater.getChannel();
@@ -76,6 +89,7 @@ async function checkForUpdatesFromMenu(){
  }
  await updater.checkForUpdates({requestSource:'user'});
  const status=updater.getStatus();
+ if(status.error){await showUpdateFailure(status.error);return;}
  if(status.downloaded&&status.version){await promptRestartForUpdate(status.version);return;}
  const message=status.error?`检查更新失败：${redactUpdaterDiagnostic(status.error)}`:status.available?`正在后台下载 KTeam ${status.version??''}，下载完成后会提示你重启。`:`KTeam ${app.getVersion()} 已是最新版本。`;
  await dialog.showMessageBox({type:status.error?'warning':'info',buttons:['好'],title:'KTeam 更新',message});

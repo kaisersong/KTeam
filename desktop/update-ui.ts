@@ -11,6 +11,16 @@ import {
 /** The only page the portable / unsupported 「检查更新」 path may open. */
 export const KTEAM_RELEASES_URL = 'https://github.com/kaisersong/KTeam/releases';
 
+export function updateErrorPresentation(error: string): { message: string; showReleasesLink: boolean } {
+  if (/code signature[\s\S]*(?:validation|requirement)|signature[\s\S]*(?:rejected|invalid)/i.test(error)) {
+    return { message: '更新未通过签名校验。请从 KTeam Releases 下载官方安装包，替换当前应用后重新打开。', showReleasesLink: true };
+  }
+  if (error === 'update_install_handoff_unconfirmed') {
+    return { message: '尚未确认更新安装已启动。请保留当前工作，并从 KTeam Releases 下载官方安装包。', showReleasesLink: true };
+  }
+  return { message: `检查更新失败：${error}`, showReleasesLink: false };
+}
+
 export type UpdateCheckTone = 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error' | 'portable' | 'unsupported' | 'disabled' | 'dev';
 
 export interface UpdateCheckView {
@@ -42,6 +52,18 @@ export function presentUpdateCheck(input: UpdateSnapshot): UpdateCheckView {
     return { ...base, statusText: UNSUPPORTED_UPDATE_MESSAGE, tone: 'unsupported', showReleasesLink: true, releasesUrl: KTEAM_RELEASES_URL };
   }
   const status = input.status;
+  // A cached download can survive a native signature/install failure. It must
+  // never hide that failure behind the restart button (or an installing spinner).
+  if (status.error === DEV_MODE_MESSAGE) {
+    return { ...base, statusText: DEV_MODE_MESSAGE, tone: 'dev' };
+  }
+  if (status.error === DISABLED_MESSAGE) {
+    return { ...base, statusText: DISABLED_MESSAGE, tone: 'disabled' };
+  }
+  if (status.error) {
+    const failure = updateErrorPresentation(status.error);
+    return { ...base, statusText: failure.message, tone: 'error', showReleasesLink: failure.showReleasesLink, ...(failure.showReleasesLink ? { releasesUrl: KTEAM_RELEASES_URL } : {}) };
+  }
   if (status.installing) {
     return { ...base, buttonDisabled: true, statusText: status.version ? `正在安装 KTeam ${status.version}…` : '正在安装更新…', tone: 'ready' };
   }
@@ -55,15 +77,6 @@ export function presentUpdateCheck(input: UpdateSnapshot): UpdateCheckView {
   }
   if (status.checking) {
     return { ...base, buttonDisabled: true, statusText: '正在检查更新…', tone: 'checking' };
-  }
-  if (status.error === DEV_MODE_MESSAGE) {
-    return { ...base, statusText: DEV_MODE_MESSAGE, tone: 'dev' };
-  }
-  if (status.error === DISABLED_MESSAGE) {
-    return { ...base, statusText: DISABLED_MESSAGE, tone: 'disabled' };
-  }
-  if (status.error) {
-    return { ...base, statusText: `检查更新失败：${status.error}`, tone: 'error' };
   }
   if (status.available && status.version) {
     return { ...base, statusText: `正在后台下载 KTeam ${status.version}，下载完成后会提示你重启。`, tone: 'downloading' };

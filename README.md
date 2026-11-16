@@ -158,6 +158,8 @@ npm run pack:desktop
 
 `pack:desktop` produces a locally ad-hoc-signed development build. Official signing, notarization and publishing are done by the GitHub Actions release workflow.
 
+To switch a locally ad-hoc-signed Mac build to official releases, install the official DMG once, replacing the existing app. Squirrel cannot auto-update across that signature change. Keep the official app signature intact for subsequent automatic updates.
+
 ## CLI
 
 ```sh
