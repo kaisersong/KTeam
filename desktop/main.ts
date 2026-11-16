@@ -14,7 +14,7 @@ import {createDesktopAPI,dispatchDesktop,trustedFrame} from './semantic-api.js';
 import {NotificationDelivery} from './notification-delivery.js';
 import {createNotificationActivationRouter,KTEAM_APP_ID,nativeNotificationOptions} from './notification-activation.js';
 import {hostConnection} from './host-connection.js';
-import {KTEAM_RELEASES_URL,showPortableOrUnsupportedUpdateDialog,updateErrorPresentation} from './update-ui.js';
+import {KTEAM_RELEASES_URL} from './update-ui.js';
 import {defaultDeps} from '../src/runtime/platform-process.js';
 import {WINDOWS_SYSTEM_ENV} from '../src/runtime/local-agents.js';
 import {captureWindowsHostIdentity,stopWindowsHostTree,type WindowsHostIdentity} from './windows-host-shutdown.js';
@@ -33,7 +33,7 @@ app.on('before-quit',()=>{void splash.close();});
 const environment=()=>Object.fromEntries(Object.entries(process.env).filter(([name,value])=>value!==undefined&&(['PATH','HOME','USER','LOGNAME','SHELL','TMPDIR','TEMP','TMP','TZ','LANG','LANGUAGE','SystemRoot','APPDATA','LOCALAPPDATA','USERPROFILE',...(process.platform==='win32'?WINDOWS_SYSTEM_ENV:[]),'NODE_EXTRA_CA_CERTS','SSL_CERT_FILE','SSL_CERT_DIR','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME','http_proxy','https_proxy','no_proxy'].includes(name)||name.startsWith('LC_'))));
 // Auto-update: KTeam's own GitHub Releases only (see desktop/updater.ts). Log lives in KTeam's data dir.
 function logUpdater(event:string,diagnostic?:string){try{appendFileSync(join(root,'updater.log'),`${new Date().toISOString()} ${event}${diagnostic?' '+redactUpdaterDiagnostic(diagnostic):''}\n`,{mode:0o600});}catch{}}
-const updater=createKTeamUpdater(defaultUpdaterEnvironment({isPackaged:app.isPackaged}),{onDownloaded:version=>void promptRestartForUpdate(version)});
+const updater=createKTeamUpdater(defaultUpdaterEnvironment({isPackaged:app.isPackaged}));
 const updaterHandoff=updater.createHandoff();
 let windowsHost:WindowsHostIdentity|undefined;
 let windowsHostStop:Promise<void>|undefined;
@@ -63,35 +63,9 @@ function projectUpdate(subject:KTeamUpdater){
  return {ok:true as const,channel,autoUpdateEnabled:autoUpdateEnabledForChannel(channel),currentVersion:app.getVersion(),status:subject.getStatus(),checked:subject.hasCompletedCheck()};
 }
 async function openKTeamReleases(){await shell.openExternal(KTEAM_RELEASES_URL);return {ok:true as const};}
-async function showUpdateFailure(error:string){
- const failure=updateErrorPresentation(redactUpdaterDiagnostic(error));
- const picked=await dialog.showMessageBox({type:'warning',buttons:failure.showReleasesLink?['打开下载页','稍后']:['好'],defaultId:0,cancelId:failure.showReleasesLink?1:0,title:'KTeam 更新',message:failure.message});
- if(failure.showReleasesLink&&picked.response===0)await openKTeamReleases();
-}
-async function promptRestartForUpdate(version:string){
- const initial=updater.getStatus();
- if(initial.error||!initial.downloaded||initial.version!==version)return;
- const options={type:'info' as const,buttons:['立即重启并更新','稍后'],defaultId:0,cancelId:1,title:'KTeam 更新',message:`KTeam ${version} 已下载`,detail:'重启 KTeam 即可完成更新。选择「稍后」的话，下次退出 KTeam 时会自动安装。'};
- const picked=window&&!window.isDestroyed()?await dialog.showMessageBox(window,options):await dialog.showMessageBox(options);
- if(picked.response===0){
-  const current=updater.getStatus();
-  if(current.error){await showUpdateFailure(current.error);return;}
-  if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);
-  const failure=updater.getStatus().error;if(failure)await showUpdateFailure(failure);
- }
-}
 async function checkForUpdatesFromMenu(){
- const channel=updater.getChannel();
- if(channel==='portable'||channel==='unsupported'){
-  await showPortableOrUnsupportedUpdateDialog({channel,showMessageBox:options=>dialog.showMessageBox(options),openReleases:openKTeamReleases});
-  return;
- }
+ window?.show();
  await updater.checkForUpdates({requestSource:'user'});
- const status=updater.getStatus();
- if(status.error){await showUpdateFailure(status.error);return;}
- if(status.downloaded&&status.version){await promptRestartForUpdate(status.version);return;}
- const message=status.error?`检查更新失败：${redactUpdaterDiagnostic(status.error)}`:status.available?`正在后台下载 KTeam ${status.version??''}，下载完成后会提示你重启。`:`KTeam ${app.getVersion()} 已是最新版本。`;
- await dialog.showMessageBox({type:status.error?'warning':'info',buttons:['好'],title:'KTeam 更新',message});
 }
 function stopNotificationPolling(){if(notificationTimer)clearInterval(notificationTimer);notificationTimer=undefined;notificationActivations.close();notificationDelivery?.close();}
 function resources(){return app.getAppPath().endsWith('.asar')?app.getAppPath()+'.unpacked':app.getAppPath();}
@@ -149,7 +123,7 @@ if(locked){
   if(process.platform==='win32')Notification.handleActivation(details=>void notificationActivations.receive(details));
   notificationTimer=setInterval(()=>void notificationDelivery?.poll(),2000);notificationTimer.unref();
   app.once('before-quit',stopNotificationPolling);
-  const api=createDesktopAPI(async(route,value)=>{if(!hostReady)await ensureHost();const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),openSplash:input=>splash.open(input,'user'),updateStatus:async()=>projectUpdate(updater),checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},installUpdate:async()=>{if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},openKTeamReleases,takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
+  const api=createDesktopAPI(async(route,value)=>{if(!hostReady)await ensureHost();const result=await connectedRequest(route,value);return route==='/v1/status'?{...result,desktop:buildInfo}:result;},{nativeActions:{...nativeActions(root,()=>window),openSplash:input=>splash.open(input,'user'),updateStatus:async()=>projectUpdate(updater),checkForUpdates:async()=>{await updater.checkForUpdates({requestSource:'user'});return projectUpdate(updater);},downloadUpdate:async()=>{await updater.downloadUpdate({requestSource:'user'});return projectUpdate(updater);},installUpdate:async()=>{if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);return {...projectUpdate(updater),outcome};},openKTeamReleases,takeNotificationNavigation:async()=>{const navigation=pendingNotificationNavigation;pendingNotificationNavigation=undefined;return {ok:true,navigation};},testDesktopNotification:async()=>notificationDelivery!.test(),notificationDeliveryState:async()=>{const state=notificationDelivery!.status();let testInSystemCenter:boolean|undefined;if(process.platform==='darwin'&&state.lastTestId)try{testInSystemCenter=(await Notification.getHistory()).some(notice=>notice.id===state.lastTestId);}catch{}return {ok:true,...state,testInSystemCenter};}},agentLauncher:[app.isPackaged?join(process.resourcesPath,'bin','kteam'):process.execPath,...(app.isPackaged?[]:[join(app.getAppPath(),'build','agent-cli.cjs')])]});
   ipcMain.handle('kteam:semantic',async(event,method,args)=>{
    if(!window||!trustedFrame(event.senderFrame,window.webContents.mainFrame))return {ok:false,code:'desktop_sender_forbidden'};
    try{return await dispatchDesktop(api,method,args);}catch(error){return {ok:false,code:(error as {code?:string}).code??'desktop_request_failed'};}
