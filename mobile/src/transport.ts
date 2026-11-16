@@ -101,6 +101,7 @@ export class MobileConnection {
     }
   >();
   private closed = false;
+  private authorityError?: Error;
   route = "";
   private connecting?: Promise<void>;
   private discovery?: Zeroconf;
@@ -125,6 +126,7 @@ export class MobileConnection {
     });
   }
   async connect() {
+    if (this.authorityError) throw this.authorityError;
     if (!this.connecting)
       this.connecting = this.connectRoutes().finally(() => {
         this.connecting = undefined;
@@ -147,6 +149,7 @@ export class MobileConnection {
         last = e;
         this.socket?.close();
         this.frames = undefined;
+        if (this.authorityError) throw this.authorityError;
         if (e instanceof Error && e.message === "mobile_host_key_changed")
           throw e;
       }
@@ -203,6 +206,10 @@ export class MobileConnection {
             : event.code === 4401
               ? "mobile_auth_required"
               : "连接中断，操作结果待核对";
+        // Revocation is terminal for this identity, even with no request in flight.
+        // A later route failure must never hide the authority decision as offline.
+        if (event.code === 4401 || event.code === 4403)
+          this.authorityError = Error(code);
         if (!ready) reject(Error(code));
         if (this.socket === socket) {
           this.frames = undefined;
@@ -253,6 +260,7 @@ export class MobileConnection {
     });
   }
   async call(method: string, input: any = {}) {
+    if (this.authorityError) throw this.authorityError;
     if (this.closed) throw Error("连接已断开");
     if (!this.frames) await this.connect();
     const id = Crypto.randomUUID();

@@ -283,7 +283,13 @@ function AppBody() {
     } catch (e) {
       if (g === generation.current) {
         setOffline(true);
-        setStatus("离线 · 显示已同步内容");
+        setStatus(
+          ["mobile_auth_required", "mobile_device_revoked"].includes(
+            errorText(e),
+          )
+            ? "连接已失效，请重新配对"
+            : "离线 · 显示已同步内容",
+        );
         tell(e);
       }
     } finally {
