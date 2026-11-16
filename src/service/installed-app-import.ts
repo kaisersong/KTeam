@@ -1,10 +1,11 @@
-import {existsSync,lstatSync,realpathSync} from 'node:fs';
+import {existsSync,lstatSync,realpathSync,readFileSync} from 'node:fs';
 import {dirname,join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {KTeamError,record} from '../errors.js';
 import {privateRead} from './config.js';
+import {assertWindowsImportSource} from './windows-security.js';
 
 /*
  * User-initiated, read-only model import from an installed xiaok (「从小K导入」 in model settings).
@@ -24,6 +25,13 @@ const require=createRequire(typeof __filename==='string'?__filename:import.meta.
 /** The OS keychain. Replaceable only so tests can observe that nothing but the import asks it. */
 export const systemXiaokKeychain:XiaokKeychain={get(service,id){const {Entry}=require('@napi-rs/keyring');return new Entry(service,id,{linux:{store:'secret-service'}}).getPassword();}};
 const RESERVED=['__proto__','prototype','constructor','$xiaokCredentials'];
+function readImportSource(file:string){
+ if(process.platform!=='win32')return privateRead(file);
+ const stat=lstatSync(file);
+ if(!stat.isFile()||stat.isSymbolicLink()||stat.size>64*1024)throw new KTeamError('private_file_required');
+ assertWindowsImportSource(file);
+ return readFileSync(file,'utf8').trim();
+}
 
 /**
  * Reads xiaok's model settings and the credentials they reference, once, and returns them normalized.
@@ -36,13 +44,13 @@ export function readXiaokModels(core:{normalizeConfig(value:unknown):any;isSensi
  if(!existsSync(source))throw new KTeamError('xiaok_import_source_missing',404);
  if(lstatSync(source).isSymbolicLink())throw new KTeamError('private_file_required');
  const sourceRoot=realpathSync(dirname(source)),canonical=join(sourceRoot,'config.json');
- let raw:Record<string,any>;try{raw=record(JSON.parse(privateRead(source)));}catch(error){if(error instanceof KTeamError)throw error;throw new KTeamError('model_import_schema_unsupported');}
+ let raw:Record<string,any>;try{raw=record(JSON.parse(readImportSource(source)));}catch(error){if(error instanceof KTeamError)throw error;throw new KTeamError('model_import_schema_unsupported');}
  if(raw.schemaVersion!==2)throw new KTeamError('model_import_schema_unsupported');
  const refs=raw.$xiaokCredentials as any;delete raw.$xiaokCredentials;
  if(refs!==undefined){
   if(refs?.version!==1||!Array.isArray(refs.entries)||refs.entries.length>256)throw new KTeamError('credential_binding_invalid');
   const vaultFile=join(sourceRoot,'credentials','store.json');let vault:Record<string,unknown>|undefined;
-  const values=()=>{vault??=existsSync(vaultFile)?record(JSON.parse(privateRead(vaultFile))):{version:1,backend:'file',entries:{}};if(vault.version!==1||!['file','keychain'].includes(String(vault.backend)))throw new KTeamError('credential_config_corrupt');return vault;};
+  const values=()=>{vault??=existsSync(vaultFile)?record(JSON.parse(readImportSource(vaultFile))):{version:1,backend:'file',entries:{}};if(vault.version!==1||!['file','keychain'].includes(String(vault.backend)))throw new KTeamError('credential_config_corrupt');return vault;};
   const owner=createHash('sha256').update(canonical).digest('hex');
   for(const item of refs.entries){
    if(!Array.isArray(item?.path)||!item.path.length||item.path.some((part:unknown)=>typeof part!=='string'||RESERVED.includes(part as string))||!core.isSensitiveCredentialPath(item.path)||typeof item.ref!=='string'||!/^xiaok-secret:v1:[a-f0-9-]{36}$/.test(item.ref))throw new KTeamError('credential_binding_invalid');
