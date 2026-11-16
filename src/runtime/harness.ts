@@ -53,7 +53,11 @@ export async function createHarness(input:HarnessContext){
    if(name==='bash'){const command=String(normalized.command??''),checks=[...new Set([...(routineTerminalCommands(core,command)??[]),...core.parseCommandSegments(command).segments])];if(checks)for(const command of checks)if(await super.check(name,{...normalized,command})==='deny')return 'deny';}
    if(name==='bash'&&scope&&input.permissions!.store.findCommand(scope,normalized,core))return 'allow';
    if(name==='bash'&&terminalRequiresConfirmation(core,String(normalized.command??'')))return 'prompt';
-   if((!input.recoveryReview||name==='bash')&&scope&&persistentToolEligible(core,name,normalized)&&(input.permissions!.store.findDirectory(scope,name,normalized,core)||input.permissions!.store.find(scope,name,normalized,core)))return 'allow';
+   if(scope&&persistentToolEligible(core,name,normalized)){
+    const directory=input.permissions!.store.findDirectory(scope,name,normalized,core);
+    if(directory&&(!input.recoveryReview||name==='bash'||directory.operations==='routine'))return 'allow';
+    if((!input.recoveryReview||name==='bash')&&input.permissions!.store.find(scope,name,normalized,core))return 'allow';
+   }
    if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
    if(name==='bash'&&lowRiskTerminalQuery(core,String(normalized.command??'')))return 'allow';
    if(input.recoveryReview&&!['read','glob','grep','read_material','get_team_work','read_runtime_output','read_context_capture','mail_intent_status'].includes(name))return 'prompt';

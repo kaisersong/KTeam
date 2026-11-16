@@ -31,7 +31,8 @@ test('proposal does not create entities; explicit scoped hash acceptance creates
   await assert.rejects(c.accept({roomId:ref.roomId,proposalId:proposal.id,expectedHash:'changed'},user),/proposal_changed/);
   await assert.rejects(c.accept({roomId:'another-room',proposalId:proposal.id,expectedHash:proposal.hash},user),/proposal_scope_mismatch/);
   const results=await Promise.all(Array.from({length:5},()=>c.accept({roomId:ref.roomId,proposalId:proposal.id,expectedHash:proposal.hash},user)));
-  assert.equal(new Set(results.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listBots()).agents.length,before+2);assert.equal((await f.upstream.listTeams()).rooms.length,2);
+  assert.equal(new Set(results.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listBots()).agents.length,before+2);assert.equal((await f.upstream.listTeams()).rooms.length,4);
+  for(const member of proposal.members){const direct=store.state<any>('direct-room:'+member.botId);assert.ok(direct?.roomId);assert.equal(store.settings(direct.roomId)?.kind,'direct');assert.equal((await f.upstream.messages(direct.roomId,0,20)).messages.length,0);assert.equal((await c.direct(member.botId,user)).roomId,direct.roomId);}
   const draft=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(draft.messages.length,0);assert.equal(store.jobs(results[0]!.roomId).length,0);const data=await f.upstream.conversationData(results[0]!.roomId);assert.match(data.shared.text,/确认本周资料缺口/);assert.equal(data.shared.revision,1);assert.equal(store.jobs(results[0]!.roomId).length,0);
  }finally{store.close();await f.close();}
 });
@@ -53,6 +54,15 @@ test('lost creation receipt is recovered through owner reads after a new host fe
 test('direct conversation reuses bound member and survives reopening; model-origin acceptance is forbidden',async()=>{
  const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
  try{const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref),p=await c.propose({title:'协作',goal:'整理资料',members:[{name:'资料员'}]},ctx);await assert.rejects(c.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},{requestSource:'agent'}),/user_action_required/);await assert.rejects(c.accept({...{roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},members:[]} as any,user),/unknown_field/);await c.accept({roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash},user);const member=p.members[0]!;const [a,b]=await Promise.all([c.direct(member.botId,user),c.direct(member.botId,user)]);assert.equal(a.roomId,b.roomId);assert.equal((await new TeamCoordinator(f.upstream,store,2,models).direct(member.botId,user)).roomId,a.roomId);assert.equal((await f.upstream.messages(a.roomId,0,100)).messages.length,0);assert.equal(store.settings(a.roomId)?.kind,'direct');
+ }finally{store.close();await f.close();}
+});
+test('a lost automatic member DM receipt is recovered without duplicating a Bot, group or direct room',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),c=new TeamCoordinator(f.upstream,store,1,models);
+ try{const ref=await c.bootstrap(user),ctx=await admitted(f,c,ref),p=await c.propose({title:'带私聊的新团队',goal:'整理资料',members:[{name:'研究员'}]},ctx),create=f.upstream.createTeam.bind(f.upstream);let writes=0;
+  f.upstream.createTeam=async(input:any)=>{writes++;const result=await create(input);if(String(input.clientRequestKey).startsWith('kteam:direct:'))throw new KTeamError('upstream_operation_unknown',503);return result;};
+  const input={roomId:ref.roomId,proposalId:p.id,expectedHash:p.hash};await assert.rejects(c.accept(input,user),/operation_result_unknown/);assert.equal(writes,2);
+  f.upstream.createTeam=async()=>{throw Error('must recover by owner reads');};const restarted=new TeamCoordinator(f.upstream,store,2,models),result=await restarted.accept(input,user);
+  assert.equal(store.settings(result.roomId)?.kind,'group');const direct=store.state<any>('direct-room:'+p.members[0]!.botId);assert.ok(direct?.roomId);assert.equal(store.settings(direct.roomId)?.kind,'direct');assert.equal((await f.upstream.listTeams()).rooms.length,3);assert.equal((await restarted.accept(input,user)).roomId,result.roomId);assert.equal(writes,2);
  }finally{store.close();await f.close();}
 });
 const ownerContext={sessionId:'coordination-test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};

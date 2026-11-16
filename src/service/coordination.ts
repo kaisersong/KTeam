@@ -148,6 +148,9 @@ export class TeamCoordinator{
    const validate=async()=>{if(p.expiresAt<=this.now())throw new KTeamError('proposal_expired',409);await this.scope(p);for(const member of p.members)await this.frozen(member);};await validate();op=this.claim('accept:'+p.id,{proposalId:p.id,hash:p.hash});
    for(const [index,member] of p.members.entries())await this.ensureMember(op,member,index,validate);
    const roomId=await this.room(op,p.title,p.kind==='bot'?'与 '+p.title+' 直接交流。':p.goal,p.members,p.kind==='bot'?'direct':'group',validate);
+   if(p.kind!=='bot')for(const member of p.members.filter(member=>!member.existing)){
+    await validate();this.check(op);await this.direct(member.botId,ctx);await validate();this.check(op);
+   }
    op.status='complete';op.receipt={roomId};this.save(op);return op.receipt;
   });
  }

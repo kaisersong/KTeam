@@ -20,6 +20,18 @@ async function fixture(){
  const pending=async(count=1)=>{const until=Date.now()+5000;while(approvals.list().reduce((n,item)=>n+item.pendingOperationCount,0)<count){if(Date.now()>until)throw Error('approval_timeout');await pause();}return approvals.list()[0]!;};
  return {root,workspace,core,make,pending,get store(){return store;},get approvals(){return approvals;},restart(){approvals.close();for(const registry of registries)registry.dispose();store.close();store=new TeamStore(root);approvals=new ToolApprovals(store);},close(){controller.abort();approvals.close();for(const registry of registries)registry.dispose();store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}};
 }
+test('Windows cd /d queries and changed writes reuse the actual project grant after restart',{skip:process.platform!=='win32'},async()=>{
+ const f=await fixture();try{
+  mkdirSync(join(f.workspace,'src'));writeFileSync(join(f.workspace,'src','proof.ts'),'// needle');
+  const first=await f.make(),pending=first.registry.executeTool('write',{file_path:join(f.workspace,'seed.txt'),content:'seed'}),approval=await f.pending();
+  await f.approvals.decide({id:approval.id,expectedHash:approval.hash,decision:'allow_directory_routine'});await pending;
+  const query=`cd /d "${f.workspace}" && echo ===START=== & findstr /s /n /i "needle" src\\*.ts & echo ===END===`;
+  assert.match(await first.registry.executeTool('bash',{command:query,workdir:f.root}),/needle/);
+  const write=`cd /d "${f.workspace}" && echo FIRST > proof.txt`;await first.registry.executeTool('bash',{command:write,workdir:f.root});assert.match(readFileSync(join(f.workspace,'proof.txt'),'utf8'),/FIRST/);
+  f.restart();const next=await f.make(f.root);await next.registry.executeTool('bash',{command:`cd /d "${f.workspace}" && echo CHANGED > another.txt`,workdir:f.root});assert.equal(f.approvals.list().length,0);
+  for(const command of [`cd /d "${f.workspace}" && del proof.txt`,`cd /d "${f.workspace}" && rd nested`,`cd /d "${f.workspace}" && git reset --hard`,`cd /d "${f.workspace}" && echo OUTSIDE > "${join(f.root,'outside.txt')}"`])assert.notEqual(await next.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'allow',command);
+ }finally{f.close();}
+});
 test('one directory decision covers actual file, terminal and Git operations, nested paths and restart; dangerous and outside operations still prompt',async()=>{
  const f=await fixture();try{
   execFileSync('git',['init','--quiet',f.workspace]);const {h,registry}=await f.make();const first=registry.executeTool('write',{file_path:'reports/one.txt',content:'one'}),pending=await f.pending();assert.equal(pending.directory,realpathSync(f.workspace));
@@ -36,6 +48,13 @@ test('one directory decision covers actual file, terminal and Git operations, ne
 
 test('granting one directory never approves a simultaneously pending operation in a different directory',async()=>{
  const f=await fixture();try{const {registry}=await f.make(),other=join(f.root,'other');mkdirSync(other);const a=registry.executeTool('write',{file_path:'one.txt',content:'allowed'}),b=registry.executeTool('write',{file_path:join(other,'two.txt'),content:'forbidden'});await f.pending(2);const pending=f.approvals.list().find(item=>item.directory===f.workspace)!;assert.ok(pending);await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});await a;assert.equal(f.approvals.list().length,1);assert.equal(existsSync(join(other,'two.txt')),false);const remaining=f.approvals.list()[0]!;await f.approvals.decide({id:remaining.id,expectedHash:remaining.hash,decision:'deny'});await b;assert.equal(existsSync(join(other,'two.txt')),false);}finally{f.close();}
+});
+test('a shell starting in a parent does not require granting that parent to write inside a trusted child',async()=>{
+ const f=await fixture();try{const {directoryGrantAccess}=await import('../src/service/directory-access.js');f.approvals.permissions.rememberDirectory({botId:'member',bindingRevision:1,cwd:f.workspace},directoryGrantAccess(f.core,f.workspace)!,'routine');
+  const {registry,h}=await f.make(f.root),command=process.platform==='win32'?`cd /d "${f.workspace}" && echo CHILD_PROOF > child.txt`:`cd "${f.workspace}" && printf CHILD_PROOF > child.txt`;
+  await registry.executeTool('bash',{command,workdir:f.root});assert.match(readFileSync(join(f.workspace,'child.txt'),'utf8'),/CHILD_PROOF/);assert.equal(f.approvals.list().length,0);
+  const outside=join(f.root,'outside.txt');assert.notEqual(await h.registryOptions.permissionManager.check('bash',{command:`echo OUTSIDE > "${outside}"`,workdir:f.root}),'allow');assert.equal(existsSync(outside),false);
+ }finally{f.close();}
 });
 
 test('the supplied compound Git workflow reuses its directory grant across changed scripts, commands and restart',async()=>{
