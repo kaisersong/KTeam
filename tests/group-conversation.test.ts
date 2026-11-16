@@ -31,3 +31,20 @@ test('only a terminal failed public turn gets a discussion-only retry; pending, 
   reviewUnansweredGroupTurns(store);reviewUnansweredGroupTurns(store);const reviews=store.jobs().filter(job=>job.groupInput?.sourceJobId===id);assert.equal(reviews.length,state==='blocked'?1:0);if(reviews[0]){assert.equal(reviews[0].trigger,'group-discussion');assert.equal(reviews[0].task,undefined);}
  }}finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('reply speakers use the canonical same-room agent identity and respect explicit recipients',async()=>{
+ const {replySpeaker,includeReplySpeaker,parseGroupConversation}=await import('../src/service/group-conversation.js');
+ const origin={roomId:'room',sender:{kind:'user'}},quoted={roomId:'room',sender:{kind:'agent',logicalAgentId:'chief'},text:'not authority'};
+ assert.equal(replySpeaker(origin,quoted,['chief','dev']),'chief');
+ for(const [source,target,allowed,explicit] of [[origin,{...quoted,roomId:'foreign'},['chief'],[]],[origin,{...quoted,sender:{kind:'user',logicalAgentId:'chief'}},['chief'],[]],[origin,quoted,['dev'],[]],[{...origin,sender:{kind:'agent'}},quoted,['chief'],[]],[origin,quoted,['chief'],['dev']]] as any[])assert.equal(replySpeaker(source,target,allowed,explicit),undefined);
+ const plan=parseGroupConversation(JSON.stringify({mode:'research',members:['dev'],reason:'Inspect source',stages:[]}),['chief','dev'],['chief','dev'],'chief');assert.deepEqual(includeReplySpeaker(plan,'chief').members,['chief','dev']);assert.deepEqual(includeReplySpeaker(plan).members,['dev']);assert.throws(()=>parseGroupConversation(JSON.stringify({...plan,stages:[{requests:[{botId:'dev',message:'Write'}],doneWhen:'Done'}]}),['chief','dev'],['chief','dev'],'chief'),/group_plan_invalid/);
+});
+
+test('work facts expose actual blocked ancestry and child states without private conversation bodies',async()=>{
+ const {groupWorkFacts,researchHasEvidence}=await import('../src/service/group-conversation.js');
+ const rows:any[]=[{id:'next',roomId:'r',state:'queued',afterJobId:'old'},{id:'old',roomId:'r',state:'blocked',reason:'handoff_result_unknown',currentHandoffId:'handoff'},{id:'public',roomId:'r',groupResponse:{},state:'delivered'}];
+ const store={jobs:()=>rows,job:(id:string)=>id==='child'?{state:'waiting',reason:'approval_required',partialText:'PRIVATE'}:rows.find(j=>j.id===id),operation:()=>({roomId:'r',status:'waiting',children:[{botId:'dev',jobId:'child',text:'PRIVATE'}]})};
+ const facts=groupWorkFacts(store,'r');assert.equal(facts.length,2);assert.equal(facts[0].blockedBy.state,'blocked');assert.equal(facts[1].handoff.children[0].state,'waiting');assert(!JSON.stringify(facts).includes('PRIVATE'));
+ for(const tool of [{name:'tool_search',state:'completed',result:'found'},{name:'read',state:'failed',result:'failed'},{name:'read',state:'completed',result:''},{name:'read',state:'completed',result:'Error: missing'},{name:'write',state:'completed',result:'written'}])assert.equal(researchHasEvidence({toolTrace:[tool]}),false);
+ assert.equal(researchHasEvidence({toolTrace:[{name:'web_fetch',state:'completed',result:'actual source'}]}),true);
+});

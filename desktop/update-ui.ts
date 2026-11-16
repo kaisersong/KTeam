@@ -21,7 +21,7 @@ export function updateErrorPresentation(error: string): { message: string; showR
   return { message: `检查更新失败：${error}`, showReleasesLink: false };
 }
 
-export type UpdateCheckTone = 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error' | 'portable' | 'unsupported' | 'disabled' | 'dev';
+export type UpdateCheckTone = 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'error' | 'portable' | 'unsupported' | 'disabled' | 'dev';
 
 export interface UpdateCheckView {
   buttonLabel: string;
@@ -33,6 +33,7 @@ export interface UpdateCheckView {
   releasesUrl?: string;
   showInstallButton: boolean;
   installLabel: string;
+  showDownloadButton?: boolean;
 }
 
 export interface UpdateSnapshot {
@@ -73,13 +74,13 @@ export function presentUpdateCheck(input: UpdateSnapshot): UpdateCheckView {
   if (status.downloading) {
     const version = status.version ? ` KTeam ${status.version}` : '';
     const progress = Number.isFinite(status.progress) ? `（${status.progress}%）` : '';
-    return { ...base, buttonDisabled: true, statusText: `正在后台下载${version}${progress}，下载完成后会提示你重启。`, tone: 'downloading' };
+    return { ...base, buttonDisabled: true, statusText: `正在后台下载${version}${progress}，下载完成后可在左下角重启安装。`, tone: 'downloading' };
   }
   if (status.checking) {
     return { ...base, buttonDisabled: true, statusText: '正在检查更新…', tone: 'checking' };
   }
   if (status.available && status.version) {
-    return { ...base, statusText: `正在后台下载 KTeam ${status.version}，下载完成后会提示你重启。`, tone: 'downloading' };
+    return { ...base, statusText: `发现 KTeam ${status.version}，点击下载更新。`, tone: 'available', showDownloadButton: true };
   }
   if (input.checked && input.currentVersion) {
     return { ...base, statusText: `KTeam ${input.currentVersion} 已是最新版本。`, tone: 'current' };

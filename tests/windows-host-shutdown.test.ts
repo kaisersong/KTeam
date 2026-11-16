@@ -181,13 +181,13 @@ describe('stopWindowsHostTree', () => {
 });
 
 describe('main.ts keeps the macOS quit and update path and only stops the host on win32', () => {
-  it('leaves detached host spawn, menu update checks and the before-quit handoff line unchanged, and gates host-stop on win32', () => {
+  it('keeps detached host spawn and the explicit before-quit update handoff, with host-stop gated on win32', () => {
     const main = readFileSync(join(repoRoot, 'desktop', 'main.ts'), 'utf8');
     assert.match(main, /spawn\(process\.execPath,\[join\(resources\(\),'build','host\.cjs'\)\],\{detached:true,windowsHide:true,/);
     assert.match(main, /child\.unref\(\);/);
     assert.match(main, /if\(process\.platform==='win32'&&child\.pid\)windowsHost=captureWindowsHostIdentity\(child\.pid,windowsHostLayer\(\)\);/);
     assert.match(main, /if\(process\.platform==='win32'\)await stopWindowsHostIfNeeded\(\);const outcome=updaterHandoff\.begin\(\{requestSource:'user'\}\);logUpdater\('install-requested',outcome\.status\);/);
-    assert.equal((main.match(/if\(process\.platform==='win32'\)await stopWindowsHostIfNeeded\(\);const outcome=updaterHandoff\.begin/g) ?? []).length, 2);
+    assert.equal((main.match(/if\(process\.platform==='win32'\)await stopWindowsHostIfNeeded\(\);const outcome=updaterHandoff\.begin/g) ?? []).length, 1);
     assert.match(main, /if\(process\.platform==='win32'&&windowsHost&&!windowsHostQuitStarted\)/);
     assert.match(main, /if\(updaterHandoff\.commitHandoffOnBeforeQuit\(\)\.committed\)updater\.completeHandoff\(\);/);
     assert.match(main, /await updater\.checkForUpdates\(\{requestSource:'user'\}\);/);

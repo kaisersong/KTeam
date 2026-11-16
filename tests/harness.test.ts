@@ -119,3 +119,16 @@ test('the screenshot build checks execute in the real harness without prompts; e
   writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['bash:*']}}));const denied=await createHarness({workspace:f.workspace,signal:controller.signal,assertCurrent:async()=>{}});assert.equal(await denied.registryOptions.permissionManager.check('bash',{command:first,workdir:f.workspace}),'deny');
  }finally{controller.abort();registry?.dispose();f.close();}
 });
+
+test('fresh group research reads actual sources without restoring execution state and cannot mutate or bypass the private fence',async()=>{
+ const f=await fixture();let registry:any;try{
+  const scope={root:join(f.root,'host'),botId:'researcher',roomId:'group',bindingRevision:1,fingerprint:'fixture',profileRevision:1};mkdirSync(scope.root);writeFileSync(join(f.workspace,'source.ts'),'FRESH_RESEARCH_SOURCE');writeFileSync(join(scope.root,'secret.txt'),'PRIVATE_HOST_STATE');
+  let prompts=0;const events:any[]=[];const h=await createHarness({scope,discussionOnly:true,transientReadOnly:true,workspace:f.workspace,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{},onPrompt:async()=>{prompts++;return true;},onTool:e=>events.push(e)});
+  assert.equal(h.prepare,undefined,'do not reopen the blocked persistent execution session');registry=new f.core.ToolRegistry(h.registryOptions,h.tools);
+  assert.match(await registry.executeTool('read',{file_path:'source.ts'}),/FRESH_RESEARCH_SOURCE/);assert.equal(prompts,0);assert(events.some(e=>e.name==='read'&&e.state==='completed'));
+  for(const name of ['write','edit','send_mail','render_ui','install_skill','subagent','mcp__report-renderer__render_report']){assert(!h.toolNames.includes(name));assert.equal(await h.registryOptions.permissionManager.check(name,{file_path:'new.txt',content:'no'}),'deny');}
+  for(const command of ['echo no > source.ts','git fetch origin','node -e "process.exit(0)"'])assert.equal(await h.registryOptions.permissionManager.check('bash',{command}),'deny',command);
+  const denied=await registry.executeTool('read',{file_path:join(scope.root,'secret.txt')});assert(!denied.includes('PRIVATE_HOST_STATE'));assert.equal(readFileSync(join(f.workspace,'source.ts'),'utf8'),'FRESH_RESEARCH_SOURCE');assert.equal(prompts,0);
+  await assert.rejects(createHarness({transientReadOnly:true,workspace:f.workspace,signal:AbortSignal.timeout(1000),assertCurrent:async()=>{}}),/readonly_observation_required/);
+ }finally{registry?.dispose();f.close();}
+});
