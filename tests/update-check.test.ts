@@ -228,6 +228,26 @@ describe('settings 检查更新 presentation', () => {
     assert.equal(linux.buttonDisabled, false);
   });
 
+  it('shows native validation and handoff errors ahead of cached downloads and install progress', () => {
+    for (const error of [
+      'Code signature at URL file:///private/update/KTeam.app/ did not pass validation: code failed to satisfy specified code requirement(s)',
+      'update_install_handoff_unconfirmed',
+    ]) for (const installing of [false, true]) {
+      const failed = presentUpdateCheck({ channel: 'mac', status: { ...idleStatus, downloaded: true, progress: 100, version: '0.8.0', installing, error } });
+      assert.equal(failed.tone, 'error');
+      assert.equal(failed.showInstallButton, false);
+      assert.equal(failed.showReleasesLink, true);
+      assert.equal(failed.releasesUrl, KTEAM_RELEASES_URL);
+      assert.match(failed.statusText, /官方安装包/);
+      assert.doesNotMatch(failed.statusText, /file:\/\/\/|private\/update|重启即可/);
+    }
+    const failure = presentUpdateCheck({ channel: 'nsis', status: { ...idleStatus, downloaded: true, version: '0.8.0', error: 'install refused' } });
+    assert.equal(failure.tone, 'error');
+    assert.equal(failure.showInstallButton, false);
+    const recovered = presentUpdateCheck({ channel: 'mac', status: { ...idleStatus, downloaded: true, version: '0.8.0' } });
+    assert.equal(recovered.showInstallButton, true);
+  });
+
   it('places the button in 关于 KTeam and never greys or hides it for the portable path', () => {
     const settings = readFileSync(join(repoRoot, 'desktop', 'renderer', 'src', 'settings.tsx'), 'utf8');
     const panel = readFileSync(join(repoRoot, 'desktop', 'renderer', 'src', 'update-check.tsx'), 'utf8');

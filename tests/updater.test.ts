@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { presentUpdateCheck } from '../desktop/update-ui.js';
 import {
   KTEAM_UPDATE_FEED, PERIODIC_UPDATE_INTERVAL_MS, STARTUP_UPDATE_DELAY_MS, DEV_MODE_MESSAGE, DISABLED_MESSAGE,
   callAutoUpdaterQuitAndInstall, configureAutoUpdater, createKTeamUpdater, isDevelopmentMode, autoUpdateDisabledByEnv,
@@ -289,6 +290,23 @@ describe('real updater handoff wiring', () => {
     assert.equal(subject.createHandoff('darwin').begin({ requestSource: 'user' }).status, 'rejected_sync');
     assert.equal(subject.getStatus().error, 'signature rejected');
     assert.equal(updater.quitAndInstall.calls.length, 0);
+  });
+
+  it('keeps a macOS signature failure visible after download and repeated install clicks', () => {
+    updater.emit('update-downloaded', { version: '0.8.0' });
+    const handoff = subject.createHandoff('darwin');
+    assert.equal(handoff.begin({ requestSource: 'user' }).status, 'pending');
+    updater.emit('error', new Error('Code signature at URL file:///private/update/KTeam.app/ did not pass validation: code failed to satisfy specified code requirement(s)'));
+    for (let i = 0; i < 3; i++) {
+      const view = presentUpdateCheck({ channel: 'mac', status: subject.getStatus() });
+      assert.equal(view.tone, 'error');
+      assert.equal(view.showInstallButton, false);
+      assert.equal(view.showReleasesLink, true);
+      assert.match(view.statusText, /签名校验/);
+      assert.equal(handoff.begin({ requestSource: 'user' }).status, 'pending_error_sticky');
+    }
+    assert.equal(updater.quitAndInstall.calls.length, 1);
+    assert.equal(handoff.snapshot().kind, 'pending_error_sticky');
   });
 
   it('stops spinning without retry or shutdown after observation expires; late quit is allowed', async () => {
