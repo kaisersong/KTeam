@@ -141,6 +141,7 @@ function AppBody() {
     [status, setStatus] = useState("未连接"),
     [busy, setBusy] = useState(false),
     [offline, setOffline] = useState(false),
+    [connectionRevision, setConnectionRevision] = useState(0),
     [scan, setScan] = useState(false),
     [scanError, setScanError] = useState(""),
     [torch, setTorch] = useState(false),
@@ -170,6 +171,17 @@ function AppBody() {
     scanConsumed = useRef(false),
     pairingCandidate = useRef<Computer | undefined>(undefined),
     pairAction = useRef<(link: string) => void>(() => {});
+  const openConnections = () => {
+    setRoom(undefined);
+    setTab("我");
+    setError("");
+  };
+  const reconnect = () => {
+    setError("");
+    setOffline(true);
+    setStatus("正在重新连接…");
+    setConnectionRevision((v) => v + 1);
+  };
   const cancelPair = () => {
     pairGeneration.current++;
     pairingConnection.current?.close();
@@ -214,6 +226,7 @@ function AppBody() {
           ) {
             transport.close();
             setComputer(undefined);
+            setTab("我");
             setStatus("连接已失效，请重新配对");
           }
         }
@@ -344,6 +357,7 @@ function AppBody() {
     const c = computer,
       transport = new MobileConnection(c);
     connection.current = transport;
+    setOffline(true);
     setStatus("连接中…");
     void Promise.all([readCache(c, "rooms"), readCache(c, "bots")])
       .then(([r, b]) => {
@@ -360,7 +374,7 @@ function AppBody() {
       network.remove();
       transport.close();
     };
-  }, [computer?.credentialId]);
+  }, [computer?.credentialId, connectionRevision]);
   useEffect(() => {
     const id = setInterval(() => void refresh(), 2000);
     return () => clearInterval(id);
@@ -892,7 +906,7 @@ function AppBody() {
             accessibilityLabel="电脑与连接"
             onPress={() => {
               setRoom(undefined);
-              setTab(tab === "我" ? "会话" : "我");
+              setTab("我");
             }}
             style={s.computerButton}
           >
@@ -907,14 +921,43 @@ function AppBody() {
           </Pressable>
         </GlassSurface>
       </GlassGroup>
-      {error ? (
-        <Pressable
-          onPress={() => setError("")}
-          style={[s.error, { backgroundColor: colors.user }]}
+      {(error || (computer && offline)) && !pairing && (
+        <View
+          style={[
+            s.card,
+            {
+              backgroundColor: colors.panel,
+              borderColor: colors.line,
+              marginHorizontal: 16,
+              marginVertical: 8,
+            },
+          ]}
         >
-          <Text style={{ color: colors.text }}>{error}</Text>
-        </Pressable>
-      ) : null}
+          <Text style={[s.title, { color: colors.text }]}>
+            {computer && offline ? "暂时连接不上电脑" : "连接提示"}
+          </Text>
+          <Text style={[s.caption, { color: colors.muted, marginTop: 8 }]}>
+            {error || "正在尝试连接电脑。"}
+          </Text>
+          <Text style={[s.caption, {color: colors.muted, marginTop: 8}]}>
+            确认电脑 KTeam 已开启、手机与电脑使用同一 Wi-Fi，并允许本地网络访问。更换网络后可重新扫码。
+          </Text>
+          <View style={s.actions}>
+            {computer &&
+              button(
+                "重新连接",
+                reconnect,
+                <RefreshCw size={16} color={colors.green} />,
+              )}
+            {button(
+              "重新扫码",
+              () => void startScan(),
+              <QrCode size={16} color={colors.green} />,
+            )}
+            {tab !== "我" && button("切换电脑", openConnections)}
+          </View>
+        </View>
+      )}
       {tab === "会话" && !room && (
         <View style={{ flex: 1 }}>
           {computer && (
@@ -1720,11 +1763,14 @@ function AppBody() {
               <View style={s.actions}>
                 {button(
                   c.credentialId === computer?.credentialId
-                    ? "当前电脑"
+                    ? offline
+                      ? "重新连接此电脑"
+                      : "当前电脑"
                     : "切换到此电脑",
                   () => {
                     void selectComputer(c);
                     setComputer(c);
+                    if (c.credentialId === computer?.credentialId) reconnect();
                     setTab("会话");
                   },
                 )}
@@ -1899,7 +1945,12 @@ function AppBody() {
               }}
             />
           )}
-          <View pointerEvents="none" collapsable={false} renderToHardwareTextureAndroid style={s.scanShade}>
+          <View
+            pointerEvents="none"
+            collapsable={false}
+            renderToHardwareTextureAndroid
+            style={s.scanShade}
+          >
             <View style={s.scanShadeTop} />
             <View style={s.scanMiddle}>
               <View style={s.scanShadeSide} />
@@ -2223,7 +2274,15 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 30,
   },
-  scanShade: { zIndex:1, elevation:1, position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
+  scanShade: {
+    zIndex: 1,
+    elevation: 1,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
   scanShadeTop: { flex: 1, backgroundColor: "#0009" },
   scanMiddle: { height: 252, flexDirection: "row" },
   scanShadeSide: { flex: 1, backgroundColor: "#0009" },
@@ -2263,7 +2322,12 @@ const s = StyleSheet.create({
     borderRightWidth: 4,
     borderBottomRightRadius: 18,
   },
-  scanChrome: { zIndex:2, elevation:2, flex: 1, justifyContent: "space-between" },
+  scanChrome: {
+    zIndex: 2,
+    elevation: 2,
+    flex: 1,
+    justifyContent: "space-between",
+  },
   scanHeader: {
     flexDirection: "row",
     alignItems: "center",

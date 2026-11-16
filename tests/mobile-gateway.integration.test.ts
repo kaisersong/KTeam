@@ -63,11 +63,12 @@ test("actual encrypted gateway requires desktop confirmation, independent device
       calls: ++calls,
     }));
     await gateway.start();
-    phone = await mobileClient(
+    assert.equal(
       "ws://127.0.0.1:" + gateway.port + "/mobile/connect",
-      saved,
-      pair.key,
+      url,
+      "desktop restart must retain the endpoint already saved on the phone",
     );
+    phone = await mobileClient(url, saved, pair.key);
     assert.equal((await phone.call("hello")).calls, 2);
     gateway.devices.configure({ action: "revoke", id: saved.credentialId });
     gateway.reconcile();
