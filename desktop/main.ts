@@ -76,8 +76,7 @@ async function promptRestartForUpdate(version:string){
  if(picked.response===0){
   const current=updater.getStatus();
   if(current.error){await showUpdateFailure(current.error);return;}
-  if(process.platform==='win32')await stopWindowsHostIfNeeded();
-  const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);
+  if(process.platform==='win32')await stopWindowsHostIfNeeded();const outcome=updaterHandoff.begin({requestSource:'user'});logUpdater('install-requested',outcome.status);
   const failure=updater.getStatus().error;if(failure)await showUpdateFailure(failure);
  }
 }
