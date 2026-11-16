@@ -69,7 +69,7 @@ test('desktop host exposes the notice to the main client only and persists dismi
 });
 
 const buttons=(node:unknown):ReactElement<any>[]=>{if(Array.isArray(node))return node.flatMap(buttons);if(!isValidElement(node))return [];const el=node as ReactElement<any>;return [...(el.type==='button'?[el]:[]),...buttons(el.props.children)];};
-test('banner text is exact, 去设置 opens the services settings page, and both actions dismiss for good',async()=>{
+test('banner text is exact, 去设置 opens services within General settings, and both actions dismiss for good',async()=>{
  assert.equal(LEGACY_SHARED_NOTICE_TEXT,EXACT);assert.equal(LEGACY_SHARED_NOTICE_ACTION,'去设置');
  const calls:string[]=[];
  const actions=legacyNoticeActions({dismiss:async()=>{calls.push('dismiss');},openServices:()=>calls.push('open:services'),hide:()=>calls.push('hide')});
@@ -82,10 +82,11 @@ test('banner text is exact, 去设置 opens the services settings page, and both
  assert.deepEqual(calls,['open:services','hide','dismiss']);
  calls.length=0;close!.props.onClick();await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(calls,['hide','dismiss']);
- // The services page exists in settings and the main view routes 去设置 to it.
+ // Service state lives in General; the banner must route there without restoring a duplicate category.
  const settingsSource=readFileSync(new URL('../../desktop/renderer/src/settings.tsx',import.meta.url),'utf8'),main=readFileSync(new URL('../../desktop/renderer/src/main.tsx',import.meta.url),'utf8');
- assert.match(settingsSource,/\['services','服务',Server\]/);assert.match(settingsSource,/page==='services'&&<Services\/>/);
- assert.match(main,/openServices:\(\)=>\{setSettingsTab\('services'\);void open\('settings'\);\}/);
+ const general=settingsSource.slice(settingsSource.indexOf("{page==='general'"),settingsSource.indexOf("{page==='models'"));
+ assert.match(general,/<Services\/>/);assert.doesNotMatch(settingsSource,/\['services',/);
+ assert.match(main,/openServices:\(\)=>\{setSettingsTab\('general'\);void open\('settings'\);\}/);
  assert.match(main,/api\.legacySharedNotice\(\)\.then\(view=>setLegacyNotice\(view\?\.show===true\)\)/);
 });
 
