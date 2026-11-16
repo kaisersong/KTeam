@@ -181,6 +181,8 @@ Official releases are published automatically by GitHub Actions after Mac and Wi
 
 An ended approval wait no longer leaves a later independent request stuck as session busy. Recovery verifies the saved approval and exclusive storage lock, preserves the new request origin, and never replays cancelled tool actions. See the [0.8.2 release](https://github.com/kaisersong/KTeam/releases/tag/v0.8.2).
 
+Windows directory grants now recognize `cd /d` and compound cmd queries, and normal directory activity no longer produces false configuration permission errors. Explicit routine directory grants also cover new report writes during recovery. Newly created team members automatically receive a private conversation with the user.
+
 ### v0.8.1
 
 Windows first-run recovery now checks process birth when a stale state-lock PID is reused. Explicit model imports allow inherited read-only access while rejecting foreign writes; startup waits for local services before showing model setup, and recovered service errors clear. Native update validation failures show an actionable download path. See the [0.8.1 release](https://github.com/kaisersong/KTeam/releases/tag/v0.8.1).

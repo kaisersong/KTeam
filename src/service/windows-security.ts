@@ -43,17 +43,18 @@ const identity=(path:string)=>{const s=lstatSync(path,{bigint:true});return [s.d
 /** NTFS change time invalidates this cache; real Windows tests must cover ACL changes. */
 type AclEntry={path:string;directory:boolean;create?:boolean;allowReaders?:boolean};
 function assertWindowsAccess(entries:AclEntry[]){
- // Directory entries may change while the host starts journals. Retry the complete
- // metadata + ACL proof; an actual ACL failure is never retried or accepted.
+ // Journal creation changes directory timestamps without changing its ACL. A live
+ // ACL proof remains valid for the same directory identity, but must not be cached
+ // under metadata that changed during inspection. Files still require stable bytes.
  for(let attempt=0;attempt<3;attempt++){
   const pending=entries.flatMap(entry=>{const cacheKey=entry.path+(entry.allowReaders?'|import-readers':'|private');let before:string|undefined;try{before=identity(entry.path);if(checked.get(cacheKey)===before)return [];}catch{if(!entry.create)throw new KTeamError(entry.directory?'private_directory_required':'private_file_required');}return [{...entry,before,cacheKey}];});
   if(!pending.length)return;
   let result:any;try{result=JSON.parse(windowsPowerShell(aclScript,{entries:pending}));}catch{throw new KTeamError(pending[0]!.directory?'private_directory_required':'private_file_required');}
   if(result?.ok!==true){const failed=pending[result?.failed]??pending[0]!;throw new KTeamError(failed.directory?'private_directory_required':'private_file_required');}
-  const observed=pending.map(entry=>({...entry,after:identity(entry.path)})),changed=observed.find(entry=>entry.before!==undefined&&entry.before!==entry.after);
+  const observed=pending.map(entry=>({...entry,after:identity(entry.path)})),changed=observed.find(entry=>entry.before!==undefined&&entry.before!==entry.after&&(!entry.directory||entry.before.split(':').slice(0,2).join(':')!==entry.after.split(':').slice(0,2).join(':')));
   if(changed){if(attempt<2)continue;throw new KTeamError(changed.directory?'private_directory_required':'private_file_required');}
   if(checked.size+pending.length>=4096)checked.clear();
-  for(const entry of observed)checked.set(entry.cacheKey,entry.after);
+  for(const entry of observed)if(entry.before===undefined||entry.before===entry.after)checked.set(entry.cacheKey,entry.after);else checked.delete(entry.cacheKey);
   return;
  }
 }

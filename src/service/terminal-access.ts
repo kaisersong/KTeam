@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync,realpathSync,statSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {terminalCommands,terminalRequiresConfirmation} from './terminal-permissions.js';
+import {windowsWorkingPaths} from './windows-shell.js';
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const reservedVariable=/^(?:PATH|HOME|SHELL|ENV|BASH_ENV|BASHOPTS|SHELLOPTS|CDPATH|IFS|NODE_OPTIONS|NODE_PATH|PYTHONPATH|PYTHONHOME|LD_.*|DYLD_.*|GIT_.*|BASH_FUNC_.*|NPM_CONFIG_.*)$/i;
 const environment=/^(?:CI|NODE_ENV|NO_COLOR|FORCE_COLOR|KTEAM_UPSTREAM_ROOT)=/;
@@ -106,6 +107,7 @@ export function commandAccessCurrent(access:CommandAccess){try{const stat=statSy
 /** Working-directory authority for general tools and scripts; no program-name allowlist. */
 export function terminalWorkingPaths(core:any,command:string,cwd:string):string[]|undefined{
  if(terminalRequiresConfirmation(core,command))return;
+ if(process.platform==='win32')return windowsWorkingPaths(command,realpathSync.native(cwd));
  const paths=new Set<string>();let directory=realpathSync(cwd);
  const expand=(path:string)=>resolve(directory,path==='~'?homedir():path.startsWith('~/')?join(homedir(),path.slice(2)):path);
  for(const segment of core.parseCommandSegments(command).segments as string[]){
@@ -124,7 +126,6 @@ export function terminalWorkingPaths(core:any,command:string,cwd:string):string[
   // Explicit absolute path arguments and redirection targets retain their own directory authority.
   // Drive-rooted and UNC paths are absolute on Windows, including local
   // output redirections; they cannot inherit an unrelated working directory.
-  if(process.platform==='win32')for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:[A-Za-z]:[\\/]|\\\\)[^"$`]+)"|'((?:[A-Za-z]:[\\/]|\\\\)[^']+)'|((?:[A-Za-z]:[\\/]|\\\\)[^\s;|&<>"'$`]+))/g))paths.add(expand(match[1]??match[2]??match[3]!));
   for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
    const path=match[1]??match[2]??match[3]!;if(path!=='/dev/null')paths.add(expand(path));
   }
