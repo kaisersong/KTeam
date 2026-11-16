@@ -9,6 +9,7 @@ writeFileSync(outside,'KTEAM_OUTSIDE_SENTINEL',{mode:0o600});writeFileSync(join(
 const profile='kteam-probe';
 const config=[
  'features.hooks=false','mcp_servers={}',
+ 'features.apps=false','features.plugins=false','features.remote_plugin=false','features.plugin_discovery_prefetch=false','features.shell_snapshot=false','features.image_generation=false','web_search="disabled"',
  'shell_environment_policy.inherit="none"','shell_environment_policy.set={PATH="/usr/bin:/bin:/usr/sbin:/sbin"}',
  `permissions.${profile}.filesystem={":minimal"="read",${JSON.stringify(workspace)}="write"}`,
  `permissions.${profile}.network.enabled=false`,
@@ -26,6 +27,9 @@ const server=createServer((q,r)=>r.end('NETWORK_SENTINEL'));await new Promise(r=
 evidence.networkPositiveControl=(await(await fetch(`http://127.0.0.1:${server.address().port}`)).text())==='NETWORK_SENTINEL';
 try{
  evidence.initialized=await request('initialize',{clientInfo:{name:'kteam_probe',version:'0.1'},capabilities:{experimentalApi:true}});child.stdin.write(JSON.stringify({method:'initialized'})+'\n');
+ const effective=await request('config/read',{cwd:workspace,includeLayers:false});
+ const settings=effective.config??{};
+ evidence.effectiveConfig={topLevel:Object.keys(settings),mcpFieldPresent:Object.hasOwn(settings,'mcp_servers'),mcpNames:Object.keys(settings.mcp_servers??{}),features:settings.features,webSearch:settings.web_search};
  evidence.profiles=await request('permissionProfile/list',{cwd:workspace});
  for(const [name,command] of [
   ['workspace-read',['/bin/cat',join(workspace,'input.txt')]],
