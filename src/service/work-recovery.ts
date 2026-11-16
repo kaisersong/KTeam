@@ -45,7 +45,11 @@ export class WorkRecovery {
      const {identity,directory}=harnessLocation(scope,cwd);release=acquireHarnessStorage(directory);
      const core=await sharedRuntime(),snapshot=await new core.FileSessionStore(join(directory,'sessions')).load('kteam_'+identity);
      const session=new core.AgentSessionState();if(!snapshot)continue;session.restoreSnapshot(snapshot);
-     const batch=session.getToolBatch();if(!staleToolBatchApproval(this.store,batch,scope)||this.store.job(batch.ownerId)?.originId!==job.originId)continue;
+     const batch=session.getToolBatch();if(!staleToolBatchApproval(this.store,batch,scope))continue;
+     // An ended approval wait can block the next independent request in the
+     // same session. Retire only that checkpoint; the new work keeps its own
+     // origin, admission and approvals. Other recovery reasons stay origin-bound.
+     if(job.reason!=='harness_session_busy'&&this.store.job(batch.ownerId)?.originId!==job.originId)continue;
      const autoId='auto-stale-batch:'+batch.ownerId+':'+batch.id;if(this.store.operation(autoId))continue;
      // Release before queue dispatch; opening the runtime revalidates all evidence.
      release();release=undefined;
