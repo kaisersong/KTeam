@@ -27,9 +27,12 @@ $acl=Get-Acl -LiteralPath $v.path
 $raw=New-Object System.Security.AccessControl.RawSecurityDescriptor($acl.GetSecurityDescriptorBinaryForm(),0)
 if($null -eq $raw.DiscretionaryAcl){throw 'private_acl_required'}
 $trusted=@($identity.User.Value,'S-1-5-18','S-1-5-32-544')
+$readOnlyRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute -bor [System.Security.AccessControl.FileSystemRights]::Synchronize
 if($trusted -notcontains $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value){throw 'private_owner_required'}
 foreach($rule in $acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])) {
- if($rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and -not ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -and $trusted -notcontains $rule.IdentityReference.Value){throw 'private_acl_required'}
+ if($rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and -not ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -and $trusted -notcontains $rule.IdentityReference.Value){
+  if(-not $v.allowReaders -or ($rule.FileSystemRights -band (-bnot $readOnlyRights)) -ne 0){throw 'private_acl_required'}
+ }
 }
 } catch {[Console]::Write('{"failed":'+$index+'}');exit 0};$index++
 }
@@ -38,20 +41,25 @@ foreach($rule in $acl.GetAccessRules($true,$true,[System.Security.Principal.Secu
 const checked=new Map<string,string>();
 const identity=(path:string)=>{const s=lstatSync(path,{bigint:true});return [s.dev,s.ino,s.nlink,s.size,s.mtimeNs,s.ctimeNs,s.mode].join(':');};
 /** NTFS change time invalidates this cache; real Windows tests must cover ACL changes. */
-export function assertWindowsPrivateMany(entries:{path:string;directory:boolean;create?:boolean}[]){
+type AclEntry={path:string;directory:boolean;create?:boolean;allowReaders?:boolean};
+function assertWindowsAccess(entries:AclEntry[]){
  // Directory entries may change while the host starts journals. Retry the complete
  // metadata + ACL proof; an actual ACL failure is never retried or accepted.
  for(let attempt=0;attempt<3;attempt++){
-  const pending=entries.flatMap(entry=>{let before:string|undefined;try{before=identity(entry.path);if(checked.get(entry.path)===before)return [];}catch{if(!entry.create)throw new KTeamError(entry.directory?'private_directory_required':'private_file_required');}return [{...entry,before}];});
+  const pending=entries.flatMap(entry=>{const cacheKey=entry.path+(entry.allowReaders?'|import-readers':'|private');let before:string|undefined;try{before=identity(entry.path);if(checked.get(cacheKey)===before)return [];}catch{if(!entry.create)throw new KTeamError(entry.directory?'private_directory_required':'private_file_required');}return [{...entry,before,cacheKey}];});
   if(!pending.length)return;
   let result:any;try{result=JSON.parse(windowsPowerShell(aclScript,{entries:pending}));}catch{throw new KTeamError(pending[0]!.directory?'private_directory_required':'private_file_required');}
   if(result?.ok!==true){const failed=pending[result?.failed]??pending[0]!;throw new KTeamError(failed.directory?'private_directory_required':'private_file_required');}
   const observed=pending.map(entry=>({...entry,after:identity(entry.path)})),changed=observed.find(entry=>entry.before!==undefined&&entry.before!==entry.after);
   if(changed){if(attempt<2)continue;throw new KTeamError(changed.directory?'private_directory_required':'private_file_required');}
   if(checked.size+pending.length>=4096)checked.clear();
-  for(const entry of observed)checked.set(entry.path,entry.after);
+  for(const entry of observed)checked.set(entry.cacheKey,entry.after);
   return;
  }
 }
+
+export function assertWindowsPrivateMany(entries:{path:string;directory:boolean;create?:boolean}[]){assertWindowsAccess(entries);}
+/** Explicit external import: trusted owner, regular file, no foreign writes; read-only grants are allowed. */
+export function assertWindowsImportSource(path:string){assertWindowsAccess([{path,directory:false,allowReaders:true}]);}
 
 export function assertWindowsPrivate(path:string,directory:boolean,create=false){assertWindowsPrivateMany([{path,directory,create}]);}

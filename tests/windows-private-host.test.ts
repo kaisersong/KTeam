@@ -3,7 +3,7 @@ import {powershellPath} from '../src/runtime/platform-process.js';
 import {X509Certificate} from 'node:crypto';
 import {privateTempDir} from './helpers/private-temp.js';
 import {test} from 'node:test';import assert from 'node:assert/strict';import {rmSync,lstatSync,writeFileSync,chmodSync,readFileSync,readdirSync,renameSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import https from 'node:https';
-import {ensurePrivateRoot,privateRead,initConfig,clientToken} from '../src/service/config.js';import {assertWindowsPrivate,windowsPowerShell} from '../src/service/windows-security.js';import {windowsCertificate,publishWindowsEndpoint,localRequest} from '../src/service/windows-transport.js';
+import {ensurePrivateRoot,privateRead,initConfig,clientToken} from '../src/service/config.js';import {assertWindowsPrivate,assertWindowsImportSource,windowsPowerShell} from '../src/service/windows-security.js';import {windowsCertificate,publishWindowsEndpoint,localRequest} from '../src/service/windows-transport.js';
 const grant=(path:string)=>windowsPowerShell(String.raw`$ErrorActionPreference='Stop';$v=[Console]::In.ReadToEnd()|ConvertFrom-Json;$a=Get-Acl -LiteralPath $v.path;$sid=New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0');$r=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,[System.Security.AccessControl.FileSystemRights]::Read,[System.Security.AccessControl.AccessControlType]::Allow);$a.AddAccessRule($r);Set-Acl -LiteralPath $v.path -AclObject $a;[Console]::Write('ok')`,{path});
 async function holdEndpointWithoutDeleteSharing(path:string){
  const script=String.raw`$ErrorActionPreference='Stop';[Console]::InputEncoding=New-Object Text.UTF8Encoding($false);$v=[Console]::ReadLine()|ConvertFrom-Json;$f=New-Object IO.FileStream($v.path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite);try{[Console]::WriteLine('locked');[void][Console]::ReadLine()}finally{$f.Dispose()}`;
@@ -34,4 +34,15 @@ test('Windows root validation rechecks real metadata churn without accepting a c
  const root=privateTempDir(join(tmpdir(),'kteam-acl-startup-'));let child:ReturnType<typeof spawn>|undefined;
  try{child=spawn(process.execPath,['-e',`const fs=require('node:fs'),path=require('node:path'),root=process.argv[1];let n=0;const timer=setInterval(()=>fs.writeFileSync(path.join(root,'journal-'+n++),'fixture'),5);fs.writeFileSync(path.join(root,'started'),'fixture');process.send('started');setTimeout(()=>{clearInterval(timer);process.disconnect()},300);`,root],{stdio:['ignore','pipe','pipe','ipc'],windowsHide:true});const ended=new Promise<void>((resolve,reject)=>{child!.once('error',reject);child!.once('exit',code=>code===0?resolve():reject(Error('churn_child_failed')))});await new Promise<void>((resolve,reject)=>{child!.once('message',()=>resolve());child!.once('error',reject)});assertWindowsPrivate(root,true);await ended;grant(root);assert.throws(()=>assertWindowsPrivate(root,true),/private_directory_required/);
  }finally{if(child&&child.exitCode===null&&child.signalCode===null){child.kill();await new Promise<void>(resolve=>child!.once('exit',()=>resolve()));}rmSync(root,{recursive:true,force:true});}
+});
+
+test('Windows explicit import allows foreign readers, rejects foreign writers and never primes private-file checks',{skip:process.platform!=='win32'},()=>{
+ const root=privateTempDir(join(tmpdir(),'kteam-import-acl-'));
+ try{
+  const file=join(root,'external-config.json');writeFileSync(file,'{}');grant(file);
+  assertWindowsImportSource(file);
+  assert.throws(()=>privateRead(file),/private_file_required/);
+  windowsPowerShell(String.raw`$ErrorActionPreference='Stop';$v=[Console]::In.ReadToEnd()|ConvertFrom-Json;$a=Get-Acl -LiteralPath $v.path;$sid=New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0');$r=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,[System.Security.AccessControl.FileSystemRights]::Write,[System.Security.AccessControl.AccessControlType]::Allow);$a.AddAccessRule($r);Set-Acl -LiteralPath $v.path -AclObject $a;[Console]::Write('ok')`,{path:file});
+  assert.throws(()=>assertWindowsImportSource(file),/private_file_required/);
+ }finally{rmSync(root,{recursive:true,force:true});}
 });
