@@ -1039,6 +1039,22 @@ function AppBody() {
                 正在处理…
               </Text>
             ))}
+          {work?.jobs?.some((j: any) =>
+            ["running", "routing", "waiting"].includes(j.state),
+          ) &&
+            button(
+              "停止当前工作",
+              () => {
+                void call("work.stop", {
+                  operationId: uid(),
+                  roomId: room.roomId,
+                })
+                  .then(() => refresh())
+                  .catch(tell);
+              },
+              undefined,
+              offline,
+            )}
           {pendingRoom.map((p) => (
             <View
               key={p.operationId}
