@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  memo,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   ActivityIndicator,
@@ -70,6 +77,8 @@ import {
   type Computer,
 } from "./src/transport";
 import {
+  cachedMessages,
+  cacheMessages,
   computers,
   saveComputer,
   selectComputer,
@@ -93,9 +102,15 @@ import {
   mentionAgentAddress,
   type MentionToken,
 } from "../src/protocol/mentions";
+import { mergeMessages, visibleRooms } from "../src/protocol/mobile-message-cache";
 const uid = () => Crypto.randomUUID().replace(/-/g, "");
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const names: Record<string, string> = {
+  model_authentication_failed:
+    "模型凭据无效或无访问权限，请在电脑的模型设置中检查。",
+  model_quota_exhausted: "模型额度不足或受到限流，请在电脑检查模型服务。",
+  generated_file_not_found: "这份产物暂不可用，请确认连接的是生成它的电脑。",
+  generated_file_receipt_changed: "产物记录已变化，请在电脑核对。",
   mobile_auth_required: "手机连接已失效，请重新配对",
   mobile_device_revoked: "手机权限已被撤销",
   mobile_operation_unknown: "结果待核对，请勿重复发送",
@@ -109,18 +124,148 @@ function safeHTML(content: string) {
     content
   );
 }
+const MessageRow = memo(function MessageRow({
+  message: m,
+  work,
+  bots,
+  colors,
+  call,
+  onOpen: setPreview,
+  onReply: setReply,
+  onFile: viewFile,
+}: any) {
+  const job = work?.jobs?.find((j: any) =>
+      j.results?.some((r: any) => r.messageId === m.messageId),
+    ),
+    receipts = (job?.generatedFiles ?? []).filter(
+      (f: any) => f.botId === m.sender.logicalAgentId,
+    );
+  return (
+    <View
+      style={[
+        s.message,
+        {
+          alignSelf: m.sender.kind === "user" ? "flex-end" : "flex-start",
+          backgroundColor:
+            m.sender.kind === "user" ? colors.user : colors.panel,
+          borderColor: colors.line,
+        },
+      ]}
+    >
+      {m.sender.kind !== "user" && (
+        <Text style={[s.caption, { color: colors.muted, marginBottom: 5 }]}>
+          {m.sender.kind === "user"
+            ? "我"
+            : (bots.find((b: any) => b.id === m.sender.logicalAgentId)?.name ??
+              "成员")}
+        </Text>
+      )}
+      <Pressable
+        onLongPress={() =>
+          Alert.alert("消息", "", [
+            {
+              text: "复制",
+              onPress: () =>
+                void Clipboard.setStringAsync(messageDisplayText(m)),
+            },
+            { text: "回复", onPress: () => setReply(m) },
+            { text: "取消" },
+          ] as any)
+        }
+      >
+        <Markdown
+          style={{
+            body: {
+              color: colors.text,
+              fontSize: 15,
+              lineHeight: 23,
+            },
+            link: { color: colors.green },
+            code_inline: {
+              backgroundColor: colors.user,
+              color: colors.text,
+            },
+            fence: {
+              backgroundColor: colors.user,
+              color: colors.text,
+            },
+            table: { borderColor: colors.line },
+          }}
+          onLinkPress={(url) => {
+            let filename = "";
+            try {
+              filename = decodeURIComponent(url).split("/").pop() ?? "";
+            } catch {}
+            const found = receipts.filter(
+              (f: any) => (f.file?.name ?? f.name) === filename,
+            );
+            if (found.length === 1) void viewFile(found[0]);
+            else if (/^https?:\/\//i.test(url)) void Linking.openURL(url);
+            return false;
+          }}
+        >
+          {messageDisplayText(m)}
+        </Markdown>
+      </Pressable>
+      {attachmentMessageView(m)?.attachments.map((file) => (
+        <Attachment
+          key={file.fileId}
+          message={m}
+          file={file}
+          call={call}
+          onOpen={setPreview}
+          colors={colors}
+        />
+      ))}
+      {receipts.map((f: any) => (
+        <Pressable
+          key={f.id}
+          onPress={() => void viewFile(f)}
+          style={[
+            s.artifactCard,
+            {
+              borderColor: colors.line,
+              backgroundColor: colors.bg,
+            },
+          ]}
+        >
+          <FileText size={25} strokeWidth={1.6} color={colors.green} />
+          <View style={{ flex: 1 }}>
+            <Text
+              numberOfLines={2}
+              style={{
+                color: colors.text,
+                fontWeight: "500",
+                fontSize: 14,
+              }}
+            >
+              {f.file?.name ?? f.name}
+            </Text>
+            <Text style={[s.caption, { color: colors.muted, marginTop: 3 }]}>
+              轻点在应用内查看
+            </Text>
+          </View>
+          <ChevronRight size={15} color={colors.muted} />
+        </Pressable>
+      ))}
+    </View>
+  );
+});
 function AppBody() {
   const insets = useSafeAreaInsets();
   const dark = useColorScheme() === "dark",
-    colors = {
-      bg: dark ? "#111914" : "#f5f7f2",
-      panel: dark ? "#202a23" : "#ffffff",
-      text: dark ? "#edf3e9" : "#24372a",
-      muted: dark ? "#9eae9b" : "#74816f",
-      line: dark ? "#354235" : "#e1e8de",
-      green: dark ? "#a8d3ae" : "#276747",
-      user: dark ? "#314331" : "#e6efe2",
-    };
+    colors = useMemo(
+      () => ({
+        bg: dark ? "#111914" : "#f5f7f2",
+        panel: dark ? "#202a23" : "#ffffff",
+        text: dark ? "#edf3e9" : "#24372a",
+        muted: dark ? "#9eae9b" : "#74816f",
+        line: dark ? "#354235" : "#e1e8de",
+        green: dark ? "#a8d3ae" : "#276747",
+        user: dark ? "#314331" : "#e6efe2",
+      }),
+      [dark],
+    );
   const [saved, setSaved] = useState<Computer[]>([]),
     [computer, setComputer] = useState<Computer>(),
     [tab, setTab] = useState("会话"),
@@ -157,6 +302,14 @@ function AppBody() {
     [preview, setPreview] = useState<any>(),
     [latest, setLatest] = useState(true),
     [permission, requestPermission] = useCameraPermissions();
+  const returnView = useRef<any>(undefined);
+  const previewRequest = useRef(0);
+  const viewability = useRef({
+    itemVisiblePercentThreshold: 100,
+    minimumViewTime: 1000,
+  }).current;
+  const olderLoading = useRef(false);
+  const olderComplete = useRef(new Set<string>());
   const connection = useRef<MobileConnection | undefined>(undefined),
     generation = useRef(0),
     roomRef = useRef<any>(undefined),
@@ -263,8 +416,12 @@ function AppBody() {
           call("inbox.read"),
         ]);
         if (g !== generation.current) return;
-        setRooms(a.rooms);
-        setBots(b.bots);
+        setRooms((old) =>
+          JSON.stringify(old) === JSON.stringify(a.rooms) ? old : a.rooms,
+        );
+        setBots((old) =>
+          JSON.stringify(old) === JSON.stringify(b.bots) ? old : b.bots,
+        );
         setInbox(c);
         await persist(computer, "rooms", a.rooms);
         await persist(computer, "bots", b.bots);
@@ -277,17 +434,16 @@ function AppBody() {
         if (g !== generation.current || roomRef.current?.roomId !== r.roomId)
           return;
         cursor.current = v.cursor;
-        const incoming = v.messages?.messages ?? [],
-          all = [
-            ...new Map(
-              [...messagesRef.current, ...incoming].map((m: any) => [
-                m.messageId,
-                m,
-              ]),
-            ).values(),
-          ].sort((a: any, b: any) => a.roomSequence - b.roomSequence);
-        setMessages(all);
-        if (v.work) setWork(v.work);
+        const incoming = v.messages?.messages ?? [];
+        const all = mergeMessages(messagesRef.current, incoming);
+        if (all !== messagesRef.current) {
+          messagesRef.current = all;
+          setMessages(all);
+        }
+        if (v.work)
+          setWork((old: any) =>
+            JSON.stringify(old) === JSON.stringify(v.work) ? old : v.work,
+          );
         if (v.settings?.members)
           setMembers(
             v.settings.members
@@ -298,12 +454,12 @@ function AppBody() {
               .map((m: any) => ({
                 address: mentionAgentAddress(m.subject.logicalAgentId),
                 name:
-                  bots.find((b) => b.id === m.subject.logicalAgentId)?.name ??
-                  "成员",
+                  bots.find((b: any) => b.id === m.subject.logicalAgentId)
+                    ?.name ?? "成员",
                 botId: m.subject.logicalAgentId,
               })),
           );
-        await persist(computer, "room:" + r.roomId, all.slice(-100));
+        await cacheMessages(computer, r.roomId, incoming);
       }
       if (g === generation.current) {
         setOffline(false);
@@ -384,6 +540,7 @@ function AppBody() {
     cursor.current = undefined;
     setDraftReady(false);
     generation.current++;
+    messagesRef.current = [];
     setMessages([]);
     setWork(undefined);
     setReply(undefined);
@@ -395,14 +552,18 @@ function AppBody() {
     setMembers([]);
     setSkills([]);
     if (r)
-      void readCache(computer, "room:" + r.roomId)
+      void cachedMessages(computer, r.roomId)
         .then((v) => {
           if (
             g === generation.current &&
             roomRef.current?.roomId === r.roomId &&
             v
           )
-            setMessages(v);
+            setMessages((old) => {
+              const next = mergeMessages(v, old);
+              messagesRef.current = next;
+              return next;
+            });
         })
         .catch(() => {});
     if (r)
@@ -570,38 +731,64 @@ function AppBody() {
     setTab("会话");
   };
   const loadOlder = async () => {
-    if (busy || !room || !messages.length) return;
-    setBusy(true);
+    const r = roomRef.current,
+      c = computer;
+    if (
+      olderLoading.current ||
+      !r ||
+      !c ||
+      !messagesRef.current.length ||
+      olderComplete.current.has(c.credentialId + ":" + r.roomId)
+    )
+      return;
+    olderLoading.current = true;
+    const g = generation.current,
+      before = messagesRef.current[0].roomSequence;
     try {
-      const v = await call("messages.page", {
-        roomId: room.roomId,
-        before: messages[0].roomSequence,
-      });
-      setMessages((old) =>
-        [
-          ...new Map(
-            [...v.messages, ...old].map((m: any) => [m.messageId, m]),
-          ).values(),
-        ].sort((a: any, b: any) => a.roomSequence - b.roomSequence),
-      );
+      const local = await cachedMessages(c, r.roomId, before);
+      const rows = local.length
+        ? local
+        : (await call("messages.page", { roomId: r.roomId, before })).messages;
+      if (!local.length) await cacheMessages(c, r.roomId, rows);
+      if (g !== generation.current || roomRef.current?.roomId !== r.roomId)
+        return;
+      if (!rows.length)
+        olderComplete.current.add(c.credentialId + ":" + r.roomId);
+      const next = mergeMessages(messagesRef.current, rows);
+      messagesRef.current = next;
+      setMessages(next);
     } catch (e) {
       tell(e);
     } finally {
-      setBusy(false);
+      olderLoading.current = false;
     }
   };
-  const viewFile = async (file: any) => {
-    setPreview({ name: file.name, loading: true });
-    try {
-      const v = await call("artifacts.preview", {
-        roomId: room?.roomId ?? file.roomId,
-        toolCallId: file.toolCallId ?? file.id,
-      });
-      setPreview(v);
-    } catch (e) {
-      setPreview(undefined);
-      tell(e);
-    }
+  const viewFile = useCallback(
+    async (file: any) => {
+      const request = ++previewRequest.current;
+      const name = file.name ?? file.file?.name ?? "产物";
+      setPreview({ name, loading: true });
+      try {
+        const v = await call("artifacts.preview", {
+          roomId: file.roomId ?? roomRef.current?.roomId,
+          toolCallId: file.toolCallId ?? file.id,
+        });
+        if (request === previewRequest.current)
+          setPreview({ ...v, name: v.name ?? name });
+      } catch (e) {
+        if (request === previewRequest.current)
+          setPreview({
+            name,
+            error: names[errorText(e)] ?? errorText(e),
+            retry: file,
+          });
+      }
+    },
+    [call],
+  );
+  const closePreview = () => {
+    previewRequest.current++;
+    setPreview(undefined);
   };
   const checkSend = async (item: any) => {
     setBusy(true);
@@ -823,7 +1010,8 @@ function AppBody() {
   const assistantRoom = rooms.find((r) => r.kind === "assistant"),
     needsYou =
       (inbox?.approvals?.length ?? 0) + (inbox?.questions?.length ?? 0);
-  const filtered = rooms.filter((r) =>
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const filtered = visibleRooms(rooms).filter((r) =>
       (r.title ?? "").toLowerCase().includes(queryText.toLowerCase()),
     ),
     query = mentionQuery(text, text.length),
@@ -905,8 +1093,15 @@ function AppBody() {
           <Pressable
             accessibilityLabel="电脑与连接"
             onPress={() => {
-              setRoom(undefined);
-              setTab("我");
+              if (tab === "我") {
+                const back = returnView.current;
+                setTab(back?.tab ?? "会话");
+                setRoom(back?.room);
+              } else {
+                returnView.current = { tab, room };
+                setRoom(undefined);
+                setTab("我");
+              }
             }}
             style={s.computerButton}
           >
@@ -939,8 +1134,9 @@ function AppBody() {
           <Text style={[s.caption, { color: colors.muted, marginTop: 8 }]}>
             {error || "正在尝试连接电脑。"}
           </Text>
-          <Text style={[s.caption, {color: colors.muted, marginTop: 8}]}>
-            确认电脑 KTeam 已开启、手机与电脑使用同一 Wi-Fi，并允许本地网络访问。更换网络后可重新扫码。
+          <Text style={[s.caption, { color: colors.muted, marginTop: 8 }]}>
+            确认电脑 KTeam 已开启、手机与电脑使用同一
+            Wi-Fi，并允许本地网络访问。更换网络后可重新扫码。
           </Text>
           <View style={s.actions}>
             {computer &&
@@ -1223,156 +1419,32 @@ function AppBody() {
           <View style={{ flex: 1 }}>
             <FlatList
               ref={list}
-              data={[...messages].reverse()}
+              data={reversedMessages}
+              initialNumToRender={12}
+              maxToRenderPerBatch={6}
+              windowSize={7}
+              scrollEventThrottle={100}
               inverted
               keyExtractor={(m) => m.messageId}
               onEndReached={() => void loadOlder()}
               onEndReachedThreshold={0.1}
               onScroll={(e) => setLatest(e.nativeEvent.contentOffset.y < 100)}
               onViewableItemsChanged={markSeen}
-              viewabilityConfig={{
-                itemVisiblePercentThreshold: 100,
-                minimumViewTime: 1000,
-              }}
+              viewabilityConfig={viewability}
               maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
               contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item: m }) => {
-                const job = work?.jobs?.find((j: any) =>
-                    j.results?.some((r: any) => r.messageId === m.messageId),
-                  ),
-                  receipts = (job?.generatedFiles ?? []).filter(
-                    (f: any) => f.botId === m.sender.logicalAgentId,
-                  );
-                return (
-                  <View
-                    style={[
-                      s.message,
-                      {
-                        alignSelf:
-                          m.sender.kind === "user" ? "flex-end" : "flex-start",
-                        backgroundColor:
-                          m.sender.kind === "user" ? colors.user : colors.panel,
-                        borderColor: colors.line,
-                      },
-                    ]}
-                  >
-                    {m.sender.kind !== "user" && (
-                      <Text
-                        style={[
-                          s.caption,
-                          { color: colors.muted, marginBottom: 5 },
-                        ]}
-                      >
-                        {m.sender.kind === "user"
-                          ? "我"
-                          : (bots.find((b) => b.id === m.sender.logicalAgentId)
-                              ?.name ?? "成员")}
-                      </Text>
-                    )}
-                    <Pressable
-                      onLongPress={() =>
-                        Alert.alert("消息", "", [
-                          {
-                            text: "复制",
-                            onPress: () =>
-                              void Clipboard.setStringAsync(
-                                messageDisplayText(m),
-                              ),
-                          },
-                          { text: "回复", onPress: () => setReply(m) },
-                          { text: "取消" },
-                        ] as any)
-                      }
-                    >
-                      <Markdown
-                        style={{
-                          body: {
-                            color: colors.text,
-                            fontSize: 15,
-                            lineHeight: 23,
-                          },
-                          link: { color: colors.green },
-                          code_inline: {
-                            backgroundColor: colors.user,
-                            color: colors.text,
-                          },
-                          fence: {
-                            backgroundColor: colors.user,
-                            color: colors.text,
-                          },
-                          table: { borderColor: colors.line },
-                        }}
-                        onLinkPress={(url) => {
-                          let filename = "";
-                          try {
-                            filename =
-                              decodeURIComponent(url).split("/").pop() ?? "";
-                          } catch {}
-                          const found = receipts.filter(
-                            (f: any) => (f.file?.name ?? f.name) === filename,
-                          );
-                          if (found.length === 1) void viewFile(found[0]);
-                          else if (/^https?:\/\//i.test(url))
-                            void Linking.openURL(url);
-                          return false;
-                        }}
-                      >
-                        {messageDisplayText(m)}
-                      </Markdown>
-                    </Pressable>
-                    {attachmentMessageView(m)?.attachments.map((file) => (
-                      <Attachment
-                        key={file.fileId}
-                        message={m}
-                        file={file}
-                        call={call}
-                        onOpen={setPreview}
-                        colors={colors}
-                      />
-                    ))}
-                    {receipts.map((f: any) => (
-                      <Pressable
-                        key={f.id}
-                        onPress={() => void viewFile(f)}
-                        style={[
-                          s.artifactCard,
-                          {
-                            borderColor: colors.line,
-                            backgroundColor: colors.bg,
-                          },
-                        ]}
-                      >
-                        <FileText
-                          size={25}
-                          strokeWidth={1.6}
-                          color={colors.green}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            numberOfLines={2}
-                            style={{
-                              color: colors.text,
-                              fontWeight: "500",
-                              fontSize: 14,
-                            }}
-                          >
-                            {f.file?.name ?? f.name}
-                          </Text>
-                          <Text
-                            style={[
-                              s.caption,
-                              { color: colors.muted, marginTop: 3 },
-                            ]}
-                          >
-                            轻点在应用内查看
-                          </Text>
-                        </View>
-                        <ChevronRight size={15} color={colors.muted} />
-                      </Pressable>
-                    ))}
-                  </View>
-                );
-              }}
+              renderItem={({ item: m }) => (
+                <MessageRow
+                  message={m}
+                  work={work}
+                  bots={bots}
+                  colors={colors}
+                  call={call}
+                  onOpen={setPreview}
+                  onReply={setReply}
+                  onFile={viewFile}
+                />
+              )}
             />
             {!latest && (
               <Pressable
@@ -1387,6 +1459,27 @@ function AppBody() {
               </Pressable>
             )}
           </View>
+          {work?.jobs?.[0] &&
+            ["blocked", "unknown", "stopped"].includes(work.jobs[0].state) && (
+              <View
+                style={[
+                  s.card,
+                  {
+                    backgroundColor: colors.panel,
+                    borderColor: colors.line,
+                    marginHorizontal: 16,
+                  },
+                ]}
+              >
+                <Text style={{ color: colors.text }}>本次工作未完成</Text>
+                <Text
+                  style={[s.caption, { color: colors.muted, marginTop: 6 }]}
+                >
+                  {names[work.jobs[0].reason] ??
+                    "电脑上的执行已停止或结果待核对，请在电脑查看工作记录。"}
+                </Text>
+              </View>
+            )}
           {work?.jobs
             ?.filter((j: any) => ["running", "routing"].includes(j.state))
             .map((j: any) => (
@@ -1401,7 +1494,7 @@ function AppBody() {
                   },
                 ]}
               >
-                {bots.find((b) => b.id === j.activeBotId)?.name ?? "成员"}{" "}
+                {bots.find((b: any) => b.id === j.activeBotId)?.name ?? "成员"}{" "}
                 正在处理…
               </Text>
             ))}
@@ -1606,7 +1699,8 @@ function AppBody() {
               ]}
             >
               <Text style={[s.title, { color: colors.text }]}>
-                {bots.find((b) => b.id === a.botId)?.name ?? "成员"} 需要确认
+                {bots.find((b: any) => b.id === a.botId)?.name ?? "成员"}{" "}
+                需要确认
               </Text>
               <Text style={{ color: colors.muted, marginVertical: 12 }}>
                 {a.toolName}
@@ -1740,6 +1834,15 @@ function AppBody() {
           contentContainerStyle={s.page}
           keyboardShouldPersistTaps="handled"
         >
+          {button(
+            "返回",
+            () => {
+              const back = returnView.current;
+              setTab(back?.tab ?? "会话");
+              setRoom(back?.room);
+            },
+            <ArrowLeft size={18} color={colors.green} />,
+          )}
           <Text style={[s.homeTitle, { color: colors.text, marginBottom: 12 }]}>
             电脑与连接
           </Text>
@@ -2047,7 +2150,7 @@ function AppBody() {
         visible={!!preview}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setPreview(undefined)}
+        onRequestClose={closePreview}
       >
         <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
           <View style={[s.header, { borderBottomColor: colors.line }]}>
@@ -2058,11 +2161,7 @@ function AppBody() {
             >
               {preview?.name ?? "产物查看器"}
             </Text>
-            {button(
-              "关闭",
-              () => setPreview(undefined),
-              <X size={18} color={colors.text} />,
-            )}
+            {button("关闭", closePreview, <X size={18} color={colors.text} />)}
           </View>
           {preview?.loading ? (
             <Text style={{ padding: 24, color: colors.muted }}>正在读取…</Text>
@@ -2137,6 +2236,14 @@ function AppBody() {
                 </Text>
               )}
             </ScrollView>
+          )}
+          {preview?.error && (
+            <View style={s.page}>
+              <Text style={{ color: colors.text }}>
+                暂时无法打开：{preview.error}
+              </Text>
+              {button("重试", () => void viewFile(preview.retry))}
+            </View>
           )}
           {preview?.content &&
             button("系统分享 / 外部打开", () => {

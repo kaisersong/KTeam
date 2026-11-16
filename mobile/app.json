@@ -20,7 +20,7 @@
           "NSAllowsLocalNetworking": true
         }
       },
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
       "adaptiveIcon": {
@@ -34,7 +34,7 @@
         "android.permission.CAMERA"
       ],
       "usesCleartextTraffic": true,
-      "versionCode": 6
+      "versionCode": 7
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -72,7 +72,7 @@ export async function cache(c: Computer) {
         throw Error("加密缓存不可用");
       }
       await d.execAsync(
-        "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,v TEXT NOT NULL,at INTEGER NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,v TEXT NOT NULL,at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS messages(room TEXT NOT NULL,id TEXT NOT NULL,seq INTEGER NOT NULL,value TEXT NOT NULL,PRIMARY KEY(room,id)); CREATE INDEX IF NOT EXISTS messages_room_sequence ON messages(room,seq)",
       );
       return d;
     })();
@@ -124,7 +124,9 @@ export async function clearPending(c: Computer, id: string) {
 export async function clearReadCache(c: Computer) {
   await (
     await cache(c)
-  ).runAsync("DELETE FROM cache WHERE k NOT LIKE 'pending:%'");
+  ).execAsync(
+    "DELETE FROM cache WHERE k NOT LIKE 'pending:%'; DELETE FROM messages;",
+  );
 }
 
 export async function selectComputer(c: Computer) {
@@ -138,4 +140,37 @@ export async function selectComputer(c: Computer) {
         .map((v) => v.installationId),
     ]),
   );
+}
+
+export async function cachedMessages(
+  c: Computer,
+  room: string,
+  before = Number.MAX_SAFE_INTEGER,
+) {
+  const rows = await (
+    await cache(c)
+  ).getAllAsync<{ value: string }>(
+    "SELECT value FROM messages WHERE room=? AND seq<? ORDER BY seq DESC LIMIT 100",
+    room,
+    before,
+  );
+  return rows.map((row) => JSON.parse(row.value)).reverse();
+}
+export async function cacheMessages(
+  c: Computer,
+  room: string,
+  messages: any[],
+) {
+  if (!messages.length) return;
+  const db = await cache(c);
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const message of messages)
+      await tx.runAsync(
+        "INSERT INTO messages(room,id,seq,value) VALUES(?,?,?,?) ON CONFLICT(room,id) DO UPDATE SET seq=excluded.seq,value=excluded.value WHERE value<>excluded.value",
+        room,
+        message.messageId,
+        message.roomSequence,
+        JSON.stringify(message),
+      );
+  });
 }
