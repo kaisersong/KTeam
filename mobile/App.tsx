@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  ActivityIndicator,
   AppState,
   BackHandler,
   Keyboard,
@@ -56,6 +57,8 @@ import {
   RefreshCw,
   Smartphone,
   X,
+  Zap,
+  ZapOff,
 } from "lucide-react-native";
 import { Buffer } from "buffer";
 import { GlassSurface, GlassGroup } from "./src/glass";
@@ -139,6 +142,10 @@ function AppBody() {
     [busy, setBusy] = useState(false),
     [offline, setOffline] = useState(false),
     [scan, setScan] = useState(false),
+    [scanError, setScanError] = useState(""),
+    [torch, setTorch] = useState(false),
+    [pairingName, setPairingName] = useState("电脑"),
+    [pairingPhase, setPairingPhase] = useState("connecting"),
     [manualPair, setManualPair] = useState(false),
     [attachmentMenu, setAttachmentMenu] = useState(false),
     [pairLink, setPairLink] = useState(""),
@@ -158,7 +165,18 @@ function AppBody() {
     refreshing = useRef(false),
     list = useRef<FlatList>(null),
     pairGeneration = useRef(0),
-    pairingActive = useRef(false);
+    pairingActive = useRef(false),
+    pairingConnection = useRef<MobileConnection | undefined>(undefined),
+    scanConsumed = useRef(false),
+    pairingCandidate = useRef<Computer | undefined>(undefined),
+    pairAction = useRef<(link: string) => void>(() => {});
+  const cancelPair = () => {
+    pairGeneration.current++;
+    pairingConnection.current?.close();
+    pairingConnection.current = undefined;
+    pairingActive.current = false;
+    setPairing(false);
+  };
   roomRef.current = room;
   messagesRef.current = messages;
   const call = useCallback(
@@ -415,10 +433,8 @@ function AppBody() {
   useEffect(() => {
     const handler = ({ url }: { url: string }) => {
       if (url.startsWith("kteam://pair")) {
-        setPairLink(url);
         setRoom(undefined);
-        setManualPair(true);
-        setTab("我");
+        pairAction.current(url);
       }
     };
     const sub = Linking.addEventListener("url", handler);
@@ -457,8 +473,7 @@ function AppBody() {
         return true;
       }
       if (tab !== "会话") {
-        pairGeneration.current++;
-        setPairing(false);
+        cancelPair();
         setTab("会话");
         return true;
       }
@@ -469,18 +484,30 @@ function AppBody() {
   const pair = async (link: string) => {
     if (pairingActive.current) return;
     pairingActive.current = true;
+    setRoom(undefined);
     setTab("我");
-    setManualPair(true);
+    setManualPair(false);
+    setPairingPhase("connecting");
     const attempt = ++pairGeneration.current;
     setPairing(true);
     setScan(false);
     setError("");
     let transport: MobileConnection | undefined;
     try {
-      const invite = parseInvitation(link),
-        candidate = pairingComputer(invite);
+      const invite = parseInvitation(link);
+      const previous = pairingCandidate.current;
+      const candidate =
+        previous?.credentialId === invite.inviteId &&
+        previous.publicKey === invite.publicKey &&
+        previous.secret === invite.secret
+          ? previous
+          : pairingComputer(invite);
+      pairingCandidate.current = candidate;
+      setPairingName(invite.computerName);
       transport = new MobileConnection(candidate);
+      pairingConnection.current = transport;
       await transport.connect();
+      setPairingPhase("confirming");
       setStatus("请在电脑确认这部手机");
       while (
         attempt === pairGeneration.current &&
@@ -489,6 +516,7 @@ function AppBody() {
         const v = await transport.call("pair", {
           name: Platform.OS === "ios" ? "我的 iPhone" : "我的 Android",
         });
+        if (attempt !== pairGeneration.current) return;
         if (v.paired) {
           const c = {
             ...candidate,
@@ -496,6 +524,8 @@ function AppBody() {
             secret: v.secret,
           };
           await saveComputer(c);
+          if (attempt !== pairGeneration.current) return;
+          pairingCandidate.current = undefined;
           await transport.call("pair", { action: "finish" }).catch(() => {});
           setSaved(await computers());
           setComputer(c);
@@ -507,12 +537,19 @@ function AppBody() {
       }
       throw Error("配对已取消或二维码已过期");
     } catch (e) {
-      tell(e);
+      if (attempt === pairGeneration.current) tell(e);
     } finally {
       transport?.close();
-      pairingActive.current = false;
-      if (attempt === pairGeneration.current) setPairing(false);
+      if (pairingConnection.current === transport)
+        pairingConnection.current = undefined;
+      if (attempt === pairGeneration.current) {
+        pairingActive.current = false;
+        setPairing(false);
+      }
     }
+  };
+  pairAction.current = (link) => {
+    void pair(link);
   };
   const openRoom = (r: any) => {
     setRoom(r);
@@ -794,6 +831,9 @@ function AppBody() {
   const startScan = async () => {
     if (pairing) return;
     setError("");
+    setScanError("");
+    setTorch(false);
+    scanConsumed.current = false;
     if (permission?.granted || (await requestPermission()).granted)
       setScan(true);
     else
@@ -995,7 +1035,7 @@ function AppBody() {
                   { color: colors.muted, textAlign: "center", marginTop: 16 },
                 ]}
               >
-                电脑侧栏点“连接手机” → 显示配对二维码 首次连接使用同一
+                电脑侧栏点“连接手机”，用手机扫码。首次连接使用同一
                 Wi-Fi，电脑保持唤醒
               </Text>
               <Pressable
@@ -1608,7 +1648,51 @@ function AppBody() {
           ))}
         </ScrollView>
       )}
-      {tab === "我" && (
+      {tab === "我" && pairing && (
+        <View style={s.pairingProgress} accessibilityLiveRegion="polite">
+          <View style={[s.pairingSymbol, { backgroundColor: colors.user }]}>
+            <Monitor size={40} strokeWidth={1.3} color={colors.green} />
+          </View>
+          <ActivityIndicator size="small" color={colors.green} />
+          <Text
+            style={[
+              s.sectionTitle,
+              {
+                color: colors.text,
+                textAlign: "center",
+                marginTop: 18,
+                marginBottom: 12,
+              },
+            ]}
+          >
+            {pairingPhase === "confirming" ? "请在电脑上确认" : "正在连接电脑"}
+          </Text>
+          <Text
+            style={{ color: colors.text, fontSize: 17, textAlign: "center" }}
+          >
+            {pairingName}
+          </Text>
+          <Text
+            style={[
+              s.caption,
+              {
+                color: colors.muted,
+                textAlign: "center",
+                marginTop: 14,
+                marginBottom: 28,
+              },
+            ]}
+          >
+            {pairingPhase === "confirming"
+              ? "在电脑 KTeam 点“确认连接”，这里会自动进入团队。"
+              : "请保持电脑唤醒，稍候即可。"}
+          </Text>
+          {button("取消连接", () => {
+            cancelPair();
+          })}
+        </View>
+      )}
+      {tab === "我" && !pairing && (
         <ScrollView
           contentContainerStyle={s.page}
           keyboardShouldPersistTaps="handled"
@@ -1671,7 +1755,7 @@ function AppBody() {
             连接新电脑
           </Text>
           <Text style={[s.caption, { color: colors.muted, marginBottom: 16 }]}>
-            电脑侧栏点“连接手机”，再点“显示配对二维码”。同一 Wi-Fi
+            电脑侧栏点“连接手机”即可显示二维码。同一 Wi-Fi
             下扫码后，在电脑确认这部手机。
           </Text>
           {button(
@@ -1691,12 +1775,14 @@ function AppBody() {
               </Text>
             </Pressable>
           )}
-          {(manualPair || !!pairLink || pairing) && (
+          {manualPair && (
             <>
               <TextInput
                 accessibilityLabel="配对链接"
-                multiline
-                placeholder="或粘贴 kteam:// 配对链接"
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="在此粘贴配对链接"
                 placeholderTextColor={colors.muted}
                 value={pairLink}
                 onChangeText={setPairLink}
@@ -1719,8 +1805,7 @@ function AppBody() {
           )}
           {pairing &&
             button("取消配对", () => {
-              pairGeneration.current++;
-              setPairing(false);
+              cancelPair();
             })}
           <Text style={[s.caption, { color: colors.muted, marginTop: 24 }]}>
             手机不保存模型密钥。电脑离线时可查看已同步内容并编辑草稿。
@@ -1782,50 +1867,130 @@ function AppBody() {
       <Modal
         visible={scan}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="fullScreen"
         onRequestClose={() => setScan(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-          {button(
-            "取消扫码",
-            () => setScan(false),
-            <X size={18} color={colors.text} />,
+        <View style={{ flex: 1, backgroundColor: "#111914" }}>
+          {scan && (
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              enableTorch={torch}
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+              onMountError={() =>
+                setScanError("相机暂不可用，请检查权限，或改用粘贴链接")
+              }
+              onBarcodeScanned={(r) => {
+                if (scanConsumed.current || pairingActive.current) return;
+                try {
+                  parseInvitation(r.data);
+                } catch (e) {
+                  setScanError(
+                    errorText(e).includes("过期")
+                      ? "二维码已过期，请在电脑上刷新"
+                      : "这不是 KTeam 配对二维码，请对准电脑上的二维码",
+                  );
+                  return;
+                }
+                scanConsumed.current = true;
+                setScan(false);
+                setTorch(false);
+                void pair(r.data);
+              }}
+            />
           )}
-          <Text
-            style={[
-              s.sectionTitle,
-              { color: colors.text, paddingHorizontal: 24, marginTop: 20 },
-            ]}
-          >
-            扫描电脑上的二维码
-          </Text>
-          <Text
-            style={[
-              s.caption,
-              { color: colors.muted, paddingHorizontal: 24, marginBottom: 20 },
-            ]}
-          >
-            KTeam 电脑端 → 连接手机 → 显示配对二维码
-          </Text>
-          <CameraView
-            style={{
-              flex: 1,
-              margin: 20,
-              borderRadius: 28,
-              overflow: "hidden",
-            }}
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-            onBarcodeScanned={
-              scan && !pairing
-                ? (r) => {
-                    setScan(false);
-                    setPairLink(r.data);
-                    void pair(r.data);
-                  }
-                : undefined
-            }
-          />
-        </SafeAreaView>
+          <View pointerEvents="none" collapsable={false} renderToHardwareTextureAndroid style={s.scanShade}>
+            <View style={s.scanShadeTop} />
+            <View style={s.scanMiddle}>
+              <View style={s.scanShadeSide} />
+              <View style={s.scanTarget} accessibilityLabel="二维码对准框">
+                <View style={[s.scanCorner, s.scanTopLeft]} />
+                <View style={[s.scanCorner, s.scanTopRight]} />
+                <View style={[s.scanCorner, s.scanBottomLeft]} />
+                <View style={[s.scanCorner, s.scanBottomRight]} />
+              </View>
+              <View style={s.scanShadeSide} />
+            </View>
+            <View style={s.scanShadeBottom} />
+          </View>
+          <SafeAreaView collapsable={false} style={s.scanChrome}>
+            <View style={s.scanHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="关闭扫码"
+                onPress={() => setScan(false)}
+                style={s.scanClose}
+              >
+                <X size={23} color="white" />
+              </Pressable>
+              <Text style={{ color: "white", fontSize: 18, fontWeight: "600" }}>
+                连接电脑
+              </Text>
+              <View style={{ width: 44 }} />
+            </View>
+            <View style={s.scanInstruction} pointerEvents="none">
+              <Text
+                style={{
+                  color: "white",
+                  fontSize: 23,
+                  fontWeight: "600",
+                  textAlign: "center",
+                }}
+              >
+                将二维码放入框内
+              </Text>
+              <Text
+                style={{
+                  color: "#d8e2d8",
+                  fontSize: 14,
+                  textAlign: "center",
+                  marginTop: 12,
+                }}
+              >
+                电脑 KTeam → 连接手机
+              </Text>
+            </View>
+            <View style={s.scanFooter}>
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{
+                  color: scanError ? "#ffe0ba" : "white",
+                  textAlign: "center",
+                  fontSize: 14,
+                  lineHeight: 22,
+                  marginBottom: 24,
+                }}
+              >
+                {scanError || "识别后自动连接，无需再次点击"}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={torch ? "关闭手电筒" : "打开手电筒"}
+                onPress={() => setTorch(!torch)}
+                style={s.scanTorch}
+              >
+                {torch ? (
+                  <ZapOff size={23} color="white" />
+                ) : (
+                  <Zap size={23} color="white" />
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setScan(false);
+                  setManualPair(true);
+                  setTab("我");
+                }}
+                style={{ padding: 20 }}
+              >
+                <Text style={{ color: "white", fontSize: 14 }}>
+                  无法扫码？粘贴链接
+                </Text>
+              </Pressable>
+            </View>
+          </SafeAreaView>
+        </View>
       </Modal>
       <Modal
         visible={!!preview}
@@ -2044,6 +2209,90 @@ export default function App() {
 }
 const s = StyleSheet.create({
   safe: { flex: 1 },
+  pairingProgress: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  pairingSymbol: {
+    width: 104,
+    height: 104,
+    borderRadius: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 30,
+  },
+  scanShade: { zIndex:1, elevation:1, position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
+  scanShadeTop: { flex: 1, backgroundColor: "#0009" },
+  scanMiddle: { height: 252, flexDirection: "row" },
+  scanShadeSide: { flex: 1, backgroundColor: "#0009" },
+  scanShadeBottom: { flex: 1, backgroundColor: "#0009" },
+  scanTarget: { width: 252, height: 252 },
+  scanCorner: {
+    position: "absolute",
+    width: 34,
+    height: 34,
+    borderColor: "#e9f8e9",
+  },
+  scanTopLeft: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 18,
+  },
+  scanTopRight: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 18,
+  },
+  scanBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 18,
+  },
+  scanBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 18,
+  },
+  scanChrome: { zIndex:2, elevation:2, flex: 1, justifyContent: "space-between" },
+  scanHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingTop: 8,
+  },
+  scanClose: {
+    height: 44,
+    width: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff22",
+  },
+  scanInstruction: { position: "absolute", top: "21%", left: 20, right: 20 },
+  scanFooter: {
+    alignItems: "center",
+    paddingHorizontal: 30,
+    paddingBottom: 18,
+  },
+  scanTorch: {
+    height: 50,
+    width: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff22",
+  },
   header: {
     minHeight: 76,
     paddingHorizontal: 16,

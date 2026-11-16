@@ -126,6 +126,7 @@ export class MobileConnection {
     });
   }
   async connect() {
+    if (this.closed) throw Error("连接已断开");
     if (this.authorityError) throw this.authorityError;
     if (!this.connecting)
       this.connecting = this.connectRoutes().finally(() => {
@@ -134,13 +135,13 @@ export class MobileConnection {
     return this.connecting;
   }
   private async connectRoutes() {
-    this.closed = false;
     let last: unknown;
     const endpoints = [
       ...new Set([...this.discovered, ...this.computer.endpoints]),
       ...(this.computer.relay ? [this.computer.relay] : []),
     ];
     for (const address of endpoints) {
+      if (this.closed) throw Error("连接已断开");
       try {
         await this.open(address);
         this.route = address === this.computer.relay ? "远程连接" : "直连";
