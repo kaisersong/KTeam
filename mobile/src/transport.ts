@@ -140,6 +140,8 @@ export class MobileConnection {
       ...new Set([
         ...this.discovered,
         ...(this.computer.relay ? [this.computer.relay] : []),
+        "wss://relay.kaihub.space/mobile/connect?installationId=" +
+          encodeURIComponent(this.computer.installationId),
         ...this.computer.endpoints,
       ]),
     ];
@@ -147,7 +149,7 @@ export class MobileConnection {
       if (this.closed) throw Error("连接已断开");
       try {
         await this.open(address);
-        this.route = address === this.computer.relay ? "远程连接" : "直连";
+        this.route = address.startsWith("wss:") ? "远程连接" : "直连";
         return;
       } catch (e) {
         last = e;

@@ -1173,8 +1173,7 @@ function AppBody() {
             {error || "正在尝试连接电脑。"}
           </Text>
           <Text style={[s.caption, { color: colors.muted, marginTop: 8 }]}>
-            确认电脑 KTeam 已开启、手机与电脑使用同一
-            Wi-Fi，并允许本地网络访问。更换网络后可重新扫码。
+            确认电脑已联网并开启 KTeam。Wi-Fi 或 5G 均可连接；电脑恢复在线后会自动重连。
           </Text>
           <View style={s.actions}>
             {computer &&
