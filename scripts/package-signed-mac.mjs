@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import {existsSync,realpathSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -18,7 +19,7 @@ function packageMac(projectRoot){return new Promise((resolveRun,reject)=>{
  const child=spawn(process.execPath,args,{stdio:['ignore','pipe','pipe']});let output='';
  const append=(target,data)=>{target.write(data);output=(output+data.toString()).slice(-2*1024*1024);};child.stdout.on('data',data=>append(process.stdout,data));child.stderr.on('data',data=>append(process.stderr,data));child.once('error',reject);child.once('close',(status,signal)=>resolveRun({status,signal,output}));
 });}
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+if(process.argv[1]&&existsSync(process.argv[1])&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url))){
  const projectRoot=resolve(process.argv[2]??process.cwd());
  try{const result=await withSigningTimestampRetry(()=>packageMac(projectRoot),{report:message=>console.error(message)});process.exitCode=result.status;}catch(error){console.error(error);process.exitCode=1;}
 }
