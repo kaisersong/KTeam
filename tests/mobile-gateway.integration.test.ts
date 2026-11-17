@@ -302,6 +302,9 @@ test("blind remote relay carries actual encrypted device traffic and closes revo
   }));
   let pair: any, phone: any;
   try {
+    const health = await fetch("http://127.0.0.1:" + relay.port + "/health");
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { ok: true });
     await gateway.start();
     for (let n = 0; n < 100 && gateway.relayStatus !== "connected"; n++)
       await new Promise((r) => setTimeout(r, 20));

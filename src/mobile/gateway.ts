@@ -172,6 +172,10 @@ export class MobileGateway {
                 type: "ready",
                 v: 1,
                 installationId: this.devices.installationId,
+                relay: this.devices.relay
+                  ? this.devices.relay.url + "/mobile/connect?installationId=" +
+                    encodeURIComponent(this.devices.installationId)
+                  : null,
               });
               return;
             }

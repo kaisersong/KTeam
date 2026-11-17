@@ -106,7 +106,7 @@ export class MobileConnection {
   private connecting?: Promise<void>;
   private discovery?: Zeroconf;
   private discovered: string[] = [];
-  constructor(readonly computer: Computer) {
+  constructor(readonly computer: Computer, private onRouteUpdate?: (c: Computer) => void) {
     this.discovery = new Zeroconf();
     this.discovery.on("resolved", (s: any) => {
       if (
@@ -137,8 +137,11 @@ export class MobileConnection {
   private async connectRoutes() {
     let last: unknown;
     const endpoints = [
-      ...new Set([...this.discovered, ...this.computer.endpoints]),
-      ...(this.computer.relay ? [this.computer.relay] : []),
+      ...new Set([
+        ...this.discovered,
+        ...(this.computer.relay ? [this.computer.relay] : []),
+        ...this.computer.endpoints,
+      ]),
     ];
     for (const address of endpoints) {
       if (this.closed) throw Error("连接已断开");
@@ -239,6 +242,18 @@ export class MobileConnection {
           if (value.type === "ready") {
             if (value.installationId !== this.computer.installationId)
               throw Error("电脑身份不一致");
+            // Routing changes arrive only inside the authenticated Noise channel.
+            // Never learn a remote address from an unauthenticated discovery peer.
+            if (value.relay === null || typeof value.relay === "string") {
+              const relay = value.relay ? new URL(value.relay) : undefined;
+              if (relay && (relay.protocol !== "wss:" || relay.username || relay.password))
+                throw Error("远程连接地址无效");
+              const next = relay?.toString();
+              if (this.computer.relay !== next) {
+                this.computer.relay = next;
+                this.onRouteUpdate?.(this.computer);
+              }
+            }
             clearTimeout(timer);
             ready = true;
             resolve();

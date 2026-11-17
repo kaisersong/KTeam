@@ -527,7 +527,9 @@ function AppBody() {
       return;
     }
     const c = computer,
-      transport = new MobileConnection(c);
+      transport = new MobileConnection(c, (updated) => {
+        void saveComputer(updated).catch(() => {});
+      });
     connection.current = transport;
     setOffline(true);
     setStatus("连接中…");
