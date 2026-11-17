@@ -1,3 +1,4 @@
+import {groupDirectoryApproval} from './group-directory-approval.js';
 import {MobileDevices} from '../mobile/devices.js';
 import {MobileGateway} from '../mobile/gateway.js';
 import {MobileFacade} from '../mobile/facade.js';
@@ -102,6 +103,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const modelSettings=new ModelSettings(undefined,()=>onboarding.ensureConfigured()),integrationSettings=new IntegrationSettings(),enterpriseConnectors=new EnterpriseConnectors({configRoot:process.env.KTEAM_MODEL_CONFIG_DIR??join(options.root,'runtime')}),mailConnectors=new MailConnectors();
   const conversations=new ConversationService(options.root,upstream,teamStore);
   const approvals=new ToolApprovals(teamStore);
+  approvals.setDirectoryGroupProvider(scope=>groupDirectoryApproval(upstream,teamStore,scope));
   const peerExchanges=new PeerExchanges(upstream,teamStore);
   const coordinator=new TeamCoordinator(upstream,teamStore,owner.epoch,{catalog:modelCatalog,identity:id=>isNativeModel(id)?localAgents.identity(id):modelIdentity(id)});
   const groupMembers=new GroupMembers(upstream,teamStore);
