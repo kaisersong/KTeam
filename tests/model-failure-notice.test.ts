@@ -32,3 +32,9 @@ test('real failure component exposes the member, model, cause and settings actio
  const settings=element.props.children.find((child:any)=>child?.props?.children==='打开模型设置');settings.props.onClick();assert(opened);
  }finally{rmSync(directory,{recursive:true,force:true});if(previous===undefined)delete (globalThis as any).window;else (globalThis as any).window=previous;}
 });
+test('one group member failure stays visible beside another member reply and clears after its own successful retry',()=>{
+ const member={...failed,id:'member',trigger:'group-response',failure:{...failed.failure,phase:'model'},activeBotId:'cto'},reply={...failed,id:'reply',trigger:'group-response',state:'delivered',failure:undefined,activeBotId:'qa'};
+ assert.equal(currentModelFailure('group',[reply,member])?.job.id,'member');
+ assert.equal(currentModelFailure('group',[{...reply,id:'retry',activeBotId:'cto'},reply,member]),undefined);
+ assert.equal(currentModelFailure('group',[{...reply,originId:'new-message'},member]),undefined);
+});
