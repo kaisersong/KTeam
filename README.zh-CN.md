@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.8.8。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.1。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -37,6 +37,13 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 **KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活和完整状态迁移等仍未完成。本版新增限作用域的 effect 只读核对及 HTML/邮件宿主回执，不代表所有工具已认证，也不代替业务验收。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
 
 ---
+
+## 0.9.1 有什么
+
+- **简洁的协作状态。** 进度显示在会话顶部的一行提示中，成员状态、详情和暂停操作按需查看，不再用大卡片占据消息区。
+- **在群里统一授权目录。** 群任务的授权回到原群，默认勾选给当前群所有 Bot 授权；可取消勾选仅授权请求成员，新增成员不自动继承。
+- **查询不中断。** GitHub 登录状态与 GET/HEAD API 查询按实际只读语义识别，支持已验证的变量、引号和管道形式。令牌读取和写请求仍单独确认。
+- **可核对的发布。** 发布前检查完整测试覆盖、安装包提交号和依赖指纹，设置中可复制实际构建信息。
 
 ## 0.8.0 有什么
 
@@ -118,8 +125,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.8.8.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.8.8.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.1.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.1.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -176,6 +183,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.9.1
+
+修复追加请求陷入旧排队链、普通 GitHub 查询反复申请确认等问题；群目录授权默认覆盖当前群成员，协作进度移到会话顶部。群目录、来源、成员及模型变化仍需核验，未知执行结果不会自动重放。完整改动见 [0.9.1 发布说明](release-notes/0.9.1.md)。
 
 ### v0.8.8
 

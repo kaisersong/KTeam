@@ -1,4 +1,4 @@
-export const HARNESS_PERMISSION_POLICY_VERSION='directory-shell-4';
+export const HARNESS_PERMISSION_POLICY_VERSION='directory-shell-5';
 import {readOnlyShell,routineShell} from './read-only-shell.js';
 import {readOnlyWindowsShell} from './windows-shell.js';
 import {gitCommandRisk} from './git-command-risk.js';
@@ -33,7 +33,7 @@ export function terminalRequiresConfirmation(core:any,command:string){
   || /\bgit\b[^;|&\n]*\bworktree\s+(?:remove|prune|move|repair)\b/.test(opaqueGit)
   || /\bgit\b[^;|&\n]*\bcommit\b[^;|&\n]*--amend/.test(opaqueGit)
   || /(?:\.git|\$gitdir|\$GIT_DIR)\/(?:hooks|config)(?:\/|\s|$)/i.test(plain)
-  || /\bgh\b[^;|&\n]*\b(?:create|edit|delete|merge|close|reopen|rerun|cancel|upload|fork|sync|auth|api|secret|variable)\b/.test(plain)
+  || /\bgh\b[^;|&\n]*\b(?:create|edit|delete|merge|close|reopen|rerun|cancel|upload|fork|sync|auth|api|secret|variable)\b/.test(inspected.join(';').replace(/["']/g,''))
   || /\bfind\b[^;|&\n]*(?:-delete|-exec|-ok|-fprint)/.test(plain)
   || /\b(?:unlinkSync|rmdirSync|rmSync|rmtree|remove|unlink)\s*\(/.test(plain)
   || /\b(?:curl|wget)\b[^;|&\n]*(?:--upload-file|--data|-d\s|-X\s+(?:POST|PUT|PATCH|DELETE))/.test(plain);

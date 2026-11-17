@@ -50,3 +50,18 @@ test('literal find searches with escaped spaces and a grep tail are read-only, b
  assert.equal(readOnlyShell('find . -maxdepth 3 -type f -iname "*.png" -print'),true);
  for(const command of ['find . -delete','find . -exec rm {} \\;','find . -execdir sh -c bad \\;','find . -ok rm {} \\;','find . -fprint output','find . -fprintf output x','find . -name *','find $ROOT -name x'])assert.equal(readOnlyShell(command),false,command);
 });
+
+test('GitHub CLI status and GET queries preserve read-only semantics through quoted variables and pipelines',()=>{
+ for(const command of [
+  'which gh && gh auth status 2>&1 | head -5',
+  String.raw`full=$(git -C /Users/kai/projects/KTeam rev-parse 79be765) && echo $full && gh api "repos/kaisersong/KTeam/actions/runs?head_sha=$full&per_page=10" --jq '.workflow_runs[] | "\(.databaseId) \(.head_branch) \(.conclusion) \(.created_at)"' | head`,
+  'gh api repos/example/delete/actions/runs --method GET --paginate --jq ".workflow_runs"',
+  'gh api -X HEAD repos/example/repo',
+ ])assert.equal(readOnlyShell(command),true,command);
+ for(const command of [
+  'gh auth token','gh auth status --show-token','gh auth status -t','gh auth login','gh auth refresh',
+  'gh api repos/example/repo -X DELETE','gh api repos/example/repo --method=PATCH','gh api repos/example/repo -f title=x','gh api repos/example/repo --input /work/secret',
+  'gh api graphql -f query="mutation { delete }"','gh api https://untrusted.example/collect',
+  'METHOD=DELETE; gh api repos/example/repo --method "$METHOD"','E=$(cat input); gh api $E','gh api repos/example/repo; rm /work/file',
+ ])assert.equal(readOnlyShell(command),false,command);
+});

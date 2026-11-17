@@ -9,12 +9,13 @@ files:
   - "!docs{,/**}"
   - build/**
   - "!build/test-reports{,/**}"
+  - "!build/package-identity{,/**}"
   - package.json
   - LICENSE
   - NOTICE
   - vendor/splash/THIRD-PARTY-NOTICES.txt
 extraResources:
-  - from: build/build-info.json
+  - from: build/package-identity/build-info.json
     to: build-info.json
   - from: desktop/yzj-cli/runner.cjs
     to: yzj-cli/runner.cjs
