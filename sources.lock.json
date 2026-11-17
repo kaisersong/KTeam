@@ -55,10 +55,6 @@
       "sha256": "efc112fa62fe695a7dc4116388498883172256fc97e63f3fbd78329097fd2443"
     },
     {
-      "file": "docs/design/desktop/openmausbot-delivery-plan-20261110.md",
-      "sha256": "610b1ed8c7bfdce42a1aec85bc4d58eb05b9690ac487770db968f6b60fb78b4a"
-    },
-    {
       "file": "docs/design/desktop/async-member-handoffs-20261111.md",
       "sha256": "5907c0d48048175aaf65d5498afb902aa4ab3c34744db04035af8dd7d49eb6ab"
     },
@@ -73,20 +69,6 @@
     {
       "file": "docs/design/desktop/work-notifications-20261111.md",
       "sha256": "a0ca76b696dde4042b2910ebb62f4a4cdd6a2ee77f093fd8edf9800be8e2e3e5"
-    },
-    {
-      "file": "docs/design/desktop/openmausbot-source-audit-20261110.md",
-      "sha256": "0592d3a7f9a518bc3cf6d09ea95e30ae31c0a69b03cf38efb15c2abc8cd0e0c6",
-      "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
-      "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
-      "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
-    },
-    {
-      "file": "docs/design/desktop/openmausbot-source-audit-20261110.sources.json",
-      "sha256": "a99f287b5ec3527cf7077eeb7da87662500b52b9de59ed80f58590a0357eb7ca",
-      "sourceRepository": "https://github.com/milind-soni/OpenMausBot",
-      "sourceRevision": "9d6678adcaf62645513a3e3419999134742bb458",
-      "usage": "Source/contract analysis only; no third-party code or enterprise assets copied."
     },
     {
       "file": "docs/design/desktop/bot-skill-library-20261111.md",
@@ -233,12 +215,6 @@
     "link": "../mydocs/kteam"
   },
   "designReferences": [
-    {
-      "name": "OpenMausBot",
-      "repository": "https://github.com/milind-soni/OpenMausBot",
-      "revision": "1de1164d5040d8699f55e0907552270bd9fbd38f",
-      "usage": "Chief awareness, private question routing and peer consultation; design reference only, no copied code"
-    },
     {
       "name": "KTeam Complete Design Kit",
       "url": "https://kteam-bot-design.kaisersong.chatgpt.site",
