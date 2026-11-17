@@ -17,7 +17,17 @@ test("the actual phone transport retains idle revocation across reconnects and n
     store = new TeamStore(root),
     devices = new MobileDevices(store);
   devices.configure({ action: "enable" });
-  const gateway = new MobileGateway(devices, async () => ({ ok: true }));
+  let releaseRead: (() => void) | undefined;
+  let reading: (() => void) | undefined;
+  const readStarted = new Promise<void>(resolve => { reading = resolve; });
+  const gateway = new MobileGateway(devices, async (_principal, method) => {
+    if (method === "blocked.read") {
+      reading?.();
+      await new Promise<void>(resolve => { releaseRead = resolve; });
+    }
+    return { ok: true };
+  });
+  (globalThis as any).__mobileTestInstallation = devices.installationId;
   const previous = globalThis.WebSocket,
     opened: string[] = [],
     sockets: WebSocket[] = [];
@@ -46,7 +56,7 @@ test("the actual phone transport retains idle revocation across reconnects and n
             b.onLoad({ filter: /.*/, namespace: "native-binding" }, (a) => ({
               contents:
                 a.path === "react-native-zeroconf"
-                  ? "export default class {on(){} scan(){} stop(){} removeAllListeners(){}}"
+                  ? 'export default class {on(n,f){if(n==="resolved")this.resolved=f} scan(){this.resolved?.({txt:{installationId:globalThis.__mobileTestInstallation},port:1,addresses:Array.from({length:12},(_,i)=>"127.0.0."+(i+2))})} stop(){} removeAllListeners(){}}'
                   : 'import{createHash,randomUUID}from"node:crypto";export{randomUUID};export const CryptoDigestAlgorithm={SHA256:"sha256"};export async function digestStringAsync(algorithm,value){return createHash(algorithm).update(value).digest("hex")}',
             }));
           },
@@ -75,8 +85,10 @@ test("the actual phone transport retains idle revocation across reconnects and n
     });
     const stalled = http.createServer();
     let stalledSocket: any;
+    const stalledSockets = new Set<any>();
     const arrived = new Promise<void>((resolve) =>
-      stalled.once("upgrade", (_req, socket) => {
+      stalled.on("upgrade", (_req, socket) => {
+        stalledSockets.add(socket);
         stalledSocket = socket;
         resolve();
       }),
@@ -106,9 +118,19 @@ test("the actual phone transport retains idle revocation across reconnects and n
         "cancelling an in-flight scan must not try another address",
       );
       await assert.rejects(cancelled.connect(), /连接已断开/);
+      let remembered: string | undefined;
+      const recovering = new MobileConnection({ ...candidate,
+        lastEndpoint: "ws://127.0.0.1:" + port + "/mobile/connect", relay: url },
+        (c: any) => { remembered = c.lastEndpoint; });
+      try {
+        const started = Date.now();
+        await recovering.connect();
+        assert.ok(Date.now() - started < 2500, "stale last route must not incur a six-second LAN wait");
+        assert.equal(remembered, url, "successful route must replace stale remembered route");
+      } finally { recovering.close(); }
     } finally {
       cancelled.close();
-      stalledSocket?.destroy();
+      for (const socket of stalledSockets) socket.destroy();
       await new Promise<void>((resolve) => stalled.close(() => resolve()));
     }
     pair = new MobileConnection(candidate);
@@ -126,7 +148,23 @@ test("the actual phone transport retains idle revocation across reconnects and n
       credentialId: credential.deviceId,
       secret: credential.secret,
     };
-    phone = new MobileConnection(saved);
+    phone = new MobileConnection({ ...saved, relay: url });
+    await phone.connect();
+    assert.equal((await phone.call("hello")).ok, true);
+    const connectedCount = opened.length;
+    await phone.connect();
+    assert.equal(opened.length, connectedCount, "an authenticated ready connection must be reused");
+    assert.equal(opened.some(url => /127\.0\.0\.(?:[2-9]|1[0-3]):1\//.test(url)), false,
+      "reachable relay must precede stale discovery addresses");
+    const blocked = phone.call("blocked.read");
+    const stopped = assert.rejects(blocked, /连接已断开/);
+    await readStarted;
+    const closeStart = Date.now();
+    phone.close();
+    await stopped;
+    assert.ok(Date.now() - closeStart < 500, "cancelled requests must not wait for the 30-second RPC timeout");
+    releaseRead?.();
+    phone = new MobileConnection({ ...saved, relay: url });
     await phone.connect();
     assert.equal((await phone.call("hello")).ok, true);
     const closed = once(sockets.at(-1)!, "close");
@@ -149,6 +187,8 @@ test("the actual phone transport retains idle revocation across reconnects and n
       "a rejected identity must not try a second route",
     );
   } finally {
+    releaseRead?.();
+    delete (globalThis as any).__mobileTestInstallation;
     pair?.close();
     phone?.close();
     rejected?.close();

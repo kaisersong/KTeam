@@ -333,7 +333,9 @@ function AppBody() {
     messagesRef = useRef<any[]>([]),
     cursor = useRef<string | undefined>(undefined),
     active = useRef(AppState.currentState === "active"),
-    refreshing = useRef(false),
+    refreshing = useRef<MobileConnection | undefined>(undefined),
+    resumeConnection = useRef<() => void>(() => {}),
+    networkSignature = useRef<string | undefined>(undefined),
     list = useRef<FlatList>(null),
     pairGeneration = useRef(0),
     pairingActive = useRef(false),
@@ -353,6 +355,7 @@ function AppBody() {
     setStatus("正在重新连接…");
     setConnectionRevision((v) => v + 1);
   };
+  resumeConnection.current = reconnect;
   const cancelPair = () => {
     pairGeneration.current++;
     pairingConnection.current?.close();
@@ -422,11 +425,17 @@ function AppBody() {
     } catch {}
   };
   const refresh = useCallback(async () => {
-    if (refreshing.current || !computer || !active.current) return;
-    refreshing.current = true;
+    const transport = connection.current;
+    if (!transport || refreshing.current === transport || !computer || !active.current) return;
+    refreshing.current = transport;
     const g = generation.current,
       r = roomRef.current;
     try {
+      await transport.connect();
+      if (g !== generation.current || connection.current !== transport) return;
+      setConnecting(false);
+      setOffline(false);
+      setStatus(transport.route);
       if (!r) {
         const [a, b, c] = await Promise.all([
           call("rooms.list"),
@@ -490,8 +499,8 @@ function AppBody() {
     } catch (e) {
       if (g === generation.current) {
         setConnecting(false);
-        setOffline(true);
-        setStatus(
+        setOffline(!transport.isReady);
+        setStatus(transport.isReady ? transport.route :
           ["mobile_auth_required", "mobile_device_revoked"].includes(
             errorText(e),
           )
@@ -501,7 +510,7 @@ function AppBody() {
         tell(e);
       }
     } finally {
-      refreshing.current = false;
+      if (refreshing.current === transport) refreshing.current = undefined;
     }
   }, [computer, call, bots]);
   useEffect(() => {
@@ -510,14 +519,18 @@ function AppBody() {
       if (v[0]) setComputer(v[0]);
     });
     const sub = AppState.addEventListener("change", (s) => {
+      const wasActive = active.current;
       active.current = s === "active";
+      if (!wasActive && active.current && connection.current) resumeConnection.current();
     });
     return () => sub.remove();
   }, []);
   useEffect(() => {
+    const changed = connection.current?.computer.credentialId !== computer?.credentialId;
     generation.current++;
     connection.current?.close();
     cursor.current = undefined;
+    if (changed) {
     setMessages([]);
     setRooms([]);
     setBots([]);
@@ -527,6 +540,7 @@ function AppBody() {
     setRoom(undefined);
     setWork(undefined);
     setUploads([]);
+    }
     setError("");
     setConnecting(!!computer);
     if (!computer) {
@@ -548,14 +562,19 @@ function AppBody() {
       })
       .catch(() => {});
     void refresh();
-    const network = Network.addNetworkStateListener(() => {
-      if (active.current) void refresh();
+    const network = Network.addNetworkStateListener((state) => {
+      const signature = [state.type, state.isConnected, state.isInternetReachable].join(":");
+      const previous = networkSignature.current;
+      networkSignature.current = signature;
+      if (!active.current || connection.current !== transport) return;
+      if (previous && previous !== signature && state.isConnected) resumeConnection.current();
+      else void refresh();
     });
     return () => {
       network.remove();
       transport.close();
     };
-  }, [computer?.credentialId, connectionRevision]);
+  }, [computer?.credentialId, computer?.secret, connectionRevision]);
   useEffect(() => {
     const id = setInterval(() => void refresh(), 2000);
     return () => clearInterval(id);
@@ -713,6 +732,7 @@ function AppBody() {
         previous.secret === invite.secret
           ? previous
           : pairingComputer(invite, await deviceIdentity());
+      if (attempt !== pairGeneration.current) return;
       pairingCandidate.current = candidate;
       setPairingName(invite.computerName);
       transport = new MobileConnection(candidate);

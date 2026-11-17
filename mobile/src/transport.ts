@@ -17,6 +17,7 @@ export type Computer = {
   secret: string;
   endpoints: string[];
   relay?: string;
+  lastEndpoint?: string;
   key: { publicKey: string; secretKey: string };
 };
 export type Invitation = {
@@ -100,6 +101,9 @@ export class MobileConnection {
     }
   >();
   private closed = false;
+  private ready = false;
+  private cancelOpen?: () => void;
+  get isReady() { return this.ready && !this.closed; }
   private authorityError?: Error;
   route = "";
   private connecting?: Promise<void>;
@@ -127,6 +131,7 @@ export class MobileConnection {
   async connect() {
     if (this.closed) throw Error("连接已断开");
     if (this.authorityError) throw this.authorityError;
+    if (this.ready) return;
     if (!this.connecting)
       this.connecting = this.connectRoutes().finally(() => {
         this.connecting = undefined;
@@ -135,20 +140,28 @@ export class MobileConnection {
   }
   private async connectRoutes() {
     let last: unknown;
+    const deadline = Date.now() + 15000;
     const endpoints = [
       ...new Set([
-        ...this.discovered,
+        ...(this.computer.lastEndpoint ? [this.computer.lastEndpoint] : []),
         ...(this.computer.relay ? [this.computer.relay] : []),
         "wss://relay.kaihub.space/mobile/connect?installationId=" +
           encodeURIComponent(this.computer.installationId),
+        ...this.discovered,
         ...this.computer.endpoints,
       ]),
     ];
     for (const address of endpoints) {
       if (this.closed) throw Error("连接已断开");
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
       try {
-        await this.open(address);
+        await this.open(address, Math.min(remaining, address.startsWith("wss:") ? 8000 : 1000));
         this.route = address.startsWith("wss:") ? "远程连接" : "直连";
+        if (this.computer.lastEndpoint !== address) {
+          this.computer.lastEndpoint = address;
+          this.onRouteUpdate?.(this.computer);
+        }
         return;
       } catch (e) {
         last = e;
@@ -163,11 +176,12 @@ export class MobileConnection {
       ? last
       : Error("无法连接电脑，请确认电脑已开机并开启手机连接");
   }
-  private async open(address: string) {
+  private async open(address: string, timeoutMs: number) {
     const digest = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       this.computer.secret,
     );
+    if (this.closed) throw Error("连接已断开");
     const psk = Buffer.from(digest, "hex"),
       key = {
         publicKey: mobileBytes(this.computer.key.publicKey, 32),
@@ -189,7 +203,11 @@ export class MobileConnection {
       const timer = setTimeout(() => {
         socket.close();
         reject(Error("连接超时"));
-      }, 6000);
+      }, timeoutMs);
+      this.cancelOpen = () => {
+        clearTimeout(timer);
+        reject(Error("连接已断开"));
+      };
       socket.onopen = () =>
         socket.send(
           JSON.stringify({
@@ -217,6 +235,7 @@ export class MobileConnection {
           this.authorityError = Error(code);
         if (!ready) reject(Error(code));
         if (this.socket === socket) {
+          this.ready = false;
           this.frames = undefined;
           for (const p of this.pending.values()) {
             clearTimeout(p.timer);
@@ -226,7 +245,7 @@ export class MobileConnection {
         }
       };
       socket.onmessage = (event) => {
-        if (this.socket !== socket) return;
+        if (this.socket !== socket || this.closed) return;
         try {
           const message = JSON.parse(String(event.data));
           if (!this.frames) {
@@ -257,6 +276,8 @@ export class MobileConnection {
             }
             clearTimeout(timer);
             ready = true;
+            this.ready = true;
+            this.cancelOpen = undefined;
             resolve();
             return;
           }
@@ -279,7 +300,7 @@ export class MobileConnection {
   async call(method: string, input: any = {}) {
     if (this.authorityError) throw this.authorityError;
     if (this.closed) throw Error("连接已断开");
-    if (!this.frames) await this.connect();
+    if (!this.ready) await this.connect();
     const id = Crypto.randomUUID();
     return new Promise<any>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -299,6 +320,14 @@ export class MobileConnection {
   }
   close() {
     this.closed = true;
+    this.ready = false;
+    this.cancelOpen?.();
+    this.cancelOpen = undefined;
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(Error("连接已断开，操作结果待核对"));
+    }
+    this.pending.clear();
     this.discovery?.stop();
     this.discovery?.removeAllListeners();
     this.socket?.close();
