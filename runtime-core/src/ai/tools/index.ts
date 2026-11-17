@@ -657,6 +657,10 @@ export class ToolRegistry {
     const decision = await this.permissionManager.check(registeredName, cloneToolInput(input));
     context?.signal?.throwIfAborted();
     if (authorityChanged() || initialPolicyRevision !== this.permissionManager.getRevision()) return stop(changedError, 'invalidated');
+    const restoredApproval=await context?.prepareToolApproval?.({name:registeredName,input:cloneToolInput(input),decision,permission});
+    context?.signal?.throwIfAborted();
+    if(authorityChanged()||initialPolicyRevision!==this.permissionManager.getRevision())return stop(changedError,'invalidated');
+    if(restoredApproval===false)return stop(`Error: 权限不足: ${name}`,'denied');
     if (decision === 'deny') {
       if (this.options.hookInputMode === 'direct-callback' && this.options.hooksRunner) {
         const hookReceiver = this.options.hooksRunner;
@@ -790,7 +794,7 @@ export class ToolRegistry {
       else {
         const promptToken = Object.freeze({});
         const result = await this.permissionManager.runPromptAuthorization(promptToken, registeredName, cloneToolInput(input),
-          () => this.options.onPrompt(registeredName, cloneToolInput(input), { tool, context }));
+          () => restoredApproval===true?true:this.options.onPrompt(registeredName, cloneToolInput(input), { tool, context }));
         context?.signal?.throwIfAborted();
         if (authorityChanged() || result.continuationRevision === undefined) return stop(changedError, 'invalidated');
         approved = result.value;
@@ -1001,7 +1005,7 @@ export class ToolRegistry {
       // Scoped native wrappers re-enter this guard after their own journal await,
       // including auto/boolean approvals which do not carry a grant object.
       if (context) {
-        invocationContext = { ...context, retainToolOutput:undefined, assertPermissionApproval: assertInvocationCurrent,
+        invocationContext = { ...context, retainToolOutput:undefined, prepareToolApproval:undefined, assertPermissionApproval: assertInvocationCurrent,
           runtimeFactSink: {emit: fact => {
             if (name === 'bash' && fact.toolName === 'bash' && fact.factKind === 'command_result' && fact.invocationId === context.toolInvocationId)
               commandFact = retainCommandResult(commandFact, fact);

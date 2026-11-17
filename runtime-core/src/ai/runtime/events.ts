@@ -9,6 +9,7 @@ export interface RuntimeActivity {
 
 export type AgentRuntimeEvent =
   | { type: 'execution_progress'; runId: string }
+  | { type: 'run_suspended'; runId:string; approvalId:string }
   | { type: 'run_started'; runId: string }
   | { type: 'execution_health'; invocationId?: string; runId: string; state: import('../../runtime/execution-health.js').ExecutionHealthState }
   | { type: 'model_request_started'; runId: string }

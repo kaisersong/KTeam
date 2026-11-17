@@ -1,3 +1,4 @@
+import {validateToolBatchCheckpoint,type ToolBatchCheckpoint} from './tool-batch-checkpoint.js';
 import { validateSemanticCompactionLedger, mergeSemanticCompactionLedgers, type SemanticCompactionLedger } from '../../runtime/sol-pi/semantic-compaction-ledger.js';
 import { validateCompoundOperationLedger, mergeCompoundOperationLedgers, type CompoundOperationLedger } from '../../runtime/sol-pi/compound-operation.js';
 import { mergeProtectedObservationClosures, type ProtectedObservationClosure, type ProtectedObservationReference } from './protected-observation-closure.js';
@@ -11,6 +12,7 @@ export interface CompactionRecord {
 }
 
 export interface SessionGraphSnapshot {
+  toolBatch?:ToolBatchCheckpoint;
   compoundOperations?: CompoundOperationLedger;
   semanticCompaction?: SemanticCompactionLedger;
   storeRevision?: number;
@@ -44,6 +46,7 @@ export class AgentSessionGraph {
   ) {
     this.snapshot = {
       ...snapshot,
+      toolBatch:snapshot.toolBatch===undefined?undefined:validateToolBatchCheckpoint(snapshot.toolBatch),
       compoundOperations: snapshot.compoundOperations === undefined ? undefined : validateCompoundOperationLedger(snapshot.compoundOperations),
       semanticCompaction: snapshot.semanticCompaction === undefined ? undefined : validateSemanticCompactionLedger(snapshot.semanticCompaction),
       protectedObservationClosure: mergeProtectedObservationClosures(undefined, snapshot.protectedObservationClosure),
@@ -64,6 +67,9 @@ export class AgentSessionGraph {
   getProtectedObservationClosure(): ProtectedObservationClosure | undefined {
     return mergeProtectedObservationClosures(undefined, this.snapshot.protectedObservationClosure);
   }
+
+  getToolBatch(){return this.snapshot.toolBatch===undefined?undefined:validateToolBatchCheckpoint(this.snapshot.toolBatch);}
+  setToolBatch(batch:ToolBatchCheckpoint|undefined){this.snapshot.toolBatch=batch===undefined?undefined:validateToolBatchCheckpoint(batch);this.touch();}
 
   getMessages(): Message[] {
     return structuredClone(this.snapshot.messages);
@@ -180,6 +186,7 @@ export class AgentSessionGraph {
     const protectedObservationClosure = mergeProtectedObservationClosures(this.snapshot.protectedObservationClosure, snapshot.protectedObservationClosure);
     this.snapshot = {
       ...structuredClone(snapshot),
+      toolBatch:snapshot.toolBatch===undefined?undefined:validateToolBatchCheckpoint(snapshot.toolBatch),
       compoundOperations: mergeCompoundOperationLedgers(this.snapshot.compoundOperations, snapshot.compoundOperations),
       semanticCompaction: mergeSemanticCompactionLedgers(this.snapshot.semanticCompaction, snapshot.semanticCompaction),
       protectedObservationClosure,
