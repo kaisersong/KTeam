@@ -4,6 +4,7 @@ export interface Message {messageId:string;roomId?:string;sender:{kind:string;lo
 export interface KTeamAPI {
  mobileSettings():Promise<any>;changeMobileSettings(input:any):Promise<any>;
  groupMembers(roomId:string):Promise<any>;changeGroupMembers(input:any):Promise<any>;
+ copyMobileInvitation(input:{link:string}):Promise<{ok:true}>;
  openWebLink(input:{url:string}):Promise<{ok:true}>;
  openSplash(input:{requestId:string}):Promise<{ok:true;opened:true;mode:'local';url:string}>;
  controlCua(input:any):Promise<any>;openComputerPermissionSettings(input:{permission:string}):Promise<any>;

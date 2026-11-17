@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { Smartphone, QrCode, RefreshCw, ShieldCheck } from "lucide-react";
 import { api, explain } from "./api";
@@ -7,10 +7,12 @@ export function MobileSettings() {
     [invite, setInvite] = useState<any>(),
     [qr, setQr] = useState(""),
     [error, setError] = useState(""),
+    [copied, setCopied] = useState(false),
     [busy, setBusy] = useState(false),
     [relayUrl, setRelayUrl] = useState(""),
     [relayToken, setRelayToken] = useState("");
   const [now, setNow] = useState(Date.now());
+  const preparing = useRef(false);
   const load = async () => {
     try {
       const v = await api.mobileSettings();
@@ -20,7 +22,7 @@ export function MobileSettings() {
     }
   };
   useEffect(() => {
-    void load();
+    void showCode();
     const id = setInterval(() => void load(), 3000);
     const clock = setInterval(() => setNow(Date.now()), 1000);
     return () => {
@@ -54,10 +56,15 @@ export function MobileSettings() {
     }
   };
   const showCode = async () => {
+    if (preparing.current) return;
+    preparing.current = true;
     setBusy(true);
     setError("");
+    setCopied(false);
     try {
-      if (!data.enabled)
+      const current = await api.mobileSettings();
+      setData(current);
+      if (!current.enabled)
         setData(await api.changeMobileSettings({ action: "enable" }));
       const next = await api.changeMobileSettings({ action: "invite" });
       const image = await QRCode.toDataURL(next.link, {
@@ -71,6 +78,7 @@ export function MobileSettings() {
     } catch (e) {
       setError(explain(e));
     } finally {
+      preparing.current = false;
       setBusy(false);
     }
   };
@@ -82,33 +90,27 @@ export function MobileSettings() {
         <Smartphone size={22} /> 手机连接
       </h2>
       <p className="settings-description">
-        在手机上继续会话、查看产物和处理审批。首次连接请让手机和电脑使用同一
-        Wi-Fi，并保持电脑唤醒。
+        打开手机 KTeam，点“扫码连接电脑”。手机和电脑请使用同一 Wi-Fi。
       </p>
-      <ol className="mobile-pairing-steps">
-        <li>
-          <b>1</b>显示二维码
-        </li>
-        <li>
-          <b>2</b>手机 KTeam 扫码
-        </li>
-        <li>
-          <b>3</b>在此确认连接
-        </li>
-      </ol>
       {error && (
         <p role="alert" className="flow-error">
           {error}
         </p>
       )}
-      <button
-        className="primary"
-        disabled={busy || !data}
-        onClick={() => void showCode()}
-      >
-        <QrCode size={18} />
-        {invite ? "刷新配对二维码" : "显示配对二维码"}
-      </button>
+      {busy && !invite && (
+        <p role="status" className="settings-description">
+          正在准备二维码…
+        </p>
+      )}
+      {((!invite && !busy) || expired) && (
+        <button
+          className="primary"
+          disabled={busy}
+          onClick={() => void showCode()}
+        >
+          <QrCode size={18} /> {expired ? "刷新二维码" : "重新生成二维码"}
+        </button>
+      )}
       {data?.enabled && (
         <>
           <div className="settings-toolbar">
@@ -128,16 +130,36 @@ export function MobileSettings() {
               <p role="status">
                 {expired
                   ? "二维码已过期，请刷新后再扫描。"
-                  : `打开手机 KTeam，点“扫码连接电脑”。二维码还剩 ${Math.max(0, Math.ceil((expiresAt - now) / 1000))} 秒。`}
+                  : `扫码后，在此确认手机连接。二维码还剩 ${Math.max(0, Math.ceil((expiresAt - now) / 1000))} 秒。`}
               </p>
               {!expired && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => void showCode()}
+                >
+                  换一个二维码
+                </button>
+              )}
+              {!expired && (
                 <details>
-                  <summary>手动配对链接</summary>
-                  <textarea
-                    aria-label="配对链接"
-                    readOnly
-                    value={invite.link}
-                  />
+                  <summary>无法扫码？</summary>
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      void api
+                        .copyMobileInvitation({ link: invite.link })
+                        .then(() => {
+                          setCopied(true);
+                          setError("");
+                        })
+                        .catch(() =>
+                          setError("复制失败，请刷新二维码后重新扫码"),
+                        );
+                    }}
+                  >
+                    {copied ? "已复制配对链接" : "复制配对链接"}
+                  </button>
                 </details>
               )}
             </div>

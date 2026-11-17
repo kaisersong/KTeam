@@ -5,6 +5,8 @@ electronDist: node_modules/electron/dist
 directories:
   output: release
 files:
+  - "!design-qa.md"
+  - "!docs{,/**}"
   - build/**
   - package.json
   - LICENSE
