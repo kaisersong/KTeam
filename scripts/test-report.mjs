@@ -1,8 +1,8 @@
 import {createHash} from 'node:crypto';
-export const POSIX_MIN_TESTS=781;
-export const WIN32_MIN_TESTS=781;
+export const POSIX_MIN_TESTS=788;
+export const WIN32_MIN_TESTS=788;
 // Baseline: 766 declared tests on all platforms at 020efbf; six release regression
-// tests, two queue-routing regressions and five group-directory and two GitHub-query regressions are added here. Platform skips are included in the declared count.
+// tests, two queue-routing regressions and five group-directory, two GitHub-query and seven team-feedback regressions are added here. Platform skips are included in the declared count.
 export const floorFor=platform=>platform==='win32'?WIN32_MIN_TESTS:POSIX_MIN_TESTS;
 export function parseStats(text){
  const read=name=>{const match=text.match(new RegExp('^# '+name+' (\\d+)\\r?$','m'));if(!match)throw Error('test_summary_missing_'+name);return Number(match[1]);};
