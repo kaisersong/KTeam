@@ -48,6 +48,7 @@ for(const scenario of ['allow_once','deny','allow_always','allow_directory','dir
   await host.close();host=await proofHost(root,configRoot,f.upstream.options);
   const restored=await until(async()=>(await api.toolApprovals()).approvals[0]);assert.equal(restored.id,approval.id);assert.equal(restored.hash,approval.hash);assert.equal(requests,1);
   await assert.rejects(hostRequest(root,'kteam-companion','/v1/tool-approvals/decide',{id:approval.id,expectedHash:approval.hash,decision}),/app_settings_forbidden/);
+  assert.equal((await api.toolApprovals()).approvals.find((item:any)=>item.id===approval.id)?.hash,approval.hash);assert.equal(existsSync(second),false);
   await assert.rejects(api.decideToolApproval({id:approval.id,expectedHash:'stale',decision}),/tool_approval_changed/);
   if(['new-deny','profile','pause','expiry','model'].includes(scenario)){
    if(scenario==='new-deny')writeFileSync(join(configRoot,'settings.json'),JSON.stringify({permissions:{deny:['write'],allow:['write:'+first]}}));

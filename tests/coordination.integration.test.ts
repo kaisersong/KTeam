@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {TeamStore} from '../src/service/team-store.js';
+import {ConversationService} from '../src/service/conversation.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {CollaborationService,LOCAL_HUMAN,agentAddress} from '../src/service/collaboration.js';
 import {KTeamError} from '../src/errors.js';
@@ -31,6 +32,7 @@ test('proposal does not create entities; explicit scoped hash acceptance creates
   await assert.rejects(c.accept({roomId:ref.roomId,proposalId:proposal.id,expectedHash:'changed'},user),/proposal_changed/);
   await assert.rejects(c.accept({roomId:'another-room',proposalId:proposal.id,expectedHash:proposal.hash},user),/proposal_scope_mismatch/);
   const results=await Promise.all(Array.from({length:5},()=>c.accept({roomId:ref.roomId,proposalId:proposal.id,expectedHash:proposal.hash},user)));
+  const shared=(await new ConversationService(f.root,f.upstream,store).data(results[0]!.roomId)).shared;assert.equal(shared.sourceKind,'proposal');assert.deepEqual(shared.sourceRef,{roomId:ref.roomId,messageId:ctx.originId});assert.deepEqual(shared.sourceMessageIds,[]);
   assert.equal(new Set(results.map(r=>r.roomId)).size,1);assert.equal((await f.upstream.listBots()).agents.length,before+2);assert.equal((await f.upstream.listTeams()).rooms.length,4);
   for(const member of proposal.members){const direct=store.state<any>('direct-room:'+member.botId);assert.ok(direct?.roomId);assert.equal(store.settings(direct.roomId)?.kind,'direct');assert.equal((await f.upstream.messages(direct.roomId,0,20)).messages.length,0);assert.equal((await c.direct(member.botId,user)).roomId,direct.roomId);}
   const draft=await f.upstream.messages(results[0]!.roomId,0,20);assert.equal(draft.messages.length,0);assert.equal(store.jobs(results[0]!.roomId).length,0);const data=await f.upstream.conversationData(results[0]!.roomId);assert.match(data.shared.text,/确认本周资料缺口/);assert.equal(data.shared.revision,1);assert.equal(store.jobs(results[0]!.roomId).length,0);
