@@ -1,4 +1,4 @@
-import {Clock3,UsersRound,AlertCircle,ArrowRight} from 'lucide-react';
+import {Clock3,UsersRound,AlertCircle,ArrowRight,ChevronDown} from 'lucide-react';
 import {explain,type Bot} from './api';
 const labels:Record<string,string>={queued:'排队中',held:'已暂停',routing:'准备中',running:'进行中',stopping:'正在停止',waiting:'等待下一步',waiting_user:'等待本人确认',delivered:'已完成',blocked:'执行受阻',unknown:'结果待核对',stopped:'已停止',noop:'未执行',cancelled:'已取消'};
 export function WorkWaitingNotice({job,bots,busy,onDetails,onPause,onOpenRoom,onMember}:{job:any;bots:Bot[];busy:boolean;onDetails:()=>void;onPause:()=>void;onOpenRoom:(id:string)=>void;onMember?:(id:string)=>void}){
@@ -12,8 +12,9 @@ export function WorkWaitingNotice({job,bots,busy,onDetails,onPause,onOpenRoom,on
  const description=needsApproval?'请核对操作内容，确认或拒绝后继续。':needsAnswer?'请到私聊补充信息，成员收到后继续处理。':waiting.condition?waiting.doneWhen:blocked?'有成员暂时无法继续，请查看下面的原因。':needsInput?(children.some(child=>child.approvalInGroup)?'请在群里的授权卡处理确认事项。':'请到对应成员的私聊处理确认事项。'):waiting.lastError?'暂时无法读取最新进度，正在重新连接。':allReturned?'成员结果已返回，接下来由'+name(job.activeBotId)+'核对。':'成员完成后，'+name(job.activeBotId)+'会检查结果并继续推进。';
  const Icon=blocked?AlertCircle:needsApproval||needsAnswer||waiting.condition?Clock3:UsersRound;
  const deadline=Number(waiting.deadline);
- return <section className="work-waiting" role="status" aria-label={title}>
-  <header><Icon size={16}/><strong>{title}</strong></header>
+ const progress=children.map(child=>name(child.botId)+' '+(labels[child.state]??'状态待核对')).join(' · ');
+ return <section className="conversation-work-status" aria-label={title}>
+ <details className="conversation-work-status-disclosure"><summary><Icon size={13}/><strong role="status">{title}</strong>{progress&&<span title={progress}>{progress}</span>}<ChevronDown className="work-status-chevron" size={13}/></summary><div className="conversation-work-status-content">
   <p>{description}</p>
   {waiting.questionRoomId&&<button type="button" className="text-link" onClick={()=>onOpenRoom(waiting.questionRoomId)}>去私聊回答</button>}
   {children.length>0&&<ul>{children.map(child=><li key={child.jobId}>
@@ -21,9 +22,9 @@ export function WorkWaitingNotice({job,bots,busy,onDetails,onPause,onOpenRoom,on
    {child.reason==='model_tool_approval_unavailable'&&onMember&&<button className="text-link" onClick={()=>onMember(child.botId)}>调整成员模型</button>}
    {(child.questionRoomId||child.approvalRoomId)&&<button className="text-link" onClick={()=>onOpenRoom(child.questionRoomId??child.approvalRoomId)}>{child.approvalInGroup&&!child.questionRoomId?'查看群内授权':'去私聊确认'}</button>}
   </li>)}</ul>}
-  <footer><details className="work-waiting-details"><summary>协作详情</summary><div>
+  <footer><div className="work-waiting-details">
    {Number.isFinite(deadline)&&deadline>0&&<small>本阶段期限：{new Date(deadline).toLocaleString()}。到期仍未完成时会保留进度并提示。</small>}
    <button className="text-button" disabled={busy} onClick={onDetails}>查看执行记录<ArrowRight size={13}/></button>
-  </div></details><button className="secondary" disabled={busy} onClick={onPause}>暂停会话</button></footer>
- </section>;
+  </div><button className="secondary" disabled={busy} onClick={onPause}>暂停会话</button></footer>
+ </div></details></section>;
 }
