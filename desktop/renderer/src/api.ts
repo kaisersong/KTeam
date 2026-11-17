@@ -3,6 +3,7 @@ export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:bo
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
  mobileSettings():Promise<any>;changeMobileSettings(input:any):Promise<any>;
+ teamWorkspace(roomId:string):Promise<any>;saveTeamWorkspace(input:any):Promise<any>;
  groupMembers(roomId:string):Promise<any>;changeGroupMembers(input:any):Promise<any>;
  copyMobileInvitation(input:{link:string}):Promise<{ok:true}>;
  openWebLink(input:{url:string}):Promise<{ok:true}>;

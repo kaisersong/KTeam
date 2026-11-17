@@ -23,6 +23,6 @@ for(const scenario of ['routing','tool-markup','quoted-tool-markup'])test('real 
  try{
   const core=await sharedRuntime(),config=await core.loadConfig();config.providers.openai={...(config.providers.openai??{}),protocol:'openai_legacy',apiKey:'fixture-key',baseUrl:'http://127.0.0.1:'+(server.address() as any).port+'/v1'};config.models['routing-test']={provider:'openai',model:'fixture-model'};config.defaultModelId='routing-test';writeFileSync(join(root,'config.json'),JSON.stringify(config));
   const run=()=>nativeTurn({modelId:'routing-test',system:'只输出路由 JSON，不执行工具。',prompt:'谢谢',tools:[],maxIterations:1,onRequest:()=>{reservations++;},signal:AbortSignal.timeout(8000)});
-  if(scenario==='tool-markup')await assert.rejects(run(),(error:any)=>error.code==='model_response_protocol_invalid');else {const reply=await run();if(scenario==='routing')assert.deepEqual(JSON.parse(reply.text).members,[]);else assert.equal(reply.text,response);}assert.equal(calls,1);assert.equal(reservations,1);
+  if(scenario!=='routing')await assert.rejects(run(),(error:any)=>error.code==='model_response_protocol_invalid');else {const reply=await run();if(scenario==='routing')assert.deepEqual(JSON.parse(reply.text).members,[]);else assert.equal(reply.text,response);}assert.equal(calls,1);assert.equal(reservations,1);
  }finally{await new Promise<void>(r=>server.close(()=>r()));if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;rmSync(root,{recursive:true,force:true});}
 });

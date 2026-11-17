@@ -8,6 +8,7 @@ import {LOCAL_HUMAN} from './collaboration.js';
 import {groupWorkFacts} from './group-conversation.js';
 import {ownerPage} from './room-reads.js';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const backgroundOrigin=(job:any)=>['assistant-notice','followup','regenerate'].includes(job?.trigger);
 const pending=new Set(['pending','deciding','decided']);
 export type InputDecision=(input:{facts:any;choices:{id:string;description:string}[];guard:()=>Promise<void>;signal:AbortSignal;onRequest:(witness?:any)=>void;botId?:string})=>Promise<string|null>;
 /** Read-only semantic decisions over existing message receipts, runtime boundaries and the original queue. */
@@ -34,13 +35,24 @@ export class AutomaticInputs {
   if(!(members.some(member=>member.status==='active'&&member.subject?.kind==='user'&&member.subject.userId==='user.local')))throw new KTeamError('room_actor_forbidden',403);
   const hosted=members.some(member=>member.status==='active'&&member.subject?.kind==='agent'&&this.store.binding(member.subject.logicalAgentId));
   if(!settings||!hosted||settings.delivery==='external-agent'){this.store.completeSubmission(id,messageId,false);return;}
-  const jobs=this.store.jobs(roomId).filter(job=>job.originId!==messageId&&!job.peer&&!job.groupResponse&&!job.groupInput),active=jobs.filter(job=>['routing','running','waiting','stopping','queued'].includes(job.state));const targets=(active.length?active:jobs.slice(0,1).filter(job=>['unknown','blocked','held'].includes(job.state))).slice(0,3).map(job=>({jobId:job.id,originId:job.originId,botId:job.activeBotId,state:job.state}));
+  const jobs=this.store.jobs(roomId).filter(job=>job.originId!==messageId&&!job.peer&&!job.groupResponse&&!job.groupInput&&!backgroundOrigin(job)),active=jobs.filter(job=>['routing','running','waiting','stopping','queued'].includes(job.state));const targets=(active.length?active:jobs.slice(0,1).filter(job=>['unknown','blocked','held'].includes(job.state))).slice(0,3).map(job=>({jobId:job.id,originId:job.originId,botId:job.activeBotId,state:job.state}));
   if(!targets.length&&!this.busyRooms().includes(roomId)){this.store.completeSubmission(id,messageId,true);this.markGroupPlanning(roomId,messageId);return;}
   const bindings=members.filter(member=>member.status==='active'&&member.subject?.kind==='agent').flatMap(member=>{const binding=this.store.binding(member.subject.logicalAgentId);return binding?[{botId:binding.botId,revision:binding.revision,fingerprint:binding.fingerprint}]:[];});
   this.store.completeSubmission(id,messageId,false,{id:key,roomId,envelopeId:id,messageId,bodyHash:hash(message.text),sequence:message.roomSequence,roomRevision:(snapshot.room as any).revision,settingsRevision:settings.revision,bindings,targets,status:'pending',createdAt:Date.now()});this.start(roomId);
  }
  private start(roomId:string){if(this.closed||this.running.has(roomId)||this.running.size>=3)return;const run=this.drain(roomId).finally(()=>{this.running.delete(roomId);if(!this.closed){this.wakePending();this.wake();}});this.running.set(roomId,run);}
- async recover(){this.wakePending();}
+ async recover(){
+  // Repair only a latest, authenticated user message that never got an execution.
+  // Synthetic notification IDs are not Room message IDs and may never hold it hostage.
+  for(const op of this.records().filter(op=>op.status==='needs_review'&&op.reason==='room_scope_mismatch'&&op.targets?.length&&op.targets.every((target:any)=>backgroundOrigin(this.store.job(target.jobId))))){
+   try{await this.coordinator.guardConversation(op.roomId);const message=await this.source(op.roomId,op.envelopeId,op.messageId),page=await ownerPage(this.upstream,op.roomId,{tail:true,limit:20}),latest=(page.messages as any[]).filter(m=>m.sender?.kind==='user').sort((a,b)=>a.roomSequence-b.roomSequence).at(-1);
+    if(latest?.messageId!==op.messageId||hash(message.text)!==op.bodyHash||this.store.job('job-'+op.messageId)||this.store.operation('work-input:'+op.envelopeId))continue;
+    this.store.transaction(()=>{const current=this.store.operation(op.id);if(current?.revision!==op.revision||current.status!=='needs_review')return;this.store.enqueue('job-'+op.messageId,op.roomId,op.messageId);this.markGroupPlanning(op.roomId,op.messageId);this.save(current,{status:'applied',chosen:'new',previousReason:op.reason,reason:undefined,reconciledAt:Date.now()});});
+   }catch{/* Unverified, superseded or changed sources remain visible for review. */}
+  }
+  this.wakePending();
+ }
+
  async settle(){while(this.running.size)await Promise.all([...this.running.values()]);}
  async close(){this.closed=true;for(const controller of this.controllers)controller.abort();await this.settle();}
  private async drain(roomId:string){

@@ -112,7 +112,7 @@ test('the screenshot branch-and-merge workflow offers repository authorization, 
 });
 
 
-test('one trusted directory covers new programs, multiline scripts and changed syntax; high-risk commands have separate persistent approval',async()=>{
+test('one trusted directory covers new programs, multiline scripts and changed syntax; high-risk deletion is once-only and prompts again after restart',async()=>{
  if(process.platform==='win32')return;
  const f=await fixture();try{
   const tool=join(f.workspace,'novel-project-audit');writeFileSync(tool,'#!/bin/sh\nprintf NOVEL_TOOL_OK\n');chmodSync(tool,0o700);
@@ -121,12 +121,12 @@ test('one trusted directory covers new programs, multiline scripts and changed s
   for(const command of [script,'./novel-project-audit',"sh -c 'printf WRAPPER_OK'",'git checkout -b a-new-branch'])assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command}),'allow',command);
   assert.match(await current.registry.executeTool('bash',{command:script}),/TRUSTED_SCRIPT_OK/);assert.match(await current.registry.executeTool('bash',{command:'./novel-project-audit'}),/NOVEL_TOOL_OK/);assert.equal(f.approvals.list().length,0);
   f.restart();current=await f.make();assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:script}),'allow');
-  writeFileSync(join(f.workspace,'remove-me.txt'),'not deleted before explicit approval');const command='rm -f remove-me.txt',removal=current.registry.executeTool('bash',{command}),highRisk=await f.pending();assert.equal(highRisk.highRisk,true);assert.equal(highRisk.commandScoped,true);assert.equal(highRisk.canAlways,true);assert.equal(existsSync(join(f.workspace,'remove-me.txt')),true);
-  await f.approvals.decide({id:highRisk.id,expectedHash:highRisk.hash,decision:'allow_always'});await removal;assert.equal(existsSync(join(f.workspace,'remove-me.txt')),false);
-  f.restart();current=await f.make();assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command}),'allow');assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:'rm -f another.txt'}),'prompt');
+  writeFileSync(join(f.workspace,'remove-me.txt'),'not deleted before explicit approval');const command='rm -f remove-me.txt',removal=current.registry.executeTool('bash',{command}),highRisk=await f.pending();assert.equal(highRisk.highRisk,true);assert.equal(highRisk.commandScoped,false);assert.equal(highRisk.canAlways,false);assert.equal(existsSync(join(f.workspace,'remove-me.txt')),true);
+  await assert.rejects(f.approvals.decide({id:highRisk.id,expectedHash:highRisk.hash,decision:'allow_always'}),/tool_permission_once_required/);assert.equal(existsSync(join(f.workspace,'remove-me.txt')),true);await f.approvals.decide({id:highRisk.id,expectedHash:highRisk.hash,decision:'allow_once'});await removal;assert.equal(existsSync(join(f.workspace,'remove-me.txt')),false);
+  f.restart();current=await f.make();assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command}),'prompt');assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:'rm -f another.txt'}),'prompt');
   const sibling=join(f.root,'sibling');mkdirSync(sibling);assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command:'./novel-project-audit --output=../sibling/result.txt'}),'prompt');
   const other=await createHarness({workspace:f.workspace,permissions:{store:f.approvals.permissions,botId:'another-member',bindingRevision:1},signal:AbortSignal.timeout(10000),assertCurrent:async()=>{}});assert.equal(await other.registryOptions.permissionManager.check('bash',{command:script}),'prompt');assert.equal(await other.registryOptions.permissionManager.check('bash',{command}),'prompt');
-  const exact=f.approvals.permissions.list().find(grant=>grant.kind==='command')!;f.approvals.permissions.revoke({id:exact.id});const after=await f.make();assert.equal(await after.h.registryOptions.permissionManager.check('bash',{command}),'prompt');assert.equal(await after.h.registryOptions.permissionManager.check('bash',{command:script}),'allow');
+  assert.equal(f.approvals.permissions.list().some(grant=>grant.kind==='command'),false);const after=await f.make();assert.equal(await after.h.registryOptions.permissionManager.check('bash',{command}),'prompt');assert.equal(await after.h.registryOptions.permissionManager.check('bash',{command:script}),'allow');
   writeFileSync(join(f.root,'config/settings.json'),JSON.stringify({permissions:{deny:['bash:rm*','bash:python3*']}}));const denied=await f.make();assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command}),'deny');assert.equal(await denied.h.registryOptions.permissionManager.check('bash',{command:script}),'deny');
  }finally{f.close();}
 });
@@ -148,7 +148,7 @@ for(const kind of ['legacy','directory'] as const)test(`routine ${kind} member g
   const scope={botId:'member',bindingRevision:1,cwd:f.workspace};
   const {directoryGrantAccess}=await import('../src/service/directory-access.js');
   const grant=kind==='legacy'?f.approvals.permissions.remember(scope,'bash'):f.approvals.permissions.rememberDirectory(scope,directoryGrantAccess(f.core,f.workspace)!,'routine');
-  const exact=commandAccess(f.core,'git push origin main',f.workspace)!;f.approvals.permissions.rememberCommand(scope,exact);
+  assert.equal(commandAccess(f.core,'git push origin main',f.workspace),undefined);
   f.restart();const next=await f.make(f.workspace,2),pm=next.h.registryOptions.permissionManager;
   const command='git fetch origin --tags --prune 2>&1 | tail -20; git log -1 --format=\'%h %ad %s\' --date=iso origin/main; git tag --sort=-creatordate | head -10';
   assert.equal(await pm.check('bash',{command}),'allow');

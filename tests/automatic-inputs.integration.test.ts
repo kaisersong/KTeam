@@ -28,3 +28,20 @@ test('a steered or queued group followup also creates one independent discussion
   const execution=f.store.jobs(roomId).filter(job=>job.id!==parent.id&&job.trigger!=='group-discussion');assert.equal(execution.length,chosen==='append_0'?0:1);if(chosen==='new')assert.equal(execution[0].groupPlanPending,true);else if(chosen==='queue_0')assert.equal(execution[0].afterJobId,parent.id);else assert.match(context.take()!,/other members/);assert.equal((await f.upstream.messages(roomId,0,100)).messages.length,2);
  }finally{await f.close();}}
 });
+
+test('a failed proactive notice never becomes the source target of the next real user message',async()=>{
+ let calls=0;const f=await fixture(async()=>{calls++;throw Error('classification should not run');});try{
+  f.context.close(true);f.job.state='delivered';f.store.save(f.job);
+  f.store.enqueueFollowup({id:'failed-notice',roomId:f.a.roomId,originId:'assistant-notice:not-a-room-message',trigger:'assistant-notice'});const notice=f.store.job('failed-notice');notice.state='blocked';notice.reason='model_quota_exhausted';notice.activeBotId=f.a.botId;f.store.save(notice);
+  const message=await f.send('c','已经更换模型了');await f.automatic.accept(message.roomId,message.id,message.messageId);await f.automatic.settle();assert.equal(f.store.job('job-'+message.messageId).state,'queued');assert.equal(calls,0);assert.equal(f.automatic.receipts(message.roomId).length,0);assert.equal(f.store.job('failed-notice').state,'blocked');
+ }finally{await f.close();}
+});
+
+test('restart repairs only the latest unexecuted authenticated message stranded by a synthetic notice, exactly once',async()=>{
+ const f=await fixture(async()=>null);try{
+  f.context.close(true);f.job.state='delivered';f.store.save(f.job);f.store.enqueueFollowup({id:'synthetic',roomId:f.a.roomId,originId:'assistant-notice:synthetic',trigger:'assistant-notice'});const notice=f.store.job('synthetic');notice.state='blocked';f.store.save(notice);
+  const older=await f.send('d','旧消息'),latest=await f.send('e','已经更换模型了');const {createHash}=await import('node:crypto');
+  for(const message of [older,latest])f.store.completeSubmission(message.id,message.messageId,false,{id:'message-handling:'+message.id,roomId:message.roomId,envelopeId:message.id,messageId:message.messageId,bodyHash:createHash('sha256').update(message===latest?'已经更换模型了':'旧消息').digest('hex'),targets:[{jobId:'synthetic'}],status:'needs_review',reason:'room_scope_mismatch'});
+  await f.automatic.recover();await f.automatic.recover();assert.equal(f.store.job('job-'+latest.messageId).state,'queued');assert.equal(f.store.job('job-'+older.messageId),null);assert.equal(f.store.jobs().filter(j=>j.originId===latest.messageId).length,1);assert.equal(f.store.operation('message-handling:'+latest.id).previousReason,'room_scope_mismatch');
+ }finally{await f.close();}
+});
