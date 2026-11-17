@@ -2,6 +2,19 @@ import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import * as SQLite from "expo-sqlite";
 import type { Computer } from "./transport";
+import { mobileB64, mobileBytes, newMobileKeypair, type MobileKeypair } from "../../src/protocol/mobile-wire";
+let identityTask: Promise<MobileKeypair> | undefined;
+export function deviceIdentity(): Promise<MobileKeypair> {
+  return identityTask ??= (async () => {
+    const name = "kteam-mobile-device-key-v1";
+    const saved = await SecureStore.getItemAsync(name);
+    // Adopt an existing pairing identity on upgrade, so it is not another phone.
+    const previous = saved ? JSON.parse(saved) : (await computers())[0]?.key;
+    const key = previous ? { publicKey: mobileBytes(previous.publicKey, 32), secretKey: mobileBytes(previous.secretKey, 32) } : newMobileKeypair();
+    if (!saved) await SecureStore.setItemAsync(name, JSON.stringify({ publicKey: mobileB64(key.publicKey), secretKey: mobileB64(key.secretKey) }), { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+    return key;
+  })().catch(e => { identityTask = undefined; throw e; });
+}
 const INDEX = "kteam-computers-v1";
 export async function computers(): Promise<Computer[]> {
   const ids: string[] = JSON.parse(
@@ -72,7 +85,7 @@ export async function cache(c: Computer) {
         throw Error("加密缓存不可用");
       }
       await d.execAsync(
-        "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,v TEXT NOT NULL,at INTEGER NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY,v TEXT NOT NULL,at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS messages(room TEXT NOT NULL,id TEXT NOT NULL,seq INTEGER NOT NULL,value TEXT NOT NULL,PRIMARY KEY(room,id)); CREATE INDEX IF NOT EXISTS messages_room_sequence ON messages(room,seq)",
       );
       return d;
     })();
@@ -124,7 +137,9 @@ export async function clearPending(c: Computer, id: string) {
 export async function clearReadCache(c: Computer) {
   await (
     await cache(c)
-  ).runAsync("DELETE FROM cache WHERE k NOT LIKE 'pending:%'");
+  ).execAsync(
+    "DELETE FROM cache WHERE k NOT LIKE 'pending:%'; DELETE FROM messages;",
+  );
 }
 
 export async function selectComputer(c: Computer) {
@@ -138,4 +153,43 @@ export async function selectComputer(c: Computer) {
         .map((v) => v.installationId),
     ]),
   );
+}
+
+export async function cachedMessages(
+  c: Computer,
+  room: string,
+  before = Number.MAX_SAFE_INTEGER,
+) {
+  const rows = await (
+    await cache(c)
+  ).getAllAsync<{ value: string }>(
+    "SELECT value FROM messages WHERE room=? AND seq<? ORDER BY seq DESC LIMIT 100",
+    room,
+    before,
+  );
+  return rows.map((row) => JSON.parse(row.value)).reverse();
+}
+export async function cacheMessages(
+  c: Computer,
+  room: string,
+  messages: any[],
+) {
+  if (!messages.length) return;
+  const db = await cache(c);
+  // SQLCipher keys belong to this configured connection. An exclusive transaction
+  // opens another connection without its key; keep atomic row upserts on this one.
+  const statement = await db.prepareAsync(
+    "INSERT INTO messages(room,id,seq,value) VALUES(?,?,?,?) ON CONFLICT(room,id) DO UPDATE SET seq=excluded.seq,value=excluded.value WHERE value<>excluded.value",
+  );
+  try {
+    for (const message of messages)
+      await statement.executeAsync(
+        room,
+        message.messageId,
+        message.roomSequence,
+        JSON.stringify(message),
+      );
+  } finally {
+    await statement.finalizeAsync();
+  }
 }

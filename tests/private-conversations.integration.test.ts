@@ -66,7 +66,7 @@ test('original runtime-core triage runs with the real background budget and crea
 
 test('peer consultation receives the original group request but never another private conversation',async()=>{
  const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{
-  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'请核实 Claude Duet，不要替换为 Claude Code',wait:false}));
+  const scope=await admission(f,f.a.bot.id),receipt=JSON.parse(await chats.contact(scope,{botId:f.b.bot.id,message:'请核实产品甲，不要替换为产品乙',wait:false}));
   await f.upstream.sendMessage(f.b.roomId,{text:'PRIVATE_NOT_SOURCE_CONTEXT_55',kind:'text',threadId:'private',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});
   const job=f.store.jobs(receipt.roomId)[0],context=await chats.sourceContext(job);
   assert.equal(context?.roomId,f.roomId);assert.equal(context?.title,'产品团队');assert.equal(context?.userMessage?.text,'查看KTeam源码并与团队协作');assert.doesNotMatch(JSON.stringify(context),/PRIVATE_NOT_SOURCE_CONTEXT_55/);

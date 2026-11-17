@@ -8,7 +8,12 @@ export async function startMobileRelay(
   hostname = "127.0.0.1",
 ) {
   if (token.length < 32) throw Error("mobile_relay_token_invalid");
-  const server = http.createServer((_q, r) => {
+  const server = http.createServer((q, r) => {
+    if (q.url === "/health") {
+      r.writeHead(200, { "content-type": "application/json" });
+      r.end('{"ok":true}');
+      return;
+    }
     r.writeHead(404);
     r.end();
   });
@@ -23,6 +28,19 @@ export async function startMobileRelay(
       { phone: WebSocket; host: WebSocket; timer: NodeJS.Timeout }
     >();
   const sockets = new Set<WebSocket>();
+  // Keep NAT mappings alive; peers that disappear without a close frame must
+  // not prevent the same installation from reconnecting indefinitely.
+  const alive = new WeakSet<WebSocket>();
+  const heartbeat = setInterval(() => {
+    for (const socket of sockets) {
+      if (!alive.has(socket)) socket.terminate();
+      else {
+        alive.delete(socket);
+        socket.ping();
+      }
+    }
+  }, 25000);
+  heartbeat.unref();
   server.on("upgrade", (req, sock, head) => {
     let url: URL;
     try {
@@ -67,6 +85,8 @@ export async function startMobileRelay(
     }
     wss.handleUpgrade(req, sock, head, (ws) => {
       sockets.add(ws);
+      alive.add(ws);
+      ws.on("pong", () => alive.add(ws));
       ws.on("error", () => {});
       ws.on("close", () => {
         sockets.delete(ws);
@@ -142,6 +162,7 @@ export async function startMobileRelay(
   return {
     port: (server.address() as any).port,
     async close() {
+      clearInterval(heartbeat);
       for (const s of sockets) s.terminate();
       for (const v of waiting.values()) clearTimeout(v.timer);
       waiting.clear();

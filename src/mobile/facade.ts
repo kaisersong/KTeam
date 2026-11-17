@@ -118,8 +118,10 @@ export class MobileFacade {
       case "rooms.list": {
         fields(i, []);
         const result = await d.collaboration.teams();
-        const rooms = (result.rooms ?? []).filter((r: any) =>
-          this.store.settings(r.roomId),
+        const rooms = (result.rooms ?? []).filter(
+          (r: any) =>
+            this.store.settings(r.roomId) &&
+            this.store.settings(r.roomId)?.kind !== "peer",
         );
         return {
           ok: true,

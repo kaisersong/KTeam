@@ -85,6 +85,7 @@ export class MobileGateway {
       throw error;
     }
     this.actualPort = (s.address() as any).port;
+    this.devices.rememberPort(this.actualPort);
     this.syncRelay();
     try {
       this.discovery = new Bonjour({}, () => {});
@@ -171,6 +172,10 @@ export class MobileGateway {
                 type: "ready",
                 v: 1,
                 installationId: this.devices.installationId,
+                relay: this.devices.relay
+                  ? this.devices.relay.url + "/mobile/connect?installationId=" +
+                    encodeURIComponent(this.devices.installationId)
+                  : null,
               });
               return;
             }

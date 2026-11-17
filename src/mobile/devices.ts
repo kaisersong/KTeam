@@ -61,6 +61,13 @@ export class MobileDevices {
   get port() {
     return Number(this.state.port) || 0;
   }
+  rememberPort(port: number) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw new KTeamError("mobile_port_invalid");
+    if (this.state.port === port) return;
+    this.state.port = port;
+    this.save();
+  }
   view() {
     return {
       ok: true,
@@ -120,17 +127,21 @@ export class MobileDevices {
         invite.status !== "pending"
       )
         throw new KTeamError("mobile_invite_expired", 409);
+      // The Noise static key proves identity. A display name cannot do so.
+      const previous = this.state.devices.find((d: any) => d.peerKey === invite.claim.peerKey);
       const secret = randomBytes(32).toString("base64"),
-        id = "device-" + randomBytes(16).toString("hex");
+        id = previous?.id ?? "device-" + randomBytes(16).toString("hex");
       const device = {
         id,
         name: invite.claim.name,
-        createdAt: Date.now(),
-        epoch: 1,
+        createdAt: previous?.createdAt ?? Date.now(),
+        pairedAt: Date.now(),
+        epoch: (previous?.epoch ?? 0) + 1,
         psk: mobileB64(createHash("sha256").update(secret).digest()),
         peerKey: invite.claim.peerKey,
         allowApprovals: i.allowApprovals === true,
       };
+      this.state.devices = this.state.devices.filter((d: any) => d.peerKey !== invite.claim.peerKey);
       this.state.devices.push(device);
       invite.status = "approved";
       invite.result = {
