@@ -1,6 +1,6 @@
 import { startMobileRelay } from "./relay.js";
 const token = process.env.KTEAM_MOBILE_RELAY_TOKEN ?? "";
-const port = Number(process.env.KTEAM_MOBILE_RELAY_PORT ?? 9361);
+const port = Number(process.env.PORT ?? process.env.KTEAM_MOBILE_RELAY_PORT ?? 9361);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw Error("mobile_relay_port_invalid");
 const relay = await startMobileRelay(
