@@ -1,3 +1,4 @@
+import {unexecutedModelToolOutput} from '../protocol/model-tool-output.js';
 import {HARNESS_PERMISSION_POLICY_VERSION} from '../service/terminal-permissions.js';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
@@ -75,6 +76,7 @@ async function nativeTurnOwned(input:{modelId:string;fingerprint?:string;system:
   if(suspended)throw new KTeamError('work_waiting_for_approval',409);
   if(failure)throw failure;
   if(!text.trim()||!completed)throw new KTeamError('model_response_incomplete');
+  if(unexecutedModelToolOutput(text)){failure=new KTeamError('model_response_protocol_invalid',502);throw failure;}
   if(owner)await requestBudget.run({origin,mode:input.requestAccountingMode??'enforce',before:async()=>{await input.onRequest?.();}},()=>owner.distill(text));
   signal.throwIfAborted();
   return {text,usage,usageReported,model,fingerprint};

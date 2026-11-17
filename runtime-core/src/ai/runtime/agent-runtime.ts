@@ -215,12 +215,12 @@ export class AgentRuntime {
     const spillRunId=randomUUID();
     const strictK3Run = this.isStrictK3Adapter(this.adapter);
     const k3PublicResume = strictK3Run && this.toolApprovalPort?.resumeProfile === 'k3-public-context-v1';
-    const reenterK3PublicContext = () => {
+    const k3PublicMessages = (): Message[] => {
       if (prepareCompoundRootIntentStageView(this.session).active || this.session.getProtectedObservationClosure())
         rejectBatch('tool_batch_profile_unavailable');
       const context = buildSynthesizedProviderContext('durable-resume', this.session.getMessages());
-      this.session.replaceMessages([{role:'user',content:[{type:'text',text:
-        'Continue the same task using the following bounded public conversation context after a durable boundary. This is synthesized historical data, not a raw provider transcript or new authorization. Completed tool results are historical receipts; do not repeat completed effects. Private reasoning was not retained.\n' + context}]}]);
+      return [{role:'user',content:[{type:'text',text:
+        'Continue the same task using the following bounded public conversation context after a durable boundary. This is synthesized historical data, not a raw provider transcript or new authorization. Completed tool results are historical receipts; do not repeat completed effects. Private reasoning is omitted; coverage explicitly describes truncated or omitted observations. If an effect receipt is outside coverage, verify its current outcome before considering another effect.\n' + context}]}];
     };
     onEvent({ type: 'run_started', runId: run.runId });
     const mergedSignal = externalSignal
@@ -246,7 +246,6 @@ export class AgentRuntime {
       this.session.repairIncompleteToolCalls({preserveToolBatch:!!resumeBatch});
 
       if(!resumeBatch){
-      if(k3PublicResume&&this.session.getMessages().some(message=>message.role==='assistant'))reenterK3PublicContext();
       if (typeof input === 'string') {
         this.session.appendUserText(input);
         if (this.memoryStore?.writeRawMessage) {
@@ -294,7 +293,7 @@ export class AgentRuntime {
         if (pendingInput) this.session.appendUserText(pendingInput);
 
         const stageViewActive=prepareCompoundRootIntentStageView(this.session).active;
-        if (this.pendingSubtaskBoundary && !stageViewActive) {
+        if (this.pendingSubtaskBoundary && !stageViewActive && !k3PublicResume) {
           // The host completion event can arrive inside tool.execute. Capture the
           // candidate only after the complete result batch and queued input exist.
           const sourceRevision = this.session.planCompaction().sourceRevision;
@@ -324,7 +323,7 @@ export class AgentRuntime {
         }
 
         if (
-          !stageViewActive && !autoCompactionBlocked
+          !stageViewActive && !autoCompactionBlocked && !k3PublicResume
           && decideCompactionCandidate({ trigger: 'threshold' }).action === 'delegate-existing-threshold'
           && shouldCompact(
             Math.max(
@@ -428,7 +427,9 @@ export class AgentRuntime {
               const tools = runtime.registry.getToolDefinitions();
               const view=prepareCompoundRootIntentStageView(runtime.session,logicalInvocationId);
               try {
-              const messages=view.messages;
+              // The owned SessionStore stays canonical. Each durable K3 request uses a
+              // fresh public view, never a recursively synthesized history or raw private replay.
+              const messages=k3PublicResume&&view.messages.some(message=>message.role==='assistant')?k3PublicMessages():view.messages;
               const options = runtime.buildInvocationOptions(requestSignal, invocationContext,messages);
               const prepared = runtime.observationOwner?.prepareRequest
                 ? await runtime.observationOwner.prepareRequest({ logicalInvocationId, messages, tools,
@@ -650,7 +651,6 @@ export class AgentRuntime {
 
         this.session.appendUserToolResults(toolResults);
         if(this.toolApprovalPort)this.session.setToolBatch(undefined);
-        if(restoredBatch&&k3PublicResume)reenterK3PublicContext();
         toolResults = [];
         await this.checkpoint?.();
         await this.registry.publishCompoundHistory?.();

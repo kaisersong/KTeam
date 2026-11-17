@@ -1,3 +1,4 @@
+import {unexecutedModelToolOutput} from '../protocol/model-tool-output.js';
 import {processBirth,sameProcessBirth} from '../runtime/platform-process.js';
 import {Routines,routineWork} from './routines.js';
 import {harnessWorkspace} from '../runtime/harness.js';
@@ -184,10 +185,20 @@ export class WorkRecovery {
    native: !!job.activeBotId && this.store.binding(job.activeBotId)?.kind === 'local-native'};
  }
  async continue(roomId: string, value: unknown, autoId?:string) {
-  const input = record(value); fields(input, ['jobId','requestId']);
+  const input = record(value); fields(input, ['jobId','requestId','unexecutedReplyId']);
   const jobId = text(input.jobId, 'job_id'), requestId = text(input.requestId, 'request_id', 128);
   await this.coordinator.guardConversation(roomId);
-  const prior = this.store.job(jobId);
+  let prior = this.store.job(jobId);
+  let unexecutedReply:any;
+  if(input.unexecutedReplyId!==undefined){
+   if(autoId||prior?.roomId!==roomId||prior.state!=='delivered'||this.store.jobs(roomId).some(job=>job.state==='waiting'))throw new KTeamError('recovery_unavailable',409);
+   const replyId=text(input.unexecutedReplyId,'message_id'),receipt=prior.results?.find((result:any)=>result.messageId===replyId);if(!receipt)throw new KTeamError('recovery_unavailable',409);
+   const actual=(await this.upstream.conversationMessage(roomId,replyId)).message as any;
+   if(actual.sender?.logicalAgentId!==receipt.botId||actual.sourceRef?.kind!=='aimp_reply'||actual.sourceRef?.taskRef!==receipt.taskRef||!unexecutedModelToolOutput(String(actual.text??'')))throw new KTeamError('recovery_unavailable',409);
+   unexecutedReply={messageId:replyId,botId:receipt.botId,taskRef:receipt.taskRef};
+   // Local recovery evidence only. The old delivery and canonical artifact stay immutable.
+   prior={...prior,state:'blocked',results:prior.results.filter((result:any)=>result!==receipt),failure:{code:'model_response_protocol_invalid',phase:'delivery',botId:receipt.botId,model:receipt.model,at:new Date().toISOString(),evidence:'captured'}};
+  }
   if (!prior || prior.roomId !== roomId || !interrupted(prior)) throw new KTeamError('recovery_unavailable', 409);
   const operationId = 'work-recovery:' + jobId, existing = this.store.operation(operationId);
   if (existing) return {ok: true, jobId: existing.jobId, reused: true};
@@ -197,7 +208,8 @@ export class WorkRecovery {
   const tasks = (await this.upstream.aimp(roomId, 'tasks')).tasks as any[];
   const concurrent = this.store.operation(operationId);
   if (concurrent) return {ok: true, jobId: concurrent.jobId, reused: true};
-  if (!this.view(roomId, tasks)?.canContinue) throw new KTeamError('recovery_waiting_stop', 409);
+  if(unexecutedReply){const task=tasks.find(task=>task.taskRef===unexecutedReply.taskRef);if(!task||!['delivered','accepted'].includes(task.state)||task.artifactVerification?.verified!==true)throw new KTeamError('recovery_waiting_stop',409);}
+  else if (!this.view(roomId, tasks)?.canContinue) throw new KTeamError('recovery_waiting_stop', 409);
   const members = await this.upstream.membership(roomId);
   const delivered = new Set((prior.results ?? []).map((result: any) => result.botId));
   const botIds = [...new Set<string>([prior.activeBotId, ...(prior.members ?? []), ...(routineWork(prior)?[prior.routine.botId]:[])].filter((id): id is string => !!id && !delivered.has(id)))];
@@ -220,7 +232,7 @@ export class WorkRecovery {
    if(autoId)this.store.saveOperation({id:autoId,sourceJobId:jobId,status:'queued'},0);
    this.store.saveOperation({id: operationId, jobId: nextId, sourceJobId: jobId, requestId, status: 'queued'}, 0);
    this.store.enqueueFollowup({id: nextId, roomId, originId: prior.originId, trigger: 'recovery', ...(prior.groupPlanPending?{groupPlanPending:true}:{}), ...(prior.groupPlan?{groupPlan:structuredClone(prior.groupPlan)}:{}), ...(prior.groupResponse?{groupResponse:structuredClone(prior.groupResponse)}:{}), ...(routine?{routine}:{}), recoveryOf: jobId, recoveryAutomatic:!!autoId, recoveryBotIds: botIds,
-    recoveryContext: {sourceJobId: jobId, reviewGroupStages:prior.groupPlan?.mode==='work'&&!!(prior.recoveryContext?.reviewGroupStages||prior.task||prior.currentHandoffId||prior.groupPlan.stageOperations?.some(Boolean)||this.store.operationsWithPrefix('work-handoff:').some(op=>op.jobId===prior.id)), failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
+    recoveryContext: {sourceJobId: jobId,unexecutedReply, reviewGroupStages:prior.groupPlan?.mode==='work'&&!!(prior.recoveryContext?.reviewGroupStages||prior.task||prior.currentHandoffId||prior.groupPlan.stageOperations?.some(Boolean)||this.store.operationsWithPrefix('work-handoff:').some(op=>op.jobId===prior.id)), failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
      completedReplies: prior.results ?? [], recentTools: (prior.toolTrace ?? []).slice(-12)},
     recoveryBindings: Object.fromEntries(botIds.map(id => [id, this.store.binding(id)]))});
    for(const queued of this.store.jobs(roomId).filter(job=>dependent(job)&&job.afterJobId===prior.id)){queued.afterJobId=nextId;this.store.save(queued);}

@@ -40,3 +40,5 @@ test('one group member failure stays visible beside another member reply and cle
 });
 
 test('invalid planning has a visible plain-language routing explanation',()=>{const notice=currentModelFailure('group',[{...failed,failure:{...failed.failure,code:'group_plan_invalid'}}]);assert.equal(notice?.failure.code,'group_plan_invalid');assert.match(modelFailureMessage('group_plan_invalid','routing').reason,/分工方案未通过校验/);});
+
+test('invalid provider control output explains that no new tool ran and preserves completed results',()=>{const notice=modelFailureMessage('model_response_protocol_invalid','model');assert.match(notice.reason,/未执行的工具请求/);assert.match(notice.guidance,/工具结果已保留/);});

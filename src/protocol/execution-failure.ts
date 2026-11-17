@@ -4,6 +4,7 @@ export function executionFailure(job:any):ExecutionFailure|undefined{
  if(!job||!['blocked','unknown','stopped'].includes(job.state))return;
  if(['harness_runtime_close_failed','native_stop_unconfirmed'].includes(job.failure?.code))return job.failure;
  if(job.interruption?.reason==='host_shutdown')return {...job.failure,code:'host_restarted_result_unknown',phase:job.failure?.phase??job.execution?.phase??'unknown',at:job.interruption.at,evidence:'captured',...(job.failure?.code?{causeCode:job.failure.code}:{} )};
+ if(job.failure?.message==='KIMI_REASONING_ADMISSION_REQUIRED'&&job.failure.code==='model_execution_failed')return {...job.failure,code:'model_response_protocol_invalid'};
  if(job.failure?.message==='tool_batch_profile_unavailable'&&job.failure.code==='execution_failed')return {...job.failure,code:'model_tool_approval_unavailable'};
  if(job.failure)return job.failure.message==='host_shutdown'?{...job.failure,code:'host_restarted_result_unknown'}:job.failure;
  const trace=job.toolTrace??[],aborted=[...trace].reverse().find(e=>e.type==='run_aborted'||e.name==='run_aborted'),lastActivity=[...trace].reverse().find(e=>['tool_started','model_request_started'].includes(e.type)),lastTool=lastActivity?.type==='tool_started'?lastActivity:undefined;
