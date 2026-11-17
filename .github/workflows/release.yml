@@ -207,9 +207,7 @@ jobs:
           root="$PWD"
           cd .artifacts/signing-cwd
           # codesign runs from this cwd, so entitlements must be absolute paths.
-          node "$root/node_modules/electron-builder/out/cli/cli.js" --projectDir "$root" --config electron-builder.yml --mac dir --arm64 --publish never -c.mac.forceCodeSigning=true -c.mac.notarize=false \
-            -c.mac.entitlements="$root/desktop/assets/entitlements.mac.plist" \
-            -c.mac.entitlementsInherit="$root/desktop/assets/entitlements.mac.inherit.plist"
+          node "$root/scripts/package-signed-mac.mjs" "$root"
       - name: Notarize macOS app
         timeout-minutes: 135
         env:

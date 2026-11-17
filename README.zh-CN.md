@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.9.1。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.2。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -38,7 +38,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 ---
 
-## 0.9.1 有什么
+## 0.9.2 有什么
 
 - **简洁的协作状态。** 进度显示在会话顶部的一行提示中，成员状态、详情和暂停操作按需查看，不再用大卡片占据消息区。
 - **在群里统一授权目录。** 群任务的授权回到原群，默认勾选给当前群所有 Bot 授权；可取消勾选仅授权请求成员，新增成员不自动继承。
@@ -125,8 +125,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.9.1.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.9.1.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.2.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.2.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -184,9 +184,9 @@ node dist/src/cli.js teams
 
 ## 版本日志
 
-### v0.9.1
+### v0.9.2
 
-修复追加请求陷入旧排队链、普通 GitHub 查询反复申请确认等问题；群目录授权默认覆盖当前群成员，协作进度移到会话顶部。群目录、来源、成员及模型变化仍需核验，未知执行结果不会自动重放。完整改动见 [0.9.1 发布说明](release-notes/0.9.1.md)。
+修复追加请求陷入旧排队链、普通 GitHub 查询反复申请确认等问题；群目录授权默认覆盖当前群成员，协作进度移到会话顶部。群目录、来源、成员及模型变化仍需核验，未知执行结果不会自动重放。完整改动见 [0.9.2 发布说明](release-notes/0.9.2.md)。
 
 ### v0.8.8
 

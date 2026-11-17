@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.9.1.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.9.2.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -38,7 +38,7 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 
 ---
 
-## What's in 0.9.1
+## What's in 0.9.2
 
 - **Quieter collaboration progress.** A compact line below the conversation header shows member progress, with details and pause controls available on demand.
 - **Group directory approval.** Approval appears in the source group and defaults to all current group Bots; uncheck the option to grant only the requester. New members do not inherit grants.
@@ -125,8 +125,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.9.1.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.9.1.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.9.2.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.9.2.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -184,11 +184,11 @@ Official releases are published automatically by GitHub Actions after Mac and Wi
 
 ## Version History
 
-### v0.9.1
+### v0.9.2
 
 Copying a folder from Finder now inserts its directory path into the composer instead of uploading a broken attachment. File upload permissions still apply to regular files and images. Model failures appear directly in the conversation with the affected member, model, cause, and a shortcut to model settings, including failures before group replies are assigned. Read-only research ignores unused execution stages, and the latest tool-free followup planning format failure gets one bounded recovery attempt. Mentioned recipients stay scoped during recovery, invalid plans receive one guarded format correction, and research that exhausts observation steps can deliver a tool-free summary from preserved read receipts. Group waiting cards expose blocked members and pending confirmations. K3 keeps its selected model through durable tool approval and restart: restored work uses bounded public history and completed tool receipts, without persisting or replaying private reasoning. Each complete tool boundary derives a fresh public request view from the canonical session rather than nesting summaries. Already completed tools are not replayed; malformed provider control output is reported as a failure. Sequential group stages receive separate time windows plus coordinator review time. Member handoffs follow the original task deadline unless a shorter wait is explicitly requested; individual executions remain bounded to one hour instead of being stopped after thirty minutes. A compact status line at the top of the conversation shows collaboration progress; details, deadlines and pause controls expand on demand. New requests follow the current work instead of being trapped behind an obsolete queued followup. Release checks enforce the declared test-count floor, verify complete Windows shard coverage, and compare packaged source identity and dependency fingerprints. Build details remain available to copy in Settings, including for official releases. Directory approvals for group work appear in the originating group, including work delegated privately. The approval card defaults to granting the displayed directory scope to all current group Bots; you can uncheck it to grant only the requesting member. One-time approvals remain individual, new members do not inherit grants, and member tool restrictions still apply. GitHub CLI login-status and read-only API queries no longer require repeated confirmation, including quoted variables and pipelines.
 
-See the [0.9.1 release](https://github.com/kaisersong/KTeam/releases/tag/v0.9.1).
+See the [0.9.2 release](https://github.com/kaisersong/KTeam/releases/tag/v0.9.2).
 
 ### v0.9.0
 
