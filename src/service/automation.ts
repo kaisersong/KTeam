@@ -1,3 +1,4 @@
+import {newWorkDeadline,executionWindowMs} from './work-deadlines.js';
 import {researchSummarySource,reviewExhaustedResearch} from './research-summary.js';
 import {MailIntent} from '../runtime/mail-intent.js';
 import {RewardMemory} from './reward-memory.js';
@@ -265,7 +266,7 @@ export class TeamAutomation {
     if(continuation){task=((await this.upstream.aimp(job.roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===job.task?.taskRef);if(!task||task.state!=='committed')throw new KTeamError('handoff_resume_blocked',409);job.task=task;this.store.save(job);}
     else{
     const created=await this.upstream.aimp(job.roomId,'event',{id:id(job.id+botId+'request'),roomId:job.roomId,threadId:origin.threadId,act:'request',body:`请 ${bot.name} 处理这条团队消息：${origin.text}`,
-     payload:{kind:'task.request@1',must_understand:true,description:String(origin.text).slice(0,8192),deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',
+     payload:{kind:'task.request@1',must_understand:true,description:String(origin.text).slice(0,8192),deadline:newWorkDeadline(job),expires:new Date(Date.now()+300000).toISOString(),budget:'none',
       acceptance:{predicates:['artifact_hash'],subjective:'答复符合当前团队目标，有依据并明确缺口；不把计划表述为已执行。',trust_root:LOCAL_HUMAN},assignee:agentAddress(botId),reviewer:LOCAL_HUMAN}});
     task=created.task as any;
     job.task=task;this.store.save(job);this.current(team,signal);
@@ -277,7 +278,7 @@ export class TeamAutomation {
     task=started.task;job.task=task;job.activeBotId=botId;job.executionScope={binding:structuredClone(binding),profileRevision:profile(bot).revision};this.store.save(job);
     this.current(team,signal);
     const admission={logicalAgentId:botId,roomId:job.roomId,taskRef:task.taskRef,epoch:task.epoch,bindingRevision:binding.revision,hostFence:this.hostFence};
-    const child=new AbortController();const childSignal=AbortSignal.any([signal,child.signal,AbortSignal.timeout(30*60_000)]);executionSignal=childSignal;job.execution={phase:'preparing',botId,model:binding.model};this.store.save(job);
+    const child=new AbortController();const childSignal=AbortSignal.any([signal,child.signal,AbortSignal.timeout(executionWindowMs(task))]);executionSignal=childSignal;job.execution={phase:'preparing',botId,model:binding.model};this.store.save(job);
     heartbeat=new ExecutionHeartbeat({leaseUntil:task.leaseUntil,request:operation=>this.upstream.aimp(job.roomId,operation,admission),onLost:error=>child.abort(error)});
     await this.coordinator?.guardConversation(job.roomId);
     const assertBotCurrent=()=>verifyExecutionScope(async()=>{if(job.handoffNeedsHuman)throw new KTeamError('handoff_human_needed',409);this.routines.assertJob(job);await this.handoffs?.guard(job);await this.privateChats?.validatePeer(job);childSignal.throwIfAborted();if(teamAwareness)await this.assistant.validateSources([...awarenessSources.values()]);this.current(team,signal);this.assertBinding(botId,binding);if(this.coordinator)await this.assertRoomMember(job.roomId,botId);await this.upstream.aimp(job.roomId,'execution-check',admission);await this.coordinator?.guardConversation(job.roomId);const current=((await this.upstream.listBots()).agents as any[]).find(b=>b.id===botId);this.routines.assertJob(job,current);if(!current||profile(current).revision!==profile(bot).revision)throw new KTeamError('bot_profile_changed',409);},childSignal);

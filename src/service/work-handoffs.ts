@@ -1,3 +1,4 @@
+import {memberHandoffDeadline} from './work-deadlines.js';
 import {executionFailure} from '../protocol/execution-failure.js';
 import {originalMessage} from './room-reads.js';
 import {WorkConditions} from './work-conditions.js';
@@ -55,7 +56,7 @@ export class WorkHandoffs {
   const version=(job.handoffVersion??0)+1;this.store.transaction(()=>{this.store.saveOperation({id,jobId:job.id,roomId:job.roomId,botId:scope.botId,requests:[],children:[],questionId:receipt.id,doneWhen:'本人回答后接续原工作',deadline,captured,version,status:'waiting'},0);job.currentHandoffId=id;job.handoffVersion=version;job.handoffWait={operationId:id,doneWhen:'等待本人回答',deadline,questionId:receipt.id,questionRoomId:this.store.operation(receipt.id!).roomId,children:[]};this.store.save(job);});
   return JSON.stringify({waiting:true,answered:false,questionId:receipt.id,next:'问题已发送到本人私聊。原工作将保存并挂起，回答后接续，不重新提问。'});
  }};}
- tools(scope:BotContactScope,job:any){return [this.conditionTool(scope,job),{permission:'safe',definition:{name:'delegate_work',description:'把独立子工作交给当前群内至多三位成员，可并行完成。当前工作会保存并挂起，释放执行槽；全部结果或失败返回后，重新校验原范围并自动接续原工作。不把送达当完成，不授予新权限。不使用本工具重复结果未知的旧操作。',inputSchema:{type:'object',additionalProperties:false,required:['requests','doneWhen'],properties:{requests:{type:'array',minItems:1,maxItems:3,items:{type:'object',additionalProperties:false,required:['botId','message'],properties:{botId:{type:'string'},message:{type:'string',minLength:1,maxLength:6000}}}},doneWhen:{type:'string',minLength:1,maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:(input:unknown)=>this.delegate(scope,job,input)}];}
+ tools(scope:BotContactScope,job:any){return [this.conditionTool(scope,job),{permission:'safe',definition:{name:'delegate_work',description:'把独立子工作交给当前群内至多三位成员，可并行完成。当前工作会保存并挂起，释放执行槽；全部结果或失败返回后，重新校验原范围并自动接续原工作。不把送达当完成，不授予新权限。不使用本工具重复结果未知的旧操作。未指定 timeoutMinutes 时等待至原任务期限；填写时遵守指定的较短期限。',inputSchema:{type:'object',additionalProperties:false,required:['requests','doneWhen'],properties:{requests:{type:'array',minItems:1,maxItems:3,items:{type:'object',additionalProperties:false,required:['botId','message'],properties:{botId:{type:'string'},message:{type:'string',minLength:1,maxLength:6000}}}},doneWhen:{type:'string',minLength:1,maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:(input:unknown)=>this.delegate(scope,job,input)}];}
  private conditionTool(scope:BotContactScope,job:any){return {permission:'safe',definition:{name:'wait_for_condition',description:'保存当前工作并释放执行槽，等待工作目录内文件到位、文件内容变化或同会话已有工作返回结果。未变化不调用模型。只读观察不扩大权限，不重新执行旧操作。文件内容变化最多检查1MiB；必须填写期限，最多60分钟且不超过原任务期限。',inputSchema:{type:'object',additionalProperties:false,required:['condition','reason','timeoutMinutes'],properties:{condition:{type:'object',additionalProperties:false,required:['kind'],properties:{kind:{type:'string',enum:['file_exists','file_changed','work_result']},path:{type:'string'},jobId:{type:'string'}}},reason:{type:'string',maxLength:512},timeoutMinutes:{type:'integer',minimum:1,maximum:60}}}},execute:async(value:unknown)=>{
   const input=record(value);fields(input,['condition','reason','timeoutMinutes']);const reason=text(input.reason,'condition_reason',512),minutes=input.timeoutMinutes;
   if(!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60||this.store.waitingJobs().length>=100)throw new KTeamError('condition_input_invalid');
@@ -68,15 +69,15 @@ export class WorkHandoffs {
  }};}
 
  async delegate(scope:BotContactScope,job:any,value:unknown){
-  const input=record(value);fields(input,['requests','doneWhen','timeoutMinutes']);const doneWhen=text(input.doneWhen,'handoff_done_when',512),minutes=input.timeoutMinutes??30;
-  if(!Array.isArray(input.requests)||!input.requests.length||input.requests.length>3||!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60)throw new KTeamError('handoff_input_invalid');
+  const input=record(value);fields(input,['requests','doneWhen','timeoutMinutes']);const doneWhen=text(input.doneWhen,'handoff_done_when',512),minutes=input.timeoutMinutes;
+  if(!Array.isArray(input.requests)||!input.requests.length||input.requests.length>3||minutes!==undefined&&(!Number.isSafeInteger(minutes)||Number(minutes)<1||Number(minutes)>60))throw new KTeamError('handoff_input_invalid');
   const requests=input.requests.map(value=>{const request=record(value);fields(request,['botId','message']);return {botId:text(request.botId,'bot_id'),message:text(request.message,'message',6000)};});
   if(new Set(requests.map(request=>request.botId)).size!==requests.length||requests.some(request=>(scope.path??[scope.botId]).includes(request.botId)))throw new KTeamError('handoff_input_invalid');
   await scope.assertCurrent();const id='work-handoff:'+hash([job.id,scope.botId,requests,doneWhen]),existing=this.store.operation(id);
   if(existing){await this.guard({...job,currentHandoffId:id});if(existing.status==='returned')return JSON.stringify({completed:true,results:existing.results});if(existing.status==='waiting'){job.currentHandoffId=id;this.store.save(job);return JSON.stringify({completed:false,waiting:true});}throw new KTeamError('handoff_result_unknown',409);}
   if(this.store.waitingJobs().length>=100)throw new KTeamError('handoff_capacity_exceeded',409);
   const captured=await this.capture(job,scope.botId,requests.map(request=>request.botId));await scope.assertCurrent();
-  const version=(job.handoffVersion??0)+1,deadline=Math.min(this.now()+Number(minutes)*60000,Date.parse(job.task?.terms?.deadline)||this.now()+3600000);
+  const version=(job.handoffVersion??0)+1,deadline=memberHandoffDeadline(job.task,minutes as number|undefined,this.now());
   let op=this.store.saveOperation({id,jobId:job.id,roomId:job.roomId,botId:scope.botId,requests,doneWhen,deadline,captured,version,status:'creating',children:[]},0);
   job.currentHandoffId=id;job.handoffVersion=version;this.store.save(job);
   try{

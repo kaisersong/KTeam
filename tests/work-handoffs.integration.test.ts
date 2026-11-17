@@ -1,3 +1,4 @@
+import {WorkHandoffs} from '../src/service/work-handoffs.js';
 import {activityRecords} from '../src/protocol/activity-records.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -99,5 +100,19 @@ test('a new ordinary message cannot cancel a parked member handoff or its return
   // Old installed handoffs are reconciled using their stable scope, never the moving transcript tail.
   const job=f.store.job('handoff-root'),op=f.store.operation(job.currentHandoffId),captured={...op.captured,sourceTailId:job.originId};delete captured.sourceOrigin;f.store.saveOperation({...op,captured},op.revision);await automation.handoffs!.guard(job);
   hold.release();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='delivered'));await automation.tick();assert.equal(f.store.job('handoff-root').state,'delivered');assert.equal((await f.upstream.conversationMessage(f.roomId,String(sent.messageId))).message.text,'做完后再整理一份清单。');
+ }finally{hold.release();await automation?.close();await f.end();}
+});
+
+for(const explicit of [false,true])test(explicit?'an explicit member wait still expires and freezes its original children':'a member working beyond thirty minutes keeps the same handoff until its original contract ends',async()=>{
+ const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,clock=Date.now(),invalidations=0;
+ try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();const prompt=JSON.parse(input.prompt);if(prompt.sourceConversation){await hold.wait(input.signal);return {text:'成员实际结果。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}
+  await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({requests:[{botId:f.bots[1]!.id,message:'核对并返回真实证据。'}],doneWhen:'真实结果回来。',...(explicit?{timeoutMinutes:1}:{})},{});await input.onRequest?.();throw Error('yield');},f.coordinator);
+  await automation.tick();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='running'));
+  const parent=f.store.job('handoff-root'),op=f.store.operation(parent.currentHandoffId),childIds=op.children.map((child:any)=>child.jobId),captured=JSON.stringify(op.captured),taskDeadline=parent.task.terms.deadline;
+  assert.equal(parent.state,'waiting');if(!explicit)assert.equal(op.deadline,Date.parse(taskDeadline));
+  const handoffs=new WorkHandoffs(f.upstream,f.store,f.coordinator,automation.privateChats!,async()=>{},()=>{invalidations++;},()=>clock);
+  clock=explicit?op.deadline+1:Date.now()+31*60000;await handoffs.wake();
+  if(!explicit){assert.equal(f.store.job(parent.id).state,'waiting');assert.equal(invalidations,0);await handoffs.wake();assert.deepEqual(f.store.operation(op.id).children.map((child:any)=>child.jobId),childIds);assert.equal(JSON.stringify(f.store.operation(op.id).captured),captured);assert.equal(f.store.job(parent.id).task.terms.deadline,taskDeadline);clock=op.deadline+1;await handoffs.wake();}
+  assert.equal(f.store.job(parent.id).state,'blocked');assert.equal(f.store.job(parent.id).reason,'handoff_wait_expired');assert.equal(invalidations,1);assert.equal(f.store.operation(op.id).status,'failed');
  }finally{hold.release();await automation?.close();await f.end();}
 });
