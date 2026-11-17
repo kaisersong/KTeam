@@ -2,6 +2,19 @@ import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import * as SQLite from "expo-sqlite";
 import type { Computer } from "./transport";
+import { mobileB64, mobileBytes, newMobileKeypair, type MobileKeypair } from "../../src/protocol/mobile-wire";
+let identityTask: Promise<MobileKeypair> | undefined;
+export function deviceIdentity(): Promise<MobileKeypair> {
+  return identityTask ??= (async () => {
+    const name = "kteam-mobile-device-key-v1";
+    const saved = await SecureStore.getItemAsync(name);
+    // Adopt an existing pairing identity on upgrade, so it is not another phone.
+    const previous = saved ? JSON.parse(saved) : (await computers())[0]?.key;
+    const key = previous ? { publicKey: mobileBytes(previous.publicKey, 32), secretKey: mobileBytes(previous.secretKey, 32) } : newMobileKeypair();
+    if (!saved) await SecureStore.setItemAsync(name, JSON.stringify({ publicKey: mobileB64(key.publicKey), secretKey: mobileB64(key.secretKey) }), { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+    return key;
+  })().catch(e => { identityTask = undefined; throw e; });
+}
 const INDEX = "kteam-computers-v1";
 export async function computers(): Promise<Computer[]> {
   const ids: string[] = JSON.parse(

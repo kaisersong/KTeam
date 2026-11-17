@@ -70,6 +70,7 @@ test("the actual phone transport retains idle revocation across reconnects and n
       url = "ws://127.0.0.1:" + gateway.port + "/mobile/connect";
     const candidate = pairingComputer({
       ...payload,
+      relay: url,
       endpoints: [url, "ws://127.0.0.1:1/mobile/connect"],
     });
     const stalled = http.createServer();
@@ -86,6 +87,7 @@ test("the actual phone transport retains idle revocation across reconnects and n
     const port = (stalled.address() as any).port;
     const cancelled = new MobileConnection({
       ...candidate,
+      relay: "ws://127.0.0.1:" + port + "/mobile/connect",
       endpoints: ["ws://127.0.0.1:" + port + "/mobile/connect", url],
     });
     const beforeCancel = opened.length;
@@ -139,7 +141,7 @@ test("the actual phone transport retains idle revocation across reconnects and n
       before,
       "idle revocation must not start a new socket or fall through to offline",
     );
-    rejected = new MobileConnection(saved);
+    rejected = new MobileConnection({ ...saved, relay: url });
     await assert.rejects(rejected.connect(), /mobile_auth_required/);
     assert.equal(
       opened.length,

@@ -73,8 +73,7 @@ export function parseInvitation(value: string): Invitation {
   }
   return p;
 }
-export function pairingComputer(p: Invitation): Computer {
-  const key = newMobileKeypair();
+export function pairingComputer(p: Invitation, key: MobileKeypair = newMobileKeypair()): Computer {
   return {
     installationId: p.installationId,
     computerName: p.computerName,

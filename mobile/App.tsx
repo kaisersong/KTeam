@@ -77,6 +77,7 @@ import {
   type Computer,
 } from "./src/transport";
 import {
+  deviceIdentity,
   cachedMessages,
   cacheMessages,
   computers,
@@ -299,6 +300,7 @@ function AppBody() {
     [status, setStatus] = useState("未连接"),
     [busy, setBusy] = useState(false),
     [offline, setOffline] = useState(false),
+    [connecting, setConnecting] = useState(false),
     [connectionRevision, setConnectionRevision] = useState(0),
     [scan, setScan] = useState(false),
     [scanError, setScanError] = useState(""),
@@ -347,6 +349,7 @@ function AppBody() {
   const reconnect = () => {
     setError("");
     setOffline(true);
+    setConnecting(true);
     setStatus("正在重新连接…");
     setConnectionRevision((v) => v + 1);
   };
@@ -478,6 +481,7 @@ function AppBody() {
         void cacheMessages(computer, r.roomId, incoming).catch(() => {});
       }
       if (g === generation.current) {
+        setConnecting(false);
         setOffline(false);
         setStatus(connection.current?.route ?? "已连接");
         setError("");
@@ -485,6 +489,7 @@ function AppBody() {
       }
     } catch (e) {
       if (g === generation.current) {
+        setConnecting(false);
         setOffline(true);
         setStatus(
           ["mobile_auth_required", "mobile_device_revoked"].includes(
@@ -522,6 +527,8 @@ function AppBody() {
     setRoom(undefined);
     setWork(undefined);
     setUploads([]);
+    setError("");
+    setConnecting(!!computer);
     if (!computer) {
       connection.current = undefined;
       return;
@@ -705,7 +712,7 @@ function AppBody() {
         previous.publicKey === invite.publicKey &&
         previous.secret === invite.secret
           ? previous
-          : pairingComputer(invite);
+          : pairingComputer(invite, await deviceIdentity());
       pairingCandidate.current = candidate;
       setPairingName(invite.computerName);
       transport = new MobileConnection(candidate);
@@ -1154,7 +1161,7 @@ function AppBody() {
           </Pressable>
         </GlassSurface>
       </GlassGroup>
-      {(error || (computer && offline)) && !pairing && (
+      {(error || (computer && offline)) && !connecting && !pairing && (
         <View
           style={[
             s.card,
@@ -1199,7 +1206,7 @@ function AppBody() {
                 今天，想推进什么？
               </Text>
               <Text style={[s.caption, { color: colors.muted, marginTop: 10 }]}>
-                {offline ? "电脑暂时离线 · 可查看已同步内容" : status}
+                {connecting ? "正在连接电脑…" : offline ? "电脑暂时离线 · 可查看已同步内容" : status}
               </Text>
               <View style={[s.searchBar, { backgroundColor: colors.panel }]}>
                 <Search size={18} color={colors.muted} />
@@ -2286,6 +2293,9 @@ function AppBody() {
                 <Markdown
                   style={{
                     body: { color: colors.text, fontSize: 15, lineHeight: 24 },
+                    heading1: { fontSize: 28, lineHeight: 36 },
+                    heading2: { fontSize: 24, lineHeight: 32 },
+                    heading3: { fontSize: 20, lineHeight: 28 },
                   }}
                   onLinkPress={(url) => {
                     if (/^https?:\/\//i.test(url)) void Linking.openURL(url);

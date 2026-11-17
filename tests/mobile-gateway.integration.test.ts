@@ -345,3 +345,52 @@ test("blind remote relay carries actual encrypted device traffic and closes revo
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("confirmed re-pairing reuses the proven device identity, rotates credentials and keeps same-name phones separate", async () => {
+  const root = mkdtempSync(join(tmpdir(), "kt-mobile-repair-"));
+  const store = new TeamStore(root), devices = new MobileDevices(store);
+  devices.configure({ action: "enable" });
+  const gateway = new MobileGateway(devices, async () => ({ ok: true }));
+  const clients: any[] = [];
+  try {
+    await gateway.start();
+    const pairDevice = async (key?: any, approvals = false) => {
+      const { payload } = devices.invite(gateway.port);
+      const client = await mobileClient("ws://127.0.0.1:" + gateway.port + "/mobile/connect", {
+        credentialId: payload.inviteId, secret: payload.secret, publicKey: payload.publicKey,
+      }, key);
+      clients.push(client);
+      assert.equal((await client.call("pair", { name: "我的 iPhone" })).pending, true);
+      devices.configure({ action: "approve", id: payload.inviteId, allowApprovals: approvals });
+      const credential = await client.call("pair", { name: "我的 iPhone" });
+      await client.call("pair", { action: "finish" });
+      client.close();
+      return { credential, key: client.key };
+    };
+    const first = await pairDevice(undefined, true);
+    const old = await mobileClient("ws://127.0.0.1:" + gateway.port + "/mobile/connect", {
+      credentialId: first.credential.deviceId, secret: first.credential.secret, publicKey: first.credential.publicKey,
+    }, first.key);
+    clients.push(old);
+    await old.call("hello");
+    const second = await pairDevice(first.key);
+    assert.equal(second.credential.deviceId, first.credential.deviceId);
+    assert.notEqual(second.credential.secret, first.credential.secret);
+    assert.equal(devices.view().devices.length, 1);
+    assert.equal(devices.view().devices[0].allowApprovals, false);
+    await assert.rejects(old.call("hello"));
+    const third = await pairDevice();
+    assert.notEqual(third.credential.deviceId, first.credential.deviceId);
+    assert.equal(devices.view().devices.length, 2);
+    devices.configure({ action: "revoke", id: second.credential.deviceId });
+    const fourth = await pairDevice(first.key);
+    assert.equal(fourth.credential.deviceId, first.credential.deviceId);
+    assert.equal(devices.view().devices.length, 2);
+    assert.equal(devices.view().devices.find((d: any) => d.id === fourth.credential.deviceId)?.revokedAt, undefined);
+    const reopened = new MobileDevices(store);
+    assert.equal(reopened.view().devices.length, 2);
+  } finally {
+    clients.forEach(c => c.close());
+    await gateway.close(); store.close(); rmSync(root, { recursive: true, force: true });
+  }
+});
