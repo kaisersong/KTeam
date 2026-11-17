@@ -61,13 +61,13 @@ export async function createHarness(input:HarnessContext){
    }
    if(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide'].includes(name))return 'prompt';
    if(name==='bash'&&lowRiskTerminalQuery(core,String(normalized.command??'')))return 'allow';
-   if(input.recoveryReview&&!['read','glob','grep','read_material','get_team_work','read_runtime_output','read_context_capture','mail_intent_status'].includes(name))return 'prompt';
+   if(input.recoveryReview&&!['read','glob','grep','read_material','get_execution_state','get_team_work','read_runtime_output','read_context_capture','mail_intent_status'].includes(name))return 'prompt';
    return decision;
   }
  }
 
- const permissionManager=new BoundPermissions({mode:'default',cwd,...rules,allowRules:[...rules.allowRules,'propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','read_runtime_output','read_context_capture','mail_intent_status']});
- const permissionManagerForCwd=(base:string)=>base===cwd?permissionManager:new BoundPermissions({mode:'default',cwd:base,...rules,allowRules:[...rules.allowRules,'propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','read_runtime_output','read_context_capture','mail_intent_status']},base);
+ const permissionManager=new BoundPermissions({mode:'default',cwd,...rules,allowRules:[...rules.allowRules,'propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_execution_state','get_team_work','ask_user','contact_bot','read_runtime_output','read_context_capture','mail_intent_status']});
+ const permissionManagerForCwd=(base:string)=>base===cwd?permissionManager:new BoundPermissions({mode:'default',cwd:base,...rules,allowRules:[...rules.allowRules,'propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_execution_state','get_team_work','ask_user','contact_bot','read_runtime_output','read_context_capture','mail_intent_status']},base);
  const permissionFingerprint=createHash('sha256').update(JSON.stringify(rules)).digest('hex');
  const guard=async()=>{input.signal.throwIfAborted();toolPolicy.validate();for(const [base,epoch] of permissionEpochs){const scope=permissionScope(base);if(scope&&input.permissions!.store.revision(scope)!==epoch)throw new KTeamError('harness_permissions_changed',409);}if(await runtimeIntegrationRevision()!==settingsRevision)throw new KTeamError('integration_changed',409);input.assertSkillsCurrent?.();if(input.scope)assertSkillPins(sourceCatalog,pinnedSkills,input.scope.roomId);await input.assertCurrent();const latest=core.mergeRules(await core.loadSettings(cwd));if(createHash('sha256').update(JSON.stringify(latest)).digest('hex')!==permissionFingerprint)throw new KTeamError('harness_permissions_changed',409);};
  const sourceCatalog=scopedCatalog(core,cwd,input.scope);await sourceCatalog.reload();if(input.scope)assertSkillPins(sourceCatalog,pinnedSkills,input.scope.roomId);

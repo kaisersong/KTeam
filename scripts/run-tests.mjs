@@ -1,21 +1,23 @@
-// Runs every compiled test file. macOS/Linux default to Node file concurrency;
-// KTEAM_TEST_CONCURRENCY may reduce parallelism on a busy developer machine.
-// Windows only: bound file concurrency and each complete file (including multi-scenario integration suites).
-// The full nine-scenario approval file measured 379 seconds; the whole run also has a watchdog so a
-// file that never exits cannot hang CI for hours. No assertion changes.
-// --test-force-exit is deliberately NOT used: on Windows + Node 24 a forced process.exit() that lands while undici
-// (fetch) handles are still closing aborts the test process inside libuv
-// ("Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 94"), seen in adapters.test
-// and decision.test, and never before --test-force-exit was added.
-import {spawnSync} from 'node:child_process';
-import {readdirSync} from 'node:fs';
+import {spawnSync,execFileSync} from 'node:child_process';
+import {readdirSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {parseStats,assertStats,assertFloor,floorFor,shardSpec,partition,digest} from './test-report.mjs';
 const files=readdirSync('dist/tests').filter(name=>name.endsWith('.test.js')).sort().map(name=>'dist/tests/'+name);
-const windows=process.platform==='win32';
-// A busy developer machine can reduce file parallelism without skipping tests.
+const windows=process.platform==='win32',shard=shardSpec(process.env.KTEAM_TEST_SHARD),selected=partition(files,shard);
+if(!selected.length)throw Error('test_shard_empty');
+if(shard.count>1&&process.env.GITHUB_ACTIONS!=='true')throw Error('sharded_checks_require_ci_aggregation');
 const requested=process.env.KTEAM_TEST_CONCURRENCY;
 if(requested!==undefined&&!/^(?:[1-9]|1[0-6])$/.test(requested))throw Error('invalid_test_concurrency');
 const concurrency=requested?Math.min(windows?2:16,Number(requested)):windows?2:undefined;
-const result=spawnSync(process.execPath,['--preserve-symlinks','--test',...(concurrency?['--test-concurrency='+concurrency]:[]),...(windows?['--test-timeout=600000']:[]),...files],{stdio:'inherit',...(windows?{timeout:45*60000,killSignal:'SIGKILL'}:{})});
-if(result.error&&result.error.code!=='ETIMEDOUT')throw result.error;
-if(result.error)console.error('test run exceeded the 45 minute Windows watchdog');
-process.exitCode=result.status??1;
+const directory='build/test-reports',stem=process.platform+'-'+process.versions.node+'-'+shard.index;
+mkdirSync(directory,{recursive:true});const tap=directory+'/'+stem+'.tap',report=directory+'/'+stem+'.json';rmSync(tap,{force:true});rmSync(report,{force:true});
+// Every file runs exactly once across the Windows jobs. Keep live output and a
+// machine-readable report; the final CI job verifies coverage and the full floor.
+// No force-exit: undici teardown on Windows Node 24 must complete normally.
+const result=spawnSync(process.execPath,['--preserve-symlinks','--test','--test-reporter=spec','--test-reporter-destination=stdout','--test-reporter=tap','--test-reporter-destination='+tap,...(concurrency?['--test-concurrency='+concurrency]:[]),...(windows?['--test-timeout=600000']:[]),...selected],{stdio:'inherit',...(windows?{timeout:45*60000,killSignal:'SIGKILL'}:{})});
+if(result.error)throw result.error;
+if(result.status!==0){process.exitCode=result.status??1;}else{
+ const stats=parseStats(readFileSync(tap,'utf8'));assertStats(stats);if(shard.count===1)assertFloor(stats,floorFor(process.platform));
+ const revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+ writeFileSync(report,JSON.stringify({revision,platform:process.platform,node:process.versions.node,shard,inventory:files.map(name=>({name,sha256:digest(readFileSync(name))})),files:selected,stats},null,2));
+ console.log(JSON.stringify({testReport:report,declared:stats.tests,skipped:stats.skipped,shard,fullFloor:floorFor(process.platform)}));
+}

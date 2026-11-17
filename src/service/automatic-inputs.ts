@@ -8,10 +8,13 @@ import {LOCAL_HUMAN} from './collaboration.js';
 import {groupWorkFacts} from './group-conversation.js';
 import {ownerPage} from './room-reads.js';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const backgroundOrigin=(job:any)=>['assistant-notice','followup','regenerate'].includes(job?.trigger);
 const pending=new Set(['pending','deciding','decided']);
 export type InputDecision=(input:{facts:any;choices:{id:string;description:string}[];guard:()=>Promise<void>;signal:AbortSignal;onRequest:(witness?:any)=>void;botId?:string})=>Promise<string|null>;
 /** Read-only semantic decisions over existing message receipts, runtime boundaries and the original queue. */
 export class AutomaticInputs {
+ private repairing?:Promise<void>;
+ private roots(roomId:string,exclude?:string){return this.store.jobs(roomId).filter(job=>job.originId!==exclude&&!job.peer&&!job.groupResponse&&!job.groupInput&&!backgroundOrigin(job)&&!(['queued','held'].includes(job.state)&&job.afterJobId));}
  private running=new Map<string,Promise<void>>();private controllers=new Set<AbortController>();private closed=false;
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private inputs:WorkInputs,private decide:InputDecision,private wake:()=>void=()=>{}){}
  private save(op:any,changes:any){const current=this.store.operation(op.id);return this.store.saveOperation({...current,...changes},current.revision);}
@@ -26,7 +29,7 @@ export class AutomaticInputs {
   return message;
  }
  async accept(roomId:string,id:string,messageId:string){
-  if(this.closed)throw new KTeamError('host_stopping',503);await this.coordinator.guardConversation(roomId);const message=await this.source(roomId,id,messageId),key='message-handling:'+id,known=this.store.operation(key);
+  if(this.closed)throw new KTeamError('host_stopping',503);await this.repairQueues();await this.coordinator.guardConversation(roomId);const message=await this.source(roomId,id,messageId),key='message-handling:'+id,known=this.store.operation(key);
   if(known){if(known.roomId!==roomId||known.messageId!==messageId||known.bodyHash!==hash(message.text))throw new KTeamError('work_input_id_conflict',409);if(pending.has(known.status))this.start(roomId);return;}
   if(this.store.operation('work-input:'+id)){this.store.completeSubmission(id,messageId,false);return;}
   if(this.store.submission(id)?.state==='sent')return;
@@ -34,15 +37,51 @@ export class AutomaticInputs {
   if(!(members.some(member=>member.status==='active'&&member.subject?.kind==='user'&&member.subject.userId==='user.local')))throw new KTeamError('room_actor_forbidden',403);
   const hosted=members.some(member=>member.status==='active'&&member.subject?.kind==='agent'&&this.store.binding(member.subject.logicalAgentId));
   if(!settings||!hosted||settings.delivery==='external-agent'){this.store.completeSubmission(id,messageId,false);return;}
-  const jobs=this.store.jobs(roomId).filter(job=>job.originId!==messageId&&!job.peer&&!job.groupResponse&&!job.groupInput),active=jobs.filter(job=>['routing','running','waiting','stopping','queued'].includes(job.state));const targets=(active.length?active:jobs.slice(0,1).filter(job=>['unknown','blocked','held'].includes(job.state))).slice(0,3).map(job=>({jobId:job.id,originId:job.originId,botId:job.activeBotId,state:job.state}));
+  const jobs=this.roots(roomId,messageId),active=jobs.filter(job=>['routing','running','waiting','stopping','queued'].includes(job.state));const targets=(active.length?active:jobs.slice(0,1).filter(job=>['unknown','blocked','held'].includes(job.state))).slice(0,3).map(job=>({jobId:job.id,originId:job.originId,botId:job.activeBotId,state:job.state}));
   if(!targets.length&&!this.busyRooms().includes(roomId)){this.store.completeSubmission(id,messageId,true);this.markGroupPlanning(roomId,messageId);return;}
   const bindings=members.filter(member=>member.status==='active'&&member.subject?.kind==='agent').flatMap(member=>{const binding=this.store.binding(member.subject.logicalAgentId);return binding?[{botId:binding.botId,revision:binding.revision,fingerprint:binding.fingerprint}]:[];});
   this.store.completeSubmission(id,messageId,false,{id:key,roomId,envelopeId:id,messageId,bodyHash:hash(message.text),sequence:message.roomSequence,roomRevision:(snapshot.room as any).revision,settingsRevision:settings.revision,bindings,targets,status:'pending',createdAt:Date.now()});this.start(roomId);
  }
  private start(roomId:string){if(this.closed||this.running.has(roomId)||this.running.size>=3)return;const run=this.drain(roomId).finally(()=>{this.running.delete(roomId);if(!this.closed){this.wakePending();this.wake();}});this.running.set(roomId,run);}
- async recover(){this.wakePending();}
+ async recover(){
+  // Repair only a latest, authenticated user message that never got an execution.
+  // Synthetic notification IDs are not Room message IDs and may never hold it hostage.
+  for(const op of this.records().filter(op=>op.status==='needs_review'&&op.reason==='room_scope_mismatch'&&op.targets?.length&&op.targets.every((target:any)=>backgroundOrigin(this.store.job(target.jobId))))){
+   try{await this.coordinator.guardConversation(op.roomId);const message=await this.source(op.roomId,op.envelopeId,op.messageId),page=await ownerPage(this.upstream,op.roomId,{tail:true,limit:20}),latest=(page.messages as any[]).filter(m=>m.sender?.kind==='user').sort((a,b)=>a.roomSequence-b.roomSequence).at(-1);
+    if(latest?.messageId!==op.messageId||hash(message.text)!==op.bodyHash||this.store.job('job-'+op.messageId)||this.store.operation('work-input:'+op.envelopeId))continue;
+    this.store.transaction(()=>{const current=this.store.operation(op.id);if(current?.revision!==op.revision||current.status!=='needs_review')return;this.store.enqueue('job-'+op.messageId,op.roomId,op.messageId);this.markGroupPlanning(op.roomId,op.messageId);this.save(current,{status:'applied',chosen:'new',previousReason:op.reason,reason:undefined,reconciledAt:Date.now()});});
+   }catch(error){const current=this.store.operation(op.id);if(current?.status==='needs_review')this.save(current,{recoveryCheckReason:error instanceof KTeamError?error.code:'source_verification_unavailable'});}
+  }
+  await this.repairQueues();this.wakePending();
+ }
+ /** A legacy queued followup is not an active owner. Reclassify an untouched
+  * automatic input only when a newer independent goal has already completed.
+  * Old executions, unknown results and explicit user queue choices stay intact. */
+ private repairQueues():Promise<void>{
+  if(this.closed)return Promise.resolve();if(this.repairing)return this.repairing;
+  const run=(async()=>{for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
+   if(this.closed)return;const settings=this.store.settings(roomId);if(!settings||settings.paused||settings.delivery==='external-agent')continue;
+   const head=this.roots(roomId)[0];if(!head||!['delivered','noop'].includes(head.state))continue;
+   if(this.store.jobs().some(job=>job.peer?.rootJobId===head.id&&!['delivered','noop','blocked','stopped','cancelled'].includes(job.state)))continue;
+   for(const op of this.store.workInputRecords(roomId)){
+    if(op.status!=='queued'||op.automatic!==true||op.independentAt)continue;
+    const queued=this.store.job(op.queuedJobId),target=this.store.job(op.jobId);
+    if(!queued||queued.state!=='queued'||queued.afterJobId!==target?.id||!target.afterJobId||!['queued','held'].includes(target.state)||queued.task||queued.execution||queued.harness||queued.toolTrace?.length||queued.results?.length)continue;
+    const created=Date.parse(head.createdAt),old=Date.parse(target.createdAt),next=Date.parse(queued.createdAt);if(![created,old,next].every(Number.isFinite)||!(old<created&&created<next))continue;
+    let predecessor=target;const seen=new Set<string>();while(predecessor?.afterJobId&&!seen.has(predecessor.id)&&seen.size<64){seen.add(predecessor.id);predecessor=this.store.job(predecessor.afterJobId);}
+    if(!predecessor||predecessor.afterJobId||seen.has(predecessor.id)||['delivered','noop'].includes(predecessor.state)||predecessor.id===head.id)continue;
+    try{const source=await this.source(roomId,op.envelopeId,op.messageId);await this.coordinator.guardConversation(roomId);
+     if(hash(source.text)!==op.bodyHash||!(Date.parse(source.createdAt)>created)||this.closed||this.store.settings(roomId)?.paused||this.roots(roomId)[0]?.id!==head.id)continue;
+     this.markGroupPlanning(roomId,op.messageId);await this.inputs.release({roomId,id:op.id,expectedRevision:op.revision});
+     const id='input-queue-reclassification:'+op.id;if(!this.store.operation(id))this.store.saveOperation({id,sourceMessageId:op.messageId,oldTargetJobId:target.id,completedNewerJobId:head.id,jobId:queued.id,reason:'superseded_queue_target',status:'released'},0);
+     break;
+    }catch{/* Unverified source, membership and changed queue receipts remain parked. */}
+   }
+  }})();this.repairing=run.finally(()=>{this.repairing=undefined;});return this.repairing;
+ }
+
  async settle(){while(this.running.size)await Promise.all([...this.running.values()]);}
- async close(){this.closed=true;for(const controller of this.controllers)controller.abort();await this.settle();}
+ async close(){this.closed=true;for(const controller of this.controllers)controller.abort();await this.settle();await this.repairing;}
  private async drain(roomId:string){
   for(;;){if(this.closed)return;const op=this.records(roomId).filter(op=>pending.has(op.status)).sort((a,b)=>a.sequence-b.sequence)[0];if(!op)return;const controller=new AbortController();this.controllers.add(controller);const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(30000)]);
    try{await this.process(op,signal);}catch(error){if(this.closed)return;this.save(op,{status:'needs_review',reason:error instanceof KTeamError?error.code:'message_handling_failed'});}finally{this.controllers.delete(controller);}

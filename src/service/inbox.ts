@@ -36,5 +36,5 @@ export function projectInbox(state:InboxState,source:Record<string,any>){
  for(const [field,kind] of [['questions','question'],['approvals','approval'],['proposals','proposal'],['creations','creation'],['jobs','job']]){
   result[field!]=(source[field!]??[]).map((item:any)=>state.project(kind!,item)).filter((item:any)=>!item.inbox.deleted);unreadCount+=result[field!].filter((item:any)=>!item.inbox.read).length;
  }
- return {...result,unreadCount};
+ return {...result,unreadCount,activeApprovalCount:(source.approvals??[]).filter((a:any)=>a.status==='pending'&&a.expiresAt>Date.now()).reduce((n:number,a:any)=>n+(a.pendingOperationCount??1),0),reconciliationCount:(source.jobs??[]).filter((j:any)=>j.state==='unknown'||j.needsReview).length};
 }
