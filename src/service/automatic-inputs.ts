@@ -8,12 +8,13 @@ import {LOCAL_HUMAN} from './collaboration.js';
 import {groupWorkFacts} from './group-conversation.js';
 import {ownerPage} from './room-reads.js';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const backgroundOrigin=(job:any)=>['assistant-notice','followup','regenerate'].includes(job?.trigger);
 const pending=new Set(['pending','deciding','decided']);
 export type InputDecision=(input:{facts:any;choices:{id:string;description:string}[];guard:()=>Promise<void>;signal:AbortSignal;onRequest:(witness?:any)=>void;botId?:string})=>Promise<string|null>;
 /** Read-only semantic decisions over existing message receipts, runtime boundaries and the original queue. */
 export class AutomaticInputs {
  private repairing?:Promise<void>;
- private roots(roomId:string,exclude?:string){return this.store.jobs(roomId).filter(job=>job.originId!==exclude&&!job.peer&&!job.groupResponse&&!job.groupInput&&!(['queued','held'].includes(job.state)&&job.afterJobId));}
+ private roots(roomId:string,exclude?:string){return this.store.jobs(roomId).filter(job=>job.originId!==exclude&&!job.peer&&!job.groupResponse&&!job.groupInput&&!backgroundOrigin(job)&&!(['queued','held'].includes(job.state)&&job.afterJobId));}
  private running=new Map<string,Promise<void>>();private controllers=new Set<AbortController>();private closed=false;
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private inputs:WorkInputs,private decide:InputDecision,private wake:()=>void=()=>{}){}
  private save(op:any,changes:any){const current=this.store.operation(op.id);return this.store.saveOperation({...current,...changes},current.revision);}
@@ -42,7 +43,17 @@ export class AutomaticInputs {
   this.store.completeSubmission(id,messageId,false,{id:key,roomId,envelopeId:id,messageId,bodyHash:hash(message.text),sequence:message.roomSequence,roomRevision:(snapshot.room as any).revision,settingsRevision:settings.revision,bindings,targets,status:'pending',createdAt:Date.now()});this.start(roomId);
  }
  private start(roomId:string){if(this.closed||this.running.has(roomId)||this.running.size>=3)return;const run=this.drain(roomId).finally(()=>{this.running.delete(roomId);if(!this.closed){this.wakePending();this.wake();}});this.running.set(roomId,run);}
- async recover(){await this.repairQueues();this.wakePending();}
+ async recover(){
+  // Repair only a latest, authenticated user message that never got an execution.
+  // Synthetic notification IDs are not Room message IDs and may never hold it hostage.
+  for(const op of this.records().filter(op=>op.status==='needs_review'&&op.reason==='room_scope_mismatch'&&op.targets?.length&&op.targets.every((target:any)=>backgroundOrigin(this.store.job(target.jobId))))){
+   try{await this.coordinator.guardConversation(op.roomId);const message=await this.source(op.roomId,op.envelopeId,op.messageId),page=await ownerPage(this.upstream,op.roomId,{tail:true,limit:20}),latest=(page.messages as any[]).filter(m=>m.sender?.kind==='user').sort((a,b)=>a.roomSequence-b.roomSequence).at(-1);
+    if(latest?.messageId!==op.messageId||hash(message.text)!==op.bodyHash||this.store.job('job-'+op.messageId)||this.store.operation('work-input:'+op.envelopeId))continue;
+    this.store.transaction(()=>{const current=this.store.operation(op.id);if(current?.revision!==op.revision||current.status!=='needs_review')return;this.store.enqueue('job-'+op.messageId,op.roomId,op.messageId);this.markGroupPlanning(op.roomId,op.messageId);this.save(current,{status:'applied',chosen:'new',previousReason:op.reason,reason:undefined,reconciledAt:Date.now()});});
+   }catch(error){const current=this.store.operation(op.id);if(current?.status==='needs_review')this.save(current,{recoveryCheckReason:error instanceof KTeamError?error.code:'source_verification_unavailable'});}
+  }
+  await this.repairQueues();this.wakePending();
+ }
  /** A legacy queued followup is not an active owner. Reclassify an untouched
   * automatic input only when a newer independent goal has already completed.
   * Old executions, unknown results and explicit user queue choices stay intact. */
@@ -68,6 +79,7 @@ export class AutomaticInputs {
    }
   }})();this.repairing=run.finally(()=>{this.repairing=undefined;});return this.repairing;
  }
+
  async settle(){while(this.running.size)await Promise.all([...this.running.values()]);}
  async close(){this.closed=true;for(const controller of this.controllers)controller.abort();await this.settle();await this.repairing;}
  private async drain(roomId:string){

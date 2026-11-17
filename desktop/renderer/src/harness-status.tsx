@@ -1,3 +1,4 @@
+import {unexecutedModelToolOutput} from '../../../src/protocol/model-tool-output';
 import {showGeneratedFile} from './artifact-viewer';
 import {toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
@@ -7,6 +8,7 @@ import{Terminal,Check,ShieldCheck,X,FileText}from'lucide-react';
 import{api,explain,type Bot}from'./api';
 export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny',applyToGroup?:boolean)=>Promise<void>}){
  const[applyToGroup,setApplyToGroup]=useState(true);const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision,approval.directoryGroupScope&&['allow_directory','allow_directory_routine'].includes(decision)?applyToGroup:undefined);}catch(e){setError(explain(e));}finally{setBusy(false);}};
+ const [grants,setGrants]=useState<any[]|undefined>();
  const description=toolApprovalSummary(approval.toolName,approval.display);
  const recipients=approval.directoryGroupScope&&applyToGroup?'当前群所有 Bot ':'此成员';
  return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
@@ -15,9 +17,14 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
   {approval.directory&&<><small>{approval.directoryOperations==='routine'?`长期允许后，${recipients}可在所列目录及子目录进行常规读写、Git 和本地命令操作；删除、重置、推送及敏感操作仍需单独确认。`:`长期允许后，${recipients}可在此目录及子目录进行普通文件读写。`}</small><div className="directory-permission-path">{(approval.directories?.length?approval.directories:[approval.directory]).map((path:string)=><p key={path}>{path}</p>)}</div>{approval.pendingOperationCount>1&&<small>此目录还有 {approval.pendingOperationCount-1} 项待处理操作，长期允许目录后一起继续。</small>}</>}
   {approval.directoryGroupScope&&<label className="form-note"><input type="checkbox" checked={applyToGroup} disabled={busy} onChange={e=>setApplyToGroup(e.target.checked)}/>给当前群所有 Bot 授权（{approval.directoryGroupScope.members.length} 位）<small>仅长期允许目录时生效；新增成员不自动继承。</small></label>}
   {!approval.directory&&approval.canAlways&&<small>{approval.commandScoped?('长期允许仅覆盖当前成员、工作目录和这条完整命令；命令或本地脚本内容变化后需重新确认。'):approval.toolName==='bash'?'长期允许此成员在该目录下执行常规命令；删除、重置、外发等操作仍需单独确认。':'长期允许将覆盖此成员在该工作目录下的同类操作。'}</small>}
-  <details className="operation-details"><summary>技术详情</summary><pre>{approval.display}</pre>{approval.riskTags?.length>0&&<small>策略分类：{approval.riskTags.join('、')}</small>}{approval.cwd&&<small>工作目录：{approval.cwd}</small>}<small>工具：{approval.toolName}</small></details>
+  <small>来源工作：{approval.jobId} · 截止 {new Date(approval.expiresAt).toLocaleString('zh-CN')}</small>
+  {approval.operationFacts?.length>0&&<ul aria-label="实际操作目标">{approval.operationFacts.map((fact:any,index:number)=><li key={index}>{fact.reason}：<code>{fact.target}</code></li>)}</ul>}
+  {approval.inspectionRequired&&<p role="alert">本申请混合检查和删除。请先让成员单独检查并返回现状，再提交必要修改；当前申请不能批准执行。</p>}
+  <details className="operation-details"><summary>完整命令与技术详情</summary><pre tabIndex={0} aria-label="完整工具参数" style={{maxHeight:320,overflow:'auto',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{approval.display}</pre><button type="button" className="text-button" onClick={()=>void navigator.clipboard.writeText(approval.display).catch(e=>setError(explain(e)))}>复制完整命令</button>{approval.riskTags?.length>0&&<small>策略分类：{approval.riskTags.join('、')}</small>}{approval.cwd&&<small>工作目录：{approval.cwd}</small>}<small>工具：{approval.toolName}</small></details>
+  <button type="button" className="text-button" onClick={()=>void api.toolPermissions().then(v=>setGrants(v.permissions.filter((g:any)=>g.botId===approval.botId))).catch(e=>setError(explain(e)))}>管理此成员已有授权</button>
+  {grants&&<div aria-label="成员授权">{!grants.length&&<p>当前没有长期授权</p>}{grants.map(g=><p key={g.id}>{g.kind==='command'?'指定完整命令':g.kind==='directory'?'目录常规操作':'同类工具操作'} · {g.directory??g.cwd}<button type="button" disabled={busy} onClick={()=>void api.revokeToolPermission({id:g.id}).then(()=>setGrants(grants.filter(v=>v.id!==g.id))).catch(e=>setError(explain(e)))}>撤销</button></p>)}</div>}
   {error&&<p className="flow-error" role="alert">{error}</p>}
-  <div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className={approval.directory||approval.commandScoped?'secondary':'primary'} disabled={busy} onClick={()=>void decide('allow_once')}><Check size={14}/>允许本次</button>{approval.directory?<button className="primary" disabled={busy} onClick={()=>void decide(approval.directoryOperations==='routine'?'allow_directory_routine':'allow_directory')}>{approval.directoryOperations==='routine'?(approval.directories?.length>1?'长期允许所列目录':'长期允许此目录'):'长期允许此目录读写'}</button>:approval.canAlways&&<button className={approval.commandScoped?'primary':'secondary'} disabled={busy} onClick={()=>void decide('allow_always')}>{approval.commandScoped?'长期允许此命令':approval.toolName==='bash'?'长期允许此目录常规命令':'长期允许此类操作'}</button>}</div>
+  <div><button className="secondary" disabled={busy} onClick={()=>void decide('deny')}><X size={14}/>拒绝</button><button className={approval.directory||approval.commandScoped?'secondary':'primary'} disabled={busy||approval.inspectionRequired} onClick={()=>void decide('allow_once')}><Check size={14}/>允许本次</button>{approval.directory?<button className="primary" disabled={busy} onClick={()=>void decide(approval.directoryOperations==='routine'?'allow_directory_routine':'allow_directory')}>{approval.directoryOperations==='routine'?(approval.directories?.length>1?'长期允许所列目录':'长期允许此目录'):'长期允许此目录读写'}</button>:approval.canAlways&&<button className={approval.commandScoped?'primary':'secondary'} disabled={busy} onClick={()=>void decide('allow_always')}>{approval.commandScoped?'长期允许此命令':approval.toolName==='bash'?'长期允许此目录常规命令':'长期允许此类操作'}</button>}</div>
  </section>;
 }
 export function ExpiredApprovalNotice({approval,bot}:{approval:any;bot?:Bot}){
@@ -35,6 +42,7 @@ function GeneratedFileButton({event}:{event:any}){const[error,setError]=useState
 export function ToolTrace({events}:{events:any[]}){if(!events.length)return null;return <><div className="generated-files">{events.filter(e=>e.state==='completed'&&e.file).map(e=><GeneratedFileButton key={e.id} event={e}/>)}</div><details className="tool-trace"><summary><Terminal size={13}/>工具记录 · {[...new Set(events.map(e=>e.name))].join('、')} · {events.length} 条记录</summary>{events.map(e=><div key={e.id}><strong>{e.name}<small>{e.state==='completed'?'已返回':e.state==='running'?'执行中':'未完成'}</small></strong>{e.input&&<pre>{typeof e.input==='string'?e.input:JSON.stringify(e.input,null,2)}</pre>}{e.result&&<pre>{typeof e.result==='string'?e.result:JSON.stringify(e.result,null,2)}</pre>}{e.code&&<p>{explain(e.code)}</p>}</div>)}</details></>;}
 
 export function RuntimeMessageContent({text,cards=[],files=[]}:{text:string;cards?:any[];files?:any[]}){
+ if(unexecutedModelToolOutput(text))return <p role="alert">工具请求格式错误，尚未执行。请在工作记录中核对并恢复。</p>;
  const parts:React.ReactNode[]=[];let start=0;
  for(const [index,card]of cards.entries()){
   const offset=Math.max(start,Math.min(text.length,Number.isSafeInteger(card.offset)?card.offset:text.length));
