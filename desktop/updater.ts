@@ -18,6 +18,7 @@
  *    down until the real `before-quit` fires.
  */
 import { types } from 'node:util';
+import {transientUpdateNetworkError} from './update-network.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { UpdaterHandoffStateMachine } from './updater-handoff.js';
@@ -257,11 +258,24 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
   let startupTimer: unknown;
   let periodicTimer: unknown;
   let pollingStopped = false;
+  let networkRetryTimer:unknown;
+  let networkRetryDelay=5*60*1000;
+  const clearNetworkRetry=()=>{if(networkRetryTimer!==undefined)environment.clearTimer(networkRetryTimer);networkRetryTimer=undefined;};
+  function scheduleNetworkRetry(error:unknown){
+    if(pollingStopped||attemptLocked()||networkRetryTimer!==undefined||updateStatus.downloading||updateStatus.downloaded||updateStatus.installing||!transientUpdateNetworkError(toError(error).message))return;
+    networkRetryTimer=environment.setTimer(()=>{networkRetryTimer=undefined;if(pollingStopped||attemptLocked()||updateStatus.checking||updateStatus.downloading||updateStatus.installing)return;
+      setUpdateStatus({checking:true,error:undefined});
+      void Promise.resolve().then(()=>autoUpdater.checkForUpdates()).catch(reportUpdaterError);
+    },networkRetryDelay);
+    networkRetryDelay=Math.min(networkRetryDelay*2,30*60*1000);
+  }
+  const networkRecovered=()=>{clearNetworkRetry();networkRetryDelay=5*60*1000;};
 
   const attemptLocked = () => Boolean(handoff?.hasPendingIntent || handoff?.snapshot().kind === 'handed_off');
   const clearObservation = () => { if (observationTimer !== undefined) environment.clearTimer(observationTimer); observationTimer = undefined; };
   function stopPolling(): void {
     pollingStopped = true;
+    clearNetworkRetry();
     if (startupTimer !== undefined) environment.clearTimer(startupTimer);
     startupTimer = undefined;
     if (periodicTimer !== undefined) environment.clearTimer(periodicTimer);
@@ -302,6 +316,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
     else handoff?.observeAsyncUpdaterError(error);
     clearObservation();
     completedCheck = true;
+    scheduleNetworkRetry(error);
     setUpdateStatus({ checking: false, downloading: false, installing: false, error: message }, true);
   }
 
@@ -326,10 +341,11 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
       const version = sdkScalar(info, 'version');
       if (typeof version !== 'string') throw Error('updater_projection_unavailable');
       completedCheck = true;
+      networkRecovered();
       logUpdater('update-available', version);
       setUpdateStatus({ checking: false, available: true, installing: false, version });
     }));
-    autoUpdater.on('update-not-available', () => { completedCheck = true; setUpdateStatus({ checking: false, available: false, installing: false }); });
+    autoUpdater.on('update-not-available', () => { networkRecovered(); completedCheck = true; setUpdateStatus({ checking: false, available: false, installing: false }); });
     autoUpdater.on('download-progress', sdkEvent(progress => {
       const percent = sdkScalar(progress, 'percent');
       if (typeof percent !== 'number' || !Number.isFinite(percent)) throw Error('updater_projection_unavailable');
@@ -418,6 +434,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
         if (autoUpdater && !attemptLocked()) {
           Promise.resolve().then(() => autoUpdater.checkForUpdates()).catch((error: unknown) => {
             try { logUpdater('error', redactUpdaterDiagnostic(toError(error).message)); } catch { /* diagnostic sink */ }
+            scheduleNetworkRetry(error);
             setUpdateStatus({ checking: false, downloading: false, error: toError(error).message });
           });
         }
@@ -446,6 +463,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
       setUpdateStatus({ checking: false, error: inactiveUpdateMessage(reason) });
       return;
     }
+    clearNetworkRetry();
     setUpdateStatus({ checking: true, error: undefined });
     if (!(await loadAutoUpdater())) { setUpdateStatus({ checking: false }); return; }
     registerAutoUpdaterEvents();
@@ -455,6 +473,7 @@ export function createKTeamUpdater(environment: UpdaterEnvironment, events: Upda
       if (result === null) setUpdateStatus({ checking: false, error: '更新器未激活' });
     } catch (error) {
       completedCheck = true;
+      scheduleNetworkRetry(error);
       setUpdateStatus({ checking: false, downloading: false, error: toError(error).message });
     }
   }

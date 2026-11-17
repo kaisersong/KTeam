@@ -428,3 +428,19 @@ it('only a user download action starts one download; discovery stays non-modal a
 it('download failures remain visible and permit a user retry without an install handoff',async()=>{
  const updater=fakeAutoUpdater();updater.downloadUpdate=fn(async()=>{throw Error('download offline')});const {environment}=fakeEnvironment({},updater),subject=createKTeamUpdater(environment);await subject.setup(undefined,{requestSource:'scheduler'});updater.emit('update-available',{version:'0.8.5'});await subject.downloadUpdate({requestSource:'user'});assert.equal(subject.getStatus().downloading,false);assert.equal(subject.getStatus().error,'download offline');await subject.downloadUpdate({requestSource:'user'});assert.equal(updater.downloadUpdate.calls.length,2);assert.equal(updater.quitAndInstall.calls.length,0);
 });
+
+it('transient network failures recover through bounded backoff without downloads, and stop cancels retries',async()=>{
+ const updater=fakeAutoUpdater(),{environment,clock}=fakeEnvironment({},updater),subject=createKTeamUpdater(environment);
+ await subject.setup(undefined,{requestSource:'scheduler'});
+ updater.emit('error',new Error('net::ERR_CONNECTION_CLOSED'));updater.emit('error',new Error('net::ERR_CONNECTION_CLOSED'));
+ updater.checkForUpdates.impl=async()=>{updater.emit('update-not-available');return {};};
+ await clock.advance(5*60*1000);assert.equal(updater.checkForUpdates.calls.length,1);assert.equal(subject.getStatus().checking,false);assert.equal(subject.getStatus().error,undefined);
+ updater.emit('error',new Error('net::ERR_CONNECTION_RESET'));subject.stopPolling();await clock.advance(60*60*1000);assert.equal(updater.checkForUpdates.calls.length,1);
+ assert.equal(updater.quitAndInstall.calls.length,0);
+});
+it('signature failures never trigger network recovery and network UI explains proxy recovery',async()=>{
+ const updater=fakeAutoUpdater(),{environment,clock}=fakeEnvironment({},updater),subject=createKTeamUpdater(environment);await subject.setup(undefined,{requestSource:'scheduler'});
+ updater.emit('error',new Error('code signature validation failed'));await clock.advance(35*60*1000);assert.equal(updater.checkForUpdates.calls.length,0);assert.equal(updater.quitAndInstall.calls.length,0);
+ const view=presentUpdateCheck({channel:'mac',status:{checking:false,available:false,downloading:false,downloaded:false,progress:0,error:'net::ERR_CONNECTION_CLOSED'}});assert.match(view.statusText,/网络或代理/);assert.equal(view.buttonDisabled,false);
+ subject.stopPolling();
+});

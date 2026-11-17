@@ -1,0 +1,2 @@
+/** Transient transport failures only; never retries signature or install failures. */
+export function transientUpdateNetworkError(message:string){return /ERR_(?:CONNECTION_(?:CLOSED|RESET|REFUSED|TIMED_OUT)|INTERNET_DISCONNECTED|NETWORK_CHANGED|NAME_NOT_RESOLVED|TIMED_OUT|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED)|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|socket hang up/i.test(message);}

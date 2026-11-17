@@ -1,3 +1,4 @@
+import {transientUpdateNetworkError} from './update-network.js';
 /**
  * Presentation for KTeam's settings 「检查更新」 control.
  * The Releases URL lives here (not in updater.ts) so the updater module stays
@@ -18,6 +19,7 @@ export function updateErrorPresentation(error: string): { message: string; showR
   if (error === 'update_install_handoff_unconfirmed') {
     return { message: '尚未确认更新安装已启动。请保留当前工作，并从 KTeam Releases 下载官方安装包。', showReleasesLink: true };
   }
+  if(transientUpdateNetworkError(error))return {message:'暂时无法连接更新服务器，请检查网络或代理。将自动重试，也可点击重新检查。',showReleasesLink:false};
   return { message: `检查更新失败：${error}`, showReleasesLink: false };
 }
 
