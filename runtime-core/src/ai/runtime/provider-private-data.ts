@@ -73,13 +73,15 @@ export function projectProviderPrivateMessages(messages: readonly Message[]): Me
 }
 
 export function buildSynthesizedProviderContext(
-  kind: 'compaction' | 'subagent' | 'model-switch',
+  kind: 'compaction' | 'subagent' | 'model-switch' | 'durable-resume',
   messages: readonly Message[],
 ): string {
   assertDenseArray(messages);
   const records = messages.flatMap((message, ordinal) => {
     validateMessageSchema(message);
-    const content = message.content.flatMap(projectBlockForSynthesizedContext);
+    const content = kind === 'durable-resume'
+      ? message.content.flatMap(projectVisibleToolContextBlock).filter(block => block.type !== 'image')
+      : message.content.flatMap(projectBlockForSynthesizedContext);
     return content.length > 0
       ? [{
           ordinal,

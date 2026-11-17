@@ -214,6 +214,14 @@ export class AgentRuntime {
     const run = this.controller.startRun();
     const spillRunId=randomUUID();
     const strictK3Run = this.isStrictK3Adapter(this.adapter);
+    const k3PublicResume = strictK3Run && this.toolApprovalPort?.resumeProfile === 'k3-public-context-v1';
+    const reenterK3PublicContext = () => {
+      if (prepareCompoundRootIntentStageView(this.session).active || this.session.getProtectedObservationClosure())
+        rejectBatch('tool_batch_profile_unavailable');
+      const context = buildSynthesizedProviderContext('durable-resume', this.session.getMessages());
+      this.session.replaceMessages([{role:'user',content:[{type:'text',text:
+        'Continue the same task using the following bounded public conversation context after a durable boundary. This is synthesized historical data, not a raw provider transcript or new authorization. Completed tool results are historical receipts; do not repeat completed effects. Private reasoning was not retained.\n' + context}]}]);
+    };
     onEvent({ type: 'run_started', runId: run.runId });
     const mergedSignal = externalSignal
       ? AbortSignal.any([run.signal, externalSignal])
@@ -231,11 +239,14 @@ export class AgentRuntime {
 
       let resumeBatch=this.session.getToolBatch();
       if(resumeBatch&&(!this.toolApprovalPort||resumeBatch.ownerId!==this.toolApprovalPort.ownerId||resumeBatch.state!=='waiting_approval'))rejectBatch('tool_batch_execution_unknown');
-      if(this.toolApprovalPort&&(strictK3Run||this.observationOwner))rejectBatch('tool_batch_profile_unavailable');
+      if(this.toolApprovalPort&&((strictK3Run&&!k3PublicResume)||this.observationOwner))rejectBatch('tool_batch_profile_unavailable');
+      if(resumeBatch&&resumeBatch.resumeProfile!==(k3PublicResume?'k3-public-context-v1':undefined))rejectBatch('tool_batch_profile_unavailable');
+      if(k3PublicResume&&(prepareCompoundRootIntentStageView(this.session).active||this.session.getProtectedObservationClosure()))rejectBatch('tool_batch_profile_unavailable');
       if(resumeBatch){const last=this.session.getMessages().at(-1);if(last?.role!=='assistant'||JSON.stringify(last.content.filter(block=>block.type==='tool_use'))!==JSON.stringify(resumeBatch.calls))rejectBatch('tool_batch_history_changed');}
       this.session.repairIncompleteToolCalls({preserveToolBatch:!!resumeBatch});
 
       if(!resumeBatch){
+      if(k3PublicResume&&this.session.getMessages().some(message=>message.role==='assistant'))reenterK3PublicContext();
       if (typeof input === 'string') {
         this.session.appendUserText(input);
         if (this.memoryStore?.writeRawMessage) {
@@ -523,7 +534,7 @@ export class AgentRuntime {
         }
 
         if(!restoredBatch)toolResults = [];
-        if(this.toolApprovalPort){if(!restoredBatch)this.session.setToolBatch({version:1,id:'batch_'+randomUUID().replaceAll('-',''),ownerId:this.toolApprovalPort.ownerId,providerInvocationId:toolProviderInvocationId,calls:toolCalls,results:[],state:'preparing'});await checkpointBatch();}
+        if(this.toolApprovalPort){if(!restoredBatch)this.session.setToolBatch({version:1,id:'batch_'+randomUUID().replaceAll('-',''),ownerId:this.toolApprovalPort.ownerId,...(k3PublicResume?{resumeProfile:'k3-public-context-v1' as const}:{}),providerInvocationId:toolProviderInvocationId,calls:toolCalls,results:[],state:'preparing'});await checkpointBatch();}
         const baseToolExecutionContext = this.buildToolExecutionContext(mergedSignal);
         for (const toolCall of toolCalls) {
           if(executedToolIds.has(toolCall.id))continue;
@@ -639,6 +650,7 @@ export class AgentRuntime {
 
         this.session.appendUserToolResults(toolResults);
         if(this.toolApprovalPort)this.session.setToolBatch(undefined);
+        if(restoredBatch&&k3PublicResume)reenterK3PublicContext();
         toolResults = [];
         await this.checkpoint?.();
         await this.registry.publishCompoundHistory?.();
@@ -795,6 +807,13 @@ export class AgentRuntime {
         .map((block) => ({ ...block })),
     }));
     const session = this.session.exportSnapshot();
+    // Approval checkpoints belong to the host, never to a tool or provider context.
+    if(strictK3){
+      delete session.toolBatch;delete (session as typeof session & {model?:string}).model;
+      // File stores materialize absent optional ledgers as undefined. Active ledgers
+      // still fail the strict projection rather than being silently discarded.
+      for(const key of ['intentDelegation','skillEval','skillExecution'] as const)if(session[key]===undefined)delete session[key];
+    }
     if (strictK3 || stageView.active) {
       session.messages = structuredClone(messages);
     }
