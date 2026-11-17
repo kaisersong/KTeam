@@ -8,11 +8,14 @@ files:
   - "!design-qa.md"
   - "!docs{,/**}"
   - build/**
+  - "!build/test-reports{,/**}"
   - package.json
   - LICENSE
   - NOTICE
   - vendor/splash/THIRD-PARTY-NOTICES.txt
 extraResources:
+  - from: build/build-info.json
+    to: build-info.json
   - from: desktop/yzj-cli/runner.cjs
     to: yzj-cli/runner.cjs
   - from: node_modules/@yunzhijia/cli

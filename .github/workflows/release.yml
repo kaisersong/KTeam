@@ -111,6 +111,7 @@ jobs:
         with:
           ref: ${{ needs.create-release.outputs.sha }}
           path: kteam
+          fetch-depth: 0
           persist-credentials: false
       - name: Read sidecar source pins
         id: pins
@@ -321,6 +322,8 @@ jobs:
           fs.writeFileSync(ymlPath, yaml.dump(doc, { lineWidth: -1 }));
           JS
           cat release/latest-mac.yml
+      - name: Verify packaged source identity and dependency fingerprint
+        run: node scripts/verify-packaged-build.mjs release/mac-arm64/KTeam.app/Contents/Resources
       - name: Upload macOS artifacts to draft release
         env:
           GH_REPO: ${{ github.repository }}
@@ -384,6 +387,7 @@ jobs:
         with:
           ref: ${{ needs.create-release.outputs.sha }}
           path: kteam
+          fetch-depth: 0
           persist-credentials: false
       - name: Read sidecar source pins
         id: pins
@@ -429,6 +433,8 @@ jobs:
         # Targets, x64 and artifact names come from electron-builder.yml (win/nsis/portable).
         # latest.yml and the NSIS .blockmap are written from its publish block (kaisersong/KTeam).
         run: node node_modules/electron-builder/out/cli/cli.js --config electron-builder.yml --win nsis portable --x64 --publish never
+      - name: Verify packaged source identity and dependency fingerprint
+        run: node scripts/verify-packaged-build.mjs release/win-unpacked/resources
       - name: Verify latest.yml matches the NSIS installer
         run: |
           set -euo pipefail

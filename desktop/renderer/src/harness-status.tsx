@@ -6,14 +6,16 @@ import {Markdown} from './Markdown';
 import React,{useState}from'react';
 import{Terminal,Check,ShieldCheck,X,FileText}from'lucide-react';
 import{api,explain,type Bot}from'./api';
-export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>Promise<void>}){
- const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision);}catch(e){setError(explain(e));}finally{setBusy(false);}};
+export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny',applyToGroup?:boolean)=>Promise<void>}){
+ const[applyToGroup,setApplyToGroup]=useState(true);const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision,approval.directoryGroupScope&&['allow_directory','allow_directory_routine'].includes(decision)?applyToGroup:undefined);}catch(e){setError(explain(e));}finally{setBusy(false);}};
  const [grants,setGrants]=useState<any[]|undefined>();
  const description=toolApprovalSummary(approval.toolName,approval.display);
+ const recipients=approval.directoryGroupScope&&applyToGroup?'当前群所有 Bot':'此成员';
  return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
   <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
   <p>{description.summary}</p>{approval.reason&&<p className="form-note">为什么需要确认：{approval.reason}</p>}{description.target&&<small>操作对象：{description.target}</small>}
-  {approval.directory&&<><small>{approval.directoryOperations==='routine'?'长期允许后，此成员可在所列目录及子目录进行常规读写、Git 和本地命令操作；删除、重置、推送及敏感操作仍需单独确认。':'长期允许后，此成员可在此目录及子目录进行普通文件读写。'}</small><div className="directory-permission-path">{(approval.directories?.length?approval.directories:[approval.directory]).map((path:string)=><p key={path}>{path}</p>)}</div>{approval.pendingOperationCount>1&&<small>此目录还有 {approval.pendingOperationCount-1} 项待处理操作，长期允许目录后一起继续。</small>}</>}
+  {approval.directory&&<><small>{approval.directoryOperations==='routine'?`长期允许后，${recipients}可在所列目录及子目录进行常规读写、Git 和本地命令操作；删除、重置、推送及敏感操作仍需单独确认。`:`长期允许后，${recipients}可在此目录及子目录进行普通文件读写。`}</small><div className="directory-permission-path">{(approval.directories?.length?approval.directories:[approval.directory]).map((path:string)=><p key={path}>{path}</p>)}</div>{approval.pendingOperationCount>1&&<small>此目录还有 {approval.pendingOperationCount-1} 项待处理操作，长期允许目录后一起继续。</small>}</>}
+  {approval.directoryGroupScope&&<label className="form-note"><input type="checkbox" checked={applyToGroup} disabled={busy} onChange={e=>setApplyToGroup(e.target.checked)}/>给当前群所有 Bot 授权（{approval.directoryGroupScope.members.length} 位）<small>仅长期允许目录时生效；新增成员不自动继承。</small></label>}
   {!approval.directory&&approval.canAlways&&<small>{approval.commandScoped?('长期允许仅覆盖当前成员、工作目录和这条完整命令；命令或本地脚本内容变化后需重新确认。'):approval.toolName==='bash'?'长期允许此成员在该目录下执行常规命令；删除、重置、外发等操作仍需单独确认。':'长期允许将覆盖此成员在该工作目录下的同类操作。'}</small>}
   <small>来源工作：{approval.jobId} · 截止 {new Date(approval.expiresAt).toLocaleString('zh-CN')}</small>
   {approval.operationFacts?.length>0&&<ul aria-label="实际操作目标">{approval.operationFacts.map((fact:any,index:number)=><li key={index}>{fact.reason}：<code>{fact.target}</code></li>)}</ul>}
