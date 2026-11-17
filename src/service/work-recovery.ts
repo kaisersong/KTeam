@@ -24,6 +24,7 @@ const digest = (value: string) => createHash('sha256').update(value).digest('hex
 export class WorkRecovery {
  constructor(private upstream: Upstreams, private store: TeamStore, private coordinator: TeamCoordinator) {}
  async wakeSafe(){
+  await this.wakeRoutingRecovery();
   await this.wakeAdmissionRecovery();
   await this.wakeCheckpointRecovery();
   await this.wakeUnknownBatch();
@@ -60,6 +61,14 @@ export class WorkRecovery {
  }
  /** A lost transport observation is recoverable only after the old run is proved inert.
   * Re-enter normal admission with saved receipts, never replay a tool invocation. */
+ private async wakeRoutingRecovery(){
+  for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
+   const job=latestWork(this.store.jobs(roomId)),failure=job&&executionFailure(job),team=this.store.settings(roomId);
+   if(!job||job.trigger||job.recoveryOf||job.routingRepair?.attempted||!job.groupPlanPending||team?.kind!=='group'||team.mode!=='auto'||team.paused||team.quiet||job.state!=='blocked'||failure?.code!=='group_plan_invalid'||failure.phase!=='routing'||failure.evidence!=='captured'||job.stopResultUnknown||job.task||job.harness||job.executionScope||job.results?.length||(job.toolTrace??[]).some((event:any)=>!event.type||event.type.startsWith('tool_'))||this.store.jobs(roomId).some(active)||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   const at=Date.parse(job.createdAt);if(!Number.isFinite(at)||Date.now()-at<0||Date.now()-at>86400000)continue;
+   try{const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];if(!this.view(roomId,tasks)?.canContinue)continue;await this.continue(roomId,{jobId:job.id,requestId:'auto-routing-format:'+job.id},'auto-routing-format:'+job.id);}catch{/* Unverified scope and active work remain stopped; no tools are replayed. */}
+  }
+ }
  private async wakeAdmissionRecovery(){
   for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
    const job=latestWork(this.store.jobs(roomId)),failure=job&&executionFailure(job);
