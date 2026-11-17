@@ -48,7 +48,7 @@ export class AutomaticInputs {
    try{await this.coordinator.guardConversation(op.roomId);const message=await this.source(op.roomId,op.envelopeId,op.messageId),page=await ownerPage(this.upstream,op.roomId,{tail:true,limit:20}),latest=(page.messages as any[]).filter(m=>m.sender?.kind==='user').sort((a,b)=>a.roomSequence-b.roomSequence).at(-1);
     if(latest?.messageId!==op.messageId||hash(message.text)!==op.bodyHash||this.store.job('job-'+op.messageId)||this.store.operation('work-input:'+op.envelopeId))continue;
     this.store.transaction(()=>{const current=this.store.operation(op.id);if(current?.revision!==op.revision||current.status!=='needs_review')return;this.store.enqueue('job-'+op.messageId,op.roomId,op.messageId);this.markGroupPlanning(op.roomId,op.messageId);this.save(current,{status:'applied',chosen:'new',previousReason:op.reason,reason:undefined,reconciledAt:Date.now()});});
-   }catch{/* Unverified, superseded or changed sources remain visible for review. */}
+   }catch(error){const current=this.store.operation(op.id);if(current?.status==='needs_review')this.save(current,{recoveryCheckReason:error instanceof KTeamError?error.code:'source_verification_unavailable'});}
   }
   this.wakePending();
  }
