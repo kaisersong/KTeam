@@ -23,6 +23,6 @@ test('copied directories become exact path references, never bytes or a fallback
  const paste=await clipboardPaste([item({'text/uri-list':new Blob([pathToFileURL(directory)+'\n'+pathToFileURL(directory)]),'image/png':new Blob(['fallback'])})]);assert.deepEqual(paste,{files:[],directories:[directory]});
  const mixed=await clipboardPaste([item({'text/uri-list':new Blob([pathToFileURL(directory)+'\n'+pathToFileURL(file)])})]);assert.deepEqual(mixed.directories,[directory]);assert.deepEqual(mixed.files,[{name:'note.txt',data:Buffer.from('fixture').toString('base64')}]);assert.ok(!JSON.stringify(mixed).includes('must not be uploaded'));
  assert.deepEqual((await clipboardPaste([item({'electron application/osclipboard;format="FileNameW"':new Blob([Buffer.from(directory+'\0','utf16le')])})],'win32')).directories,[directory]);
- if(process.platform!=='win32'){symlinkSync(directory,join(root,'link-dir'));await assert.rejects(clipboardPaste([item({'text/uri-list':new Blob([pathToFileURL(join(root,'link-dir'))])})]),/attachment_invalid/);}
+ if(process.platform!=='win32'){symlinkSync(directory,join(root,'link-dir'));await assert.rejects(clipboardPaste([item({'text/uri-list':new Blob([pathToFileURL(join(root,'link-dir')).href])})]),/attachment_invalid/);}
  }finally{rmSync(root,{recursive:true,force:true});}
 });
