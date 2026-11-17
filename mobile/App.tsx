@@ -336,6 +336,7 @@ function AppBody() {
     refreshing = useRef<MobileConnection | undefined>(undefined),
     resumeConnection = useRef<() => void>(() => {}),
     networkSignature = useRef<string | undefined>(undefined),
+    networkAvailable = useRef<boolean | undefined>(undefined),
     connectingSince = useRef(0),
     list = useRef<FlatList>(null),
     pairGeneration = useRef(0),
@@ -350,6 +351,14 @@ function AppBody() {
     setError("");
   };
   const reconnect = () => {
+    if (networkAvailable.current === false) {
+      connection.current?.close();
+      setConnecting(false);
+      setOffline(true);
+      setStatus("手机当前未联网");
+      setError("手机当前未联网，网络恢复后会自动连接");
+      return;
+    }
     setError("");
     setOffline(true);
     setConnecting(true);
@@ -427,7 +436,7 @@ function AppBody() {
   };
   const refresh = useCallback(async () => {
     const transport = connection.current;
-    if (!transport || refreshing.current === transport || !computer || !active.current) return;
+    if (!transport || networkAvailable.current === false || refreshing.current === transport || !computer || !active.current) return;
     refreshing.current = transport;
     const g = generation.current,
       r = roomRef.current;
@@ -573,11 +582,24 @@ function AppBody() {
       .catch(() => {});
     void refresh();
     const network = Network.addNetworkStateListener((state) => {
-      const signature = [state.type, state.isConnected, state.isInternetReachable].join(":");
+      if (connection.current !== transport || typeof state.isConnected !== "boolean" || state.type === Network.NetworkStateType.UNKNOWN) return;
+      // Reachability probes can fluctuate without a link change; they must not
+      // repeatedly cancel an authenticated socket.
+      const signature = [state.type, state.isConnected].join(":");
       const previous = networkSignature.current;
       networkSignature.current = signature;
-      if (!active.current || connection.current !== transport) return;
-      if (previous && previous !== signature && state.isConnected) resumeConnection.current();
+      networkAvailable.current = state.isConnected;
+      if (!state.isConnected) {
+        generation.current++;
+        transport.close();
+        setOffline(true);
+        setConnecting(false);
+        setStatus("手机当前未联网");
+        setError("手机当前未联网，网络恢复后会自动连接");
+        return;
+      }
+      if (!active.current) return;
+      if (previous && previous !== signature) resumeConnection.current();
       else void refresh();
     });
     return () => {
