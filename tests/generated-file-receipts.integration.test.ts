@@ -1,7 +1,7 @@
 import {WorkRecovery} from '../src/service/work-recovery.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {mkdirSync,writeFileSync,linkSync,unlinkSync} from 'node:fs';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
@@ -24,5 +24,17 @@ test('message artifact metadata survives trace eviction and stays scoped after r
  recordGeneratedFile(f.store,job,event);recordGeneratedFile(f.store,job,{...event,state:'completed'});
  job.toolTrace=Array.from({length:100},(_,n)=>({id:'later-'+n,name:'read',state:'completed'}));f.store.save(job);
  const check=(store:TeamStore)=>{const projected=store.workPage(f.roomId).jobs.find((j:any)=>j.id===job.id)!;assert.equal(projected.toolTrace.length,20);assert.equal(projected.generatedFiles.length,1);assert.equal(projected.generatedFiles[0].id,event.id);assert.equal(projected.generatedFiles[0].file.name,'fictional-report.md');assert.ok(!JSON.stringify(projected.generatedFiles).includes(f.path));assert.equal(store.generatedFilesForJob(f.other,job.id).length,0);};
+ check(f.store);const restarted=new TeamStore(f.root);try{check(restarted);}finally{restarted.close();}
+ }finally{await f.close();}});
+
+test('message file entries use the last successful save per host and path without weakening receipt checks',async()=>{const f=await fixture();try{
+ f.store.enqueue('edited-report',f.roomId,'edited-origin');const job=f.store.job('edited-report');job.activeBotId=f.botId;job.state='delivered';
+ const first={id:'first-save',name:'write',state:'completed',botId:f.botId,finishedAt:'2026-11-17T01:00:00Z',file:captureGeneratedFile(f.path,f.root,f.roomId)};
+ recordGeneratedFile(f.store,job,first);writeFileSync(f.path,'# Revised report');
+ const last={...first,id:'last-save',name:'edit',finishedAt:'2026-11-17T01:00:01Z',file:captureGeneratedFile(f.path,f.root,f.roomId)};recordGeneratedFile(f.store,job,last);
+ const otherPath=join(dirname(f.path),'other','fictional-report.md');mkdirSync(join(dirname(f.path),'other'));writeFileSync(otherPath,'# Different file with the same name');
+ recordGeneratedFile(f.store,job,{...last,id:'different-path',file:captureGeneratedFile(otherPath,f.root,f.roomId)});
+ recordGeneratedFile(f.store,job,{...last,id:'failed-edit',state:'failed'});job.toolTrace=[];f.store.save(job);
+ const check=(store:TeamStore)=>{const files=store.generatedFilesForJob(f.roomId,job.id);assert.deepEqual(files.map((file:any)=>file.id).sort(),['different-path','last-save']);assert.ok(!JSON.stringify(files).includes(f.path));assert.equal(store.generatedFilesForJob(f.other,job.id).length,0);assert.throws(()=>generatedFilePath(store,f.roomId,first.id),/generated_file_changed/);assert.equal(generatedFilePath(store,f.roomId,last.id),f.path);assert.equal(generatedFileRecords(store,f.roomId).items.length,3);};
  check(f.store);const restarted=new TeamStore(f.root);try{check(restarted);}finally{restarted.close();}
  }finally{await f.close();}});
