@@ -16,8 +16,11 @@ function inspect(path:string,privateRoot:string){
 export function captureGeneratedFile(path:string,privateRoot:string,roomId:string){const {content,...facts}=inspect(path,privateRoot);return {path,name:basename(path),roomId,hostId:hostname(),...facts};}
 // Only persisted successful tool receipts authorize opening; model-authored
 // Markdown and renderer-supplied paths never grant native file access.
+// The local receipt is the authority. hostId is a display-time network name,
+// which macOS may change after a Bonjour collision; it is not machine identity.
+// Every open still revalidates the canonical local path and exact saved bytes.
 export function generatedFilePath(store:TeamStore,roomId:string,toolCallId:string){
- backfillGeneratedFiles(store);const records=store.generatedFilesForTool(roomId,toolCallId);if(records.length>1)throw new KTeamError('generated_file_receipt_changed',409);const file=records[0]?.facts.file;if(!file||file.roomId!==roomId||file.hostId!==hostname())throw new KTeamError('generated_file_not_found',404);
+ backfillGeneratedFiles(store);const records=store.generatedFilesForTool(roomId,toolCallId);if(records.length>1)throw new KTeamError('generated_file_receipt_changed',409);const file=records[0]?.facts.file;if(!file||file.roomId!==roomId)throw new KTeamError('generated_file_not_found',404);
  try{const actual=inspect(file.path,store.root);if(actual.sha256!==file.sha256||actual.bytes!==file.bytes)throw Error();}catch{throw new KTeamError('generated_file_changed',409);}
  return file.path as string;
 }

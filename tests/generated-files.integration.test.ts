@@ -47,3 +47,11 @@ test('verified previews preserve UTF-8 and image bytes while large or unsupporte
   }
  }finally{store.close();await f.close();}
 });
+
+test('a network hostname change does not invalidate a local successful receipt or bypass byte and Room checks',async()=>{
+ const f=await realUpstreams(),root=join(f.root,'renamed-host'),path=join(f.root,'report.md');mkdirSync(root,{mode:0o700});writeFileSync(path,'# Saved locally');const store=new TeamStore(root);
+ try{store.enqueue('renamed-machine-job','room','origin');const job=store.job('renamed-machine-job');const file={...captureGeneratedFile(path,root,'room'),hostId:'previous-bonjour-name.local'};recordGeneratedFile(store,job,{id:'local-save',name:'write',state:'completed',file});
+ assert.equal(generatedFilePreview(store,'room','local-save').content,'# Saved locally');assert.throws(()=>generatedFilePreview(store,'other-room','local-save'),/generated_file_not_found/);assert.throws(()=>generatedFilePreview(store,'room','unrecorded-model-link'),/generated_file_not_found/);
+ writeFileSync(path,'# Changed outside the saved effect');assert.throws(()=>generatedFilePreview(store,'room','local-save'),/generated_file_changed/);
+ }finally{store.close();await f.close();}
+});
