@@ -22,7 +22,7 @@ export async function macClipboardPaths(bytes:Buffer):Promise<string[]>{
 }
 
 /** Electron 44+ returns a lazy MIME snapshot; keep OS paths and bytes in main. */
-export async function clipboardPaste(items:ReadonlyArray<{types:readonly string[];getType(type:string):Promise<unknown>}>,platform=process.platform){
+export async function clipboardPaste(items:ReadonlyArray<{types:readonly string[];getType(type:string):Promise<unknown>}>,platform=process.platform,allowFiles=true){
  const payload=async(item:typeof items[number],type:string,limit:number)=>{const blob=await item.getType(type);if(!(blob instanceof Blob))throw Error('attachment_invalid');if(blob.size>limit)throw Error('library_file_too_large');return Buffer.from(await blob.arrayBuffer());};
  const raw=(item:typeof items[number],format:string)=>item.types.find(type=>type===`electron application/osclipboard;format="${format}"`||type===`electron application/osclipboard;format=${format}`);
  let paths:string[]=[];
@@ -38,8 +38,9 @@ export async function clipboardPaste(items:ReadonlyArray<{types:readonly string[
  const unique=[...new Set(paths)];if(unique.length>4)throw Error('attachment_limit');
  const directories:string[]=[],regular:string[]=[];
  for(const path of unique){const stat=await lstat(path);if(stat.isSymbolicLink())throw Error('attachment_invalid');if(stat.isDirectory())directories.push(path);else regular.push(path);}
+ if(regular.length&&!allowFiles)throw Error('attachment_owner_required');
  const files=await clipboardFileBytes(regular);
- if(!unique.length)for(const item of items)if(item.types.includes('image/png')){const bytes=await payload(item,'image/png',4*1024*1024);if(bytes.length)files.push({name:'粘贴图片.png',data:bytes.toString('base64')});break;}
+ if(!unique.length)for(const item of items)if(item.types.includes('image/png')){if(!allowFiles)throw Error('attachment_owner_required');const bytes=await payload(item,'image/png',4*1024*1024);if(bytes.length)files.push({name:'粘贴图片.png',data:bytes.toString('base64')});break;}
  return {files,directories};
 }
 

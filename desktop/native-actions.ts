@@ -29,7 +29,7 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
   openWebLink:async(input:unknown)=>{const value=record(input);fields(value,['url']);const url=webLinkUrl(value.url);if(!url)fail('web_link_invalid');await shell.openExternal(url!);return {ok:true};},
   openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId','allowFiles']);if(value.allowFiles!==undefined&&typeof value.allowFiles!=='boolean')fail('invalid_input');const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));
-   const {files,directories}=await clipboardPaste(await clipboard.read());if(files.length&&(!view.canAttach||value.allowFiles===false))fail('attachment_owner_required');
+   const {files,directories}=await clipboardPaste(await clipboard.read(),process.platform,!!view.canAttach&&value.allowFiles!==false);if(files.length&&(!view.canAttach||value.allowFiles===false))fail('attachment_owner_required');
    if((view.uploads as any[]).length+files.length>4)fail('attachment_limit');
    for(const file of files)await hostRequest(root,'kteam-main','/v1/composer-attachments/upload',{roomId,id:'upload_'+randomBytes(16).toString('hex'),...file});return {ok:true,count:files.length,directories};
   },
