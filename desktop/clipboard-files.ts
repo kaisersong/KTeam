@@ -1,6 +1,6 @@
 import {execFile} from 'node:child_process';
 import {constants} from 'node:fs';
-import {open} from 'node:fs/promises';
+import {open,lstat} from 'node:fs/promises';
 import {basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 /** Read only file URLs supplied by the OS clipboard, never paths supplied by renderer. */
@@ -22,7 +22,7 @@ export async function macClipboardPaths(bytes:Buffer):Promise<string[]>{
 }
 
 /** Electron 44+ returns a lazy MIME snapshot; keep OS paths and bytes in main. */
-export async function clipboardAttachments(items:ReadonlyArray<{types:readonly string[];getType(type:string):Promise<unknown>}>,platform=process.platform){
+export async function clipboardPaste(items:ReadonlyArray<{types:readonly string[];getType(type:string):Promise<unknown>}>,platform=process.platform){
  const payload=async(item:typeof items[number],type:string,limit:number)=>{const blob=await item.getType(type);if(!(blob instanceof Blob))throw Error('attachment_invalid');if(blob.size>limit)throw Error('library_file_too_large');return Buffer.from(await blob.arrayBuffer());};
  const raw=(item:typeof items[number],format:string)=>item.types.find(type=>type===`electron application/osclipboard;format="${format}"`||type===`electron application/osclipboard;format=${format}`);
  let paths:string[]=[];
@@ -35,7 +35,13 @@ export async function clipboardAttachments(items:ReadonlyArray<{types:readonly s
   if(type)paths.push(...clipboardFileURLs((await payload(item,type,128*1024)).toString('utf8')));
  }
  if(!paths.length&&platform==='win32')for(const item of items){const type=raw(item,'FileNameW');if(type)paths.push(...(await payload(item,type,128*1024)).toString('utf16le').split('\0').filter(Boolean));}
- const files=await clipboardFileBytes([...new Set(paths)]);
- if(!files.length)for(const item of items)if(item.types.includes('image/png')){const bytes=await payload(item,'image/png',4*1024*1024);if(bytes.length)files.push({name:'粘贴图片.png',data:bytes.toString('base64')});break;}
- return files;
+ const unique=[...new Set(paths)];if(unique.length>4)throw Error('attachment_limit');
+ const directories:string[]=[],regular:string[]=[];
+ for(const path of unique){const stat=await lstat(path);if(stat.isSymbolicLink())throw Error('attachment_invalid');if(stat.isDirectory())directories.push(path);else regular.push(path);}
+ const files=await clipboardFileBytes(regular);
+ if(!unique.length)for(const item of items)if(item.types.includes('image/png')){const bytes=await payload(item,'image/png',4*1024*1024);if(bytes.length)files.push({name:'粘贴图片.png',data:bytes.toString('base64')});break;}
+ return {files,directories};
 }
+
+/** Compatibility for consumers that only need uploaded file bytes. */
+export async function clipboardAttachments(items:Parameters<typeof clipboardPaste>[0],platform=process.platform){return (await clipboardPaste(items,platform)).files;}

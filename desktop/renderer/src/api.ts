@@ -9,7 +9,7 @@ export interface KTeamAPI {
  openSplash(input:{requestId:string}):Promise<{ok:true;opened:true;mode:'local';url:string}>;
  controlCua(input:any):Promise<any>;openComputerPermissionSettings(input:{permission:string}):Promise<any>;
  ensureAssistant():Promise<any>;
- pasteAttachments(input:{roomId:string}):Promise<{ok:boolean;count:number}>;
+ pasteAttachments(input:{roomId:string;allowFiles?:boolean}):Promise<{ok:boolean;count:number;directories?:string[]}>;
  toolOutput(input:{roomId:string;jobId:string;eventId:string;offset?:number}):Promise<any>;
  conversationUpdates(input:{roomId:string;cursor?:string;resumeAfter?:number;tail?:boolean;messageIds?:string[];sequences?:number[];force?:boolean}):Promise<any>;conversationHistory(input:{roomId:string;after?:number;before?:number;tail?:boolean}):Promise<any>;workRecords(input:{roomId:string;before?:number}):Promise<any>;workRecord(input:{roomId:string;jobId?:string;messageId?:string;eventId?:string;part?:'summary'|'draft'|'cards'}):Promise<any>;
  memberWorkspace(input:{botId:string;roomId:string}):Promise<any>;memberLibrary(input:{botId:string;roomId:string}):Promise<any>;openMemberWorkspace(input:{botId:string;roomId:string;expectedProfileRevision:number}):Promise<any>;
