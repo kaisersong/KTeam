@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.8.8.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.9.0.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -118,8 +118,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.8.8.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.8.8.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.9.0.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.9.0.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -176,6 +176,12 @@ Never put credentials in command arguments or commit them to Git.
 Official releases are published automatically by GitHub Actions after Mac and Windows builds, cross-platform checks and artifact verification pass. Failed builds remain drafts.
 
 ## Version History
+
+### v0.9.0
+
+Consolidates mobile pairing, persistent history, artifact navigation and connection recovery. Shared notes can cite selected messages and preserve creation provenance; approval cards explain confirmation reasons. Repeated file saves show the latest entry, and local artifacts survive hostname changes. Update checks retry transient connection failures without bypassing signature verification.
+
+See the [0.9.0 release](https://github.com/kaisersong/KTeam/releases/tag/v0.9.0).
 
 ### v0.8.8
 
