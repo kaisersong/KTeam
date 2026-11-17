@@ -8,7 +8,7 @@ import{api,explain,type Bot}from'./api';
 export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny',applyToGroup?:boolean)=>Promise<void>}){
  const[applyToGroup,setApplyToGroup]=useState(true);const[busy,setBusy]=useState(false),[error,setError]=useState('');const decide=async(decision:'allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny')=>{setBusy(true);setError('');try{await onDecide(decision,approval.directoryGroupScope&&['allow_directory','allow_directory_routine'].includes(decision)?applyToGroup:undefined);}catch(e){setError(explain(e));}finally{setBusy(false);}};
  const description=toolApprovalSummary(approval.toolName,approval.display);
- const recipients=approval.directoryGroupScope&&applyToGroup?'当前群所有 Bot':'此成员';
+ const recipients=approval.directoryGroupScope&&applyToGroup?'当前群所有 Bot ':'此成员';
  return <section className="tool-approval" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
   <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
   <p>{description.summary}</p>{approval.reason&&<p className="form-note">为什么需要确认：{approval.reason}</p>}{description.target&&<small>操作对象：{description.target}</small>}

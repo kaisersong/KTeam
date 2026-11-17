@@ -10,7 +10,10 @@ execFileSync(process.execPath,['scripts/ensure-electron.mjs'],{stdio:'inherit'})
 execFileSync(process.execPath,['scripts/build-runtime.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-splash-runtime.mjs'],{stdio:'inherit'});
 const version=JSON.parse(readFileSync('package.json','utf8')).version,revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty=!!execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim();
-writeFileSync('build/build-info.json',JSON.stringify({version,revision,dirty,lockfileSha256:createHash('sha256').update(readFileSync('package-lock.json')).digest('hex'),buildNumber:process.env.GITHUB_RUN_NUMBER??revision.slice(0,7),official:!dirty&&process.env.RELEASE_SHA===revision&&process.env.RELEASE_TAG==='v'+version,builtAt:new Date().toISOString()},null,2));
+const buildInfo=JSON.stringify({version,revision,dirty,lockfileSha256:createHash('sha256').update(readFileSync('package-lock.json')).digest('hex'),buildNumber:process.env.GITHUB_RUN_NUMBER??revision.slice(0,7),official:!dirty&&process.env.RELEASE_SHA===revision&&process.env.RELEASE_TAG==='v'+version,builtAt:new Date().toISOString()},null,2);
+writeFileSync('build/build-info.json',buildInfo);
+// extraResources excludes its source from ASAR; use a separate staging path.
+mkdirSync('build/package-identity',{recursive:true});writeFileSync('build/package-identity/build-info.json',buildInfo);
 const common={alias:{'sodium-universal':'sodium-javascript','sodium-native':'sodium-javascript'},bundle:true,platform:'node',target:'node24',format:'cjs',packages:'bundle',external:['electron','@napi-rs/keyring','better-sqlite3','onnxruntime-node','node-pty','nodejieba']};
 await build({...common,entryPoints:{main:'desktop/main.ts',preload:'desktop/preload.ts','service-owner':'desktop/service-owner-entry.ts','service-child':'desktop/service-child-entry.ts'},outdir:'build',outExtension:{'.js':'.cjs'}});
 await build({...common,entryPoints:['src/runtime/native-child.ts'],outfile:'build/native-child.cjs'});

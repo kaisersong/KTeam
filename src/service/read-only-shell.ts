@@ -1,3 +1,4 @@
+import {readOnlyGh} from './gh-query.js';
 import {localGitWorkflow} from './git-local-workflow.js';
 /** A bounded recognizer for local read-only shell checks, not a general shell parser.
  * Unknown grammar stays on the ordinary approval path. No shell is run to classify it. */
@@ -65,7 +66,9 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
    if(head==='['){onCommand(words.map(word=>word.raw).join(' '));if(words.length!==4||!['-n','-z','-d','-f','-e','-r','-s','-L','-h'].includes(fixed(words[1])??'')||fixed(words[3])!==']')good=false;return;}
    const assignment=words[0]?.value.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
    if(assignment){if(words.length!==1||(reserved.test(assignment[1]!)||Object.hasOwn(process.env,assignment[1]!))){good=false;return;}variables.add(assignment[1]!);const value=words[0]!.value.slice(assignment[0].length);if(!words[0]!.refs.length&&!words[0]!.subs.length&&/^[A-Za-z0-9_./:@~+-]+$/.test(value)&&!value.startsWith('-'))safeGitVariables.add(assignment[1]!);else safeGitVariables.delete(assignment[1]!);return;}
-   if(!head||!['find','ls','pwd','echo','head','grep','cd','cat','printf','tail','stat','du','true','false','git','cut','wc','sed',...(allowLocalChanges?['mkdir','cp','mv','ln','touch','tee','npm','pnpm','yarn','make','cmake','swift','xcodebuild','cargo','go']:[])].includes(head)){good=false;return;}
+   if(!head||!['find','ls','pwd','echo','head','grep','cd','cat','printf','tail','stat','du','true','false','which','gh','git','cut','wc','sed',...(allowLocalChanges?['mkdir','cp','mv','ln','touch','tee','npm','pnpm','yarn','make','cmake','swift','xcodebuild','cargo','go']:[])].includes(head)){good=false;return;}
+   if(head==='gh'&&!readOnlyGh(words.slice(1).map(word=>({value:word.value,dynamic:!!word.refs.length||!!word.subs.length,quoted:word.raw.startsWith('\"')&&word.raw.endsWith('\"')})))){good=false;return;}
+   if(head==='which'&&words.slice(1).some(word=>word.refs.length||word.subs.length)){good=false;return;}
    if(head==='find'){
     const args=words.slice(1);let position=0;
     while(position<args.length&&!args[position]!.value.startsWith('-')){const path=fixed(args[position]);if(!path||/[?*\[]/.test(path)){good=false;return;}position++;}
