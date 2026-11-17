@@ -1,3 +1,4 @@
+import {readOnlyGh} from './gh-query.js';
 import {win32} from 'node:path';
 
 /** Literal cmd.exe grammar. Backslashes are path separators, never POSIX escapes.
@@ -61,12 +62,14 @@ export function windowsWorkingPaths(command:string,cwd:string):string[]|undefine
 export function readOnlyWindowsShell(command:string,literalAllowed:(word:string)=>boolean){
  const segments=windowsShellSegments(command);if(!segments)return false;
  return segments.every(([head,...args])=>{
+  const queryArgs:string[]=[];
   for(let index=0;index<args.length;index++){
    const word=args[index]!;if(/^[012]?>&[012]$/.test(word))continue;
    if(word==='>'&&/^nul$/i.test(args[index+1]??'')){index++;continue;}
-   if(['<','>','>>'].includes(word)||!literalAllowed(word))return false;
+   if(['<','>','>>'].includes(word)||!literalAllowed(word))return false;queryArgs.push(word);
   }
   const program=head!.toLowerCase();
+  if(program==='gh'||program==='gh.exe')return readOnlyGh(queryArgs.map(value=>({value,dynamic:false,quoted:true})));
   if(program==='cd'||program==='chdir')return args.length===1&&!args[0]!.startsWith('/')||args.length===2&&args[0]!.toLowerCase()==='/d';
   if(program==='echo')return !['on','off'].includes(args[0]?.toLowerCase()??'');
   return ['findstr','dir','type','where','ver','vol'].includes(program)&&!args.some(word=>/^\/(?:off|p)$/i.test(word));

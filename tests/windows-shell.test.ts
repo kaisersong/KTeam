@@ -19,3 +19,9 @@ test('Windows directory inspection rejects expansion and tracks outside paths an
  for(const command of [String.raw`tool C:..\outside`,String.raw`tool > C:..\outside`,String.raw`tool \\?\C:\outside`])assert.equal(windowsWorkingPaths(command,String.raw`C:\project`),undefined);
  for(const command of ['del file','echo ok > proof.txt','node script.js','findstr pattern file & del file','echo "unclosed'])assert.equal(readOnlyWindowsShell(command,()=>true),false,command);
 });
+
+
+test('Windows GitHub status and API query chains preserve method and credential boundaries',()=>{
+ for(const command of ['where gh && gh auth status 2>&1','gh.exe api "repos/example/repo/actions/runs?per_page=10" --jq ".workflow_runs[]"','gh api repos/example/repo --method GET > nul'])assert.equal(readOnlyWindowsShell(command,()=>true),true,command);
+ for(const command of ['gh auth status --show-token','gh api repos/example/repo -X DELETE','gh api repos/example/repo -f content=@secret','gh api repos/example/repo & del file','gh api %ENDPOINT%'])assert.equal(readOnlyWindowsShell(command,()=>true),false,command);
+});

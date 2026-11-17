@@ -3,7 +3,7 @@ export function readOnlyGh(args:{value:string;dynamic:boolean;quoted:boolean}[])
  const fixed=(index:number)=>args[index]&&!args[index]!.dynamic?args[index]!.value:undefined;
  if(fixed(0)==='auth'){
   if(fixed(1)!=='status')return false;
-  for(let i=2;i<args.length;i++){const flag=fixed(i);if(flag==='--active')continue;if(flag==='--hostname'||flag==='-h'){if(fixed(++i)!=='github.com')return false;continue;}if(flag==='--json'||flag==='--jq'||flag==='-q'||flag==='--template'||flag==='-t'){if(flag==='-t'||fixed(++i)===undefined)return false;continue;}return false;}return true;
+  for(let i=2;i<args.length;i++){const flag=fixed(i);if(flag==='--active'||flag==='-a'||flag==='--no-refresh')continue;if(flag==='--hostname'||flag==='-h'){if(fixed(++i)!=='github.com')return false;continue;}if(flag==='--json'||flag==='--jq'||flag==='-q'||flag==='--template'||flag==='-t'){if(flag==='-t'||fixed(++i)===undefined)return false;continue;}return false;}return true;
  }
  if(fixed(0)==='api'){
   let endpoint=false;
