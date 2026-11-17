@@ -14,7 +14,7 @@ export function parseToolScope(value:unknown):BotToolScope{
  }catch{throw new KTeamError('bot_tool_scope_invalid',409);}
 }
 export const restrictedToolScope=(scope:BotToolScope)=>JSON.stringify(scope)!==JSON.stringify(defaultToolScope());
-const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_team_work','ask_user','contact_bot','delegate_work','wait_for_condition','read_runtime_output','read_context_capture','mail_intent_status','notebook_read','notebook_write','tool_search','skill','skillFetchAssets','validate_skill','list_mail_accounts','mail_list_accounts','subagent','spawn_agent','send_message','followup_task','wait_agent','list_agents','interrupt_agent','close_agent']);
+const localTools=new Set(['propose_team','propose_skill','schedule_follow_up','update_shared_context','read_material','get_execution_state','get_team_work','ask_user','contact_bot','delegate_work','wait_for_condition','read_runtime_output','read_context_capture','mail_intent_status','notebook_read','notebook_write','tool_search','skill','skillFetchAssets','validate_skill','list_mail_accounts','mail_list_accounts','subagent','spawn_agent','send_message','followup_task','wait_agent','list_agents','interrupt_agent','close_agent']);
 /** A tool-admission restriction, never an OS sandbox or an authority grant. */
 export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string){
  const restricted=restrictedToolScope(scope),opaqueAllowed=scope.files.mode==='inherit'&&scope.files.write&&scope.network==='inherit';
@@ -24,6 +24,7 @@ export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string)
  const mcpAllowed=(name:string)=>opaqueAllowed&&(scope.mcp.mode==='inherit'||scope.mcp.servers.includes(name));
  const permits=(name:string,args:Record<string,unknown>={},base:string)=>{
   validate();if(!restricted)return true;
+  if(['backup_database','export_redacted_evidence'].includes(name))return scope.files.mode!=='none'&&scope.files.write&&typeof args.source==='string'&&typeof args.destination==='string'&&sandbox.checkPath(resolve(base,args.source)).allowed&&sandbox.checkPath(resolve(base,args.destination)).allowed;
   if(['read','write','edit','glob','grep'].includes(name)){
    if(scope.files.mode==='none'||(['write','edit'].includes(name)&&!scope.files.write))return false;
    const path=['glob','grep'].includes(name)?args.path??base:args.file_path;if(typeof path!=='string')return false;return sandbox.checkPath(resolve(base,path)).allowed;
@@ -38,5 +39,5 @@ export function toolScopePolicy(core:any,scope:BotToolScope,privateRoot?:string)
   if(['subagent','spawn_agent'].includes(name)&&!opaqueAllowed&&(args.agent||args.isolation==='worktree'))return false;
   return localTools.has(name);
  };
- return {scope,restricted,opaqueAllowed,sandbox,validate,mcpAllowed,permits,assert:(name:string,args:Record<string,unknown>,base:string)=>{if(!permits(name,args,base))throw new KTeamError('bot_tool_scope_denied',403);}};
+ return {scope,restricted,opaqueAllowed,sandbox,validate,mcpAllowed,permits,assertFile:(name:string,args:Record<string,unknown>,base:string)=>{if(!['read','write'].includes(name)||typeof args.file_path!=='string'||!permits(name,args,base)||!sandbox.checkPath(resolve(base,args.file_path)).allowed)throw new KTeamError('harness_private_path_denied',403);},assert:(name:string,args:Record<string,unknown>,base:string)=>{if(!permits(name,args,base))throw new KTeamError('bot_tool_scope_denied',403);}};
 }
