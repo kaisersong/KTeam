@@ -336,6 +336,7 @@ function AppBody() {
     refreshing = useRef<MobileConnection | undefined>(undefined),
     resumeConnection = useRef<() => void>(() => {}),
     networkSignature = useRef<string | undefined>(undefined),
+    connectingSince = useRef(0),
     list = useRef<FlatList>(null),
     pairGeneration = useRef(0),
     pairingActive = useRef(false),
@@ -498,6 +499,14 @@ function AppBody() {
       }
     } catch (e) {
       if (g === generation.current) {
+        const terminal = ["mobile_auth_required", "mobile_device_revoked", "mobile_host_key_changed"].includes(errorText(e));
+        if (!transport.isReady && !terminal && Date.now() - connectingSince.current < 15000) {
+          setConnecting(true);
+          setOffline(true);
+          setStatus("正在连接电脑…");
+          setError("");
+          return;
+        }
         setConnecting(false);
         setOffline(!transport.isReady);
         setStatus(transport.isReady ? transport.route :
@@ -542,6 +551,7 @@ function AppBody() {
     setUploads([]);
     }
     setError("");
+    connectingSince.current = Date.now();
     setConnecting(!!computer);
     if (!computer) {
       connection.current = undefined;
