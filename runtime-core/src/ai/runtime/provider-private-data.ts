@@ -73,10 +73,11 @@ export function projectProviderPrivateMessages(messages: readonly Message[]): Me
 }
 
 export function buildSynthesizedProviderContext(
-  kind: 'compaction' | 'subagent' | 'model-switch',
+  kind: 'compaction' | 'subagent' | 'model-switch' | 'durable-resume',
   messages: readonly Message[],
 ): string {
   assertDenseArray(messages);
+  if(kind==='durable-resume')return buildDurablePublicContext(messages);
   const records = messages.flatMap((message, ordinal) => {
     validateMessageSchema(message);
     const content = message.content.flatMap(projectBlockForSynthesizedContext);
@@ -105,6 +106,35 @@ export function buildSynthesizedProviderContext(
     version: 1,
     records: [],
   });
+}
+
+/** A request view only: canonical messages and permission/effect receipts are never replaced. */
+function buildDurablePublicContext(messages:readonly Message[]):string {
+  const limit=200_000;
+  const preview=(value:string,max:number)=>value.length<=max?{text:value,truncated:false}:{text:value.slice(0,max/2)+'\n[preview truncated; verify the original result for missing details]\n'+value.slice(-max/2),truncated:true};
+  const records:Array<Record<string,unknown>>=[];let task:Record<string,unknown>|undefined,omittedImages=0;
+  for(const [ordinal,message] of messages.entries()){
+    validateMessageSchema(message);
+    for(const [blockOrdinal,block] of message.content.entries()){
+      validateMessageBlockSchema(block);let content:Record<string,unknown>|undefined;
+      if(block.type==='text'){const value=preview(block.text,32_000);content={type:'text',text:value.text,previewOnly:value.truncated};}
+      else if(block.type==='tool_use'){const value=preview(JSON.stringify(block.input),8000);content={type:'tool_use',id:block.id,name:block.name,...(value.truncated?{inputPreview:value.text,previewOnly:true}:{input:clonePlainData(block.input)})};}
+      else if(block.type==='tool_result'){const value=preview(block.content,16_000);content={type:'tool_result',tool_use_id:block.tool_use_id,content:value.text,is_error:block.is_error===true,previewOnly:value.truncated};}
+      else if(block.type==='image')omittedImages++;
+      // Thinking and its provenance never enter the public projection.
+      if(!content)continue;
+      const record={ordinal,blockOrdinal,role:message.role,content:[content]};records.push(record);
+      if(message.role==='user'&&block.type==='text')task=record;
+    }
+  }
+  let first=0;
+  for(;;){
+    const kept=records.slice(first).filter(record=>record!==task);
+    const result=JSON.stringify({kind:'kteam.synthesized-durable-resume-context',version:1,taskContext:task,coverage:{sourceMessages:messages.length,sourcePublicBlocks:records.length,omittedPublicBlocks:records.slice(0,first).filter(record=>record!==task).length,omittedImages,previewOnly:true},records:kept});
+    if(result.length<=limit)return result;
+    if(first>=records.length)throw Error('durable_public_context_limit');
+    first++;
+  }
 }
 
 export function projectStrictToolExecutionContext(

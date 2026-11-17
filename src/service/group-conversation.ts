@@ -2,10 +2,13 @@ import {createHash} from 'node:crypto';
 import {KTeamError,record} from '../errors.js';
 export interface GroupStage {requests:{botId:string;message:string}[];doneWhen:string}
 export interface GroupConversationPlan {mode:'discussion'|'work'|'direct'|'research';members:string[];reason:string;ownerId?:string;stages:GroupStage[];coordinatorReview?:string[];stageOperations?:string[];discussionQueued?:boolean;dependencies?:Record<string,string[]>}
-export function parseGroupConversation(text:string,eligible:string[],members:string[],coordinatorId?:string|null):GroupConversationPlan{
- let value:any;try{value=record(JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')));}catch{throw new KTeamError('group_plan_invalid',409);}
- if(!['discussion','work','direct','research'].includes(value.mode)||!Array.isArray(value.members)||value.members.length>eligible.length||new Set(value.members).size!==value.members.length||value.members.some((id:unknown)=>typeof id!=='string'||!eligible.includes(id))||typeof value.reason!=='string')throw new KTeamError('group_plan_invalid',409);
- if(value.mode==='research'&&value.stages?.length)throw new KTeamError('group_plan_invalid',409);
+export function parseGroupConversation(text:string,eligible:string[],members:string[],coordinatorId?:string|null,policy?:{followup?:boolean;feedbackOnly?:boolean}):GroupConversationPlan{
+ let value:any;try{value=record(JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')));}catch{throw new KTeamError('group_plan_invalid',409,{causeCode:'invalid_plan_json'});}
+ if(!['discussion','work','direct','research'].includes(value.mode)||!Array.isArray(value.members)||value.members.length>eligible.length||new Set(value.members).size!==value.members.length||value.members.some((id:unknown)=>typeof id!=='string'||!eligible.includes(id))||typeof value.reason!=='string')throw new KTeamError('group_plan_invalid',409,{causeCode:'invalid_mode_or_speakers'});
+ // Execution mode is an owner constraint: followups cannot start new work,
+ // and research never executes model-proposed write/delegation stages.
+ if(policy?.followup){value={...value,mode:value.mode==='research'&&!policy.feedbackOnly?'research':'discussion',stages:[]};}
+ else if(value.mode==='research')value={...value,stages:[]};
  if(value.mode==='direct'&&value.members.length>1)throw new KTeamError('group_plan_invalid',409);
  const dependencies:Record<string,string[]>={};
  if(value.dependencies!==undefined){
@@ -66,5 +69,19 @@ export function reviewUnansweredGroupTurns(store:any,now=Date.now()){
   if(job.groupPlan.members.length){const replies=store.jobs(job.roomId).filter((row:any)=>row.groupResponse?.sourceJobId===job.id);if(!replies.some((row:any)=>row.reason==='iteration_budget_exhausted')||replies.some((row:any)=>row.state==='delivered'||!['blocked','noop'].includes(row.state)))continue;}
   const id='job-group-engagement:'+createHash('sha256').update(job.id).digest('hex');if(store.job(id))continue;
   store.enqueueFollowup({id,roomId:job.roomId,originId:job.originId,trigger:'group-discussion',groupInput:{sourceJobId:job.id,handlingId:id,reason:'unanswered_feedback'}});
+ }
+}
+
+/** Retry only the latest tool-free followup planning failure once under the corrected policy. */
+export function reviewFailedGroupRouting(store:any,now=Date.now()){
+ const jobs=store.jobs(),latest=new Map<string,any>();
+ for(const job of jobs)if(!job.trigger&&!latest.has(job.roomId))latest.set(job.roomId,job);
+ for(const source of latest.values()){
+  const team=store.settings(source.roomId);if(team?.kind!=='group'||team.mode!=='auto'||team.paused||team.quiet||store.state('team-role-policy:'+source.roomId)?.status!=='ready')continue;
+  const attempt=jobs.find((job:any)=>job.roomId===source.roomId&&job.originId===source.originId&&job.trigger==='group-discussion');
+  if(!attempt?.groupInput||attempt.routingRepair?.attempted||attempt.groupInput.routingFormatRetry===true||attempt.state!=='blocked'||attempt.reason!=='group_plan_invalid'||attempt.failure?.phase!=='routing'||attempt.failure?.evidence!=='captured'||attempt.task||attempt.results?.length||attempt.answerDraft||attempt.partialText||(attempt.toolTrace??[]).some((event:any)=>['tool_started','tool_finished','tool_output_saved'].includes(event.type)))continue;
+  const at=Date.parse(attempt.createdAt);if(!Number.isFinite(at)||now-at<0||now-at>86400000)continue;
+  const id='job-group-routing-retry:'+createHash('sha256').update(attempt.id).digest('hex');if(store.job(id))continue;
+  store.enqueueFollowup({id,roomId:source.roomId,originId:source.originId,trigger:'group-discussion',groupInput:{...attempt.groupInput,routingFormatRetry:true},groupPlanPending:true,routingRetryOf:attempt.id});
  }
 }

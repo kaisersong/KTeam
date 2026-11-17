@@ -1,3 +1,4 @@
+import {executionFailure} from '../protocol/execution-failure.js';
 import {originalMessage} from './room-reads.js';
 import {WorkConditions} from './work-conditions.js';
 import {createHash} from 'node:crypto';
@@ -121,7 +122,7 @@ export class WorkHandoffs {
     if(this.now()>op.deadline){await this.fail(job,op.condition?'condition_wait_expired':'handoff_wait_expired');continue;}
     if((op.condition||op.questionId)&&op.pollAt&&op.pollAt>this.now())continue;
     const children=op.children.map((child:any)=>({...child,job:this.store.job(child.jobId)}));
-    const questions=this.chats.questions();const states=children.map((child:any)=>{const question=questions.find(question=>question.jobId===child.jobId);return {botId:child.botId,jobId:child.jobId,roomId:child.roomId,state:question?'waiting_user':child.job?.state??'unknown',questionRoomId:question?.roomId};});
+    const questions=this.chats.questions();const states=children.map((child:any)=>{const question=questions.find(question=>question.jobId===child.jobId),approval=child.job?.handoffWait?.approvalId?this.store.operation(child.job.handoffWait.approvalId):undefined,failure=executionFailure(child.job);return {botId:child.botId,jobId:child.jobId,roomId:child.roomId,state:question||approval?.status==='pending'?'waiting_user':child.job?.state??'unknown',questionRoomId:question?.roomId,approvalRoomId:approval?.status==='pending'?approval.displayRoomId:undefined,reason:failure?.code??child.job?.reason,model:failure?.model};});
     if(hash(job.handoffWait?.children)!==hash(states)){job.handoffWait={...job.handoffWait,children:states};this.store.save(job);}
     if(children.some((child:any)=>child.job&&!terminal.has(child.job.state))){const current=this.store.operation(op.id);if(current?.status==='parked')this.store.saveOperation({...current,lastCheckedAt:this.now(),retryAt:null},current.revision);continue;}
     await this.guard(job);

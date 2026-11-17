@@ -2,6 +2,8 @@ import {KTeamError} from '../errors.js';
 import {sharedRuntime} from '../runtime/native.js';
 import type {ExecutionFailure} from '../protocol/execution-failure.js';
 export function executionFailureCode(error:any){
+ if(error?.message==='KIMI_REASONING_ADMISSION_REQUIRED')return 'model_response_protocol_invalid';
+ if(error?.message==='tool_batch_profile_unavailable')return 'model_tool_approval_unavailable';
  if(error instanceof KTeamError)return error.code;
  if(error?.message==='execution_lease_lost')return 'execution_admission_unverified';
  if(error?.status>=500&&error.status<=599)return 'model_service_unavailable';if(error?.status===404)return 'model_endpoint_unavailable';if(error?.status===400)return 'model_request_rejected';if(error?.status===429)return 'model_quota_exhausted';if([401,403].includes(error?.status))return 'model_authentication_failed';

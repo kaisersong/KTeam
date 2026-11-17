@@ -1,3 +1,4 @@
+import {modelFailureMessage} from '../../../src/protocol/model-failure-notice';
 import {executionFailure} from '../../../src/protocol/execution-failure';
 import {explain,type Bot} from './api';
 const phases={routing:'选择处理成员',preparing:'准备执行环境',model:'请求模型',tool:'执行工具',delivery:'提交回复与交付',unknown:'未记录'};
@@ -9,4 +10,9 @@ export function ExecutionFailureDetails({job,bots}:{job:any;bots:Bot[]}){
  {events.length>0&&<details><summary>最近的执行记录</summary><ol>{events.map((e:any)=><li key={e.id}><time>{new Date(e.startedAt).toLocaleTimeString()}</time><span>{e.type==='model_request_started'?'请求模型':e.type==='run_aborted'?'运行中断':e.type==='run_failed'?'运行失败':e.name+' · '+(e.type==='tool_started'?'开始':'返回')}</span></li>)}</ol></details>}
  {(failure.message||failure.causeCode||failure.exception)&&<details><summary>技术信息</summary>{failure.message&&<pre>{failure.message}</pre>}<p>{failure.exception}{failure.causeCode?' · '+failure.causeCode:''}</p></details>}
  <p>核对工具记录和未交付草稿后，再决定是否重新发起。</p></section>;
+}
+
+export function ModelFailureNotice({notice,bots,onSettings,onDetails}:{notice:{job:any;failure:any};bots:Bot[];onSettings:()=>void;onDetails:()=>void}){
+ const {failure}=notice,routingProblem=['group_plan_invalid','group_dependency_cycle','routing_invalid','iteration_budget_exhausted','group_research_evidence_missing'].includes(failure.code),name=bots.find(bot=>bot.id===failure.botId)?.name.replace(/ · KTeam .+$/,'')??'成员',message=modelFailureMessage(failure.code,failure.phase);
+ return <section className="work-recovery" role="alert" aria-label="处理请求失败"><strong>{message.title}</strong><p>{name}{failure.model?' · '+failure.model:''}：{message.reason}{failure.httpStatus?'（HTTP '+failure.httpStatus+'）':''}。</p><p>{message.guidance}{routingProblem?'请查看失败详情和已有执行记录。':'请在模型设置中检查配置，或为成员选择可用模型。'}</p>{!routingProblem&&<button className="secondary" onClick={onSettings}>{failure.code==='model_tool_approval_unavailable'?'调整成员模型':'打开模型设置'}</button>}<button className="secondary" onClick={onDetails}>查看失败详情</button></section>;
 }

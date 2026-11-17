@@ -1,6 +1,6 @@
 import {webLinkUrl} from '../src/protocol/web-link.js';
 import {computerPermissionSettingsUrl} from './computer-permissions.js';
-import {clipboardAttachments} from './clipboard-files.js';
+import {clipboardPaste} from './clipboard-files.js';
 import {randomBytes} from 'node:crypto';
 import {messageDisplayText,attachmentMessageView} from '../src/protocol/message-attachments.js';
 import {parseSystemVoices} from './system-voices.js';
@@ -28,10 +28,10 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
   copyMobileInvitation:async(input:unknown)=>{const value=record(input);fields(value,['link']);if(typeof value.link!=='string'||value.link.length>32768)fail('invalid_input');let url:URL;try{url=new URL(value.link as string);}catch{fail('invalid_input');}if(url!.protocol!=='kteam:'||url!.hostname!=='pair'||!url!.searchParams.get('data'))fail('invalid_input');await clipboard.writeText(value.link as string);return {ok:true};},
   openWebLink:async(input:unknown)=>{const value=record(input);fields(value,['url']);const url=webLinkUrl(value.url);if(!url)fail('web_link_invalid');await shell.openExternal(url!);return {ok:true};},
   openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
-  pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId']);const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));if(!view.canAttach)fail('attachment_owner_required');
-   const files=await clipboardAttachments(await clipboard.read());
+  pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId','allowFiles']);if(value.allowFiles!==undefined&&typeof value.allowFiles!=='boolean')fail('invalid_input');const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));
+   const {files,directories}=await clipboardPaste(await clipboard.read(),process.platform,!!view.canAttach&&value.allowFiles!==false);if(files.length&&(!view.canAttach||value.allowFiles===false))fail('attachment_owner_required');
    if((view.uploads as any[]).length+files.length>4)fail('attachment_limit');
-   for(const file of files)await hostRequest(root,'kteam-main','/v1/composer-attachments/upload',{roomId,id:'upload_'+randomBytes(16).toString('hex'),...file});return {ok:true,count:files.length};
+   for(const file of files)await hostRequest(root,'kteam-main','/v1/composer-attachments/upload',{roomId,id:'upload_'+randomBytes(16).toString('hex'),...file});return {ok:true,count:files.length,directories};
   },
   openMemberWorkspace:async(input:any)=>{const value=record(input);fields(value,['botId','roomId','expectedProfileRevision']);if(!Number.isSafeInteger(value.expectedProfileRevision))fail('member_workspace_changed');const result=await hostRequest(root,'kteam-main','/v1/member-workspace/folder?botId='+encodeURIComponent(field(value.botId))+'&roomId='+encodeURIComponent(field(value.roomId))+'&expectedProfileRevision='+String(value.expectedProfileRevision));const error=await shell.openPath(String(result.path));if(error)fail('member_workspace_unavailable');return {ok:true};},
   voiceOptions:async()=>{if(process.platform!=='darwin')return {ok:true,voices:[],available:false};const result=await promisify(execFile)('/usr/bin/say',['-v','?'],{timeout:5000,maxBuffer:512*1024});return {ok:true,available:true,voices:parseSystemVoices(result.stdout)};},
