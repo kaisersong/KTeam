@@ -1,6 +1,7 @@
 name: KTeam checks
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -16,13 +17,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-2022]
-        node: ['22.22.0', '24.16.0']
+        include:
+          - {os: macos-15, node: '22.22.0', shard: '1/1'}
+          - {os: macos-15, node: '24.16.0', shard: '1/1'}
+          - {os: ubuntu-latest, node: '22.22.0', shard: '1/1'}
+          - {os: ubuntu-latest, node: '24.16.0', shard: '1/1'}
+          - {os: windows-2022, node: '22.22.0', shard: '1/2'}
+          - {os: windows-2022, node: '22.22.0', shard: '2/2'}
+          - {os: windows-2022, node: '24.16.0', shard: '1/2'}
+          - {os: windows-2022, node: '24.16.0', shard: '2/2'}
+
     runs-on: ${{ matrix.os }}
     # A hung test process must not hold a runner for the 6h default.
     timeout-minutes: 55
     # All platforms are blocking, including Windows.
     env:
+      KTEAM_TEST_SHARD: ${{ matrix.shard }}
       KTEAM_PLUGINS_SOURCE: ${{ github.workspace }}/creator-plugins
     defaults:
       run:
@@ -86,3 +96,29 @@ jobs:
         # Every original matrix job and assertion still runs, and any failed test remains a failure.
         timeout-minutes: ${{ runner.os == 'Windows' && 50 || 10 }}
         working-directory: kteam
+      - name: Preserve test coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.os }}-${{ matrix.node }}-${{ strategy.job-index }}
+          path: kteam/build/test-reports/*.json
+          if-no-files-found: error
+
+  verify-test-coverage:
+    needs: core
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-report-*
+          path: .artifacts/test-reports
+          merge-multiple: true
+      - run: node scripts/aggregate-test-reports.mjs .artifacts/test-reports

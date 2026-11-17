@@ -28,3 +28,22 @@ test('a steered or queued group followup also creates one independent discussion
   const execution=f.store.jobs(roomId).filter(job=>job.id!==parent.id&&job.trigger!=='group-discussion');assert.equal(execution.length,chosen==='append_0'?0:1);if(chosen==='new')assert.equal(execution[0].groupPlanPending,true);else if(chosen==='queue_0')assert.equal(execution[0].afterJobId,parent.id);else assert.match(context.take()!,/other members/);assert.equal((await f.upstream.messages(roomId,0,100)).messages.length,2);
  }finally{await f.close();}}
 });
+
+async function staleGroupQueue(f:any){
+ const roomId=(await f.coordinator.createGroup({title:'Synthetic stale input queue',memberAgentIds:[f.a.botId,f.b.bot.id],requestId:'stale-input-group'},{requestSource:'user'})).room.roomId;
+ f.store.stateOnce('team-role-policy:'+roomId,{status:'ready',coordinatorBotId:f.a.botId,revision:1});
+ const old=await f.send('6','Old goal whose result must remain unknown.',roomId);f.store.completeSubmission(old.id,old.messageId,true);const parent=f.store.job('job-'+old.messageId);Object.assign(parent,{state:'unknown',reason:'tool_batch_execution_unknown',createdAt:new Date(Date.now()-60000).toISOString()});f.store.save(parent);
+ const prior=await f.send('7','An older dependent followup.',roomId);await f.inputs.acceptPublished({...prior,jobId:parent.id,mode:'queue'});const dependent=f.store.job('job-'+prior.messageId);dependent.createdAt=new Date(Date.now()-40000).toISOString();f.store.save(dependent);
+ const next=await f.send('8','A separate, newer goal.',roomId);f.store.completeSubmission(next.id,next.messageId,true);const head=f.store.job('job-'+next.messageId);Object.assign(head,{state:'delivered',createdAt:new Date(Date.now()-20000).toISOString()});f.store.save(head);
+ return {roomId,parent,dependent,head};
+}
+test('a stale dependent queue does not become the owner of a newer request after a separate goal completed',async()=>{
+ let decisions=0;const f=await fixture(async()=>{decisions++;return 'queue_0';});try{const q=await staleGroupQueue(f),message=await f.send('4','Continue the newer implementation and perform the tests.',q.roomId);await f.automatic.accept(q.roomId,message.id,message.messageId);await f.automatic.settle();const job=f.store.job('job-'+message.messageId);assert.equal(decisions,0);assert.equal(job.afterJobId,undefined);assert.equal(job.groupPlanPending,true);assert.equal(f.store.job(q.parent.id).state,'unknown');assert.equal(f.store.job(q.dependent.id).afterJobId,q.parent.id);}finally{await f.close();}
+});
+test('startup reclassifies only an untouched automatic input with verified source after a newer completed goal, without replaying the old unknown work',async()=>{
+ const f=await fixture(async()=> 'queue_0');try{const q=await staleGroupQueue(f),message=await f.send('5','Please finish the newer goal yourselves.',q.roomId);await f.inputs.acceptPublished({...message,jobId:q.dependent.id,mode:'queue'});const id='job-'+message.messageId,receipt=f.store.operation('work-input:'+message.id),oldSnapshot=JSON.stringify(f.store.job(q.parent.id));
+ const savedHash=receipt.bodyHash;f.store.saveOperation({...receipt,bodyHash:'corrupted'},receipt.revision);await f.automatic.recover();assert.equal(f.store.job(id).afterJobId,q.dependent.id);
+ let current=f.store.operation(receipt.id);f.store.saveOperation({...current,bodyHash:savedHash},current.revision);q.head.state='unknown';f.store.save(q.head);await f.automatic.recover();assert.equal(f.store.job(id).afterJobId,q.dependent.id);
+ q.head.state='delivered';f.store.save(q.head);await f.automatic.recover();const queued=f.store.job(id);assert.equal(queued.afterJobId,undefined);assert.equal(queued.groupPlanPending,true);assert.equal(JSON.stringify(f.store.job(q.parent.id)),oldSnapshot);const count=f.store.jobs().length;await f.automatic.recover();assert.equal(f.store.jobs().length,count);assert.equal(f.store.claim([f.a.roomId])?.id,id);
+ }finally{await f.close();}
+});
