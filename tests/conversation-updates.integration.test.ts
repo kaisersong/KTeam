@@ -84,3 +84,8 @@ test('bounded message projections retain original reply and source semantics wit
  const external=projectMessage({messageId:'external',roomId:'room',sender:{kind:'agent'},roomSequence:4,text:'answer',sourceRef:{kind:'external_agent_reply',driver:'fixture-cli'}});assert.equal(external.externalSource?.driver,'fixture-cli');assert.equal(external.externalSource?.verifiedExecution,false);
  const privateMessage=projectMessage({messageId:'private',roomId:'room',sender:{kind:'agent'},text:'answer',roomSequence:5,sourceRef:{kind:'bot_private_message',originRoomId:'source',originMessageId:'original',purpose:'question'}});assert.equal(privateMessage.sourceRef?.originMessageId,'original');assert.equal(privateMessage.sourceRef?.verifiedExecution,false);
 });
+
+test('the actual desktop update projection includes verified shared-note provenance after a forced refresh',async()=>{const f=await fixture();try{
+ await f.conversations.shared(f.roomId,{text:'Synthetic manual note',expectedRevision:0,requestId:'manual-projection'});const manual=await f.updates.read({roomId:f.roomId,force:true});assert.equal(manual.shared.shared.sourceKind,'manual');
+ const message=await f.send('Synthetic chosen source');await f.conversations.shared(f.roomId,{text:'Synthetic sourced note',expectedRevision:1,requestId:'sourced-projection',sourceMessageIds:[message.message.messageId]});const sourced=await f.updates.read({roomId:f.roomId,force:true});assert.equal(sourced.shared.shared.sourceKind,'messages');assert.deepEqual(sourced.shared.shared.sourceMessageIds,[message.message.messageId]);assert.equal(f.calls,0);
+ }finally{await f.close();}});

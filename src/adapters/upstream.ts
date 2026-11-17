@@ -91,7 +91,12 @@ export class Upstreams {
   conversationData(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/conversation`);}
   conversationMessage(roomId:string,messageId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/message?messageId=${encodeURIComponent(messageId)}`);}
   searchConversation(roomId:string,query:string,before?:number){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/search?query=${encodeURIComponent(query)}${before?'&before='+before:''}`);}
-  updateConversation(roomId:string,input:Record<string,unknown>,agent=false){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/${agent?'agent-conversation':'conversation'}`,'POST',input);}
+  async updateConversation(roomId:string,input:Record<string,unknown>,agent=false){
+    if(input.operation!=='shared.replace')return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/${agent?'agent-conversation':'conversation'}`,'POST',input);
+    const normalized=await normalizeSharedSources(input.sourceMessageIds,id=>this.conversationMessage(roomId,id));
+    const result=await this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/${agent?'agent-conversation':'conversation'}`,'POST',{...input,sourceMessageIds:normalized.ids});
+    return {...result,...(normalized.warnings.length?{sourceWarnings:normalized.warnings}:{})};
+  }
   listBots() { return this.request('kswarm', '/agents'); }
   updateBot(botId:string,input:Record<string,unknown>){return this.request('kswarm',`/agents/${encodeURIComponent(botId)}`,'PUT',input);}
   createBot(input:Record<string,unknown>){return this.request('kswarm','/agents','POST',input);}
@@ -122,4 +127,17 @@ export class Upstreams {
   sendMessage(roomId: string, input: Record<string, unknown>) {
     return this.request('broker', `/rooms/${encodeURIComponent(roomId)}/messages`, 'POST', input);
   }
+}
+
+/** Match the Room owner's 20-source contract; never turn a transport failure into missing evidence. */
+export async function normalizeSharedSources(value:unknown,read:(id:string)=>Promise<any>){
+ const warnings=new Set<string>(),ids:string[]=[],seen=new Set<string>();
+ if(value!==undefined&&!Array.isArray(value))warnings.add('source_ids_invalid');
+ const candidates=Array.isArray(value)?value:[];if(candidates.length>20)warnings.add('source_ids_limit');
+ const found:{id:string;sequence:number}[]=[];
+ for(const raw of candidates.slice(0,100)){if(typeof raw!=='string'||!raw.trim()||raw.length>256){warnings.add('source_id_invalid');continue;}const id=raw.trim();if(seen.has(id))continue;seen.add(id);
+  try{const {message}=await read(id);if(!message||message.messageId!==id||!Number.isSafeInteger(message.roomSequence))throw new KTeamError('room_scope_mismatch',403);found.push({id,sequence:message.roomSequence});}
+  catch(error){if(error instanceof KTeamError&&['room_scope_mismatch','room_message_not_found','message_not_found'].includes(error.code)){warnings.add('source_message_unavailable');continue;}throw error;}
+ }
+ found.sort((a,b)=>a.sequence-b.sequence||a.id.localeCompare(b.id));ids.push(...found.slice(0,20).map(item=>item.id));return {ids,warnings:[...warnings]};
 }

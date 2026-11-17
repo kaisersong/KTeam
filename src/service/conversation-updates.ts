@@ -85,7 +85,7 @@ export class ConversationUpdates {
   const needShared=input.force||reset||now-cache.at>=4000||messages.messages.length>0;
   const [taskRead,sharedRead]=await Promise.allSettled([
    needWork?this.upstream.aimp(roomId,'tasks'):Promise.resolve(cache.tasks),
-   needShared?this.upstream.conversationData(roomId):Promise.resolve(cache.data),
+   needShared?this.conversations.data(roomId):Promise.resolve(cache.data),
   ]);
   if(needWork){
    if(taskRead!.status==='fulfilled'&&taskRead!.value){

@@ -9,7 +9,7 @@ async function fixture(){const root=realpathSync(mkdtempSync(join(tmpdir(),'ktea
 
 test('one real directory approval covers write/edit/read and queued sibling files; persists and revokes',async()=>{const f=await fixture();try{
  const {registry,h}=await f.make(),directory=join(f.workspace,'reports','today'),one=join(directory,'one.csv'),two=join(directory,'two.json');
- const work1=registry.executeTool('write',{file_path:one,content:'first'}),work2=registry.executeTool('write',{file_path:two,content:'second'});const p=await f.pending(2);assert.equal(p.directory,f.workspace);assert.equal(f.approvals.list().length,1);assert.equal(p.pendingOperationCount,2);
+ const work1=registry.executeTool('write',{file_path:one,content:'first'}),work2=registry.executeTool('write',{file_path:two,content:'second'});const p=await f.pending(2);assert.equal(p.directory,f.workspace);assert.match(p.reason,/目录授权/);assert.deepEqual(p.riskTags,['directory-access']);assert.equal(f.approvals.list().length,1);assert.equal(p.pendingOperationCount,2);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:'forged',decision:'allow_directory'}),/tool_approval_changed/);
  await assert.rejects(f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory',directory:f.root}),/unknown_field/);
  await f.approvals.decide({id:p.id,expectedHash:p.hash,decision:'allow_directory'});await Promise.all([work1,work2]);assert.equal(f.approvals.list().length,0);assert.equal(readFileSync(one,'utf8'),'first');assert.equal(readFileSync(two,'utf8'),'second');
