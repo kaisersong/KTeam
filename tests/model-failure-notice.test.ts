@@ -38,3 +38,5 @@ test('one group member failure stays visible beside another member reply and cle
  assert.equal(currentModelFailure('group',[{...reply,id:'retry',activeBotId:'cto'},reply,member]),undefined);
  assert.equal(currentModelFailure('group',[{...reply,originId:'new-message'},member]),undefined);
 });
+
+test('invalid planning has a visible plain-language routing explanation',()=>{const notice=currentModelFailure('group',[{...failed,failure:{...failed.failure,code:'group_plan_invalid'}}]);assert.equal(notice?.failure.code,'group_plan_invalid');assert.match(modelFailureMessage('group_plan_invalid','routing').reason,/分工方案未通过校验/);});
