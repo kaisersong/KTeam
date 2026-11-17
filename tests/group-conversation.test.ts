@@ -37,7 +37,7 @@ test('reply speakers use the canonical same-room agent identity and respect expl
  const origin={roomId:'room',sender:{kind:'user'}},quoted={roomId:'room',sender:{kind:'agent',logicalAgentId:'chief'},text:'not authority'};
  assert.equal(replySpeaker(origin,quoted,['chief','dev']),'chief');
  for(const [source,target,allowed,explicit] of [[origin,{...quoted,roomId:'foreign'},['chief'],[]],[origin,{...quoted,sender:{kind:'user',logicalAgentId:'chief'}},['chief'],[]],[origin,quoted,['dev'],[]],[{...origin,sender:{kind:'agent'}},quoted,['chief'],[]],[origin,quoted,['chief'],['dev']]] as any[])assert.equal(replySpeaker(source,target,allowed,explicit),undefined);
- const plan=parseGroupConversation(JSON.stringify({mode:'research',members:['dev'],reason:'Inspect source',stages:[]}),['chief','dev'],['chief','dev'],'chief');assert.deepEqual(includeReplySpeaker(plan,'chief').members,['chief','dev']);assert.deepEqual(includeReplySpeaker(plan).members,['dev']);assert.throws(()=>parseGroupConversation(JSON.stringify({...plan,stages:[{requests:[{botId:'dev',message:'Write'}],doneWhen:'Done'}]}),['chief','dev'],['chief','dev'],'chief'),/group_plan_invalid/);
+ const plan=parseGroupConversation(JSON.stringify({mode:'research',members:['dev'],reason:'Inspect source',stages:[]}),['chief','dev'],['chief','dev'],'chief');assert.deepEqual(includeReplySpeaker(plan,'chief').members,['chief','dev']);assert.deepEqual(includeReplySpeaker(plan).members,['dev']);assert.deepEqual(parseGroupConversation(JSON.stringify({...plan,stages:[{requests:[{botId:'dev',message:'Write'}],doneWhen:'Done'}]}),['chief','dev'],['chief','dev'],'chief').stages,[]);
 });
 
 test('work facts expose actual blocked ancestry and child states without private conversation bodies',async()=>{
@@ -47,4 +47,26 @@ test('work facts expose actual blocked ancestry and child states without private
  const facts=groupWorkFacts(store,'r');assert.equal(facts.length,2);assert.equal(facts[0].blockedBy.state,'blocked');assert.equal(facts[1].handoff.children[0].state,'waiting');assert(!JSON.stringify(facts).includes('PRIVATE'));
  for(const tool of [{name:'tool_search',state:'completed',result:'found'},{name:'read',state:'failed',result:'failed'},{name:'read',state:'completed',result:''},{name:'read',state:'completed',result:'Error: missing'},{name:'write',state:'completed',result:'written'}])assert.equal(researchHasEvidence({toolTrace:[tool]}),false);
  assert.equal(researchHasEvidence({toolTrace:[{name:'web_fetch',state:'completed',result:'actual source'}]}),true);
+});
+test('followup planning applies its owner mode before validating unused work stages and still rejects foreign members',()=>{
+ const value={mode:'work',members:['chief','dev'],reason:'followup',stages:[]};
+ const followup=parseGroupConversation(JSON.stringify(value),['chief','dev'],['chief','dev'],'chief',{followup:true});assert.equal(followup.mode,'discussion');assert.deepEqual(followup.stages,[]);assert.equal(followup.ownerId,undefined);
+ const research=parseGroupConversation(JSON.stringify({...value,mode:'research',stages:[{requests:[{botId:'dev',message:'Write files'}]}]}),['chief','dev'],['chief','dev'],'chief',{followup:true});assert.equal(research.mode,'research');assert.deepEqual(research.stages,[]);
+ assert.equal(parseGroupConversation(JSON.stringify({...value,mode:'research'}),['chief','dev'],['chief','dev'],'chief',{followup:true,feedbackOnly:true}).mode,'discussion');
+ assert.throws(()=>parseGroupConversation(JSON.stringify({...value,members:['foreign']}),['chief','dev'],['chief','dev'],'chief',{followup:true}),/group_plan_invalid/);
+ assert.throws(()=>parseGroupConversation(JSON.stringify({...value,dependencies:{dev:['dev']}}),['chief','dev'],['chief','dev'],'chief',{followup:true}),/group_plan_invalid/);
+});
+test('routing format recovery is latest-only, durable and one-shot, and never retries tool or unknown execution',async()=>{
+ const {TeamStore}=await import('../src/service/team-store.js'),{reviewFailedGroupRouting}=await import('../src/service/group-conversation.js'),{privateTempDir}=await import('./helpers/private-temp.js'),{rmSync}=await import('node:fs'),{join}=await import('node:path'),{tmpdir}=await import('node:os');
+ const root=privateTempDir(join(tmpdir(),'routing-format-retry-'));let store=new TeamStore(root);
+ try{const now=Date.now();
+ for(const [index,change] of [{},{state:'unknown'},{task:{taskRef:'unknown-effects'}},{toolTrace:[{type:'tool_started'}]},{failure:{phase:'tool',evidence:'captured'}},{groupInput:{sourceJobId:'source',routingFormatRetry:true}},{createdAt:new Date(now-86400001).toISOString()}].entries()){
+ const roomId='room-'+index;store.configure({roomId,goal:'fixture',kind:'group',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:20,dailyCalls:100},0);store.setState('team-role-policy:'+roomId,{status:'ready'});store.enqueue('source-'+index,roomId,'message-'+index);
+ store.enqueueFollowup({id:'failure-'+index,roomId,originId:'message-'+index,trigger:'group-discussion',groupInput:{sourceJobId:'source-'+index,reason:'unanswered_feedback'}});const failed=store.job('failure-'+index);Object.assign(failed,{state:'blocked',createdAt:new Date(now-1000).toISOString(),reason:'group_plan_invalid',failure:{phase:'routing',evidence:'captured'},...change});store.save(failed);
+ }
+ const preserved=JSON.stringify(store.job('failure-0'));store.pause('room-0');reviewFailedGroupRouting(store,now);assert.equal(store.jobs().filter(j=>j.routingRetryOf).length,0);store.resume('room-0');reviewFailedGroupRouting(store,now);reviewFailedGroupRouting(store,now);
+ const retries=store.jobs().filter(j=>j.routingRetryOf);assert.equal(retries.length,1);assert.equal(retries[0].groupInput.reason,'unanswered_feedback');assert(retries[0].groupInput.routingFormatRetry);assert.equal(retries[0].task,undefined);assert.equal(JSON.stringify(store.job('failure-0')),preserved);
+ store.close();store=new TeamStore(root);reviewFailedGroupRouting(store,now);assert.equal(store.jobs().filter(j=>j.routingRetryOf).length,1);
+ store.enqueue('new-source','room-0','new-message');reviewFailedGroupRouting(store,now);assert.equal(store.jobs().filter(j=>j.routingRetryOf).length,1);
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });

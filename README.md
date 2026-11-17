@@ -179,7 +179,7 @@ Official releases are published automatically by GitHub Actions after Mac and Wi
 
 ### v0.9.1
 
-Copying a folder from Finder now inserts its directory path into the composer instead of uploading a broken attachment. File upload permissions still apply to regular files and images. Model failures appear directly in the conversation with the affected member, model, cause, and a shortcut to model settings, including failures before group replies are assigned.
+Copying a folder from Finder now inserts its directory path into the composer instead of uploading a broken attachment. File upload permissions still apply to regular files and images. Model failures appear directly in the conversation with the affected member, model, cause, and a shortcut to model settings, including failures before group replies are assigned. Read-only research ignores unused execution stages, and the latest tool-free followup planning format failure gets one bounded recovery attempt.
 
 See the [0.9.1 release](https://github.com/kaisersong/KTeam/releases/tag/v0.9.1).
 
