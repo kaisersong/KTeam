@@ -90,11 +90,23 @@ export class TeamStore {
  configure(value:TeamSettings,expectedRevision:number){const previous=this.settings(value.roomId);if((previous?.revision??0)!==expectedRevision)throw new KTeamError('team_revision_conflict',409);const next={...value,revision:expectedRevision+1};this.db.prepare('INSERT INTO team_settings VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET value_json=excluded.value_json').run(value.roomId,JSON.stringify(next));return next;}
  enqueueFollowup(value:any){const job={scopeRevision:this.settings(value.roomId)?.revision,...value,state:this.settings(value.roomId)?.paused?'held':'queued',calls:0,createdAt:new Date().toISOString()};this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(job.id,job.roomId,job.originId,job.state,JSON.stringify(job));}
  enqueue(id:string,roomId:string,originId:string){const state=this.settings(roomId)?.paused?'held':'queued';this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(id,roomId,originId,state,JSON.stringify({id,roomId,originId,state,scopeRevision:this.settings(roomId)?.revision,...(state==='held'?{reason:'team_paused'}:{}),calls:0,createdAt:new Date().toISOString()}));}
+ private changePausedQueue(previous:TeamSettings,next:TeamSettings){
+  const from=next.paused?'queued':'held',to=next.paused?'held':'queued';
+  // An untouched job may follow a pause toggle, but never inherit an intervening configuration change.
+  this.db.prepare(`UPDATE team_jobs SET state=?,value_json=
+   CASE WHEN ?='held' THEN json_set(moved,'$.reason','team_paused') ELSE json_remove(moved,'$.reason') END
+   FROM (SELECT id,json_set(CASE WHEN json_extract(value_json,'$.scopeRevision')=?
+    AND json_extract(value_json,'$.claimedAt') IS NULL AND json_extract(value_json,'$.task') IS NULL
+    AND json_extract(value_json,'$.executionScope') IS NULL
+    THEN json_set(value_json,'$.scopeRevision',?) ELSE value_json END,'$.state',?) AS moved
+    FROM team_jobs WHERE room_id=? AND state=?) AS affected WHERE team_jobs.id=affected.id`)
+   .run(to,to,previous.revision,next.revision,to,next.roomId,from);
+ }
  pause(roomId:string){
   this.db.exec('BEGIN IMMEDIATE');try{
    const previous=this.settings(roomId);if(!previous)throw new KTeamError('team_settings_not_found');
    const settings=this.configure({...previous,paused:true},previous.revision);
-   this.db.prepare("UPDATE team_jobs SET state='held',value_json=json_set(value_json,'$.state','held','$.reason','team_paused') WHERE room_id=? AND state='queued'").run(roomId);
+   this.changePausedQueue(previous,settings);
    this.db.exec('COMMIT');return settings;
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
@@ -102,7 +114,7 @@ export class TeamStore {
   this.db.exec('BEGIN IMMEDIATE');try{
    const previous=this.settings(roomId);if(!previous)throw new KTeamError('team_settings_not_found');
    const settings=this.configure({...previous,paused:false},previous.revision);
-   this.db.prepare("UPDATE team_jobs SET state='queued',value_json=json_remove(json_set(value_json,'$.state','queued'),'$.reason') WHERE room_id=? AND state='held'").run(roomId);
+   this.changePausedQueue(previous,settings);
    this.db.exec('COMMIT');return settings;
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
