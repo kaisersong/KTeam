@@ -120,6 +120,48 @@ test('dependent queued messages do not deadlock original-work recovery and follo
  }finally{store.close();await f.close();}
 });
 
+test('a group review interrupted by the model connection resumes once with returned stages and releases its followups after delivery',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),recovery=new WorkRecovery(f.upstream,store,coordinator);
+ try{
+  const owner=await coordinator.createMember({name:'收尾负责人',modelId:'fixture',requestId:'review-owner'},user);
+  const worker=await coordinator.createMember({name:'验证成员',modelId:'fixture',requestId:'review-worker'},user);
+  const botId=owner.bot.id;
+  const {room:{roomId}}=await coordinator.createGroup({title:'收尾恢复测试',memberAgentIds:[botId,worker.bot.id],requestId:'review-group'},user);
+  const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'group-review',from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'验证完并提交改动。'});
+  const actor={sessionId:'test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};
+  const agent={...actor,requestSource:'agent',actor:{kind:'agent',logicalAgentId:botId},allowedLogicalAgentIds:[botId]};
+  const originId=String(sent.messageId),stageId='work-handoff:returned-review-stage';
+  const plan={mode:'work',ownerId:botId,stages:[{requests:[{botId:worker.bot.id,message:'复核测试'}],doneWhen:'给出实际运行结果'}],stageOperations:[stageId]};
+  const binding=store.binding(botId)!;
+  let task=f.broker.aimp.submit({id:'msg_'+randomBytes(16).toString('hex'),roomId,threadId:'group-review',act:'request',body:'fixture',payload:{kind:'task.request@1',must_understand:true,description:'fixture',deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',acceptance:{predicates:['artifact_hash']},assignee:'agent://kteam.local/'+botId,reviewer:LOCAL_HUMAN}},actor).task;
+  task=f.broker.aimp.submit({id:'msg_'+randomBytes(16).toString('hex'),roomId,threadId:task.threadId,taskRef:task.taskRef,act:'accept',body:'accept',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.accept@1',must_understand:true,terms_hash:task.termsHash,caveats:[]}},agent).task;
+  task=(await f.upstream.aimp(roomId,'begin-execution',{logicalAgentId:botId,taskRef:task.taskRef,requestId:'review-interrupted',expectedRevision:task.revision,bindingRevision:binding.revision,hostFence:1})).task;
+  store.enqueueFollowup({id:'review-interrupted',roomId,originId,trigger:'recovery'});
+  const job=store.job('review-interrupted');
+  Object.assign(job,{state:'blocked',activeBotId:botId,members:[botId],task,groupPlan:plan,finishedAt:new Date(Date.now()-10000).toISOString(),failure:{code:'model_execution_failed',phase:'model',message:'模型网络连接中断；自动恢复窗口不足或已耗尽，已停止自动续接；已完成的工作保留，可稍后继续。',evidence:'captured'}});
+  store.save(job);
+  const stage={id:stageId,jobId:job.id,roomId,botId,status:'returned',results:[{botId:worker.bot.id,state:'blocked',reason:'handoff_wait_expired'}]};
+  store.saveOperation(stage,0);
+  store.enqueue('waiting-followup',roomId,'next-message');const queued=store.job('waiting-followup');queued.afterJobId=job.id;store.save(queued);
+  await recovery.wakeSafe();assert.equal(store.claim(),null,'the live broker execution still owns the task');
+  assert.equal(f.broker.aimp.submit({id:'msg_'+randomBytes(16).toString('hex'),roomId,threadId:task.threadId,taskRef:task.taskRef,act:'stop',body:'fixture stop',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.stop@1',must_understand:true,reason:'fixture stop'}},actor).ok,true);
+  const savedStage=store.operation(stageId);
+  store.saveOperation({...savedStage,results:[{botId:worker.bot.id,state:'unknown'}]},savedStage.revision);
+  await recovery.wakeSafe();assert.equal(store.claim(),null,'an unknown member result cannot be automatically continued');
+  store.saveOperation(stage,store.operation(stageId).revision);
+  job.toolTrace=[{type:'tool_started',name:'write'}];store.save(job);
+  await recovery.wakeSafe();assert.equal(store.claim(),null,'an unresolved local tool cannot be automatically repeated');
+  job.toolTrace=[];store.save(job);
+  queued.state='held';store.save(queued);
+  await recovery.wakeSafe();assert.equal(store.operation('work-recovery:'+job.id),null,'held input does not trigger an automatic recovery');
+  queued.state='queued';store.save(queued);
+  await recovery.wakeSafe();await recovery.wakeSafe();
+  const next=store.claim();assert.equal(next.recoveryOf,job.id);assert.equal(next.recoveryAutomatic,true);assert.equal(next.recoveryContext.reviewGroupStages,true);
+  assert.deepEqual(next.groupPlan.stageOperations,[stageId]);assert.equal(store.operation(stageId).jobId,job.id);assert.equal(store.job(queued.id).afterJobId,next.id);assert.equal(store.claim(),null);
+  next.state='delivered';store.save(next);assert.equal(store.claim().id,queued.id);assert.equal(store.job(job.id).state,'blocked');
+ }finally{store.close();await f.close();}
+});
+
 test('expired model admission recovers once after terminal old execution; unknown tools and explicit revocation stay blocked',async()=>{
  const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models),recovery=new WorkRecovery(f.upstream,store,coordinator);
  try{
