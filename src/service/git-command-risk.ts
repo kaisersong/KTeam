@@ -16,7 +16,17 @@ function words(segment:string):string[]|undefined{
 /** Undefined keeps the existing conservative path for opaque shell wrappers. */
 export function gitCommandRisk(segment:string):boolean|undefined{
  const args=words(segment);if(!args?.length)return;
- while(args.length&&(/^[A-Za-z_][A-Za-z0-9_]*=/.test(args[0]!)||['do','then','if','!'].includes(args[0]!)))args.shift();
+ const assignments:string[]=[];
+ while(args.length&&(/^[A-Za-z_][A-Za-z0-9_]*=/.test(args[0]!)||['do','then','if','!'].includes(args[0]!))){
+  const prefix=args.shift()!;
+  if(prefix.includes('='))assignments.push(prefix);
+ }
+ // A literal deadline does not change the Git operation. Only recognize this
+ // bounded wrapper for ls-remote, with Git's noninteractive prompt setting.
+ if(args[0]==='timeout'&&/^[1-9]\d{0,3}s?$/.test(args[1]??'')&&args[2]==='git'&&args[3]==='ls-remote'){
+  if(assignments.some(value=>value!=='GIT_TERMINAL_PROMPT=0'))return true;
+  args.splice(0,2);
+ }
  if(args[0]==='command'){args.shift();while(['-p','--'].includes(args[0]??''))args.shift();}
  const program=args.shift()?.replaceAll('\\','/').split('/').at(-1)?.replace(/\.exe$/i,'').toLowerCase();if(program!=='git')return;
  while(args[0]?.startsWith('-')){
@@ -31,6 +41,10 @@ export function gitCommandRisk(segment:string):boolean|undefined{
  if(['branch','tag'].includes(verb))return args.some(arg=>/^-[dD]/.test(arg)||/^--delete(?:=|$)/.test(arg));
  if(verb==='worktree')return ['remove','prune','move','repair'].includes(args[0]??'');
  if(verb==='commit')return args.includes('--amend');
+ if(verb==='ls-remote')return args.some(arg=>{
+  const name=arg.split('=')[0]!;
+  return /^-u/.test(name)||(name.startsWith('--u')&&'--upload-pack'.startsWith(name))||/^[a-z][a-z0-9+.-]*::/i.test(arg);
+ });
  if(verb==='grep')return args.some(arg=>arg.startsWith('-O')||/^--open-files-in-pager(?:=|$)/.test(arg));
  return false;
 }

@@ -7,5 +7,15 @@ test('Git option scope distinguishes grep counts and switch creation from global
  const core=await sharedRuntime();
  for(const command of ["git grep -c 'sourceMessageIds:\\[\\]' origin/main -- src/","git grep -o 'cost:null' HEAD -- src/",'git switch -c local origin/main','git fetch origin','git -C /work/repo grep -c config HEAD','git commit -m "config remote gc"']){assert.equal(gitCommandRisk(command),false,command);assert.equal(terminalRequiresConfirmation(core,command),false,command);}
  assert.equal(terminalRequiresConfirmation(core,analystQuery),false);
+ assert.equal(gitCommandRisk('GIT_TERMINAL_PROMPT=0 timeout 25 git ls-remote --heads origin 2>&1'),false);
+ for(const command of [
+  'timeout 25 git remote set-url origin https://example.invalid/repo',
+  'timeout 25 git push origin main',
+  'GIT_SSH_COMMAND=unexpected timeout 25 git ls-remote origin HEAD',
+  'timeout 25 git ls-remote --upload-pack=unexpected origin HEAD',
+  'timeout 25 git ls-remote --u=unexpected origin HEAD',
+  'timeout 25 git ls-remote ext::unexpected HEAD',
+  'timeout --unknown 25 git ls-remote origin HEAD'
+ ])assert.equal(terminalRequiresConfirmation(core,command),true,command);
  for(const command of ['git -c core.sshCommand=unexpected fetch origin','git -C /work/repo --config-env=core.sshCommand=COMMAND fetch origin','git --exec-path=/outside grep text','git push origin main','git reset --hard','git checkout -f main','git switch -C local','git merge -s custom origin/main','git branch -D local','git tag --delete tag','git worktree remove child','git commit --amend','git grep -Ounexpected text'])assert.equal(terminalRequiresConfirmation(core,command),true,command);
 });
