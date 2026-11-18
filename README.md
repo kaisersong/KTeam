@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.9.2.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.9.3.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -38,12 +38,11 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 
 ---
 
-## What's in 0.9.2
+## What's in 0.9.3
 
-- **Quieter collaboration progress.** A compact line below the conversation header shows member progress, with details and pause controls available on demand.
-- **Group directory approval.** Approval appears in the source group and defaults to all current group Bots; uncheck the option to grant only the requester. New members do not inherit grants.
-- **Queries keep moving.** GitHub login-status and GET/HEAD API queries retain read-only semantics through supported shell forms. Token access and write requests remain separate decisions.
-- **Verified releases.** Complete test coverage, packaged source identity and dependency fingerprints are checked before publication. Settings exposes copyable build details.
+- **Group work can recover from invalid plans.** A correction request gets the exact validation error. A second failure leaves a group status and a Continue action.
+- **Directory grants cover routine queries.** Timed Git remote-ref queries reuse authorized directories. Inline awk filters no longer appear as directory targets.
+- **Approval cards are easier to scan.** Key targets remain visible, command metadata expands on demand, and authorization management sits in the footer. Mixed inspection and deletion requests show an explicit rejection action.
 
 ## What's in 0.8.0
 
@@ -125,8 +124,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.9.2.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.9.2.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.9.3.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.9.3.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 
@@ -183,6 +182,10 @@ Never put credentials in command arguments or commit them to Git.
 Official releases are published automatically by GitHub Actions after Mac and Windows builds, cross-platform checks and artifact verification pass. Failed builds remain drafts.
 
 ## Version History
+
+### v0.9.3
+
+Group planning now preserves recovery after validation failures. Timed Git queries and inline awk filters retain the intended directory scope, and approval cards separate decisions from technical details. See the [0.9.3 release](https://github.com/kaisersong/KTeam/releases/tag/v0.9.3).
 
 ### v0.9.2
 

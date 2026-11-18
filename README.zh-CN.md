@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.9.2。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.3。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -38,12 +38,11 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 ---
 
-## 0.9.2 有什么
+## 0.9.3 有什么
 
-- **简洁的协作状态。** 进度显示在会话顶部的一行提示中，成员状态、详情和暂停操作按需查看，不再用大卡片占据消息区。
-- **在群里统一授权目录。** 群任务的授权回到原群，默认勾选给当前群所有 Bot 授权；可取消勾选仅授权请求成员，新增成员不自动继承。
-- **查询不中断。** GitHub 登录状态与 GET/HEAD API 查询按实际只读语义识别，支持已验证的变量、引号和管道形式。令牌读取和写请求仍单独确认。
-- **可核对的发布。** 发布前检查完整测试覆盖、安装包提交号和依赖指纹，设置中可复制实际构建信息。
+- **群聊分工可以接续。** 校验失败时按具体字段修正方案。再次失败会在群里说明未派发，并保留「继续这项工作」。
+- **目录授权按实际操作判断。** 已获授权的工作树可运行带超时的 Git 远端引用查询。筛选测试日志的 awk 正则不会被识别为目录。
+- **审批卡更简洁。** 目录范围和关键修改目标一眼可见，技术信息按需展开。授权管理在左下角，检查与删除混合的命令可明确拒绝。
 
 ## 0.8.0 有什么
 
@@ -125,8 +124,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.9.2.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.9.2.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.3.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.3.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -183,6 +182,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.9.3
+
+修复群聊分工校验失败后无法顺畅接续，以及带超时的 Git 查询和 awk 日志筛选触发额外确认的问题。精简审批详情与操作区。完整改动见 [0.9.3 发布说明](release-notes/0.9.3.md)。
 
 ### v0.9.2
 
