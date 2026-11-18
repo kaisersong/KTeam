@@ -19,7 +19,13 @@ export async function captureExecutionFailure(error:unknown,job:any,signal:Abort
  if(typeof actual?.name==='string'&&/^[\w. -]{1,60}$/.test(actual.name))failure.exception=actual.name;
  const cause=actual?.details?.causeCode??actual?.cause?.code;if(typeof cause==='string'&&/^[A-Za-z][\w.-]{0,79}$/.test(cause))failure.causeCode=cause;
  if(!(actual instanceof KTeamError)&&typeof actual?.message==='string'){
-  try{const core=await sharedRuntime();failure.message=core.redactSecrets(actual.message).text.replace(/https?:\/\/[^\s<>"']+/g,(value:string)=>{try{const url=new URL(value);url.username='';url.password='';url.search='';url.hash='';return url.toString();}catch{return '[接口地址]';}}).slice(0,1000);}catch{/* Failure diagnostics must never mask the original failure. */}
+  try{const core=await sharedRuntime();
+   const modelFailure=core.getModelFailure?.(actual);
+   if(failure.code==='model_execution_failed'){
+    if(modelFailure?.category==='network')failure.code='model_connection_failed';
+    if(modelFailure?.category==='timeout')failure.code='model_request_timeout';
+   }
+   failure.message=core.redactSecrets(actual.message).text.replace(/https?:\/\/[^\s<>"']+/g,(value:string)=>{try{const url=new URL(value);url.username='';url.password='';url.search='';url.hash='';return url.toString();}catch{return '[接口地址]';}}).slice(0,1000);}catch{/* Failure diagnostics must never mask the original failure. */}
  }
  return failure;
 }

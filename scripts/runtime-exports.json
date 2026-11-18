@@ -20,6 +20,9 @@
   "src/ai/tools/native-readonly-context.ts": [
     "createNativeReadonlyExecutionContext"
   ],
+  "src/ai/runtime/model-failure.ts": [
+    "getModelFailure"
+  ],
   "src/ai/runtime/agent-runtime.ts": [
     "AgentRuntime"
   ],

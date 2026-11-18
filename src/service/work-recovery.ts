@@ -11,14 +11,13 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {KTeamError, fields, record, text} from '../errors.js';
 import {executionFailure} from '../protocol/execution-failure.js';
+import {dependentWork as dependent,latestWorkRoot as latestWork} from '../protocol/work-recovery-view.js';
 import type {Upstreams} from '../adapters/upstream.js';
 import type {TeamCoordinator} from './coordination.js';
 import type {TeamStore} from './team-store.js';
 
 const interrupted = (job: any) => job && !job.groupResponse&&!job.groupInput&& ['stopped','unknown','blocked'].includes(job.state) && !['peer','followup','assistant-notice','regenerate'].includes(job.trigger);
-const dependent = (job:any) => ['queued','held'].includes(job.state)&&typeof job.afterJobId==='string';
 const active = (job: any) => !dependent(job)&&['queued','held','routing','running','stopping'].includes(job.state);
-const latestWork = (jobs:any[]) => jobs.find(job=>!job.groupResponse&&!job.groupInput&&!dependent(job)&&!['assistant-notice','peer','followup','regenerate'].includes(job.trigger));
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
 /** Link a user-requested continuation to preserved evidence. Old runs stay immutable. */

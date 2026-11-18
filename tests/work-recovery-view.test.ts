@@ -6,6 +6,12 @@ test('completed work suppresses historical interruptions even when a stale recov
  const jobs=[{id:'completed',roomId:'room-pm',state:'delivered'},stopped];
  assert.equal(currentRecoveryJob('room-pm',jobs,null),undefined);
  assert.equal(currentRecoveryJob('room-pm',jobs,{jobId:stopped.id}),undefined);
+ const afterJobId=stopped.id;
+ const dependent={id:'queued-message',roomId:'room-pm',state:'queued',afterJobId};
+ const response={id:'group-response',roomId:'room-pm',state:'delivered',trigger:'group-response',groupResponse:{sourceJobId:dependent.id}};
+ const discussion={id:'group-discussion',roomId:'room-pm',state:'noop',trigger:'group-discussion',groupInput:{sourceJobId:stopped.id}};
+ assert.equal(currentRecoveryJob('room-pm',[response,discussion,dependent,stopped],{jobId:stopped.id}),stopped);
+ assert.equal(currentRecoveryJob('room-pm',[response,dependent,...jobs],{jobId:stopped.id}),undefined);
 });
 test('only a current matching owner-selected interruption is shown',()=>{
  for(const state of ['stopped','blocked','unknown']){const job={...stopped,state};assert.equal(currentRecoveryJob('room-pm',[job],{jobId:job.id}),job);}
