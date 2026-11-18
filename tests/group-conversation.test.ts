@@ -9,6 +9,28 @@ test('group plans admit several real speakers and role-based stages without forc
  assert.deepEqual(parseGroupConversation(JSON.stringify({mode:'discussion',members:['pm','dev','qa'],reason:'Complementary perspectives'}),plan.members,plan.members,'chief').members,['pm','dev','qa']);
 });
 
+test('pause and resume preserve only untouched work that still matches the room settings',async()=>{
+ const {TeamStore}=await import('../src/service/team-store.js'),{privateTempDir}=await import('./helpers/private-temp.js'),{rmSync}=await import('node:fs'),{join}=await import('node:path'),{tmpdir}=await import('node:os');
+ const root=privateTempDir(join(tmpdir(),'group-resume-')),store=new TeamStore(root);
+ try{
+  const roomId='group-resume';
+  const original=store.configure({roomId,goal:'fixture',kind:'group',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:20,dailyCalls:100},0);
+  for(const id of ['before-pause','already-claimed'])store.enqueue(id,roomId,id);
+  const claimed=store.job('already-claimed');claimed.claimedAt=new Date().toISOString();store.save(claimed);
+  store.pause(roomId);store.enqueue('during-pause',roomId,'during-pause');
+  const resumed=store.resume(roomId);
+  for(const id of ['before-pause','during-pause']){assert.equal(store.job(id).state,'queued');assert.equal(store.job(id).scopeRevision,resumed.revision);}
+  assert.equal(store.job('already-claimed').scopeRevision,original.revision);
+  const paused=store.pause(roomId);store.enqueue('before-settings-change',roomId,'before-settings-change');
+  const changed=store.configure({...paused,mode:'mentions'},paused.revision);store.enqueue('after-settings-change',roomId,'after-settings-change');
+  assert.equal(store.job('before-settings-change').scopeRevision,paused.revision);
+  assert.equal(store.job('after-settings-change').scopeRevision,changed.revision);
+  const next=store.resume(roomId);
+  assert.equal(store.job('before-settings-change').scopeRevision,paused.revision);
+  assert.equal(store.job('after-settings-change').scopeRevision,next.revision);
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
+
 test('unanswered feedback review is durable, latest-only, bounded and discussion-only',async()=>{
  const {TeamStore}=await import('../src/service/team-store.js'),{reviewUnansweredGroupTurns}=await import('../src/service/group-conversation.js'),{privateTempDir}=await import('./helpers/private-temp.js'),{rmSync}=await import('node:fs'),{join}=await import('node:path'),{tmpdir}=await import('node:os');
  const root=privateTempDir(join(tmpdir(),'group-feedback-'));let store=new TeamStore(root);

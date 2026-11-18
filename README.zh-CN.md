@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.9.3。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.4。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -37,6 +37,12 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 **KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活和完整状态迁移等仍未完成。本版新增限作用域的 effect 只读核对及 HTML/邮件宿主回执，不代表所有工具已认证，也不代替业务验收。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
 
 ---
+
+## 0.9.4 有什么
+
+- **群聊收尾断线后可继续。** 旧执行已停止且成员回执齐备时，可自动接续一次负责人核验，交付后继续处理排队消息。
+- **群聊恢复后处理暂停期间的消息。** 只有暂停状态变化时，未开始的任务可以继续排队执行。
+- **@ 成员菜单适配深色主题。** 文字、边框和选中高亮跟随当前主题。
 
 ## 0.9.3 有什么
 
@@ -124,8 +130,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.9.3.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.9.3.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.4.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.4.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -182,6 +188,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.9.4
+
+修复群聊收尾断线后的接续、暂停期间消息的恢复执行，以及深色模式下 @ 成员菜单的配色。完整改动见 [0.9.4 发布说明](release-notes/0.9.4.md)。
 
 ### v0.9.3
 
