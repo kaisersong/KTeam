@@ -1,3 +1,4 @@
+import {isLiteralAwkFilter} from '../protocol/awk-filter.js';
 import {localGitWorkflow} from './git-local-workflow.js';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -126,7 +127,9 @@ export function terminalWorkingPaths(core:any,command:string,cwd:string):string[
   // Explicit absolute path arguments and redirection targets retain their own directory authority.
   // Drive-rooted and UNC paths are absolute on Windows, including local
   // output redirections; they cannot inherit an unrelated working directory.
-  for(const match of raw.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
+  const awk=/^awk\s+('[^'\r\n]*')(?=\s|$)/.exec(raw);
+  const operands=awk&&isLiteralAwkFilter(awk[1]!)?raw.slice(awk[0].length):raw;
+  for(const match of operands.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
    const path=match[1]??match[2]??match[3]!;if(path!=='/dev/null')paths.add(expand(path));
   }
  }

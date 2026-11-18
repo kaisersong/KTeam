@@ -151,6 +151,22 @@ test('ls-remote with redirected tag results is ordinary and reuses its directory
   f.restart();
   const restored=await f.make(f.root);
   assert.equal(await restored.h.registryOptions.permissionManager.check('bash',input),'allow');
+  const status=`cd ${f.workspace}
+echo "=== 远端 ref ==="; GIT_TERMINAL_PROMPT=0 timeout 30 git ls-remote --heads origin 'feat/0.9.1-opt-p0'; echo "EXIT_LSREMOTE=$?"
+echo "=== 本地 HEAD / 上游 / 干净度 ==="; git log -1 --format='%H %s'; git rev-parse --abbrev-ref @{u}; git status --porcelain | wc -l
+echo "=== CI ==="; gh run list --branch feat/0.9.1-opt-p0 --limit 3 2>&1 | head -5`;
+  assert.equal(await restored.h.registryOptions.permissionManager.check('bash',{command:status,workdir:f.root}),'allow');
+  mkdirSync(join(f.workspace,'build'));
+  writeFileSync(join(f.workspace,'build','test-report.tap'),'ok 1\nnot ok 2\n # failure detail\n');
+  const awk=`awk '/^not ok/{f=1} f{print; c++} c>45{exit}'`;
+  const tapQuery=`cd ${f.workspace}
+echo "=== not ok 行 ==="; grep -n "^not ok" build/test-report.tap | head -10
+echo; echo "=== TAP 中失败详情 ==="; ${awk} build/test-report.tap | head -60`;
+  assert.equal(await restored.h.registryOptions.permissionManager.check('bash',{command:tapQuery,workdir:f.root}),'allow');
+  assert.match(await restored.registry.executeTool('bash',{command:tapQuery,workdir:f.root}),/failure detail/);
+  const outside=join(f.root,'outside');mkdirSync(outside);writeFileSync(join(outside,'outside.tap'),'not ok');
+  assert.equal(await restored.h.registryOptions.permissionManager.check('bash',{command:`cd ${f.workspace}; ${awk} "${join(outside,'outside.tap')}"`,workdir:f.root}),'prompt');
+
   assert.equal(f.approvals.list().length,0);
   writeFileSync(join(f.root,'config/settings.json'),JSON.stringify({permissions:{deny:['bash:git ls-remote*']}}));
   const denied=await f.make(f.root);

@@ -26,6 +26,8 @@ test('approval facts expose actual legacy paths and require separate inspection 
  assert.equal(inspectOperation('bash',{command:'rm -rf ./env'},'/project').mixedInspection,false);
  const windows=inspectOperation('bash',{command:String.raw`dir C:\old\env & rmdir /s /q C:\old\env & cd /d C:\old\project`},String.raw`C:\new\project`);
  assert.equal(windows.mixedInspection,true);assert.ok(windows.facts.some(f=>f.kind==='delete'&&f.target===String.raw`C:\old\env`));assert.ok(windows.facts.some(f=>f.reason.includes('切换')&&f.target===String.raw`C:\old\project`));assert.ok(!windows.facts.some(f=>/\\[sq]$/i.test(f.target)));
+ const awk=inspectOperation('bash',{command:"cd /work/tree; awk '/^not ok/{f=1} f{print; c++} c>45{exit}' /tmp/report.tap | head -60"},'/home/kai');
+ assert.deepEqual(awk.facts.map(f=>f.target),['/work/tree','/tmp/report.tap']);
  const relative=inspectOperation('write',{file_path:String.raw`..\report.txt`},String.raw`C:\new\project`);assert.equal(relative.facts[0]?.target,String.raw`C:\new\report.txt`);
 });
 test('raw provider control markup is rejected even after normal prose or with malformed calls',()=>{
