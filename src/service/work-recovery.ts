@@ -25,7 +25,7 @@ export class WorkRecovery {
  constructor(private upstream: Upstreams, private store: TeamStore, private coordinator: TeamCoordinator) {}
  async wakeSafe(){
   await this.wakeRoutingRecovery();
-  await this.wakeAdmissionRecovery();
+  await this.wakeModelRecovery();
   await this.wakeCheckpointRecovery();
   await this.wakeUnknownBatch();
   // Only stale approval waits / busy recovery chains are eligible. No unknown runs.
@@ -69,10 +69,15 @@ export class WorkRecovery {
    try{const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];if(!this.view(roomId,tasks)?.canContinue)continue;await this.continue(roomId,{jobId:job.id,requestId:'auto-routing-format:'+job.id},'auto-routing-format:'+job.id);}catch{/* Unverified scope and active work remain stopped; no tools are replayed. */}
   }
  }
- private async wakeAdmissionRecovery(){
+ private async wakeModelRecovery(){
   for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
-   const job=latestWork(this.store.jobs(roomId)),failure=job&&executionFailure(job);
-   if(!job||job.state!=='blocked'||failure?.code!=='execution_admission_unverified'||failure.phase!=='model'||job.stopResultUnknown||!job.finishedAt||Date.now()-Date.parse(job.finishedAt)<5000||this.store.settings(roomId)?.paused||this.store.jobs(roomId).some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   const jobs=this.store.jobs(roomId),job=latestWork(jobs),failure=job&&executionFailure(job);
+   if(!job||job.state!=='blocked'||failure?.phase!=='model'||job.stopResultUnknown||!job.finishedAt||Date.now()-Date.parse(job.finishedAt)<5000||this.store.settings(roomId)?.paused||jobs.some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
+   const groupReview=failure.code==='model_connection_failed'&&failure.evidence==='captured'
+    &&jobs.some(next=>next.state==='queued'&&next.afterJobId===job.id)&&this.interruptedGroupReview(job);
+   if(failure.code!=='execution_admission_unverified'&&!groupReview)continue;
+   const autoId=groupReview?'auto-group-review:'+digest(JSON.stringify([roomId,job.originId])):'auto-admission:'+job.id;
+   if(this.store.operation(autoId))continue;
    // Every started tool needs its own durable finished receipt. A later model
    // event alone does not prove that external effects or child processes ended.
    const trace=job.toolTrace??[];
@@ -90,9 +95,21 @@ export class WorkRecovery {
     const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
     const old=tasks.find(task=>task.taskRef===job.task?.taskRef);
     if(!old||old.state!=='halted')continue;
-    await this.continue(roomId,{jobId:job.id,requestId:'auto-admission:'+job.id},'auto-admission:'+job.id);
+    await this.continue(roomId,{jobId:job.id,requestId:autoId},autoId);
    }catch{/* Retry observations later. Explicit denial never changes this job's eligibility. */}
   }
+ }
+ /** A network failure during group review can strand every later message.
+  * Reopen that review once for the original user turn, with old stage receipts. */
+ private interruptedGroupReview(job:any){
+  const settings=this.store.settings(job.roomId),plan=job.groupPlan;
+  if(settings?.kind!=='group'||settings.mode!=='auto'||settings.quiet||plan?.mode!=='work'||plan.ownerId!==job.activeBotId||!plan.stageOperations?.some(Boolean)||job.results?.length)return false;
+  if((job.toolTrace??[]).some((event:any)=>!event.type||event.type.startsWith('tool_')))return false;
+  return plan.stageOperations.filter(Boolean).every((id:string)=>{
+   const operation=this.store.operation(id);
+   return operation?.jobId===job.id&&operation.roomId===job.roomId&&operation.botId===job.activeBotId&&operation.status==='returned'
+    &&operation.results?.length>0&&operation.results.every((result:any)=>['delivered','blocked','stopped','cancelled','noop'].includes(result.state));
+  });
  }
  /** A suspended tool emits started before asking for approval, then completes
   * under another run id. Check the real checkpoint instead of pairing run ids. */
