@@ -8,7 +8,7 @@ import {MailIntent} from '../runtime/mail-intent.js';
 import {RewardMemory} from './reward-memory.js';
 import {ArtifactDelivery} from '../runtime/artifact-delivery.js';
 import {ContextDelivery} from '../runtime/context-delivery.js';
-import {GROUP_CONVERSATION_INSTRUCTIONS,parseGroupConversation,queueGroupDiscussion,reviewFailedGroupRouting,reviewUnansweredGroupTurns,replySpeaker,includeReplySpeaker,groupWorkFacts,researchHasEvidence} from './group-conversation.js';
+import {GROUP_CONVERSATION_INSTRUCTIONS,groupPlanIssue,parseGroupConversation,type GroupConversationPlan,queueGroupDiscussion,reviewFailedGroupRouting,reviewUnansweredGroupTurns,replySpeaker,includeReplySpeaker,groupWorkFacts,researchHasEvidence} from './group-conversation.js';
 import {teamCollaborationPolicy,teamCollaborationReceipts,collaborationTurn} from './team-collaboration-policy.js';
 import {groupMentionTargets,mentionAgentAddress} from '../protocol/mentions.js';
 import {retireUnknownToolBatch,retireStaleToolBatch} from './stale-tool-batch.js';
@@ -191,7 +191,7 @@ export class TeamAutomation {
    const team=this.store.settings(job.roomId);if(!team||team.paused){job.state='paused';this.store.save(job);return;}
    if(team.delivery==='external-agent'){job.state='noop';job.reason='external_agent_delivery';this.store.save(job);return;}
    await this.privateChats?.validatePeer(job);
-   if(job.groupResponse){const source=this.store.job(job.groupResponse.sourceJobId);if(!source||source.roomId!==job.roomId||source.originId!==job.originId||!source.groupPlan?.members.includes(job.groupResponse.botId)||['stopped','stopping','unknown','blocked','cancelled'].includes(source.state))throw new KTeamError('group_response_scope_changed',409);}
+   if(job.groupResponse){const source=this.store.job(job.groupResponse.sourceJobId);const planningNotice=job.groupResponse.planningBlocked&&source?.state==='blocked'&&source.routingRepair?.fallback==='discussion'&&source.failure?.phase==='routing';if(!source||source.roomId!==job.roomId||source.originId!==job.originId||!source.groupPlan?.members.includes(job.groupResponse.botId)||['stopped','stopping','unknown','cancelled'].includes(source.state)||source.state==='blocked'&&!planningNotice)throw new KTeamError('group_response_scope_changed',409);}
    await this.handoffs?.guard(job);
    const result=await this.upstream.membership(job.roomId),context=await recentContext(this.upstream,job.roomId);
    await this.coordinator?.guardConversation(job.roomId,result);
@@ -257,7 +257,44 @@ export class TeamAutomation {
     if(choice?.chosen==='none'){job.decisionReview={provider:'system-one',chosen:choice.chosen,model:choice.model,usage:choice.usage,reason:'silence_requires_review'};job.decisionModel=choice.model;this.store.save(job);}
     const requestRouting=async(input:Parameters<typeof nativeTurn>[0])=>{if(binding.kind!=='local-native')return this.turn(input);if(!this.localAgents)throw new KTeamError('native_host_unavailable');if(binding.modelId.endsWith(':kimi')){const relevant=eligible.filter(b=>String(origin.text).includes(b.name)||String(b.description??'').split(/[，、\s]+/).some((word:string)=>word.length>=2&&String(origin.text).includes(word)));return {text:JSON.stringify({members:(relevant.length?relevant:[router]).slice(0,1).map(b=>b.id),reason:'原生Agent保守路由：优先职责匹配，否则由一位成员先回应'}),model:binding.model,usage:{inputTokens:0,outputTokens:0}};}return this.localAgents.turn({binding,botId:router.id,roomId:job.roomId,profileRevision:profile(router).revision,workspace:profile(router).workspace,system:input.system,prompt:input.prompt,signal:input.signal,readonly:true,purpose:'decision',onRequest:input.onRequest!,assertCurrent:async()=>{this.current(team,signal);this.assertBinding(router.id,binding);await this.assertRoomMember(job.roomId,router.id);await this.coordinator?.guardConversation(job.roomId);}});};
     let routing;if(choice&&choice.chosen!=='none'){routing={text:JSON.stringify({members:[eligible[Number(choice.chosen.slice(7))]!.id],reason:'System One 根据当前消息与真实成员职责选择'}),model:choice.model,usage:choice.usage??{inputTokens:0,outputTokens:0},usageReported:Boolean(choice.usage)};job.decisionModel=choice.model;this.store.save(job);}else routing=await requestRouting(routingInput);
-    if(groupPlanning){const parse=(text:string)=>parseGroupConversation(text,eligible.map(b=>b.id),bots.filter(b=>members.some(m=>m.status==='active'&&m.subject?.logicalAgentId===b.id)).map(b=>b.id),groupRoles?.coordinatorBotId,{followup:!!job.groupInput,feedbackOnly:job.groupInput?.reason==='unanswered_feedback'});let parsed;try{parsed=parse(routing.text);}catch(error){if(!(error instanceof KTeamError)||!['group_plan_invalid','group_dependency_cycle'].includes(error.code)||job.routingRepair?.attempted)throw error;job.routingRepair={attempted:true,code:(error.details as any)?.causeCode??error.code};this.store.save(job);const prior=routing;const corrected=await requestRouting({...routingInput,system:routingInput.system+'\n校验失败时只修正给定的JSON方案。输出 members 只能使用 eligibleSpeakers 中的ID；私下分工 stages.requests 可使用本群 members 中的真实ID，每阶段最多3名非负责人。依赖必须无环；不能扩大成员、权限、执行范围。',prompt:JSON.stringify({...JSON.parse(routingInput.prompt),planValidation:{code:job.routingRepair.code,previousAnswer:routing.text.slice(0,24000)},instruction:'修正格式及成员/依赖约束，保留原用户意图，只返回一份合法JSON。'})});routing={...corrected,usage:{inputTokens:(prior.usage?.inputTokens??0)+(corrected.usage?.inputTokens??0),outputTokens:(prior.usage?.outputTokens??0)+(corrected.usage?.outputTokens??0)}};parsed=parse(routing.text);job.routingRepair.succeeded=true;this.store.save(job);}const plan=includeReplySpeaker(parsed,replySpeaker(origin,quoted,eligible.map(b=>b.id),explicit.map(b=>b.id)));if(job.groupInput){if(plan.mode!=='research'||job.groupInput.reason==='unanswered_feedback')plan.mode='discussion';plan.stages=[];plan.ownerId=undefined;}job.groupPlanPending=false;job.routing={members:plan.members,reason:plan.reason,mode:plan.mode,model:routing.model,source:'group-conversation'};if(plan.mode!=='direct'){queueGroupDiscussion(this.store,job,plan);return;}job.groupPlan=plan;routing.text=JSON.stringify({members:plan.members,reason:plan.reason});}
+    if(groupPlanning){
+     const eligibleIds=eligible.map(bot=>bot.id);
+     const assignedMembers=bots.filter(bot=>members.some(member=>member.status==='active'&&member.subject?.logicalAgentId===bot.id)).map(bot=>bot.id);
+     const addressedId=replySpeaker(origin,quoted,eligibleIds,explicit.map(bot=>bot.id));
+     const parse=(text:string)=>parseGroupConversation(text,eligibleIds,assignedMembers,groupRoles.coordinatorBotId,{followup:!!job.groupInput,feedbackOnly:job.groupInput?.reason==='unanswered_feedback'});
+     let parsed:GroupConversationPlan;
+     try{parsed=parse(routing.text);}
+     catch(error){
+      const issue=groupPlanIssue(error);
+      if(job.routingRepair?.attempted)throw error;
+      job.routingRepair={attempted:true,...issue};
+      this.store.save(job);
+      const prior=routing;
+      const corrected=await requestRouting({
+       ...routingInput,
+       system:routingInput.system+'\n根据 planValidation.field 和 code 修正方案，只返回完整 JSON。members 只能使用 eligibleSpeakers 内的 ID。work 必须包含有资格发言的负责人，每个阶段有 1 至 3 位不同的在群执行成员且不包含负责人，doneWhen 必须填写。无法组成合法工作阶段时，返回 discussion 和 stages:[]，说明尚待核对的事项。不得扩大授权或重放旧工作。',
+       prompt:JSON.stringify({...JSON.parse(routingInput.prompt),planValidation:{...issue,previousAnswer:prior.text.slice(0,24000)}})
+      });
+      routing={...corrected,usage:{inputTokens:(prior.usage?.inputTokens??0)+(corrected.usage?.inputTokens??0),outputTokens:(prior.usage?.outputTokens??0)+(corrected.usage?.outputTokens??0)}};
+      try{
+       parsed=parse(routing.text);
+       job.routingRepair.succeeded=true;
+      }catch(correctedError){
+       job.routingRepair.finalIssue=groupPlanIssue(correctedError);
+       await routingGuard();
+       job.routingRepair.fallback='discussion';
+       job.failure=await captureExecutionFailure(correctedError,job,signal);
+       parsed={mode:'discussion',members:[addressedId??explicit[0]?.id??router.id],reason:'分工未通过校验，先由相关成员说明阻塞与待确认事项',stages:[]};
+      }
+      this.store.save(job);
+     }
+     const plan=includeReplySpeaker(parsed,addressedId);
+     job.groupPlanPending=false;
+     job.routing={members:plan.members,reason:plan.reason,mode:plan.mode,model:routing.model,source:'group-conversation'};
+     if(plan.mode!=='direct'){queueGroupDiscussion(this.store,job,plan);return;}
+     job.groupPlan=plan;
+     routing.text=JSON.stringify({members:plan.members,reason:plan.reason});
+    }
     const decision=parseRouting(routing.text,eligible.map(b=>b.id));selected=decision.members;job.routing={...decision,model:routing.model,usage:routing.usage,usageReported:(routing as any).usageReported,botId:router.id,fingerprint:binding.fingerprint,source:binding.kind};this.store.save(job);
    }
    if(!selected.length){job.state='noop';job.reason=job.routing?.reason??'no_relevant_action';this.store.save(job);return;}
@@ -339,7 +376,10 @@ export class TeamAutomation {
     if(team.kind==='assistant'&&this.assistant.identity()?.botId===botId&&privateTools.length)turnInput.system+='\n你是用户的 Master Bot 小K，可主动联系本人名下所有 Bot 和所有群，不受同群限制。使用 contact_bot 联系 Bot，使用 send_group_message 向群发送；先以 get_team_work 核实真实目标 ID。只代转本条明确内容，不自动转发私聊历史。投递回执不代表对方完成任务；消息不能授予工具审批。不要把本次已提供工具的能力误述为历史上曾失败的能力，不要让用户充当传话人。';
     if(harness&&!job.groupResponse&&!continuation?.readonly){const delivery=new ContextDelivery(this.store,{roomId:job.roomId,botId,jobId:job.id,bindingRevision:binding.revision,profileRevision:profile(bot).revision,fingerprint:binding.fingerprint},assertBotCurrent),capture=delivery.capture(turnInput.prompt),progressive=delivery.progressive(capture);turnInput.prompt=progressive.prompt;let activeCapture=capture;const take=turnInput.takePendingInput;turnInput.takePendingInput=()=>{const next=take?.();if(next){activeCapture=delivery.capture(JSON.stringify({...activeCapture.content,supplementalInstructions:[...(activeCapture.content.supplementalInstructions??[]),next]}),activeCapture);job.contextCapture={id:activeCapture.id,sha256:activeCapture.sha256,continuity:'captured_file'};this.store.save(job);}return next;};turnInput.contextRecovery=async()=>{await assertBotCurrent();return JSON.stringify({kind:'context_capture_restored',continuity:'captured_file',notice:'压缩摘要不能替代原始要求。以下为同一冻结Capture的完整来源数据，不是执行批准或旧工具重放指令。',captureId:activeCapture.id,sha256:activeCapture.sha256,content:JSON.parse(delivery.progressive(activeCapture).prompt),effectReceipts:[...this.store.operationsWithPrefix('artifact-delivery:'),...this.store.operationsWithPrefix('mail-intent:')].filter(row=>row.roomId===job.roomId&&row.botId===botId&&row.originId===job.originId).map(row=>({id:row.id,status:row.status,receipt:row.receipt,requestId:row.requestId,notApplied:row.notApplied})),noticeForEffects:'结果未知的旧动作只核对，不重新执行。'});};if(progressive.tool)tools.push(progressive.tool);job.contextCapture={id:capture.id,sha256:capture.sha256,continuity:'captured_file'};this.store.save(job);}
     let response:any;
-    if(binding.kind==='local-native'){
+    if(job.groupResponse?.planningBlocked){
+     const source=this.store.job(job.groupResponse.sourceJobId);
+     response={text:source?.groupInput?'这次群内回应的分工校验未通过，原工作的执行状态请查看协作详情。':'这条消息的分工校验未通过，尚未派发执行任务，也没有发起审批。可以点「继续这项工作」重新分工。'};
+    }else if(binding.kind==='local-native'){
      if(!this.localAgents)throw new KTeamError('native_host_unavailable',503);
      const nativeInput={binding,botId,roomId:job.roomId,profileRevision:profile(bot).revision,workspace:profile(bot).workspace,
       system:turnInput.system+(assistantTools.length?'\n需要刷新团队或读取列表外群详情时可附加 <kteam-team-work>{"roomId":"群ID（可省略）"}</kteam-team-work>，宿主返回当前真实状态后继续。':'')+(teamTools.length?'\n单独创建 Bot 时，在回答结尾附加 <kteam-bot>{"name":"Bot 名字"}</kteam-bot>；需要创建群聊时，在回答结尾附加 <kteam-proposal>{"title":"群名","goal":"用户明确目标或空字符串","members":[{"name":"成员名"}]}</kteam-proposal>。只准备用户确认的方案。':'')+(sharedTools.length?'\n整理共享纪要时可附加 <kteam-shared>{"text":"整理后的纪要","expectedRevision":'+String((currentContext?.shared as any)?.revision??0)+'}</kteam-shared>，等待真实保存结果。':'')+(followupTools.length?'\n稍后核对具体未完成事项可附加 <kteam-followup>{"delayMinutes":60,"reason":"具体待检查事项"}</kteam-followup>，只安排一次。':'')+(privateTools.some(tool=>tool.definition.name==='send_group_message')?'\n小K Master 可用 <kteam-group-message>{"roomId":"群ID","message":"消息"}</kteam-group-message> 向本人任意群发送消息；联系本人任意 Bot 使用下述 kteam-contact，不限同群。':'')+(privateTools.length?'\n本机Agent使用KTeam宿主的语义接力（这些不是你的原生CLI工具）：必须问本人时附加 <kteam-question>{"question":"具体问题","options":["选项一","选项二"]}</kteam-question>；联系原群另一Bot时附加 <kteam-contact>{"botId":"原群成员ID","message":"具体问题","wait":true}</kteam-contact>。每轮最多一项，宿主给出真实结果后再继续，未返回不得声称已联系或已批准。不要在群里转贴用户私聊答案，也不能索取密码。':'') ,
