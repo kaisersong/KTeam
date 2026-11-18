@@ -34,13 +34,14 @@
 [data-app-theme=dark]{color-scheme:dark;--settings-surface:#20251e;--surface-panel:#252d20;--panel:#2b3325;--rail:#1b2019;--line:#46513e;--green:#a0c880;--muted:#a8b49d;--text-primary:#e5eadf;--text-secondary:#b9c8ab;--danger:#efbfa6;background:#20251e;color:var(--text-primary)}
 [data-app-theme=dark] :is(.app-shell,.main-area,.modal,.conversation-workspace,.inspector,.titlebar,.conversation-header,.composer-area){background:#20251e;color:var(--text-primary)}
 [data-app-theme=dark] .sidebar{background:var(--rail)}
-[data-app-theme=dark] :is(.composer,.message-menu,.conversation-menu,.tool-approval,.proposal-card,.settings-editor){background:var(--panel);border-color:var(--line);color:var(--text-primary)}
+[data-app-theme=dark] :is(.composer,.composer-mentions,.message-menu,.conversation-menu,.tool-approval,.proposal-card,.settings-editor){background:var(--panel);border-color:var(--line);color:var(--text-primary)}
 [data-app-theme=dark] :is(.tool-approval pre,.tool-trace pre,.message-text pre,.raw-markdown){background:#1b2019;color:var(--text-primary)}
 [data-app-theme=dark] :is(.tool-approval h3,.tool-approval>p,.tool-approval small,.tool-trace,.tool-trace summary,.tool-trace small){color:var(--text-secondary)}
 [data-app-theme=dark] :is(input,textarea,select){color:var(--text-primary);border-color:var(--line)}
 [data-app-theme=dark] :is(input,textarea)::placeholder{color:#a8b49d;opacity:1}
 [data-app-theme=dark] :is(.room-item.active,.group-tile.active,.settings-nav nav button[aria-current=page],.settings-nav nav button:hover,.settings-badge,.settings-badge.ready,.bot-tabs button[aria-selected=true],.settings-tabs button[aria-pressed=true],.workspace-tabs [aria-current=page],.from-user .message-text){background:#303d27;color:#d4e5c6}
 [data-app-theme=dark] :is(.icon-button:hover,.room-item:hover,.group-tile:hover,.starter-list button:hover,.conversation-menu button:hover,.message-menu>[role=menuitem]:hover,.secondary:hover){background:#35422d;color:var(--text-primary)}
+[data-app-theme=dark] .composer-mentions button:is([aria-selected=true],:hover){background:#35422d;color:var(--text-primary)}
 [data-app-theme=dark] :is(.primary,.settings-content .primary,.send-button){background:var(--green);color:#1b2515}
 [data-app-theme=dark] :is(.primary:hover,.settings-content .primary:hover,.send-button:hover){background:#b5d99a}
 [data-app-theme=dark] .send-button:disabled{background:#35422d;color:#a8b49d}
