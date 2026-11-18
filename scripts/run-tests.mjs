@@ -19,14 +19,18 @@ import {readdirSync,mkdirSync,readFileSync} from 'node:fs';
 // darwin and linux share one floor: same file set and same Node versions, so the declared
 // count is identical. Do NOT silently take the smaller of per-platform values, otherwise
 // one platform losing tests wholesale would still pass.
-// Measured: 739 tests declared on darwin, local run 2026-11-18 on top of commit 79be765
-// plus this PR's changes (includes the floor fixture tests themselves); build/test-report.tap
-// "# tests 739". floor = 739*0.95 rounded down. Cross-check: the green v0.9.0 release CI run
-// (actions/runs/44008927827, commit 5f573400) declared 738 on all six matrix jobs.
-const POSIX_MIN_TESTS=702;
-// Conservative initial value: floor(739*0.9), derived from the darwin declared count;
-// recalibrate to floor(measured*0.95) after the first green Windows CI run.
-const WIN32_MIN_TESTS=665;
+// Measured: 741 tests declared on darwin (build/test-report.tap, 2026-11-18 02:41:56,
+// sha256 9cbc0140…: "# tests 741 / pass 732 / skipped 9 / fail 0", 732+9=741).
+// Cross-check: the green v0.9.0 release CI run (actions/runs/44008927827, commit 5f573400)
+// declared 738 on all six matrix jobs, plus this PR's 3 floor fixture tests = 741.
+// The floor is the DECLARED count itself, not a ratio: a ratio floor (702 = 739*0.95) let a
+// silent loss of 38 tests still pass, which defeats the purpose. Per-file declared-count
+// snapshots (to explain the 736-vs-738 environment delta) are follow-up work, not this PR.
+const POSIX_MIN_TESTS=741;
+// Provisional: posix declared count is used until the first Windows CI run reports its own
+// "# tests". Recalibrate to the measured Windows declared count then; do NOT fall back to a
+// ratio-derived value.
+const WIN32_MIN_TESTS=741;
 
 const windows=process.platform==='win32';
 const minTests=windows?WIN32_MIN_TESTS:POSIX_MIN_TESTS;
