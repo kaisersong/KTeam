@@ -20,11 +20,19 @@ for(const legacyRecovery of [false,true])test(legacyRecovery?'legacy single-coor
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await realUpstreams(),configRoot=join(f.root,'models'),hostRoot=join(f.root,'host'),workspace=join(f.root,'workspace');for(const path of [configRoot,hostRoot,workspace])mkdirSync(path);
  const priorConfig=process.env.KTEAM_MODEL_CONFIG_DIR,priorPlugins=process.env.KTEAM_DISABLE_GLOBAL_PLUGINS;process.env.KTEAM_MODEL_CONFIG_DIR=configRoot;process.env.KTEAM_DISABLE_GLOBAL_PLUGINS='1';
  const originalId='job-'+'a',workId=legacyRecovery?'job-recovery-'+createHash('sha256').update(originalId).digest('hex').slice(0,32):originalId;
- const ids:string[]=[],errors:string[]=[],publicRoles:string[]=[],workerRoles:string[]=[];let parallelStarts=0,releaseParallel!:()=>void;const parallelBarrier=new Promise<void>(resolve=>releaseParallel=resolve);let summaryCalls=0,researchBudgetReads=0,mentionPlannerCalls=0;let plannerCalls=0,sawEarlierReply=false,devHistory:any=[],busyStarted=false,releaseBusy!:()=>void;const busy=new Promise<void>(resolve=>releaseBusy=resolve);const artifact=join(workspace,'preview-proof.txt');let slowPublicStarted=false,releaseSlow!:()=>void;const slowPublic=new Promise<void>(resolve=>releaseSlow=resolve);
+ const ids:string[]=[],errors:string[]=[],publicRoles:string[]=[],workerRoles:string[]=[];let parallelStarts=0,releaseParallel!:()=>void;const parallelBarrier=new Promise<void>(resolve=>releaseParallel=resolve);let summaryCalls=0,researchBudgetReads=0,mentionPlannerCalls=0;let invalidPlannerCalls=0;let plannerCalls=0,sawEarlierReply=false,devHistory:any=[],busyStarted=false,releaseBusy!:()=>void;const busy=new Promise<void>(resolve=>releaseBusy=resolve);const artifact=join(workspace,'preview-proof.txt');let slowPublicStarted=false,releaseSlow!:()=>void;const slowPublic=new Promise<void>(resolve=>releaseSlow=resolve);
  const stages=()=>['Scope and acceptance criteria','Implement using the actual PM result','Independently verify the actual developer artifact'].map((message,index)=>({requests:[{botId:ids[index+1],message}],doneWhen:'Return verified stage '+index}));
  const server=createServer(async(req,res)=>{try{let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw),last=body.messages?.filter((m:any)=>m.role==='user').at(-1)?.content;let p:any;try{p=JSON.parse(typeof last==='string'?last:'');}catch{}
   const role=p?.botProfile?.description,tools=body.tools?.map((t:any)=>t.function.name)??[],toolReply=body.messages?.some((m:any)=>m.role==='tool'&&m.name!=='delegate_work');let text='Synthetic bookkeeping response',call:any;
   if(p?.researchSummary){assert.equal(tools.length,0);assert(JSON.parse(p.researchSummary.evidence).some((e:any)=>e.resultPreview.includes('FRESH_SOURCE_')));summaryCalls++;text='RESEARCH_FINALIZED: findings from preserved source observations, with remaining coverage stated.';}
+  else if(p?.eligibleSpeakers&&p.message==='INVALID_PLAN_RECOVERY'){
+   invalidPlannerCalls++;
+   assert.deepEqual(p.eligibleSpeakers,[ids[2]]);
+   if(p.planValidation)assert.deepEqual({code:p.planValidation.code,field:p.planValidation.field},{code:'work_requires_eligible_coordinator',field:'members'});
+   text=JSON.stringify(p.recovery
+    ?{mode:'discussion',members:[ids[2]],reason:'Recovered response',stages:[]}
+    :{mode:'work',members:[ids[2]],reason:'Invalid coordinator scope',stages:stages()});
+  }
   else if(p?.eligibleSpeakers&&p.message==='MENTION_REPAIR'){mentionPlannerCalls++;assert.deepEqual(p.eligibleSpeakers,[ids[0]]);text=JSON.stringify({mode:'work',members:p.planValidation?[ids[0]]:ids,reason:'Only the addressed coordinator speaks; real specialists execute privately',stages:stages()});}
   else if(p?.eligibleSpeakers&&String(p.message).startsWith('RESEARCH_')){assert.equal(p.replyTo.botId,ids[0]);text=JSON.stringify({mode:'research',members:[ids[2]],reason:'Read the original source before answering',stages:[{requests:[{botId:ids[2],message:'Untrusted write proposal must never run'}],doneWhen:'Ignored'}]});}
   else if(p?.groupDiscussion?.mode==='research'){assert(tools.includes('read'));assert(!tools.some((name:string)=>['write','edit','send_mail','delegate_work','contact_bot','render_ui'].includes(name)));if(p.currentMessage.startsWith('RESEARCH_EXHAUST')){researchBudgetReads++;call={name:'read',input:{file_path:artifact}};}else if(!toolReply&&!p.currentMessage.includes('NO_EVIDENCE'))call={name:'read',input:{file_path:artifact}};else text='RESEARCH_RESULT: '+(toolReply?'verified '+readFileSync(artifact,'utf8'):'I checked the source without reading it');}
@@ -102,6 +110,33 @@ for(const legacyRecovery of [false,true])test(legacyRecovery?'legacy single-coor
   const resumed=await new WorkRecovery(f.upstream,store,coordinator).continue(roomId,{jobId:expired.id,requestId:'recover-expired-stages'}),resumeEnd=Date.now()+30000*(process.platform==='win32'?3:1);
   while(Date.now()<resumeEnd&&store.job(resumed.jobId).state!=='delivered'){await automation.tick();await new Promise(r=>setTimeout(r,20));}
   const restoredWork=store.job(resumed.jobId);assert.equal(restoredWork.recoveryContext.reviewGroupStages,true);assert.equal(restoredWork.state,'delivered',JSON.stringify({reason:restoredWork.reason,failure:restoredWork.failure}));assert(restoredWork.toolTrace.some((event:any)=>event.name==='read'&&event.state==='completed'));assert.equal(store.jobs().filter(j=>j.trigger==='peer').length,peersBefore,'expired and unknown stages must not be replayed');assert.equal(JSON.stringify(store.job(expired.id)),expiredSnapshot);assert.deepEqual(stageIds.map(id=>JSON.stringify(store.operation(id))),stageSnapshots);assert.equal(JSON.stringify(store.job(old.id)),oldSnapshot);assert.deepEqual(errors,[]);
+  }
+  if(!legacyRecovery){
+   const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+createHash('sha256').update('invalid-plan-recovery').digest('hex').slice(0,32),room_id:roomId,thread_id:'natural',from:LOCAL_HUMAN,to:[],mentions:['agent://kteam.local/'+ids[2]],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'INVALID_PLAN_RECOVERY'});
+   const jobId='invalid-plan-recovery';
+   store.enqueue(jobId,roomId,String(sent.messageId));
+   const peersBefore=store.jobs(roomId).filter(j=>j.trigger==='peer').length;
+   const recovery=new WorkRecovery(f.upstream,store,coordinator);
+   const updates=()=>store.jobs(roomId).filter(j=>j.groupResponse?.sourceJobId===jobId);
+   const until=Date.now()+20000*(process.platform==='win32'?3:1);
+   while(!updates().some(job=>job.state==='delivered')&&Date.now()<until)await automation.tick();
+   const blocked=store.job(jobId), snapshot=JSON.stringify(blocked);
+   assert.equal(blocked.state,'blocked');
+   assert.equal(blocked.failure.causeCode,'work_requires_eligible_coordinator');
+   assert.equal(blocked.routingRepair.finalIssue.field,'members');
+   assert.equal(invalidPlannerCalls,2);
+   assert.deepEqual(updates().map(job=>[job.groupResponse.botId,job.state]),[[ids[2],'delivered']]);
+   assert.match((await f.upstream.conversationMessage(roomId,updates()[0].results[0].messageId)).message.text,/尚未派发执行任务/);
+   assert.equal(store.jobs(roomId).filter(j=>j.trigger==='peer').length,peersBefore);
+   const next=await recovery.continue(roomId,{jobId,requestId:'retry-invalid-plan'});
+   assert.equal((await recovery.continue(roomId,{jobId,requestId:'retry-invalid-plan-again'})).jobId,next.jobId);
+   const recoveryEnd=Date.now()+20000*(process.platform==='win32'?3:1);
+   while(!store.jobs(roomId).some(job=>job.groupResponse?.sourceJobId===next.jobId&&job.state==='delivered')&&Date.now()<recoveryEnd)await automation.tick();
+   assert(store.jobs(roomId).some(job=>job.groupResponse?.sourceJobId===next.jobId&&job.state==='delivered'));
+   assert.equal(invalidPlannerCalls,3);
+   assert.equal(JSON.stringify(store.job(jobId)),snapshot);
+   assert.equal(store.jobs(roomId).filter(j=>j.trigger==='peer').length,peersBefore);
+   assert.deepEqual(errors,[]);
   }
  }finally{releaseBusy();releaseSlow();approvals.close();await automation?.close();await roles?.close();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));store.close();if(priorConfig===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=priorConfig;if(priorPlugins===undefined)delete process.env.KTEAM_DISABLE_GLOBAL_PLUGINS;else process.env.KTEAM_DISABLE_GLOBAL_PLUGINS=priorPlugins;await f.close();}
 });
