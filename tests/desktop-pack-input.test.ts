@@ -9,6 +9,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
 const root=fileURLToPath(new URL('../..',import.meta.url));
+const {spawnBatchFile}=createRequire(import.meta.url)(join(root,'scripts/mobile-install.mjs')) as {spawnBatchFile:(scriptPath:string,args:string[],options?:{encoding?:BufferEncoding})=>{status:number|null;error?:Error;stdout?:string}};
 const pack=createRequire(import.meta.url)(join(root,'scripts/desktop-pack-input.mjs')) as {
   packInputPlan:(dir:string)=>{hide:string[];links:Array<{name:string;target:string;dangling:boolean}>};
   stagePackTree:(dir:string,destination:string)=>{plan:{hide:string[]};destination:string};
@@ -304,7 +305,7 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
     assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(staged)),true);
     assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(kswarm)),false);
     const bin=join(staged,'node_modules','.bin',process.platform==='win32'?'kswarm-marker.cmd':'kswarm-marker');
-    const ran=process.platform==='win32'?spawnSync(bin,[],{shell:true,encoding:'utf8',windowsHide:true}):spawnSync(process.execPath,[bin],{encoding:'utf8'});
+    const ran=process.platform==='win32'?spawnBatchFile(bin,[],{encoding:'utf8'}):spawnSync(process.execPath,[bin],{encoding:'utf8'});
     if(ran.error)throw ran.error;
     assert.equal(ran.status,0);
     assert.equal((ran.stdout??'').trim(),'kswarm-marker');

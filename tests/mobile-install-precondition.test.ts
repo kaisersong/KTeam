@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {chmodSync,existsSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {DatabaseSync} from 'node:sqlite';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -117,6 +118,45 @@ test('two installers wait on one lock instead of running the install together',a
     assert.deepEqual(events.map(event=>event.kind),['start','end','start','end']);
     assert.ok(events[1]!.time<=events[2]!.time);
   }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+function lockHeld(directory:string){
+  const db=new DatabaseSync(join(directory,'lock.sqlite'));
+  db.exec('PRAGMA busy_timeout=200');
+  try{db.exec('BEGIN IMMEDIATE');db.exec('ROLLBACK');return false;}
+  catch{return true;}
+  finally{db.close();}
+}
+
+test('killing the runner releases the install lock and stops the install process',async()=>{
+  const dir=temp();
+  const mobile=join(dir,'mobile');
+  const lock=join(dir,'lock');
+  const pidFile=join(dir,'install.pid');
+  const command=join(dir,'hang.js');
+  let runnerPid:number|undefined;
+  try{
+    packageRoot(mobile);
+    writeFileSync(command,"const fs=require('node:fs');fs.writeFileSync(process.env.PID_FILE,String(process.pid));setInterval(()=>{},1000);");
+    const helper=pathToFileURL(join(root,'scripts/mobile-install.mjs')).href;
+    const source=`import {withMobileInstall} from ${JSON.stringify(helper)};withMobileInstall({mobile:${JSON.stringify(mobile)},command:process.execPath,args:[${JSON.stringify(command)}],lockDirectory:${JSON.stringify(lock)},stdio:'ignore',env:{...process.env,PID_FILE:${JSON.stringify(pidFile)}}},()=>{});`;
+    const runner=spawn(process.execPath,['--input-type=module','-e',source],{stdio:'ignore'});
+    runnerPid=runner.pid;
+    const started=Date.now()+5000;
+    while(!existsSync(pidFile)){if(Date.now()>started)throw Error('install_did_not_start');await new Promise(resolve=>setTimeout(resolve,20));}
+    assert.equal(lockHeld(lock),true);
+    const installPid=Number(readFileSync(pidFile,'utf8'));
+    if(!runner.pid)throw Error('runner_pid_missing');
+    process.kill(runner.pid,'SIGKILL');
+    const deadline=Date.now()+3000;
+    let dead=false;
+    while(Date.now()<deadline){try{process.kill(installPid,0);}catch{dead=true;break;}await new Promise(resolve=>setTimeout(resolve,30));}
+    assert.equal(dead,true);
+    const releaseDeadline=Date.now()+3000;
+    let free=false;
+    while(Date.now()<releaseDeadline){if(!lockHeld(lock)){free=true;break;}await new Promise(resolve=>setTimeout(resolve,30));}
+    assert.equal(free,true);
+  }finally{if(runnerPid){try{process.kill(runnerPid,'SIGKILL');}catch{/* already gone */}}rmSync(dir,{recursive:true,force:true});}
 });
 
 test('two real test runners keep the install lock until each test process exits',async()=>{
