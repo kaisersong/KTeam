@@ -111,6 +111,12 @@ import { mobileApprovalCard } from "../src/protocol/mobile-approval-card";
 import { mobileRecoveryNotice } from "../src/protocol/work-recovery-view";
 import { acceptPairing } from "../src/protocol/mobile-pairing";
 import { ResponseBarrier, applyPhoneAuthority } from "../src/protocol/mobile-authority";
+import {
+  MobileWriteGate,
+  MobileWriteRefused,
+  mobileActionDisabled,
+  performMobileCall,
+} from "../src/protocol/mobile-write-entry";
 import { mobileB64 } from "../src/protocol/mobile-wire";
 const uid = () => Crypto.randomUUID().replace(/-/g, "");
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -353,6 +359,7 @@ function AppBody() {
     localFingerprint = useRef(""),
     computerRef = useRef<any>(undefined),
     writeBarrier = useRef(new ResponseBarrier()),
+    writeGate = useRef(new MobileWriteGate()),
     pairingConnection = useRef<MobileConnection | undefined>(undefined),
     scanConsumed = useRef(false),
     pairingCandidate = useRef<Computer | undefined>(undefined),
@@ -389,6 +396,11 @@ function AppBody() {
   roomRef.current = room;
   messagesRef.current = messages;
   computerRef.current = computer;
+  const writesLocked = authorityLock || computer?.authorityLocked === true;
+  if (writesLocked !== writeGate.current.locked) {
+    if (writesLocked) writeGate.current.lock();
+    else writeGate.current.unlock();
+  }
   const applyAuthority = (event: any) => {
     const current = computerRef.current;
     if (!current) return;
@@ -410,8 +422,12 @@ function AppBody() {
         void forgetComputer(current);
       },
     );
-    if (reduced.effect === "wipe") return;
+    if (reduced.effect === "wipe") {
+      writeGate.current.lock();
+      return;
+    }
     if (reduced.effect === "lock") {
+      writeGate.current.lock();
       const locked = { ...current, authorityLocked: true };
       computerRef.current = locked;
       setComputer(locked);
@@ -421,6 +437,7 @@ function AppBody() {
       return;
     }
     if (reduced.effect === "unlock") {
+      writeGate.current.unlock();
       const open = {
         ...current,
         authorityLocked: false,
@@ -436,27 +453,20 @@ function AppBody() {
     async (method: string, input: any = {}) => {
       const transport = connection.current;
       if (!transport) throw Error("请先连接电脑");
-      if (transport.computer.credentialId !== computer?.credentialId)
-        throw Error("电脑已切换，请重试");
-      const token = writeBarrier.current.token();
-      if (
-        (authorityLock || computer?.authorityLocked) &&
-        [
-          "messages.send",
-          "attachments.stage",
-          "attachments.cancel",
-          "attachments.send",
-          "questions.answer",
-          "approvals.decide",
-          "inbox.change",
-          "work.stop",
-        ].includes(method)
-      )
-        throw Error("撤销状态未核实，暂不能发送或确认");
       let result: any;
       try {
-        result = await transport.call(method, input);
-        if (!writeBarrier.current.accepts(token)) throw Error("会话已锁定");
+        result = await performMobileCall({
+          gate: writeGate.current,
+          barrier: writeBarrier.current,
+          method,
+          payload: input,
+          sameComputer: transport.computer.credentialId === computerRef.current?.credentialId,
+          transport: {
+            get isReady() { return transport.isReady; },
+            connect: () => transport.connect(),
+            call: (name, payload) => transport.call(name, payload),
+          },
+        });
       } catch (e) {
         if (
           connection.current === transport &&
@@ -636,6 +646,7 @@ function AppBody() {
         (event) => applyAuthority(event),
       );
     connection.current = transport;
+    if (c.authorityLocked) writeGate.current.lock();
     setAuthorityLock(c.authorityLocked === true);
     setOffline(true);
     setStatus("连接中…");
@@ -1174,11 +1185,17 @@ function AppBody() {
   };
   const decide = async (a: any, decision: string) => {
     if (!computer) return;
+    if (writeGate.current.locked) {
+      setError("撤销状态未核实，暂不能发送或确认");
+      return;
+    }
     setBusy(true);
+    let operationId = "";
     try {
-      const operationId =
+      operationId =
         "approval_" +
         (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, a.id)).slice(0, 32);
+      if (writeGate.current.locked) throw new MobileWriteRefused(false);
       const earlier = (await pending(computer)).find(
         (item) => item.operationId === operationId || item.input?.id === a.id,
       );
@@ -1186,6 +1203,7 @@ function AppBody() {
         setError("已提交过另一个决定，结果待核对，不能改成相反决定。");
         return;
       }
+      if (writeGate.current.locked) throw new MobileWriteRefused(false);
       const item = {
         operationId,
         method: "approvals.decide",
@@ -1197,6 +1215,8 @@ function AppBody() {
       const next = await call("inbox.read");
       setInbox(next);
     } catch (e) {
+      if (e instanceof MobileWriteRefused && !e.sent && operationId)
+        await clearPending(computer, operationId).catch(() => {});
       tell(e);
     } finally {
       setBusy(false);
@@ -1774,7 +1794,7 @@ function AppBody() {
                   .catch(tell);
               },
               undefined,
-              offline,
+              mobileActionDisabled("stop", { locked: writesLocked, offline }),
             )}
           {pendingRoom.map((p) => (
             <View
@@ -2009,13 +2029,13 @@ function AppBody() {
                   "拒绝",
                   () => void decide({ ...a, hash: card.hash }, "deny"),
                   undefined,
-                  busy || offline,
+                  mobileActionDisabled("approval", { locked: writesLocked, busy, offline }),
                 )}
                 {card.decisions.includes("allow_once") && button(
                   "允许一次",
                   () => void decide({ ...a, hash: card.hash }, "allow_once"),
                   <Check size={16} color={colors.green} />,
-                  busy || offline,
+                  mobileActionDisabled("approval", { locked: writesLocked, busy, offline }),
                 )}
               </View>
             </View>
