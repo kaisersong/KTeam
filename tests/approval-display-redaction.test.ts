@@ -14,15 +14,26 @@ const secretInput = {
   password: "s3cret-value",
   token: "plain-token",
   apiKey: "key-value",
-  nested: { api_key: "nested-key", token: "nested-token", note: "keep-visible" },
-  items: [{ password: "array-secret" }, { name: "visible-name" }],
+  db_password: "db-secret-value",
+  user_token: "user-token-value",
+  aws_secret_access_key: "aws-secret-value",
+  nested: {
+    api_key: "nested-key",
+    token: "nested-token",
+    note: "keep-visible",
+    db: { db_password: "nested-db-password", user_token: "nested-user-token" },
+  },
+  items: [{ password: "array-secret", aws_secret_access_key: "array-aws-secret" }, { name: "visible-name" }],
 };
 
 test("host redaction hides JSON, nested and embedded secret values without treating ordinary fields as secrets", () => {
   const pretty = JSON.stringify(secretInput, null, 2);
   const redacted = redactSecrets(pretty);
   assert.equal(redacted.redacted, true);
-  for (const secret of ["s3cret-value", "plain-token", "key-value", "nested-key", "nested-token", "array-secret"])
+  for (const secret of [
+    "s3cret-value", "plain-token", "key-value", "nested-key", "nested-token", "array-secret",
+    "db-secret-value", "user-token-value", "aws-secret-value", "nested-db-password", "nested-user-token", "array-aws-secret",
+  ])
     assert.equal(redacted.text.includes(secret), false, secret);
   assert.match(redacted.text, /keep-visible/);
   assert.match(redacted.text, /visible-name/);
@@ -55,7 +66,10 @@ test("approval display is redacted while the tool input and original hash stay i
       createHash("sha256").update(JSON.stringify([scope, "bash", secretInput, pending.id])).digest("hex"),
     );
     assert.equal(pending.hash, stored.hash);
-    for (const secret of ["s3cret-value", "plain-token", "key-value", "nested-key", "nested-token", "array-secret"])
+    for (const secret of [
+      "s3cret-value", "plain-token", "key-value", "nested-key", "nested-token", "array-secret",
+      "db-secret-value", "user-token-value", "aws-secret-value", "nested-db-password", "nested-user-token", "array-aws-secret",
+    ])
       assert.equal(String(stored.display).includes(secret), false, secret);
     assert.match(stored.display, /keep-visible/);
     controller.abort();

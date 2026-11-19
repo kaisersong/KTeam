@@ -40,6 +40,13 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
 const WARNING_FIELD_PATTERN = /\b(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*([^\s"'<>]+)/gi;
 const JSON_SECRET_KEY =
   /^(?:x[-_])?(?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|client[-_]?secret|secret[-_]?key|private[-_]?key|password|passwd|secret|token|credential|credentials|authorization)$/i;
+const JSON_SECRET_PART = /^(?:password|passwd|secret|token|credential|credentials|authorization)$/i;
+
+/** Exact secret keys, or a secret word standing alone between _ or -. tokenCount stays visible. */
+export function jsonKeyHoldsSecret(key: string) {
+  if (JSON_SECRET_KEY.test(key)) return true;
+  return key.split(/[-_]+/).some((part) => part.length > 0 && JSON_SECRET_PART.test(part));
+}
 
 export function redactSecrets(input: string): RedactionResult {
   let text = input;
@@ -73,7 +80,7 @@ function redactJsonSecrets(input: string): { text: string; redacted: boolean } {
         if (Array.isArray(node)) return node.map(scrub);
         if (node && typeof node === 'object') {
           return Object.fromEntries(Object.entries(node).map(([key, value]) => {
-            if (JSON_SECRET_KEY.test(key)) {
+            if (jsonKeyHoldsSecret(key)) {
               changed = true;
               return [key, '<redacted>'];
             }
