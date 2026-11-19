@@ -1,5 +1,6 @@
 import {spawnSync,execFileSync} from 'node:child_process';
 import {readdirSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {installMobileDependencies} from './mobile-install.mjs';
 import {parseStats,assertStats,assertFloor,floorFor,shardSpec,partition,digest} from './test-report.mjs';
 const files=readdirSync('dist/tests').filter(name=>name.endsWith('.test.js')).sort().map(name=>'dist/tests/'+name);
 const windows=process.platform==='win32',shard=shardSpec(process.env.KTEAM_TEST_SHARD),selected=partition(files,shard);
@@ -10,6 +11,8 @@ if(requested!==undefined&&!/^(?:[1-9]|1[0-6])$/.test(requested))throw Error('inv
 const concurrency=requested?Math.min(windows?2:16,Number(requested)):windows?2:undefined;
 const directory='build/test-reports',stem=process.platform+'-'+process.versions.node+'-'+shard.index;
 mkdirSync(directory,{recursive:true});const tap=directory+'/'+stem+'.tap',report=directory+'/'+stem+'.json';rmSync(tap,{force:true});rmSync(report,{force:true});
+// One mobile lockfile install before any test worker. The test files do not install or replace node_modules.
+installMobileDependencies({mobile:'mobile',lockDirectory:'build/mobile-install-lock'});
 // Every file runs exactly once across the Windows jobs. Keep live output and a
 // machine-readable report; the final CI job verifies coverage and the full floor.
 // No force-exit: undici teardown on Windows Node 24 must complete normally.
