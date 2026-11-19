@@ -9,7 +9,7 @@ import {intentHash} from '../protocol/aimp.js';
 export function normalizeTeamTitle(value:string){return value.trim().replace(/^(?:请)?(?:帮我|给我)?(?:创建|组建|建立|新建)(?:一[个支])?\s*/,'').replace(/(?:的)?(?:创建|组建)$/,'').trim()||value.trim();}
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Identity={model:string;fingerprint:string;native?:{driver:string;path:string}};
-type Models={catalog:()=>Promise<{defaultModelId:string}>;identity:(id:string)=>Promise<Identity>};
+type Models={catalog:()=>Promise<{defaultModelId:string}>;identity:(id:string)=>Promise<Identity>;boundIdentity?:(binding:Pick<Binding,'botId'|'modelId'|'fingerprint'|'revision'>)=>Promise<Identity>};
 type Member={botId:string;name:string;modelId:string;model:string;fingerprint:string;existing:boolean;unbound?:boolean;external?:{driver:string};bindingRevision?:number};
 export type Proposal={kind?:'bot';id:string;hash:string;roomId:string;threadId:string;originId:string;botId:string;runId:string;bindingRevision:number;fingerprint:string;expiresAt:number;title:string;goal:string;members:Member[];firstMessage:string;startDiscussion:boolean};
 export type AgentContext={requestSource:'agent';roomId:string;threadId:string;originId:string;botId:string;runId:string;admission:Record<string,unknown>};
@@ -33,10 +33,11 @@ export class TeamCoordinator{
   let receipt;try{receipt=await write();}catch(error){throw new KTeamError('operation_result_unknown',503,{stage:key,cause:error instanceof KTeamError?error.code:'upstream_unavailable'});}
   this.check(op);op.stages[key]={state:'done',receipt};this.save(op);await validate();return receipt;
  }
- private async frozen(member:Member){if(member.unbound){if(this.store.binding(member.botId))throw new KTeamError('model_binding_changed',409);return;}const identity=await this.models.identity(member.modelId);if(identity.fingerprint!==member.fingerprint||identity.model!==member.model)throw new KTeamError('model_binding_changed',409);if(member.existing){const binding=this.store.binding(member.botId);if(!binding||binding.revision!==member.bindingRevision||binding.fingerprint!==member.fingerprint)throw new KTeamError('model_binding_changed',409);}}
+ private currentIdentity(member:Member){return member.existing&&member.bindingRevision!==undefined&&this.models.boundIdentity?this.models.boundIdentity({...member,revision:member.bindingRevision}):this.models.identity(member.modelId);}
+ private async frozen(member:Member){if(member.unbound){if(this.store.binding(member.botId))throw new KTeamError('model_binding_changed',409);return;}const identity=await this.currentIdentity(member);if(identity.fingerprint!==member.fingerprint||identity.model!==member.model)throw new KTeamError('model_binding_changed',409);if(member.existing){const binding=this.store.binding(member.botId);if(!binding||binding.modelId!==member.modelId||binding.revision!==member.bindingRevision||binding.fingerprint!==member.fingerprint)throw new KTeamError('model_binding_changed',409);}}
  private async ensureMember(op:any,member:Member,index:number,validate:()=>Promise<void>){
   const nativeId=member.modelId.startsWith('local-agent:')?member.modelId.slice('local-agent:'.length):undefined;
-  const native=nativeId?(await this.models.identity(member.modelId)).native:undefined;
+  const native=nativeId?(await this.currentIdentity(member)).native:undefined;
   const verify=(agent:any)=>{if(!agent||agent.archivedAt||agent.name!==member.name||(!member.existing&&member.external&&(agent.runtimeType!==(member.external.driver==='other'?'xiaok':member.external.driver)||agent.runtimeSource!=='kteam-external-agent'))||(!member.existing&&!member.unbound&&(agent.runtimeType!=='xiaok'||agent.runtimeSource!==(nativeId?'kteam-native-agent':'desktop-agent-runtime'))))throw new KTeamError('member_identity_changed',409);if(!member.existing&&(agent.provisioning?.operationId!==op.id+':member:'+index))throw new KTeamError('member_identity_changed',409);return {botId:agent.id};};
   await this.stage(op,'member:'+index,async()=>{const agents=(await this.upstream.listBots()).agents as any[];const agent=agents.find(a=>a.id===member.botId);return agent?verify(agent):null;},async()=>{if(member.existing)throw new KTeamError('agent_not_found',404);return verify(record((await this.upstream.createBot({id:member.botId,name:member.name,description:'KTeam 团队成员',runtimeType:member.external&&member.external.driver!=='other'?member.external.driver:'xiaok',runtimeSource:member.external?'kteam-external-agent':nativeId?'kteam-native-agent':'desktop-agent-runtime',...(nativeId?{kteamNativeDriver:nativeId}:{}),capabilities:[],maxConcurrentTasks:1,provisioning:{operationId:op.id+':member:'+index,roleKey:'kteam-member'}})).agent));},validate);
   await validate();this.check(op);if(!member.existing&&!member.unbound){const prior=this.store.binding(member.botId);if(prior&&(prior.modelId!==member.modelId||prior.fingerprint!==member.fingerprint))throw new KTeamError('model_binding_changed',409);if(!prior)this.store.bind({botId:member.botId,modelId:member.modelId,fingerprint:member.fingerprint,model:member.model,revision:1,kind:member.modelId.startsWith('local-agent:')?'local-native':'xiaok-hosted'});}
@@ -51,7 +52,15 @@ export class TeamCoordinator{
   const frozen=this.store.state<any>('conversation:'+roomId);if(!frozen)throw new KTeamError('conversation_identity_changed',409);
   const actual=snapshot??await this.upstream.membership(roomId);
   this.verifyRoom(actual,roomId,frozen.title,frozen.goal,frozen.members);
-  for(const member of frozen.members)await this.frozen(member);
+  for(const member of frozen.members as Member[]){
+   // A direct room created with a new Bot retains the provisioning snapshot.
+   // After creation, validate it against the Bot's existing Codex binding.
+   if(member.modelId==='local-agent:codex'&&!member.existing&&this.models.boundIdentity){
+    const binding=this.store.binding(member.botId);
+    if(!binding)throw new KTeamError('model_binding_changed',409);
+    await this.frozen({...member,existing:true,bindingRevision:binding.revision});
+   }else await this.frozen(member);
+  }
   return Number(actual.room.revision);
  }
  /** Restore only a previously receipted, least-privilege discussion contract. Never replay work. */

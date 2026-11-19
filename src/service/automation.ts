@@ -430,7 +430,7 @@ export class TeamAutomation {
      try{const snapshot=await this.upstream.aimp(job.roomId,'tasks');const actual=(snapshot.tasks as any[]).find(t=>t.taskRef===task.taskRef);if(!actual?.artifactVerification?.verified||JSON.stringify(actual.artifacts)!==JSON.stringify(artifacts))throw error;}catch{throw error;}
     }
     this.inputs?.delivered(job,botId,String(message.messageId),task.taskRef);
-    job.results=[...(job.results??[]),{botId,messageId:message.messageId,taskRef:task.taskRef,model:response.model,usage:response.usage,usageReported:(response as any).usageReported,profileRevision:profile(bot).revision,fingerprint:binding.fingerprint,source:binding.kind,regenerationOf:job.regenerationOf}];delete job.partialText;delete job.answerDraft;delete job.task;this.store.save(job);
+    job.results=[...(job.results??[]),{botId,messageId:message.messageId,taskRef:task.taskRef,model:response.model,usage:response.usage,usageReported:(response as any).usageReported,profileRevision:profile(bot).revision,fingerprint:binding.fingerprint,...(binding.kind==='local-native'&&response.fingerprint?{installationFingerprint:response.fingerprint}:{}),source:binding.kind,regenerationOf:job.regenerationOf}];delete job.partialText;delete job.answerDraft;delete job.task;this.store.save(job);
     history.push({messageId:message.messageId,replyToMessageId:origin.messageId,from:bot.name,text:response.text});
    }
    job.state='delivered';job.needsReview=!!continuation?.readonly;job.finishedAt=new Date().toISOString();this.store.save(job);
