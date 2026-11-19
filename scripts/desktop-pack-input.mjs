@@ -2,10 +2,11 @@
 // project. A files exclusion does not run before that stat. Staging keeps the
 // source tree unchanged: files are cloned or copied into a new inode, and the
 // two known documentation links are left out. A link that resolves outside the
-// project, including file:../kswarm, is copied instead of pointed back at that
-// directory. Links that stay inside the project are rewritten relative to the
-// stage. Any other dangling link, at any depth, fails closed. Fresh build
-// identity is copied only after the build.
+// project is copied only when it is the node_modules package root. The copy
+// stops at that root: escaping links are not followed, and .git, .env, and
+// .env.* stay out. Links that stay inside the project are rewritten relative
+// to the stage. A cycle fails closed. Any other dangling link in the project
+// fails closed. Fresh build identity is copied only after the build.
 import {spawnSync} from 'node:child_process';
 import {constants,copyFileSync,lstatSync,mkdirSync,readlinkSync,readdirSync,realpathSync,rmSync,statSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -25,12 +26,13 @@ export function commandStatus(result){
 function failure(code,detail){const error=new Error(detail?code+':'+detail:code);error.code=code;return error;}
 function canonical(path){try{return realpathSync(path);}catch{return resolve(path);}}
 function display(path){return path.split(sep).join('/');}
-function sensitiveRoot(name){return name==='.env'||name.startsWith('.env.')&&name!=='.env.example'&&name!=='.env.sample';}
+function sensitiveName(name){return name==='.git'||name==='.env'||name.startsWith('.env.');}
 function omitted(rel){
   return rel==='build/build-info.json'||rel==='build/package-identity'||rel.startsWith('build/package-identity/')||rel==='build/test-reports'||rel.startsWith('build/test-reports/');
 }
 function included(rel){
-  if(!rel||sensitiveRoot(rel)||omitted(rel))return false;
+  const base=rel.split('/').at(-1)??'';
+  if(!rel||base==='.git'||base==='.env'||base.startsWith('.env.')||omitted(rel))return false;
   if(PACK_ROOT_FILES.includes(rel))return true;
   if(rel==='vendor/splash/THIRD-PARTY-NOTICES.txt')return true;
   if(rel==='build'||rel.startsWith('build/'))return true;
@@ -44,23 +46,25 @@ function included(rel){
 
 function symlinkFacts(full){
   const target=readlinkSync(full);
-  try{statSync(full);return {target,dangling:false};}
-  catch(error){if(error&&(error.code==='ENOENT'||error.code==='ELOOP'))return {target,dangling:true};throw error;}
+  try{statSync(full);return {target,dangling:false,loop:false};}
+  catch(error){if(error&&error.code==='ELOOP')return {target,dangling:true,loop:true};if(error&&error.code==='ENOENT')return {target,dangling:true,loop:false};throw error;}
 }
 
 export function packInputPlan(root){
   const hide=[];
   const links=[];
   const unexpected=[];
+  const cycles=[];
   const visit=(dir)=>{
     for(const name of readdirSync(dir)){
-      if(dir===root&&(name==='.git'||sensitiveRoot(name)))continue;
+      if(dir===root&&(name==='.git'||sensitiveName(name)))continue;
       const full=join(dir,name);
       const rel=display(relative(root,full));
       const info=lstatSync(full);
       if(info.isSymbolicLink()){
         const facts=symlinkFacts(full);
         links.push({name:rel,target:facts.target,dangling:facts.dangling});
+        if(facts.loop){cycles.push(rel);continue;}
         if(!facts.dangling)continue;
         if(!rel.includes('/')&&NON_PAYLOAD_LINKS.includes(name))hide.push(name);
         else unexpected.push(rel);
@@ -70,6 +74,7 @@ export function packInputPlan(root){
     }
   };
   visit(root);
+  if(cycles.length)throw failure('pack_stage_symlink_cycle',cycles.sort().join(','));
   if(unexpected.length)throw failure('pack_dangling_symlink',unexpected.sort().join(','));
   hide.sort();
   return {hide,links};
@@ -93,20 +98,30 @@ export function stagePackTree(root,destination){
 }
 
 function insidePath(root,path){return path===root||path.startsWith(root+sep);}
-function materializeExternal(from,to,seen){
+function dependencyRootLink(rel){
+  const parts=rel.split('/');
+  if(parts[0]!=='node_modules')return false;
+  if(parts.length===2)return parts[1]!=='.bin'&&!parts[1].startsWith('.');
+  return parts.length===3&&parts[1].startsWith('@')&&parts[2]!=='';
+}
+// Copy one explicit dependency root. Do not follow a link out of that root:
+// those targets are private checkouts, home data, or documentation trees.
+function copyDependency(from,to,packageRoot,stagedRoot){
+  if(from!==packageRoot&&sensitiveName(basename(from)))return;
   const info=lstatSync(from);
   if(info.isSymbolicLink()){
     const facts=symlinkFacts(from);
+    if(facts.loop)throw failure('pack_stage_symlink_cycle',from);
     if(facts.dangling)return;
     const resolved=resolve(dirname(from),facts.target);
-    if(seen.has(resolved))throw failure('pack_stage_symlink_cycle',resolved);
-    seen.add(resolved);
-    materializeExternal(resolved,to,seen);
+    let real;try{real=realpathSync(resolved);}catch(error){if(error&&error.code==='ELOOP')throw failure('pack_stage_symlink_cycle',resolved);throw error;}
+    if(!insidePath(packageRoot,real))return;
+    symlinkSync(relative(dirname(to),join(stagedRoot,relative(packageRoot,real)))||'.',to);
     return;
   }
   if(info.isDirectory()){
     mkdirSync(to,{recursive:true});
-    for(const name of readdirSync(from))materializeExternal(join(from,name),join(to,name),seen);
+    for(const name of readdirSync(from))copyDependency(join(from,name),join(to,name),packageRoot,stagedRoot);
     return;
   }
   if(info.isFile()){copyIndependent(from,to);return;}
@@ -115,7 +130,7 @@ function materializeExternal(from,to,seen){
 function mirror(src,dest,source,stageRoot,hidden,rel){
   for(const name of readdirSync(src)){
     const next=rel?rel+'/'+name:name;
-    if(hidden.has(next)||sensitiveRoot(name)&&!rel||omitted(next)||!included(next)&&!includedPrefix(next))continue;
+    if(hidden.has(next)||!rel&&sensitiveName(name)||omitted(next)||!included(next)&&!includedPrefix(next))continue;
     const from=join(src,name),to=join(dest,name),info=lstatSync(from);
     if(info.isSymbolicLink()){
       const facts=symlinkFacts(from);
@@ -123,9 +138,11 @@ function mirror(src,dest,source,stageRoot,hidden,rel){
       const resolved=resolve(dirname(from),facts.target);
       if(insidePath(source,resolved)){
         const stagedTarget=join(stageRoot,relative(source,resolved));
-        const link=relative(dirname(to),stagedTarget)||'.';
-        symlinkSync(link,to);
-      }else materializeExternal(resolved,to,new Set([resolved]));
+        symlinkSync(relative(dirname(to),stagedTarget)||'.',to);
+      }else if(dependencyRootLink(next)){
+        const packageRoot=realpathSync(resolved);
+        copyDependency(packageRoot,to,packageRoot,to);
+      }else throw failure('pack_external_link_unscoped',next);
       continue;
     }
     if(info.isDirectory()){

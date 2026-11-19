@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn,spawnSync} from 'node:child_process';
-import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,realpathSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
+import {execFileSync,spawn,spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,realpathSync,readdirSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -239,6 +240,79 @@ test('file: dependency links and .bin links resolve inside the stage and writes 
     assert.equal(readFileSync(sourceBin,'utf8'),'bin-source\n');
     assert.equal(lstatSync(sourceBin).mode,mode);
   }finally{remove(parent);remove(stage);}
+});
+
+function sha(path:string){return createHash('sha256').update(readFileSync(path)).digest('hex');}
+function stagedSymlinks(dir:string):string[]{
+  const found:string[]=[];
+  const visit=(current:string)=>{
+    for(const name of readdirSync(current)){
+      const full=join(current,name);
+      const info=lstatSync(full);
+      if(info.isSymbolicLink()){found.push(readlinkSync(full));continue;}
+      if(info.isDirectory())visit(full);
+    }
+  };
+  visit(dir);
+  return found;
+}
+
+test('npm install file:../ dependencies link as ../../ and stay isolated after staging',()=>{
+  const parent=mkdtempSync(join(tmpdir(),'kteam-pack-npm-')),stage=mkdtempSync(join(tmpdir(),'kteam-pack-npm-stage-'));
+  const kswarm=join(parent,'kswarm'),broker=join(parent,'intent-broker'),project=join(parent,'kteam'),privateDir=join(parent,'private');
+  mkdirSync(join(kswarm,'bin'),{recursive:true});mkdirSync(broker,{recursive:true});mkdirSync(project,{recursive:true});mkdirSync(privateDir);
+  writeFileSync(join(privateDir,'secret.txt'),'private-source\n',{mode:0o600});
+  writeFileSync(join(kswarm,'index.js'),'console.log("kswarm-marker")\n',{mode:0o644});
+  symlinkSync('../index.js',join(kswarm,'bin','run.js'));
+  writeFileSync(join(kswarm,'package.json'),JSON.stringify({name:'kswarm',version:'0.0.0',main:'index.js',bin:{'kswarm-marker':'./bin/run.js'}})+'\n');
+  writeFileSync(join(kswarm,'.env'),'fixture-dotenv-not-for-assertions\n',{mode:0o600});
+  mkdirSync(join(kswarm,'.git'));
+  writeFileSync(join(kswarm,'.git','config'),'fixture-git-config-not-for-assertions\n',{mode:0o600});
+  symlinkSync('../private',join(kswarm,'escape'));
+  writeFileSync(join(broker,'index.js'),'module.exports=1\n',{mode:0o644});
+  writeFileSync(join(broker,'package.json'),JSON.stringify({name:'intent-broker',version:'0.0.0',main:'index.js'})+'\n');
+  writeFileSync(join(project,'package.json'),JSON.stringify({name:'kteam-pack-fixture',version:'0.0.0',dependencies:{kswarm:'file:../kswarm','intent-broker':'file:../intent-broker'}})+'\n');
+  execFileSync('npm',['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'],{cwd:project,stdio:['ignore','pipe','pipe']});
+  assert.equal(readlinkSync(join(project,'node_modules','kswarm')),'../../kswarm');
+  assert.equal(readlinkSync(join(project,'node_modules','intent-broker')),'../../intent-broker');
+  const sourceIndex=join(kswarm,'index.js'),sourceBroker=join(broker);
+  const indexHash=sha(sourceIndex),indexMode=lstatSync(sourceIndex).mode,brokerMode=lstatSync(sourceBroker).mode,privateMode=lstatSync(join(privateDir,'secret.txt')).mode;
+  try{
+    const staged=pack.stagePackTree(project,stage).destination;
+    const stagedIndex=join(staged,'node_modules','kswarm','index.js');
+    assert.equal(lstatSync(join(staged,'node_modules','kswarm')).isSymbolicLink(),false);
+    assert.equal(lstatSync(join(staged,'node_modules','intent-broker')).isSymbolicLink(),false);
+    assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(staged)),true);
+    assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(kswarm)),false);
+    assert.equal(execFileSync(process.execPath,[join(staged,'node_modules','.bin','kswarm-marker')],{encoding:'utf8'}).trim(),'kswarm-marker');
+    assert.equal(existsSync(join(staged,'node_modules','kswarm','.env')),false);
+    assert.equal(existsSync(join(staged,'node_modules','kswarm','.git')),false);
+    assert.equal(existsSync(join(staged,'node_modules','kswarm','escape')),false);
+    assert.equal(stagedSymlinks(join(staged,'node_modules','kswarm')).some(link=>link.includes('private')),false);
+    writeFileSync(stagedIndex,'console.log("changed")\n');
+    chmodSync(stagedIndex,0o700);
+    chmodSync(join(staged,'node_modules','intent-broker'),0o700);
+    assert.equal(sha(sourceIndex),indexHash);
+    assert.equal(lstatSync(sourceIndex).mode,indexMode);
+    assert.equal(lstatSync(sourceBroker).mode,brokerMode);
+    assert.equal(readFileSync(join(privateDir,'secret.txt'),'utf8'),'private-source\n');
+    assert.equal(lstatSync(join(privateDir,'secret.txt')).mode,privateMode);
+  }finally{remove(parent);remove(stage);}
+});
+
+test('a dependency cycle fails closed and an unexpected external link is not copied',()=>{
+  const dir=tree(),stage=mkdtempSync(join(tmpdir(),'kteam-pack-cycle-')),outside=mkdtempSync(join(tmpdir(),'kteam-pack-private-'));
+  writeFileSync(join(outside,'secret.txt'),'outside-source\n',{mode:0o600});
+  mkdirSync(join(dir,'node_modules','pkg'),{recursive:true});
+  symlinkSync('cycle',join(dir,'node_modules','pkg','cycle'));
+  try{
+    assert.throws(()=>pack.stagePackTree(dir,stage),(error:NodeJS.ErrnoException)=>error.code==='pack_stage_symlink_cycle');
+    rmSync(join(dir,'node_modules','pkg','cycle'));
+    symlinkSync(outside,join(dir,'node_modules','pkg','escape'));
+    assert.throws(()=>pack.stagePackTree(dir,stage),(error:NodeJS.ErrnoException)=>error.code==='pack_external_link_unscoped');
+    assert.equal(readFileSync(join(outside,'secret.txt'),'utf8'),'outside-source\n');
+    assert.equal(lstatSync(join(outside,'secret.txt')).mode&0o777,0o600);
+  }finally{remove(dir);remove(stage);remove(outside);}
 });
 
 test('an unknown dangling symlink below the project root fails closed',()=>{
