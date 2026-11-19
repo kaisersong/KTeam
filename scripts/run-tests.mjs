@@ -14,10 +14,9 @@ export function runTests(){
  const concurrency=requested?Math.min(windows?2:16,Number(requested)):windows?2:undefined;
  const directory='build/test-reports',stem=process.platform+'-'+process.versions.node+'-'+shard.index;
  mkdirSync(directory,{recursive:true});const tap=directory+'/'+stem+'.tap',report=directory+'/'+stem+'.json';rmSync(tap,{force:true});rmSync(report,{force:true});
- // The lock stays open until the test process exits. Releasing it after npm ci would let
- // another run delete node_modules while these workers are still reading it.
- withMobileInstall({mobile:'mobile',lockDirectory:'build/mobile-install-lock'},()=>{
-  const result=spawnSync(process.execPath,['--preserve-symlinks','--test','--test-reporter=spec','--test-reporter-destination=stdout','--test-reporter=tap','--test-reporter-destination='+tap,...(concurrency?['--test-concurrency='+concurrency]:[]),...(windows?['--test-timeout=600000']:[]),...selected],{stdio:'inherit',...(windows?{timeout:45*60000,killSignal:'SIGKILL'}:{})});
+ // Each run installs into a private directory. The test process receives only that path.
+ withMobileInstall({mobile:'mobile'},(installRoot)=>{
+  const result=spawnSync(process.execPath,['--preserve-symlinks','--test','--test-reporter=spec','--test-reporter-destination=stdout','--test-reporter=tap','--test-reporter-destination='+tap,...(concurrency?['--test-concurrency='+concurrency]:[]),...(windows?['--test-timeout=600000']:[]),...selected],{stdio:'inherit',env:{...process.env,KTEAM_MOBILE_ROOT:installRoot},...(windows?{timeout:45*60000,killSignal:'SIGKILL'}:{})});
   if(result.error)throw result.error;
   if(result.status!==0){process.exitCode=result.status??1;return;}
   const stats=parseStats(readFileSync(tap,'utf8'));assertStats(stats);if(shard.count===1)assertFloor(stats,floorFor(process.platform));

@@ -6,7 +6,9 @@ import { dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
-const mobile = join(root, "mobile");
+const configuredMobile = process.env.KTEAM_MOBILE_ROOT;
+if (!configuredMobile) throw Error("mobile_install_root_required");
+const mobile: string = configuredMobile;
 const shared = join(root, "src/protocol/mobile-wire.ts");
 const rootModules = join(root, "node_modules");
 const mobileRequire = createRequire(join(mobile, "package.json"));
