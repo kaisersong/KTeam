@@ -20,9 +20,15 @@ test('a Codex upgrade probes once and delivers queued work without switching the
    const source=await say(f,bot.roomId);
    const id='native-upgrade-'+index;
    f.store.enqueue(id,bot.roomId,String(source.messageId));
-   if(index===1)f.upgrade();
+   if(index===1){
+    f.upgrade();
+    const beforeGuard=f.calls.length;
+    await f.c.guardConversation(bot.roomId);
+    assert.equal(f.calls.length,beforeGuard);
+   }
    await automation.tick();
    assert.equal(f.store.job(id).state,'delivered',JSON.stringify(f.store.job(id)));
+   assert.equal(f.store.job(id).results[0].installationFingerprint,index===0?'installed-fixture':'upgraded-fixture');
   }
   assert.deepEqual(f.store.binding(bot.bot.id),binding);
   assert.equal(f.local.probeView('codex').fingerprint,'upgraded-fixture');

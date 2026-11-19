@@ -32,8 +32,8 @@ export class LocalAgents{
   const installed=await this.boundCodex(binding,false);
   return {model:installed.label+' · 本机 Agent',fingerprint:binding.fingerprint,native:{driver:installed.id,path:installed.path}};
  }
- private async boundCodex(binding:Pick<Binding,'botId'|'fingerprint'|'revision'>,fresh:boolean):Promise<LocalInstallation>{
-  const installed=await this.installation('codex',fresh);
+ private async boundCodex(binding:Pick<Binding,'botId'|'fingerprint'|'revision'>,forExecution:boolean):Promise<LocalInstallation>{
+  const installed=await this.installation('codex',forExecution);
   const key='native-codex-binding:'+hash([binding.botId,binding.revision,binding.fingerprint]);
   const baseline='native-codex-installation:'+binding.fingerprint;
   const previous=this.store.state<LocalInstallation>(key)??this.store.state<LocalInstallation>(baseline);
@@ -47,6 +47,9 @@ export class LocalAgents{
   if(!previous||previous.path!==installed.path||!previous.configurationFingerprint||
      previous.configurationFingerprint!==installed.configurationFingerprint||
      !newerCodexVersion(previous.version,installed.version))throw new KTeamError('native_installation_changed',409);
+  // Room guards only verify the existing binding. Wait for the read-only
+  // probe in the background job so posting a message survives slow probes.
+  if(!forExecution)return installed;
   await this.startProbe({driver:'codex'});
   await this.probing.get('codex');
   const probe=this.probeView('codex'),current=await this.installation('codex',true);
