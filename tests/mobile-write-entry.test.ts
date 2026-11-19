@@ -1,3 +1,5 @@
+// Shared entry probe: screen() calls performMobileCall directly.
+// This file does not import mobile/App.tsx, does not render React Native, and does not press the three Pressables.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ResponseBarrier } from "../src/protocol/mobile-authority.js";
