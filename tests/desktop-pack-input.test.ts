@@ -4,7 +4,7 @@ import {execFileSync,spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,realpathSync,readdirSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,sep} from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
@@ -19,6 +19,14 @@ const pack=createRequire(import.meta.url)(join(root,'scripts/desktop-pack-input.
   NON_PAYLOAD_LINKS:string[];
 };
 
+const slash=(value:string)=>value.split(sep).join('/');
+const npmCommand=process.platform==='win32'?'npm.cmd':'npm';
+function stopPack(child:{pid?:number,kill:(signal?:NodeJS.Signals)=>boolean},signal:NodeJS.Signals){
+  const pid=child.pid;
+  if(!pid)return;
+  if(process.platform==='win32'){spawnSync('taskkill',['/PID',String(pid),'/T','/F'],{stdio:'ignore'});return;}
+  try{process.kill(-pid,signal);}catch{try{child.kill(signal);}catch{/* The child has already exited. */}}
+}
 function tree(){
   const dir=mkdtempSync(join(tmpdir(),'kteam-pack-input-'));
   writeFileSync(join(dir,'package.json'),'{"name":"fixture"}\n');
@@ -59,7 +67,7 @@ test('staging omits dangling documentation links and leaves the source tree unto
     assert.equal(readFileSync(join(staged.destination,'build','readme.txt'),'utf8'),'payload\n');
     assert.equal(existsSync(join(staged.destination,'outside.txt')),false);
     assert.equal(lstatSync(join(dir,'docs')).isSymbolicLink(),true);
-    assert.equal(readlinkSync(join(dir,'design-qa.md')),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
+    assert.equal(slash(readlinkSync(join(dir,'design-qa.md'))),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
     assert.notEqual(lstatSync(join(dir,'package.json')).ino,lstatSync(join(staged.destination,'package.json')).ino);
   }finally{remove(dir);remove(outside);remove(stage);}
 });
@@ -94,15 +102,16 @@ test('two pack stages can run at the same time without moving source links',asyn
       assert.equal(readFileSync(join(dest,'build','readme.txt'),'utf8'),'payload\n');
     }
     assert.equal(readlinkSync(join(dir,'docs')),'missing-docs-checkout');
-    assert.equal(readlinkSync(join(dir,'design-qa.md')),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
+    assert.equal(slash(readlinkSync(join(dir,'design-qa.md'))),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
   }finally{remove(dir);remove(first);remove(second);}
 });
 
 test('a signalled build is a failed command and does not start packing or move links',()=>{
   const dir=tree(),marker=join(dir,'pack-started'),stage=join(tmpdir(),'kteam-pack-unstarted-'+process.pid);
   const killed=spawnSync(process.execPath,['-e','process.kill(process.pid,"SIGKILL")']);
-  assert.equal(killed.status,null);
-  assert.equal(pack.commandStatus(killed),null);
+  if(killed.signal){assert.equal(killed.status,null);assert.equal(pack.commandStatus(killed),null);}
+  else{assert.notEqual(killed.status,0);assert.equal(pack.commandStatus(killed),killed.status);}
+  assert.equal(pack.commandStatus({status:null,signal:'SIGKILL'}),null);
   assert.equal(pack.commandStatus({status:0}),0);
   assert.equal(pack.commandStatus({status:2}),2);
   try{
@@ -126,17 +135,17 @@ process.exit(code);`;
       if(Date.now()>deadline)throw Error('pack_child_did_not_start');
       await new Promise(resolve=>setTimeout(resolve,20));
     }
-    process.kill(-(child.pid as number),'SIGINT');
+    stopPack(child,'SIGINT');
     const code=await new Promise<number|null>((resolve,reject)=>{
       const timer=setTimeout(()=>reject(Error('pack_child_survived_sigint')),5000);
       child.once('exit',status=>{clearTimeout(timer);resolve(status);});
     });
     assert.notEqual(code,0);
     assert.equal(readlinkSync(join(dir,'docs')),'missing-docs-checkout');
-    assert.equal(readlinkSync(join(dir,'design-qa.md')),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
+    assert.equal(slash(readlinkSync(join(dir,'design-qa.md'))),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
     assert.equal(existsSync(join(dir,'package.json')),true);
   }finally{
-    try{process.kill(-(child.pid as number),'SIGKILL');}catch{/* already exited */}
+    stopPack(child,'SIGKILL');
     remove(dir);remove(stage);rmSync(marker,{force:true});
   }
 });
@@ -153,7 +162,7 @@ test('staged node_modules files have their own inode, so writes and chmod do not
     const copy=join(staged.destination,'node_modules','pkg','file.txt');
     const before=lstatSync(source);
     assert.notEqual(before.ino,lstatSync(copy).ino);
-    assert.equal(readlinkSync(join(staged.destination,'node_modules','.bin','tool')),'../pkg/file.txt');
+    assert.equal(slash(readlinkSync(join(staged.destination,'node_modules','.bin','tool'))),'../pkg/file.txt');
     writeFileSync(copy,'changed\n');
     chmodSync(copy,0o700);
     assert.equal(readFileSync(source,'utf8'),'module\n');
@@ -206,6 +215,9 @@ test('file: dependency links and .bin links resolve inside the stage and writes 
   symlinkSync('../../intent-broker',join(project,'node_modules','intent-broker'));
   symlinkSync('../pkg/bin.js',join(project,'node_modules','.bin','tool'));
   symlinkSync(join(project,'node_modules','pkg','bin.js'),join(project,'node_modules','.bin','abs-tool'));
+  const alias=join(parent,'project-alias');
+  symlinkSync(project,alias);
+  symlinkSync(join(alias,'node_modules','pkg','bin.js'),join(project,'node_modules','.bin','alias-tool'));
   try{
     const staged=pack.stagePackTree(project,stage).destination;
     const deps:[string,string][]=[['kswarm','kswarm-source\n'],['intent-broker','broker-source\n']];
@@ -226,8 +238,9 @@ test('file: dependency links and .bin links resolve inside the stage and writes 
     }
     const linked=join(staged,'node_modules','.bin','tool');
     const absolute=join(staged,'node_modules','.bin','abs-tool');
+    const aliased=join(staged,'node_modules','.bin','alias-tool');
     const stageRoot=realpathSync(staged),projectRoot=realpathSync(project);
-    for(const link of [linked,absolute]){
+    for(const link of [linked,absolute,aliased]){
       assert.equal(lstatSync(link).isSymbolicLink(),true);
       const resolved=realpathSync(link);
       assert.equal(resolved.startsWith(stageRoot),true);
@@ -272,9 +285,13 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
   writeFileSync(join(broker,'index.js'),'module.exports=1\n',{mode:0o644});
   writeFileSync(join(broker,'package.json'),JSON.stringify({name:'intent-broker',version:'0.0.0',main:'index.js'})+'\n');
   writeFileSync(join(project,'package.json'),JSON.stringify({name:'kteam-pack-fixture',version:'0.0.0',dependencies:{kswarm:'file:../kswarm','intent-broker':'file:../intent-broker'}})+'\n');
-  execFileSync('npm',['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'],{cwd:project,stdio:['ignore','pipe','pipe']});
-  assert.equal(readlinkSync(join(project,'node_modules','kswarm')),'../../kswarm');
-  assert.equal(readlinkSync(join(project,'node_modules','intent-broker')),'../../intent-broker');
+  execFileSync(npmCommand,['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'],{cwd:project,stdio:['ignore','pipe','pipe']});
+  assert.equal(realpathSync(join(project,'node_modules','kswarm')),realpathSync(kswarm));
+  assert.equal(realpathSync(join(project,'node_modules','intent-broker')),realpathSync(broker));
+  if(process.platform!=='win32'){
+    assert.equal(slash(readlinkSync(join(project,'node_modules','kswarm'))),'../../kswarm');
+    assert.equal(slash(readlinkSync(join(project,'node_modules','intent-broker'))),'../../intent-broker');
+  }
   const sourceIndex=join(kswarm,'index.js'),sourceBroker=join(broker);
   const indexHash=sha(sourceIndex),indexMode=lstatSync(sourceIndex).mode,brokerMode=lstatSync(sourceBroker).mode,privateMode=lstatSync(join(privateDir,'secret.txt')).mode;
   try{
@@ -303,6 +320,7 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
 test('a dependency cycle fails closed and an unexpected external link is not copied',()=>{
   const dir=tree(),stage=mkdtempSync(join(tmpdir(),'kteam-pack-cycle-')),outside=mkdtempSync(join(tmpdir(),'kteam-pack-private-'));
   writeFileSync(join(outside,'secret.txt'),'outside-source\n',{mode:0o600});
+  const outsideMode=lstatSync(join(outside,'secret.txt')).mode;
   mkdirSync(join(dir,'node_modules','pkg'),{recursive:true});
   symlinkSync('cycle',join(dir,'node_modules','pkg','cycle'));
   try{
@@ -311,7 +329,7 @@ test('a dependency cycle fails closed and an unexpected external link is not cop
     symlinkSync(outside,join(dir,'node_modules','pkg','escape'));
     assert.throws(()=>pack.stagePackTree(dir,stage),(error:NodeJS.ErrnoException)=>error.code==='pack_external_link_unscoped');
     assert.equal(readFileSync(join(outside,'secret.txt'),'utf8'),'outside-source\n');
-    assert.equal(lstatSync(join(outside,'secret.txt')).mode&0o777,0o600);
+    assert.equal(lstatSync(join(outside,'secret.txt')).mode,outsideMode);
   }finally{remove(dir);remove(stage);remove(outside);}
 });
 

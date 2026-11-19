@@ -22,18 +22,20 @@ test('linux refuses before xcodebuild and does not claim an app exists',()=>{
   assert.equal(plan.args,undefined);
 });
 
-test('the script process on this host exits with the linux refusal',()=>{
+test('the script process on this host exits before xcodebuild',()=>{
   let stderr='';
   try{
-    execFileSync(process.execPath,[script,'/tmp/kteam-ios-derived'],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
+    execFileSync(process.execPath,[script,join(tmpdir(),'kteam-ios-derived')],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
     assert.fail('expected non-zero exit');
   }catch(error){
     const failed=error as {status?:number,stderr?:string};
     stderr=String(failed.stderr??'');
     assert.notEqual(failed.status,0);
   }
-  assert.match(stderr,/This host is linux/);
-  assert.match(stderr,/Linux cannot run xcodebuild or produce a \.app/);
+  if(process.platform==='linux')assert.match(stderr,/This host is linux/);
+  else if(process.platform==='win32')assert.match(stderr,/This host is win32/);
+  else assert.match(stderr,/mobile\/ios is not in the repository/);
+  assert.match(stderr,/Linux cannot run xcodebuild or produce a \.app|does not use a distribution certificate/);
   assert.doesNotMatch(stderr,/ENOENT/);
   assert.doesNotMatch(stderr,/simulator_app_missing/);
 });
@@ -81,7 +83,7 @@ test('a present workspace plans an unsigned simulator build and does not read a 
     assert.equal(args.some(arg=>arg.startsWith('DEVELOPMENT_TEAM=')),false);
     assert.equal(args.some(arg=>arg.includes('ABCDEFGHIJ')),false);
     assert.equal(args.some(arg=>arg.includes('KTEAM_APPLE_TEAM_ID')),false);
-    assert.match(plan.app??'',/Release-iphonesimulator\/KTeam\.app$/);
+    assert.match(plan.app??'',/Release-iphonesimulator[/\\]KTeam\.app$/);
   }finally{
     if(previous===undefined)delete process.env.KTEAM_APPLE_TEAM_ID;
     else process.env.KTEAM_APPLE_TEAM_ID=previous;

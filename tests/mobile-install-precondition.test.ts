@@ -53,7 +53,8 @@ test('the test runner installs from the lockfile once before parallel workers, e
     const recorded=JSON.parse(readFileSync(log,'utf8')) as string[];
     assert.deepEqual(recorded.slice(-4),['ci','--ignore-scripts','--no-audit','--no-fund']);
     const runner=readFileSync(join(root,'scripts/run-tests.mjs'),'utf8');
-    assert.ok(runner.indexOf('installMobileDependencies')<runner.indexOf('spawnSync(process.execPath'));
+    assert.ok(runner.includes('withMobileInstall'));
+    assert.ok(runner.indexOf('withMobileInstall')<runner.indexOf('spawnSync(process.execPath'));
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
@@ -106,5 +107,35 @@ test('two installers wait on one lock instead of running the install together',a
     const events=readFileSync(log,'utf8').trim().split('\n').map(line=>{const [kind,time]=line.split(' ');return {kind,time:Number(time)};});
     assert.deepEqual(events.map(event=>event.kind),['start','end','start','end']);
     assert.ok(events[1]!.time<=events[2]!.time);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('two real test runners keep the install lock until each test process exits',async()=>{
+  const dir=temp();
+  const mobile=join(dir,'mobile');
+  const lock=join(dir,'lock');
+  const log=join(dir,'runners.log');
+  const installer=join(dir,'install.js');
+  const spec=join(dir,'read.test.js');
+  try{
+    packageRoot(mobile);
+    writeFileSync(installer,"const fs=require('node:fs');const path=require('node:path');const mobile=process.argv[2],id=process.env.RUN_ID,log=process.env.EVENT_LOG;fs.appendFileSync(log,'install-start '+id+' '+Date.now()+'\\n');fs.rmSync(path.join(mobile,'node_modules'),{recursive:true,force:true});fs.mkdirSync(path.join(mobile,'node_modules','pkg'),{recursive:true});fs.writeFileSync(path.join(mobile,'node_modules','pkg','marker.txt'),id);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,150);fs.appendFileSync(log,'install-end '+id+' '+Date.now()+'\\n');");
+    writeFileSync(spec,"import {test} from 'node:test';import assert from 'node:assert/strict';import {appendFileSync,readFileSync} from 'node:fs';test('reads the install that belongs to this run',()=>{const id=process.env.RUN_ID,file=process.env.MARKER,log=process.env.EVENT_LOG;const first=readFileSync(file,'utf8');appendFileSync(log,'read-start '+id+' '+Date.now()+'\\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,250);const second=readFileSync(file,'utf8');appendFileSync(log,'read-end '+id+' '+Date.now()+' '+second+'\\n');assert.equal(first,id);assert.equal(second,id);});");
+    const helper=pathToFileURL(join(root,'scripts/mobile-install.mjs')).href;
+    const marker=join(mobile,'node_modules','pkg','marker.txt');
+    const runner=(id:string)=>new Promise<void>((resolve,reject)=>{
+      const source=`import {withMobileInstall} from ${JSON.stringify(helper)};import {spawnSync} from 'node:child_process';const env={...process.env,EVENT_LOG:${JSON.stringify(log)},RUN_ID:${JSON.stringify(id)}};delete env.NODE_TEST_CONTEXT;withMobileInstall({mobile:${JSON.stringify(mobile)},command:process.execPath,args:[${JSON.stringify(installer)},${JSON.stringify(mobile)}],lockDirectory:${JSON.stringify(lock)},stdio:'ignore',env},()=>{const childEnv={...env,MARKER:${JSON.stringify(marker)}};const result=spawnSync(process.execPath,['--test',${JSON.stringify(spec)}],{env:childEnv,stdio:'inherit'});if(result.status!==0)process.exit(result.status??1);});`;
+      const child=spawn(process.execPath,['--input-type=module','-e',source],{stdio:['ignore','inherit','inherit']});
+      child.once('error',reject);
+      child.once('exit',code=>code===0?resolve():reject(Error('runner_'+id+'_'+code)));
+    });
+    await Promise.all([runner('a'),runner('b')]);
+    const rows=readFileSync(log,'utf8').trim().split('\n').map(line=>line.split(' '));
+    const index=(kind:string,id:string)=>rows.findIndex(row=>row[0]===kind&&row[1]===id);
+    const first=index('install-start','a')<index('install-start','b')?'a':'b';
+    const second=first==='a'?'b':'a';
+    assert.ok(index('read-end',first)<index('install-start',second));
+    assert.equal(rows.find(row=>row[0]==='read-end'&&row[1]==='a')?.[3],'a');
+    assert.equal(rows.find(row=>row[0]==='read-end'&&row[1]==='b')?.[3],'b');
   }finally{rmSync(dir,{recursive:true,force:true});}
 });

@@ -14,9 +14,12 @@ export const FIXTURE_MODEL_ID='fixture-not-a-real-model';
 export const FIXTURE_LABEL='测试夹具（不是真实模型）';
 
 export function fixtureCommand(file){return 'cat '+file;}
+function canonical(path){return realpathSync.native(path);}
 function underTemp(path){
-  const root=realpathSync(tmpdir()),target=realpathSync(path);
-  if(target!==root&&!target.startsWith(root+sep))throw Object.assign(new Error('fixture_outside_temp'),{code:'fixture_outside_temp'});
+  const root=canonical(tmpdir()),target=canonical(path);
+  const same=process.platform==='win32'?(left,right)=>left.toLowerCase()===right.toLowerCase():(left,right)=>left===right;
+  const inside=process.platform==='win32'?(dir,child)=>child.toLowerCase().startsWith(dir.toLowerCase()+sep): (dir,child)=>child.startsWith(dir+sep);
+  if(!same(target,root)&&!inside(root,target))throw Object.assign(new Error('fixture_outside_temp'),{code:'fixture_outside_temp'});
   return target;
 }
 function needsTool(messages){

@@ -11,27 +11,31 @@ function failed(code,status,signal){
   return error;
 }
 
-/** One lockfile install for a test run. Callers wait on the same SQLite lock instead of deleting node_modules together. */
-export function installMobileDependencies(options){
-  const mobile=options?.mobile;
-  if(!mobile)throw Error('mobile_directory_required');
-  const lockDirectory=options.lockDirectory??join(mobile,'..','build','mobile-install-lock');
+function openInstallLock(lockDirectory){
   mkdirSync(lockDirectory,{recursive:true});
   const db=new DatabaseSync(join(lockDirectory,'lock.sqlite'));
-  db.exec('PRAGMA busy_timeout=600000');
+  db.exec('PRAGMA busy_timeout=3600000');
   try{db.exec('BEGIN IMMEDIATE');}
   catch(error){db.close();throw error;}
+  return {release(){try{db.exec('ROLLBACK');}catch{/* The connection closes next. */}db.close();}};
+}
+
+/** Hold the install lock through `body`, so a second run cannot replace node_modules while this run still reads it. */
+export function withMobileInstall(options,body=()=>undefined){
+  const mobile=options?.mobile;
+  if(!mobile)throw Error('mobile_directory_required');
+  const lock=openInstallLock(options.lockDirectory??join(mobile,'..','build','mobile-install-lock'));
   try{
     const command=options.command??(process.platform==='win32'?'npm.cmd':'npm');
     const args=options.args??['ci','--ignore-scripts','--no-audit','--no-fund'];
     const result=spawnSync(command,args,{cwd:mobile,stdio:options.stdio??'inherit',env:options.env??process.env});
     if(result.error)throw result.error;
     if(result.status!==0||result.signal)throw failed('mobile_install_failed',result.status,result.signal);
-  }finally{
-    try{db.exec('ROLLBACK');}catch{/* The lock connection is closed next. */}
-    db.close();
-  }
+    return body();
+  }finally{lock.release();}
 }
+
+export function installMobileDependencies(options){return withMobileInstall(options);}
 
 /** Resolve only inside this mobile install. A root package is not a substitute. */
 export function requireFromMobileInstall(mobile,specifier){

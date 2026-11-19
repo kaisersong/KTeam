@@ -136,8 +136,19 @@ function mirror(src,dest,source,stageRoot,hidden,rel){
       const facts=symlinkFacts(from);
       if(facts.dangling)throw failure('pack_dangling_symlink',next);
       const resolved=resolve(dirname(from),facts.target);
-      if(insidePath(source,resolved)){
-        const stagedTarget=join(stageRoot,relative(source,resolved));
+      let realTarget;
+      try{realTarget=realpathSync(resolved);}
+      catch(error){
+        if(error&&error.code==='ELOOP')throw failure('pack_stage_symlink_cycle',next);
+        if(error&&error.code==='ENOENT')throw failure('pack_dangling_symlink',next);
+        throw error;
+      }
+      // A logical path inside the project stays inside after dependency roots are copied.
+      // realpath also accepts an absolute link whose prefix differs only by a directory alias.
+      const logicalInside=insidePath(source,resolved),realInside=insidePath(source,realTarget);
+      if(logicalInside||realInside){
+        const basis=logicalInside?resolved:realTarget;
+        const stagedTarget=join(stageRoot,relative(source,basis));
         symlinkSync(relative(dirname(to),stagedTarget)||'.',to);
       }else if(dependencyRootLink(next)){
         const packageRoot=realpathSync(resolved);
