@@ -1,48 +1,78 @@
 // electron-builder 26.15.7 follows a symlink with stat while collecting the
-// project. A files exclusion does not run before that stat. These two links
-// are documentation references, not the desktop payload. Packing copies the
-// inputs into a temporary tree and leaves every source path in place.
+// project. A files exclusion does not run before that stat. Staging keeps the
+// source tree unchanged: files are cloned or copied into a new inode, and the
+// two known documentation links are left out. Any other dangling link, at any
+// depth, fails closed. Fresh build identity is copied only after the build.
 import {spawnSync} from 'node:child_process';
-import {copyFileSync,lstatSync,mkdirSync,readlinkSync,readdirSync,realpathSync,rmSync,statSync,symlinkSync,linkSync} from 'node:fs';
+import {constants,copyFileSync,lstatSync,mkdirSync,readlinkSync,readdirSync,realpathSync,rmSync,statSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {basename,dirname,join,resolve,sep} from 'node:path';
+import {basename,dirname,join,relative,resolve,sep} from 'node:path';
 
 export const NON_PAYLOAD_LINKS=['design-qa.md','docs'];
+export const PACK_ROOT_FILES=['package.json','package-lock.json','electron-builder.yml','LICENSE','NOTICE'];
+export const FRESH_IDENTITY=['build/build-info.json','build/package-identity/build-info.json'];
+const DESKTOP_ENTRIES=new Set(['assets','yzj-cli','bin','skills','app-update.yml']);
+const cloneFlag=constants.COPYFILE_FICLONE??0;
 
 export function commandStatus(result){
   if(!result||result.error||result.signal||result.status===null||result.status===undefined)return null;
   return result.status;
 }
 
+function failure(code,detail){const error=new Error(detail?code+':'+detail:code);error.code=code;return error;}
+function canonical(path){try{return realpathSync(path);}catch{return resolve(path);}}
+function display(path){return path.split(sep).join('/');}
+function sensitiveRoot(name){return name==='.env'||name.startsWith('.env.')&&name!=='.env.example'&&name!=='.env.sample';}
+function omitted(rel){
+  return rel==='build/build-info.json'||rel==='build/package-identity'||rel.startsWith('build/package-identity/')||rel==='build/test-reports'||rel.startsWith('build/test-reports/');
+}
+function included(rel){
+  if(!rel||sensitiveRoot(rel)||omitted(rel))return false;
+  if(PACK_ROOT_FILES.includes(rel))return true;
+  if(rel==='vendor/splash/THIRD-PARTY-NOTICES.txt')return true;
+  if(rel==='build'||rel.startsWith('build/'))return true;
+  if(rel==='node_modules'||rel.startsWith('node_modules/'))return true;
+  if(rel==='desktop/app-update.yml')return true;
+  const desktop=rel.startsWith('desktop/')?rel.slice('desktop/'.length):'';
+  if(!desktop)return false;
+  const entry=desktop.split('/')[0];
+  return DESKTOP_ENTRIES.has(entry);
+}
+
+function symlinkFacts(full){
+  const target=readlinkSync(full);
+  try{statSync(full);return {target,dangling:false};}
+  catch(error){if(error&&(error.code==='ENOENT'||error.code==='ELOOP'))return {target,dangling:true};throw error;}
+}
+
 export function packInputPlan(root){
-  const entries=readdirSync(root);
   const hide=[];
   const links=[];
   const unexpected=[];
-  for(const name of entries){
-    const full=join(root,name);
-    const info=lstatSync(full);
-    if(!info.isSymbolicLink())continue;
-    const target=readlinkSync(full);
-    let statError;
-    try{statSync(full);}catch(error){statError=error&&error.code;}
-    const dangling=statError==='ENOENT';
-    links.push({name,target,dangling});
-    if(!dangling)continue;
-    if(NON_PAYLOAD_LINKS.includes(name))hide.push(name);
-    else unexpected.push(name);
-  }
-  if(unexpected.length){
-    const error=new Error('pack_dangling_symlink:'+unexpected.sort().join(','));
-    error.code='pack_dangling_symlink';
-    throw error;
-  }
+  const visit=(dir)=>{
+    for(const name of readdirSync(dir)){
+      if(dir===root&&(name==='.git'||sensitiveRoot(name)))continue;
+      const full=join(dir,name);
+      const rel=display(relative(root,full));
+      const info=lstatSync(full);
+      if(info.isSymbolicLink()){
+        const facts=symlinkFacts(full);
+        links.push({name:rel,target:facts.target,dangling:facts.dangling});
+        if(!facts.dangling)continue;
+        if(!rel.includes('/')&&NON_PAYLOAD_LINKS.includes(name))hide.push(name);
+        else unexpected.push(rel);
+        continue;
+      }
+      if(info.isDirectory())visit(full);
+    }
+  };
+  visit(root);
+  if(unexpected.length)throw failure('pack_dangling_symlink',unexpected.sort().join(','));
   hide.sort();
   return {hide,links};
 }
 
-function failure(code){const error=new Error(code);error.code=code;return error;}
-function canonical(path){try{return realpathSync(path);}catch{return resolve(path);}}
+function copyIndependent(from,to){copyFileSync(from,to,cloneFlag);}
 
 export function stagePackTree(root,destination){
   const source=realpathSync(resolve(root));
@@ -51,30 +81,54 @@ export function stagePackTree(root,destination){
   const target=join(parent,basename(requested));
   if(target===source||target.startsWith(source+sep))throw failure('pack_stage_inside_source');
   const plan=packInputPlan(source);
-  const omit=new Set([...plan.hide,'.git','release']);
+  const hidden=new Set(plan.hide);
   rmSync(target,{recursive:true,force:true});
   mkdirSync(target,{recursive:true});
-  try{mirror(source,target,source,omit,true);}
+  try{mirror(source,target,source,hidden,'');}
   catch(error){rmSync(target,{recursive:true,force:true});throw error;}
   return {plan,destination:target};
 }
 
-function insideSource(source,path){const resolved=resolve(path);return resolved===source||resolved.startsWith(source+sep);}
-function mirror(src,dest,source,omit,top){
+function mirror(src,dest,source,hidden,rel){
   for(const name of readdirSync(src)){
-    if(top&&omit.has(name))continue;
+    const next=rel?rel+'/'+name:name;
+    if(hidden.has(next)||sensitiveRoot(name)&&!rel||omitted(next)||!included(next)&&!includedPrefix(next))continue;
     const from=join(src,name),to=join(dest,name),info=lstatSync(from);
     if(info.isSymbolicLink()){
-      const link=readlinkSync(from);
-      const resolved=resolve(dirname(from),link);
-      symlinkSync(insideSource(source,resolved)?link:resolved,to);
+      const facts=symlinkFacts(from);
+      if(facts.dangling)throw failure('pack_dangling_symlink',next);
+      const resolved=resolve(dirname(from),facts.target);
+      const inside=resolved===source||resolved.startsWith(source+sep);
+      symlinkSync(inside?facts.target:resolved,to);
       continue;
     }
-    if(info.isDirectory()){mkdirSync(to);mirror(from,to,source,omit,false);continue;}
-    if(!info.isFile())throw failure('pack_stage_unsupported:'+name);
-    const inModules=from.includes(sep+'node_modules'+sep);
-    if(inModules){try{linkSync(from,to);continue;}catch(error){if(!error||error.code!=='EXDEV')throw error;}}
-    copyFileSync(from,to);
+    if(info.isDirectory()){
+      if(!hasIncludedDescendant(next)&&!included(next))continue;
+      mkdirSync(to);
+      mirror(from,to,source,hidden,next);
+      continue;
+    }
+    if(!included(next))continue;
+    if(!info.isFile())throw failure('pack_stage_unsupported',next);
+    copyIndependent(from,to);
+  }
+}
+function includedPrefix(rel){
+  if(rel==='vendor'||rel==='vendor/splash'||rel==='desktop'||rel==='build'||rel==='node_modules')return true;
+  if(rel.startsWith('desktop/'))return DESKTOP_ENTRIES.has(rel.slice('desktop/'.length).split('/')[0]);
+  if(rel.startsWith('build/')||rel.startsWith('node_modules/')||rel.startsWith('vendor/'))return true;
+  return false;
+}
+function hasIncludedDescendant(rel){return includedPrefix(rel);}
+
+export function placeFreshIdentity(source,destination){
+  for(const rel of FRESH_IDENTITY){
+    const from=join(source,rel);
+    let info;try{info=lstatSync(from);}catch{throw failure('pack_identity_missing',rel);}
+    if(!info.isFile()||info.isSymbolicLink())throw failure('pack_identity_missing',rel);
+    const to=join(destination,rel);
+    mkdirSync(dirname(to),{recursive:true});
+    copyIndependent(from,to);
   }
 }
 
@@ -97,6 +151,7 @@ export function runPack(options){
   let status=1,staged=destination;
   try{
     staged=stagePackTree(root,destination).destination;
+    if(options.requireIdentity!==false)placeFreshIdentity(root,staged);
     const packed=spawnSync(options.pack[0],options.pack.slice(1),{cwd:staged,stdio,env});
     if(commandStatus(packed)!==0)status=commandStatus(packed)??1;
     else if(!options.verify)status=0;

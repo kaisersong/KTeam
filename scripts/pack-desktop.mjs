@@ -16,6 +16,7 @@ function main(){
       '-c.directories.output='+join(root,'release'),
     ],
     verify:[process.execPath,join(root,'scripts/verify-local-signature.mjs')],
+    requireIdentity:true,
     env:{...process.env,CSC_IDENTITY_AUTO_DISCOVERY:'false'},
   });
 }

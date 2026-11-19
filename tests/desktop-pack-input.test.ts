@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
-import {existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
+import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -13,15 +13,16 @@ const pack=createRequire(import.meta.url)(join(root,'scripts/desktop-pack-input.
   stagePackTree:(dir:string,destination:string)=>{plan:{hide:string[]};destination:string};
   statVisiblePackEntries:(dir:string)=>string[];
   commandStatus:(result:{status?:number|null;signal?:NodeJS.Signals|null;error?:Error}|null)=>number|null;
-  runPack:(options:{root:string;build:string[];pack:string[];verify?:string[];stage?:string;stdio?:'ignore'|'inherit';keepStage?:boolean})=>number;
+  placeFreshIdentity:(source:string,destination:string)=>void;
+  runPack:(options:{root:string;build:string[];pack:string[];verify?:string[];stage?:string;stdio?:'ignore'|'inherit';keepStage?:boolean;requireIdentity?:boolean})=>number;
   NON_PAYLOAD_LINKS:string[];
 };
 
 function tree(){
   const dir=mkdtempSync(join(tmpdir(),'kteam-pack-input-'));
   writeFileSync(join(dir,'package.json'),'{"name":"fixture"}\n');
-  mkdirSync(join(dir,'payload'));
-  writeFileSync(join(dir,'payload','readme.txt'),'payload\n');
+  mkdirSync(join(dir,'build'));
+  writeFileSync(join(dir,'build','readme.txt'),'payload\n');
   symlinkSync('missing-docs-checkout',join(dir,'docs'));
   symlinkSync('docs/design/desktop/design-qa-presence-peer-exchanges.md',join(dir,'design-qa.md'));
   return dir;
@@ -54,8 +55,8 @@ test('staging omits dangling documentation links and leaves the source tree unto
     assert.equal(visible.includes('design-qa.md'),false);
     assert.equal(visible.includes('docs'),false);
     assert.equal(readFileSync(join(staged.destination,'package.json'),'utf8'),'{"name":"fixture"}\n');
-    assert.equal(readFileSync(join(staged.destination,'payload','readme.txt'),'utf8'),'payload\n');
-    assert.equal(readlinkSync(join(staged.destination,'outside.txt')),outsideFile);
+    assert.equal(readFileSync(join(staged.destination,'build','readme.txt'),'utf8'),'payload\n');
+    assert.equal(existsSync(join(staged.destination,'outside.txt')),false);
     assert.equal(lstatSync(join(dir,'docs')).isSymbolicLink(),true);
     assert.equal(readlinkSync(join(dir,'design-qa.md')),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
     assert.notEqual(lstatSync(join(dir,'package.json')).ino,lstatSync(join(staged.destination,'package.json')).ino);
@@ -89,7 +90,7 @@ test('two pack stages can run at the same time without moving source links',asyn
     for(const dest of [first,second]){
       assert.equal(existsSync(join(dest,'docs')),false);
       assert.equal(existsSync(join(dest,'design-qa.md')),false);
-      assert.equal(readFileSync(join(dest,'payload','readme.txt'),'utf8'),'payload\n');
+      assert.equal(readFileSync(join(dest,'build','readme.txt'),'utf8'),'payload\n');
     }
     assert.equal(readlinkSync(join(dir,'docs')),'missing-docs-checkout');
     assert.equal(readlinkSync(join(dir,'design-qa.md')),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
@@ -104,7 +105,7 @@ test('a signalled build is a failed command and does not start packing or move l
   assert.equal(pack.commandStatus({status:0}),0);
   assert.equal(pack.commandStatus({status:2}),2);
   try{
-    const status=pack.runPack({root:dir,stdio:'ignore',stage,build:[process.execPath,'-e','process.kill(process.pid,"SIGKILL")'],pack:[process.execPath,'-e','require("fs").writeFileSync(process.argv[1],"started")',marker]});
+    const status=pack.runPack({root:dir,stdio:'ignore',stage,requireIdentity:false,build:[process.execPath,'-e','process.kill(process.pid,"SIGKILL")'],pack:[process.execPath,'-e','require("fs").writeFileSync(process.argv[1],"started")',marker]});
     assert.equal(status,1);
     assert.equal(existsSync(marker),false);
     assert.equal(existsSync(stage),false);
@@ -115,7 +116,7 @@ test('a signalled build is a failed command and does not start packing or move l
 test('SIGINT while the pack child is running leaves the source links in place',async()=>{
   const dir=tree(),marker=join(tmpdir(),'kteam-pack-entered-'+process.pid),stage=join(tmpdir(),'kteam-pack-interrupt-'+process.pid);
   const script=`import {runPack} from './scripts/desktop-pack-input.mjs';
-const code=runPack({root:process.argv[1],stdio:'ignore',stage:process.argv[3],build:[process.execPath,'-e','process.exit(0)'],pack:[process.execPath,'-e','require("fs").writeFileSync(process.argv[1],"in"); setInterval(()=>{},1000);',process.argv[2]]});
+const code=runPack({root:process.argv[1],stdio:'ignore',requireIdentity:false,stage:process.argv[3],build:[process.execPath,'-e','process.exit(0)'],pack:[process.execPath,'-e','require("fs").writeFileSync(process.argv[1],"in"); setInterval(()=>{},1000);',process.argv[2]]});
 process.exit(code);`;
   const child=node(script,[dir,marker,stage],{detached:true});
   try{
@@ -137,4 +138,64 @@ process.exit(code);`;
     try{process.kill(-(child.pid as number),'SIGKILL');}catch{/* already exited */}
     remove(dir);remove(stage);rmSync(marker,{force:true});
   }
+});
+
+test('staged node_modules files have their own inode, so writes and chmod do not change the source',()=>{
+  const dir=tree(),stage=mkdtempSync(join(tmpdir(),'kteam-pack-inode-'));
+  const source=join(dir,'node_modules','pkg','file.txt');
+  mkdirSync(join(dir,'node_modules','pkg'),{recursive:true});
+  writeFileSync(source,'module\n',{mode:0o644});
+  mkdirSync(join(dir,'node_modules','.bin'));
+  symlinkSync('../pkg/file.txt',join(dir,'node_modules','.bin','tool'));
+  try{
+    const staged=pack.stagePackTree(dir,stage);
+    const copy=join(staged.destination,'node_modules','pkg','file.txt');
+    const before=lstatSync(source);
+    assert.notEqual(before.ino,lstatSync(copy).ino);
+    assert.equal(readlinkSync(join(staged.destination,'node_modules','.bin','tool')),'../pkg/file.txt');
+    writeFileSync(copy,'changed\n');
+    chmodSync(copy,0o700);
+    assert.equal(readFileSync(source,'utf8'),'module\n');
+    assert.equal(lstatSync(source).mode,before.mode);
+  }finally{remove(dir);remove(stage);}
+});
+
+test('root dotenv files and stale build identity stay out of the stage until a fresh identity is placed',()=>{
+  const dir=tree(),stage=mkdtempSync(join(tmpdir(),'kteam-pack-identity-'));
+  writeFileSync(join(dir,'.env'),'fixture-dotenv-not-for-assertions\n',{mode:0o600});
+  writeFileSync(join(dir,'build','build-info.json'),'OLD\n');
+  mkdirSync(join(dir,'build','package-identity'));
+  writeFileSync(join(dir,'build','package-identity','build-info.json'),'OLD-EXT\n');
+  try{
+    const staged=pack.stagePackTree(dir,stage);
+    assert.equal(existsSync(join(staged.destination,'.env')),false);
+    assert.equal(existsSync(join(staged.destination,'build','build-info.json')),false);
+    assert.equal(existsSync(join(staged.destination,'build','package-identity')),false);
+    writeFileSync(join(dir,'build','build-info.json'),'NEW\n');
+    writeFileSync(join(dir,'build','package-identity','build-info.json'),'NEW-EXT\n');
+    pack.placeFreshIdentity(dir,staged.destination);
+    const fresh=join(staged.destination,'build','build-info.json');
+    assert.equal(readFileSync(fresh,'utf8'),'NEW\n');
+    assert.equal(readFileSync(join(staged.destination,'build','package-identity','build-info.json'),'utf8'),'NEW-EXT\n');
+    assert.notEqual(lstatSync(join(dir,'build','build-info.json')).ino,lstatSync(fresh).ino);
+    const sourceMode=lstatSync(join(dir,'build','build-info.json')).mode;
+    writeFileSync(fresh,'CHANGED\n');
+    chmodSync(fresh,0o700);
+    assert.equal(readFileSync(join(dir,'build','build-info.json'),'utf8'),'NEW\n');
+    assert.equal(lstatSync(join(dir,'build','build-info.json')).mode,sourceMode);
+    assert.throws(()=>pack.placeFreshIdentity(mkdtempSync(join(tmpdir(),'kteam-pack-no-identity-')),staged.destination),(error:NodeJS.ErrnoException)=>error.code==='pack_identity_missing');
+  }finally{remove(dir);remove(stage);}
+});
+
+test('an unknown dangling symlink below the project root fails closed',()=>{
+  const dir=tree(),stage=mkdtempSync(join(tmpdir(),'kteam-pack-dangling-'));
+  mkdirSync(join(dir,'build','nested'));
+  symlinkSync('missing-target',join(dir,'build','nested','lost.txt'));
+  try{
+    assert.throws(()=>pack.stagePackTree(dir,stage),(error:NodeJS.ErrnoException)=>error.code==='pack_dangling_symlink'&&String(error.message).includes('build/nested/lost.txt'));
+    assert.equal(lstatSync(join(dir,'build','nested','lost.txt')).isSymbolicLink(),true);
+    mkdirSync(join(dir,'node_modules'));
+    symlinkSync('absent-tool',join(dir,'node_modules','missing-tool'));
+    assert.throws(()=>pack.stagePackTree(dir,stage),(error:NodeJS.ErrnoException)=>error.code==='pack_dangling_symlink'&&String(error.message).includes('node_modules/missing-tool'));
+  }finally{remove(dir);remove(stage);}
 });
