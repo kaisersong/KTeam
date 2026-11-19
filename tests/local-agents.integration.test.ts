@@ -6,7 +6,7 @@ function isFixtureProcessAlive(pid:number){
  if(process.platform==='win32'){try{process.kill(pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}}
  try{const state=execFileSync('/bin/ps',['-p',String(pid),'-o','stat='],{encoding:'utf8'}).trim();return !!state&&!state.startsWith('Z');}catch(error){const value=error as any;if(value.status===1&&!String(value.stdout??'').trim()&&!String(value.stderr??'').trim())return false;throw error;}
 }
-async function setup(){const f=await realUpstreams(),store=new TeamStore(f.root),calls:any[]=[];let mode='normal',fingerprint='installed-fixture',version='codex-cli 1.0.0',configurationFingerprint='fixture-config';const local=new LocalAgents(f.root,store,f.upstream,async id=>({id,label:id,path:resolve('tests/fixtures/local-native-fixture.mjs'),fingerprint,version,configurationFingerprint,machine:'fixture'}),async(command,args,input)=>{calls.push({command,args,cwd:input.cwd,mode});return runLocal(command,args,{...input,env:{...input.env,KTEAM_FIXTURE_MODE:mode,KTEAM_FIXTURE_DRIVER:args.includes('exec')?'codex':args.includes('--output-format')?'kimi':'xiaok-cli'}});});const c=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:id=>id.startsWith('local-agent:')?local.identity(id):Promise.resolve({model:'fixture',fingerprint:'fixture'}),boundIdentity:b=>b.modelId.startsWith('local-agent:')?local.boundIdentity(b):Promise.resolve({model:'fixture',fingerprint:'fixture'})});return {...f,store,local,c,calls,setMode:(value:string)=>{mode=value;},changeInstallation:()=>{fingerprint='changed-fixture';},upgrade:(config='fixture-config')=>{fingerprint='upgraded-fixture';version='codex-cli 1.1.0';configurationFingerprint=config;},async close(){await local.close();store.close();await f.close();}};}
+async function setup(){const f=await realUpstreams(),store=new TeamStore(f.root),calls:any[]=[];let mode='normal',fingerprint='installed-fixture',version='codex-cli 1.0.0',path=resolve('tests/fixtures/local-native-fixture.mjs');const local=new LocalAgents(f.root,store,f.upstream,async id=>({id,label:id,path,fingerprint,version,machine:'fixture'}),async(command,args,input)=>{calls.push({command,args,cwd:input.cwd,mode});return runLocal(command,args,{...input,env:{...input.env,KTEAM_FIXTURE_MODE:mode,KTEAM_FIXTURE_DRIVER:args.includes('exec')?'codex':args.includes('--output-format')?'kimi':'xiaok-cli'}});});const c=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:id=>id.startsWith('local-agent:')?local.identity(id):Promise.resolve({model:'fixture',fingerprint:'fixture'}),boundIdentity:b=>b.modelId.startsWith('local-agent:')?local.boundIdentity(b):Promise.resolve({model:'fixture',fingerprint:'fixture'})});return {...f,store,local,c,calls,setMode:(value:string)=>{mode=value;},changeInstallation:()=>{fingerprint='changed-fixture';},upgrade:()=>{fingerprint='upgraded-fixture';version='codex-cli 1.1.0';},changeLauncher:()=>{path=resolve('synthetic-different-launcher');fingerprint='changed-fixture';},async close(){await local.close();store.close();await f.close();}};}
 async function ready(f:Awaited<ReturnType<typeof setup>>,driver='codex'){await f.local.startProbe({driver});for(let n=0;n<(process.platform==='win32'?2000:200);n++){const value=f.local.probeView(driver as any);if(value.state!=='running'){assert.equal(value.state,'ready',JSON.stringify(value));return value;}await new Promise(r=>setTimeout(r,5));}throw Error('probe did not finish');}
 async function say(f:any,roomId:string,text='请处理当前合成材料'){return new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'thread-'+roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:text});}
 test('a Codex upgrade probes once and delivers queued work without switching the Bot binding or resuming the old CLI session',async()=>{
@@ -38,13 +38,33 @@ test('a Codex upgrade probes once and delivers queued work without switching the
   assert.equal(f.store.stateEntries('native-session:')[0]?.value.installationFingerprint,'upgraded-fixture');
  }finally{await automation?.close();await f.close();}
 });
-test('a Codex version increase combined with a configuration change still requires explicit revalidation',async()=>{
+for(const driver of ['codex','kimi','zcode','xiaok-cli'])test(`${driver} refreshes a changed installation at the same launcher with the version unchanged`,async()=>{
+ const f=await setup();
+ try{
+  await ready(f,driver);
+  const bot=await f.local.create({name:'安装刷新测试',driver,requestId:'native-refresh'},f.c);
+  const binding=f.store.binding(bot.bot.id)!;
+  const turn=()=>f.local.turn({binding,botId:bot.bot.id,roomId:bot.roomId,profileRevision:1,system:'fixture',prompt:'fixture',signal:new AbortController().signal,onRequest:()=>{},assertCurrent:()=>{}});
+  f.changeInstallation();
+  await f.c.guardConversation(bot.roomId);
+  assert.equal(f.calls.length,1);
+  f.setMode('bad-probe');
+  await assert.rejects(turn(),/native_probe_response_invalid/);
+  assert.equal(f.calls.length,2);
+  f.setMode('normal');
+  assert.equal((await turn()).fingerprint,'changed-fixture');
+  assert.equal(f.local.probeView(driver as any).version,'codex-cli 1.0.0');
+  assert.deepEqual(f.store.binding(bot.bot.id),binding);
+  assert.equal(f.calls.length,4);
+ }finally{await f.close();}
+});
+test('a different launcher cannot inherit a local Agent binding',async()=>{
  const f=await setup();
  try{
   await ready(f);
-  const bot=await f.local.create({name:'配置变更测试',driver:'codex',requestId:'native-upgrade-config'},f.c);
+  const bot=await f.local.create({name:'入口变更测试',driver:'codex',requestId:'native-new-launcher'},f.c);
   const binding=f.store.binding(bot.bot.id)!;
-  f.upgrade('different-config');
+  f.changeLauncher();
   await assert.rejects(f.local.turn({binding,botId:bot.bot.id,roomId:bot.roomId,profileRevision:1,system:'fixture',prompt:'fixture',signal:new AbortController().signal,onRequest:()=>assert.fail('must not request a model'),assertCurrent:()=>{}}),/native_installation_changed/);
   assert.equal(f.calls.length,1);
  }finally{await f.close();}

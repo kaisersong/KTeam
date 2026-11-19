@@ -54,8 +54,8 @@ export class TeamCoordinator{
   this.verifyRoom(actual,roomId,frozen.title,frozen.goal,frozen.members);
   for(const member of frozen.members as Member[]){
    // A direct room created with a new Bot retains the provisioning snapshot.
-   // After creation, validate it against the Bot's existing Codex binding.
-   if(member.modelId==='local-agent:codex'&&!member.existing&&this.models.boundIdentity){
+   // After creation, validate it against the Bot's existing local Agent binding.
+   if(member.modelId.startsWith('local-agent:')&&!member.existing&&this.models.boundIdentity){
     const binding=this.store.binding(member.botId);
     if(!binding)throw new KTeamError('model_binding_changed',409);
     await this.frozen({...member,existing:true,bindingRevision:binding.revision});
