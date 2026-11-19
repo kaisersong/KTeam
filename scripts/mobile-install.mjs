@@ -1,8 +1,8 @@
 import {spawnSync} from 'node:child_process';
-import {cpSync,existsSync,mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {copyFileSync,existsSync,mkdirSync,mkdtempSync,readdirSync,readlinkSync,realpathSync,rmSync,symlinkSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
-import {join,resolve,sep} from 'node:path';
+import {dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 
 function failed(code,status,signal){
   const error=Error(code);
@@ -14,9 +14,9 @@ function failed(code,status,signal){
 export function commandNeedsShell(platform,command){return platform==='win32'&&/\.(?:cmd|bat)$/i.test(command);}
 export function quoteCmdArgument(value){return '"'+String(value).replaceAll('"','""')+'"';}
 
-/** Run one batch file. The path and each argument stay separately quoted. */
+/** Run one batch file. Each argument stays quoted. cmd /s drops one outer pair, so that pair is added around them. */
 export function spawnBatchFile(scriptPath,args=[],options={}){
-  const command=[quoteCmdArgument(scriptPath),...args.map(quoteCmdArgument)].join(' ');
+  const command='"'+[quoteCmdArgument(scriptPath),...args.map(quoteCmdArgument)].join(' ')+'"';
   return spawnSync(options.comSpec??process.env.ComSpec??'cmd.exe',['/d','/s','/c',command],{
     cwd:options.cwd,env:options.env??process.env,stdio:options.stdio,encoding:options.encoding,
     windowsVerbatimArguments:true,windowsHide:true,
@@ -29,8 +29,51 @@ function containsPath(parent,child){
   return file===root||file.startsWith(root+sep);
 }
 
+function linkEscapes(root,linkPath){
+  let resolved;
+  try{resolved=realpathSync(linkPath);}
+  catch{resolved=resolve(dirname(linkPath),readlinkSync(linkPath));}
+  const fromRoot=relative(root,resolved);
+  return fromRoot==='..'||fromRoot.startsWith('..'+sep)||isAbsolute(fromRoot);
+}
+
+/** Refuse a symlink whose target is outside this source. Links that stay inside are kept. */
+function assertNoEscapingLink(sourceRoot){
+  const root=realpathSync(sourceRoot);
+  const visit=(directory)=>{
+    for(const entry of readdirSync(directory,{withFileTypes:true})){
+      if(entry.name==='node_modules')continue;
+      const path=join(directory,entry.name);
+      if(entry.isSymbolicLink()){
+        if(linkEscapes(root,path))throw Error('mobile_install_link_escapes');
+        continue;
+      }
+      if(entry.isDirectory())visit(path);
+    }
+  };
+  visit(root);
+}
+
 function copyMobileSource(source,destination){
-  cpSync(source,destination,{recursive:true,filter(path){return !path.split(sep).includes('node_modules');}});
+  const root=realpathSync(source);
+  mkdirSync(destination,{recursive:true});
+  const visit=(directory,destDir)=>{
+    for(const entry of readdirSync(directory,{withFileTypes:true})){
+      if(entry.name==='node_modules')continue;
+      const from=join(directory,entry.name);
+      const to=join(destDir,entry.name);
+      if(entry.isSymbolicLink()){
+        let resolved;
+        try{resolved=realpathSync(from);}
+        catch{resolved=resolve(directory,readlinkSync(from));}
+        symlinkSync(relative(directory,resolved),to);
+        continue;
+      }
+      if(entry.isDirectory()){mkdirSync(to);visit(from,to);continue;}
+      copyFileSync(from,to);
+    }
+  };
+  visit(root,destination);
 }
 
 /** Install into a private directory. Callers only receive that directory, so another run cannot read or write it. */
@@ -50,6 +93,7 @@ export function withMobileInstall(options,body=()=>undefined){
   if(!source)throw Error('mobile_directory_required');
   const sourceRoot=resolve(source);
   if(!existsSync(sourceRoot))throw Error('mobile_directory_required');
+  assertNoEscapingLink(sourceRoot);
   const parent=mkdtempSync(join(tmpdir(),'kteam-mobile-install-'));
   const privateRoot=join(parent,'tree');
   try{

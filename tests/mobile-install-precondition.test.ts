@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {chmodSync,existsSync,mkdirSync,writeFileSync,readFileSync,realpathSync,rmSync} from 'node:fs';
+import {chmodSync,existsSync,mkdirSync,symlinkSync,writeFileSync,readFileSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -35,6 +35,7 @@ fs.mkdirSync(pkg,{recursive:true});
 fs.writeFileSync(path.join(pkg,'package.json'),JSON.stringify({name:'pkg',main:'index.js'}));
 fs.writeFileSync(path.join(pkg,'index.js'),'module.exports='+JSON.stringify({id}));
 const marker=path.join(pkg,'marker.txt');
+const publish=()=>{const next=id+'\\n'+Date.now()+'\\n';const tmp=marker+'.next';fs.writeFileSync(tmp,next);fs.renameSync(tmp,marker);};
 const note=kind=>{const time=Date.now();fs.appendFileSync(log,JSON.stringify({kind,id,time,root,pid:process.pid,ppid:process.ppid})+'\\n');return time;};
 const seen=(since,waitLog,waitId)=>{
   if(!waitLog)return false;
@@ -42,9 +43,9 @@ const seen=(since,waitLog,waitId)=>{
 };
 const installStarted=note('install-start');
 if(process.env.HOLD==='1'){
-  while(!fs.existsSync(release)){fs.writeFileSync(marker,id+'\\n'+Date.now()+'\\n');note('write');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);}
+  while(!fs.existsSync(release)){publish();note('write');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);}
 }else{
-  fs.writeFileSync(marker,id+'\\n'+Date.now()+'\\n');
+  publish();
   note('write');
   const waitLog=process.env.WAIT_WRITE_LOG,waitId=process.env.WAIT_WRITE_ID;
   if(waitLog){
@@ -164,6 +165,33 @@ test('the test runner installs from the lockfile once into a private tree',()=>{
     assert.equal(install.includes('BEGIN IMMEDIATE'),false);
     assert.match(install,/args=options\.args\?\?\['ci','--ignore-scripts','--no-audit','--no-fund'\]/);
     assert.equal(install.includes('ci --ignore-scripts'),false);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a symlink that leaves the install source is refused before the installer runs',()=>{
+  const dir=temp();
+  const mobile=join(dir,'mobile');
+  const outside=join(dir,'outside');
+  const log=join(dir,'ran.txt');
+  try{
+    packageRoot(mobile);
+    mkdirSync(outside);
+    writeFileSync(join(outside,'secret.txt'),'secret\n');
+    symlinkSync('../outside',join(mobile,'escape'));
+    assert.throws(()=>installMobileDependencies({mobile,command:process.execPath,args:['-e','require("node:fs").writeFileSync(process.env.RAN,"ran")'],stdio:'ignore',env:{...process.env,RAN:log}}),
+      (error:NodeJS.ErrnoException)=>error.message==='mobile_install_link_escapes');
+    assert.equal(existsSync(log),false);
+    assert.equal(readFileSync(join(outside,'secret.txt'),'utf8'),'secret\n');
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a symlink that stays inside the install source is copied as a link',()=>{
+  const dir=temp();
+  const mobile=join(dir,'mobile');
+  try{
+    packageRoot(mobile);
+    symlinkSync('package.json',join(mobile,'self.json'));
+    installMobileDependencies({mobile,command:process.execPath,args:['-e',"const fs=require('node:fs');if(!fs.lstatSync('self.json').isSymbolicLink()||fs.readlinkSync('self.json')!=='package.json')process.exit(4)"],stdio:'ignore'});
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
 

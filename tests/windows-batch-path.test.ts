@@ -18,9 +18,9 @@ if(process.platform==='win32'){
     mkdirSync(parent,{recursive:true});
     const script=join(parent,'tool.cmd');
     const result=join(parent,'result.txt');
-    writeFileSync(script,'@echo off\r\necho SAFE>"'+result.replaceAll('"','""')+'"\r\n');
+    writeFileSync(script,'@echo off\r\necho %~1>"'+result.replaceAll('"','""')+'"\r\n');
     try{
-      const ran=spawnBatchFile(script,[],{encoding:'utf8'});
+      const ran=spawnBatchFile(script,['SAFE'],{encoding:'utf8'});
       if(ran.error)throw ran.error;
       assert.equal(ran.status,0);
       assert.equal(readFileSync(result,'utf8').trim(),'SAFE');
