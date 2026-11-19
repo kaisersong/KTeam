@@ -118,17 +118,17 @@ for(const explicit of [false,true])test(explicit?'an explicit member wait still 
 });
 
 test('a linked child approval keeps private review alive beyond the shorter handoff timeout',async()=>{
- const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,clock=Date.now();
+ const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,clock=Date.now(),childReady=false;
  try{
   automation=new TeamAutomation(f.upstream,f.store,1,async input=>{
    await input.onRequest?.();const prompt=JSON.parse(input.prompt);
    const answer=(text:string)=>({text,model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}});
-   if(prompt.sourceConversation){await hold.wait(input.signal);return answer('装后冒烟已核对。');}
+   if(prompt.sourceConversation){childReady=true;await hold.wait(input.signal);return answer('装后冒烟已核对。');}
    if(prompt.handoff){assert.equal(prompt.handoff.results[0].state,'delivered');return answer('已收到质量的私聊回执。');}
    await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({requests:[{botId:f.bots[1]!.id,message:'独立复验。'}],doneWhen:'返回实测结果。',timeoutMinutes:1},{});
    await input.onRequest?.();throw Error('yield');
   },f.coordinator,undefined,undefined,undefined,undefined,undefined,()=>clock);
-  await automation.tick();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='running'));
+  await automation.tick();await until(()=>childReady);
   const parent=f.store.job('handoff-root'),op=f.store.operation(parent.currentHandoffId),child=f.store.job(op.children[0].jobId);
   const approvalId='fixture-approval',waitId='fixture-child-wait',taskDeadline=Date.parse(parent.task.terms.deadline);
   const approval={id:approvalId,jobId:child.id,roomId:child.roomId,botId:child.peer.toBotId,durable:true,handoffId:waitId,status:'pending',createdAt:op.deadline-1,expiresAt:taskDeadline+60000};
@@ -146,7 +146,8 @@ test('a linked child approval keeps private review alive beyond the shorter hand
   // Remove the synthetic child wait before letting the real peer deliver its reply.
   // The verified extension of the original handoff is already durable.
   const running=f.store.job(child.id);delete running.currentHandoffId;f.store.save(running);
-  hold.release();await until(()=>f.store.job(child.id).state==='delivered');
+  hold.release();await until(()=>['delivered','blocked','stopped','unknown'].includes(f.store.job(child.id).state));
+  assert.equal(f.store.job(child.id).state,'delivered',f.store.job(child.id).reason);
   await automation.tick();
   assert.equal(f.store.job(parent.id).state,'delivered');
  }finally{hold.release();await automation?.close();await f.end();}
