@@ -85,6 +85,7 @@ export class TeamStore {
   });
  }
  binding(botId:string):Binding|null{const row=this.db.prepare('SELECT value_json FROM bot_bindings WHERE bot_id=?').get(botId);return row?JSON.parse(String(row.value_json)):null;}
+ bindingsForModel(modelId:string):Binding[]{return this.db.prepare("SELECT value_json FROM bot_bindings WHERE json_extract(value_json,'$.modelId')=?").all(modelId).map(row=>JSON.parse(String(row.value_json)));}
  bind(value:Binding){this.db.prepare('INSERT INTO bot_bindings VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET value_json=excluded.value_json').run(value.botId,JSON.stringify(value));return value;}
  settings(roomId:string):TeamSettings|null{const row=this.db.prepare('SELECT value_json FROM team_settings WHERE room_id=?').get(roomId);return row?JSON.parse(String(row.value_json)):null;}
  configure(value:TeamSettings,expectedRevision:number){const previous=this.settings(value.roomId);if((previous?.revision??0)!==expectedRevision)throw new KTeamError('team_revision_conflict',409);const next={...value,revision:expectedRevision+1};this.db.prepare('INSERT INTO team_settings VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET value_json=excluded.value_json').run(value.roomId,JSON.stringify(next));return next;}

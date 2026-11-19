@@ -6,9 +6,43 @@ function isFixtureProcessAlive(pid:number){
  if(process.platform==='win32'){try{process.kill(pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}}
  try{const state=execFileSync('/bin/ps',['-p',String(pid),'-o','stat='],{encoding:'utf8'}).trim();return !!state&&!state.startsWith('Z');}catch(error){const value=error as any;if(value.status===1&&!String(value.stdout??'').trim()&&!String(value.stderr??'').trim())return false;throw error;}
 }
-async function setup(){const f=await realUpstreams(),store=new TeamStore(f.root),calls:any[]=[];let mode='normal',fingerprint='installed-fixture';const local=new LocalAgents(f.root,store,f.upstream,async id=>({id,label:id,path:resolve('tests/fixtures/local-native-fixture.mjs'),fingerprint,version:'fixture 1.0',machine:'fixture'}),async(command,args,input)=>{calls.push({command,args,cwd:input.cwd,mode});return runLocal(command,args,{...input,env:{...input.env,KTEAM_FIXTURE_MODE:mode,KTEAM_FIXTURE_DRIVER:args.includes('exec')?'codex':args.includes('--output-format')?'kimi':'xiaok-cli'}});});const c=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:id=>id.startsWith('local-agent:')?local.identity(id):Promise.resolve({model:'fixture',fingerprint:'fixture'})});return {...f,store,local,c,calls,setMode:(value:string)=>{mode=value;},changeInstallation:()=>{fingerprint='changed-fixture';},async close(){await local.close();store.close();await f.close();}};}
+async function setup(){const f=await realUpstreams(),store=new TeamStore(f.root),calls:any[]=[];let mode='normal',fingerprint='installed-fixture',version='codex-cli 1.0.0',configurationFingerprint='fixture-config';const local=new LocalAgents(f.root,store,f.upstream,async id=>({id,label:id,path:resolve('tests/fixtures/local-native-fixture.mjs'),fingerprint,version,configurationFingerprint,machine:'fixture'}),async(command,args,input)=>{calls.push({command,args,cwd:input.cwd,mode});return runLocal(command,args,{...input,env:{...input.env,KTEAM_FIXTURE_MODE:mode,KTEAM_FIXTURE_DRIVER:args.includes('exec')?'codex':args.includes('--output-format')?'kimi':'xiaok-cli'}});});const c=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:id=>id.startsWith('local-agent:')?local.identity(id):Promise.resolve({model:'fixture',fingerprint:'fixture'}),boundIdentity:b=>b.modelId.startsWith('local-agent:')?local.boundIdentity(b):Promise.resolve({model:'fixture',fingerprint:'fixture'})});return {...f,store,local,c,calls,setMode:(value:string)=>{mode=value;},changeInstallation:()=>{fingerprint='changed-fixture';},upgrade:(config='fixture-config')=>{fingerprint='upgraded-fixture';version='codex-cli 1.1.0';configurationFingerprint=config;},async close(){await local.close();store.close();await f.close();}};}
 async function ready(f:Awaited<ReturnType<typeof setup>>,driver='codex'){await f.local.startProbe({driver});for(let n=0;n<(process.platform==='win32'?2000:200);n++){const value=f.local.probeView(driver as any);if(value.state!=='running'){assert.equal(value.state,'ready',JSON.stringify(value));return value;}await new Promise(r=>setTimeout(r,5));}throw Error('probe did not finish');}
 async function say(f:any,roomId:string,text='请处理当前合成材料'){return new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'thread-'+roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:text});}
+test('a Codex upgrade probes once and delivers queued work without switching the Bot binding or resuming the old CLI session',async()=>{
+ const f=await setup();let automation:TeamAutomation|undefined;
+ try{
+  await ready(f);
+  const bot=await f.local.create({name:'升级测试',driver:'codex',requestId:'native-upgrade'},f.c);
+  const binding=f.store.binding(bot.bot.id)!;
+  automation=new TeamAutomation(f.upstream,f.store,1,undefined,f.c,f.local);
+  for(let index=0;index<2;index++){
+   const source=await say(f,bot.roomId);
+   const id='native-upgrade-'+index;
+   f.store.enqueue(id,bot.roomId,String(source.messageId));
+   if(index===1)f.upgrade();
+   await automation.tick();
+   assert.equal(f.store.job(id).state,'delivered',JSON.stringify(f.store.job(id)));
+  }
+  assert.deepEqual(f.store.binding(bot.bot.id),binding);
+  assert.equal(f.local.probeView('codex').fingerprint,'upgraded-fixture');
+  assert.equal(f.calls.length,4);
+  assert.equal(f.calls[2].args.includes('read-only'),true);
+  assert.equal(f.calls[3].args.includes('resume'),false);
+  assert.equal(f.store.stateEntries('native-session:')[0]?.value.installationFingerprint,'upgraded-fixture');
+ }finally{await automation?.close();await f.close();}
+});
+test('a Codex version increase combined with a configuration change still requires explicit revalidation',async()=>{
+ const f=await setup();
+ try{
+  await ready(f);
+  const bot=await f.local.create({name:'配置变更测试',driver:'codex',requestId:'native-upgrade-config'},f.c);
+  const binding=f.store.binding(bot.bot.id)!;
+  f.upgrade('different-config');
+  await assert.rejects(f.local.turn({binding,botId:bot.bot.id,roomId:bot.roomId,profileRevision:1,system:'fixture',prompt:'fixture',signal:new AbortController().signal,onRequest:()=>assert.fail('must not request a model'),assertCurrent:()=>{}}),/native_installation_changed/);
+  assert.equal(f.calls.length,1);
+ }finally{await f.close();}
+});
 test('known Agent discovery is distinct from generation readiness; concurrent probes share one real process',async()=>{const f=await setup();try{const catalog=await f.local.catalog();assert.ok(catalog.agents.every(a=>a.known));await assert.rejects(f.local.identity('local-agent:codex'),/native_probe_required/);await Promise.all([f.local.startProbe({driver:'codex'}),f.local.startProbe({driver:'codex'})]);await ready(f);assert.equal(f.calls.length,1);const b=await f.local.create({name:'原生开发',driver:'codex',requestId:'native-create'},f.c);assert.equal(f.store.binding(b.bot.id)?.kind,'local-native');assert.equal((await f.upstream.listTeams()).rooms.length,1);f.changeInstallation();await assert.rejects(f.local.bind({botId:b.bot.id,driver:'codex',expectedFingerprint:'installed-fixture'},{} as any),/native_probe_required|native_installation_changed/);assert.equal(f.store.binding(b.bot.id)?.fingerprint,'installed-fixture');}finally{await f.close();}});
 test('failed readiness never binds or silently offers a manual connection for a known Agent',async()=>{const f=await setup();try{f.setMode('bad-probe');await f.local.startProbe({driver:'codex'});for(let n=0;n<100&&f.local.probeView('codex').state==='running';n++)await new Promise(r=>setTimeout(r,5));assert.equal(f.local.probeView('codex').reason,'native_probe_response_invalid');await assert.rejects(f.local.create({name:'不能创建',driver:'codex',requestId:'bad-create'},f.c),/native_probe_response_invalid/);assert.equal((await f.upstream.listTeams()).rooms.length,0);assert.throws(()=>f.local.probeView('untrusted-driver' as any),/native_unknown_agent/);}finally{await f.close();}});
 test('Bot messages execute the selected original CLI, enroll with Intent Broker, and resume only the owned native session',async()=>{const f=await setup();let automation:TeamAutomation|undefined;try{await ready(f);const b=await f.local.create({name:'本机Codex',driver:'codex',requestId:'native-round'},f.c);automation=new TeamAutomation(f.upstream,f.store,1,async()=>{throw Error('SDK must not substitute the selected Agent');},f.c,f.local);for(let n=0;n<2;n++){const origin=await say(f,b.roomId);f.store.enqueue('native-round-'+n,b.roomId,String(origin.messageId));await automation.tick();assert.equal(f.store.jobs()[0].state,'delivered',JSON.stringify(f.store.jobs()[0]));}const turns=f.calls.slice(1);assert.equal(turns.length,2);assert.equal(turns[1].args.includes('resume'),true);assert.equal(turns[1].args.includes('native_fixture_session_123'),true);const messages=(await f.upstream.messages(b.roomId,0,100)).messages;assert.equal(messages.filter((m:any)=>m.sender.kind==='agent').length,2);assert.ok(messages.filter((m:any)=>m.sender.kind==='agent').every((m:any)=>m.sender.logicalAgentId===b.bot.id));assert.ok(existsSync(join(turns[0].cwd,'KTEAM_CONTEXT.md')));assert.equal(f.broker.listParticipants({projectName:'kteam'}).length,1);}finally{await automation?.close();await f.close();}});
