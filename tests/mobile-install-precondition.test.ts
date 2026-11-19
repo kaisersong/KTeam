@@ -7,13 +7,22 @@ import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const {installMobileDependencies,requireFromMobileInstall}=await import(pathToFileURL(join(root,'scripts/mobile-install.mjs')).href) as {
+const {commandNeedsShell,installMobileDependencies,requireFromMobileInstall}=await import(pathToFileURL(join(root,'scripts/mobile-install.mjs')).href) as {
+  commandNeedsShell:(platform:string,command:string)=>boolean,
   installMobileDependencies:(options:{mobile:string,command?:string,args?:string[],lockDirectory?:string,stdio?:'ignore',env?:NodeJS.ProcessEnv})=>void,
   requireFromMobileInstall:(mobile:string,specifier:string)=>unknown,
 };
 
 function temp(){const dir=join(tmpdir(),'kteam-mobile-install-'+Math.random().toString(16).slice(2));mkdirSync(dir,{recursive:true});return dir;}
 function packageRoot(dir:string){mkdirSync(dir,{recursive:true});writeFileSync(join(dir,'package.json'),'{"name":"mobile-install-fixture","private":true}\n');}
+
+test('Windows batch npm is spawned through a shell and other commands are not',()=>{
+  assert.equal(commandNeedsShell('win32','npm.cmd'),true);
+  assert.equal(commandNeedsShell('win32','npm.BAT'),true);
+  assert.equal(commandNeedsShell('win32','npm'),false);
+  assert.equal(commandNeedsShell('linux','npm.cmd'),false);
+  assert.equal(commandNeedsShell(process.platform,process.execPath),false);
+});
 
 test('a mobile tree without its own modules fails instead of using the root install',()=>{
   const dir=temp();

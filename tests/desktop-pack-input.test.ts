@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync,spawn,spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,realpathSync,readdirSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -285,7 +285,9 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
   writeFileSync(join(broker,'index.js'),'module.exports=1\n',{mode:0o644});
   writeFileSync(join(broker,'package.json'),JSON.stringify({name:'intent-broker',version:'0.0.0',main:'index.js'})+'\n');
   writeFileSync(join(project,'package.json'),JSON.stringify({name:'kteam-pack-fixture',version:'0.0.0',dependencies:{kswarm:'file:../kswarm','intent-broker':'file:../intent-broker'}})+'\n');
-  execFileSync(npmCommand,['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'],{cwd:project,stdio:['ignore','pipe','pipe']});
+  const installed=spawnSync(npmCommand,['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'],{cwd:project,stdio:['ignore','pipe','pipe'],shell:process.platform==='win32'&&npmCommand.endsWith('.cmd'),windowsHide:true});
+  if(installed.error)throw installed.error;
+  if(installed.status!==0)throw Error('npm_install_failed:'+(installed.stderr??''));
   assert.equal(realpathSync(join(project,'node_modules','kswarm')),realpathSync(kswarm));
   assert.equal(realpathSync(join(project,'node_modules','intent-broker')),realpathSync(broker));
   if(process.platform!=='win32'){
@@ -301,7 +303,11 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
     assert.equal(lstatSync(join(staged,'node_modules','intent-broker')).isSymbolicLink(),false);
     assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(staged)),true);
     assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(kswarm)),false);
-    assert.equal(execFileSync(process.execPath,[join(staged,'node_modules','.bin','kswarm-marker')],{encoding:'utf8'}).trim(),'kswarm-marker');
+    const bin=join(staged,'node_modules','.bin',process.platform==='win32'?'kswarm-marker.cmd':'kswarm-marker');
+    const ran=process.platform==='win32'?spawnSync(bin,[],{shell:true,encoding:'utf8',windowsHide:true}):spawnSync(process.execPath,[bin],{encoding:'utf8'});
+    if(ran.error)throw ran.error;
+    assert.equal(ran.status,0);
+    assert.equal((ran.stdout??'').trim(),'kswarm-marker');
     assert.equal(existsSync(join(staged,'node_modules','kswarm','.env')),false);
     assert.equal(existsSync(join(staged,'node_modules','kswarm','.git')),false);
     assert.equal(existsSync(join(staged,'node_modules','kswarm','escape')),false);

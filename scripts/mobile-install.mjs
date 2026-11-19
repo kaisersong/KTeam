@@ -11,6 +11,8 @@ function failed(code,status,signal){
   return error;
 }
 
+export function commandNeedsShell(platform,command){return platform==='win32'&&/\.(?:cmd|bat)$/i.test(command);}
+
 function openInstallLock(lockDirectory){
   mkdirSync(lockDirectory,{recursive:true});
   const db=new DatabaseSync(join(lockDirectory,'lock.sqlite'));
@@ -28,7 +30,7 @@ export function withMobileInstall(options,body=()=>undefined){
   try{
     const command=options.command??(process.platform==='win32'?'npm.cmd':'npm');
     const args=options.args??['ci','--ignore-scripts','--no-audit','--no-fund'];
-    const result=spawnSync(command,args,{cwd:mobile,stdio:options.stdio??'inherit',env:options.env??process.env});
+    const result=spawnSync(command,args,{cwd:mobile,stdio:options.stdio??'inherit',env:options.env??process.env,shell:commandNeedsShell(process.platform,command),windowsHide:true});
     if(result.error)throw result.error;
     if(result.status!==0||result.signal)throw failed('mobile_install_failed',result.status,result.signal);
     return body();
