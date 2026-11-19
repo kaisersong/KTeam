@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  mobileAttemptCounts,
   mobileConnectPlan,
   mobileConnectionFailure,
   mobileRouteLabel,
@@ -40,6 +41,45 @@ test("a configured relay is labeled and does not replace a reachable direct addr
   assert.equal(mobileRouteLabel(lan, plan.relay), "直接连接 192.168.1.20:4173");
   assert.match(mobileConnectionFailure(true, true), /远程中继和直接连接都失败/);
   assert.match(mobileConnectionFailure(true, false), /没有可用的直接地址/);
+});
+
+test("a remembered private direct address stays dialable when the new invitation omits it", () => {
+  const remembered = "ws://10.1.2.3:4173/mobile/connect";
+  const plan = mobileConnectPlan({
+    endpoints: [lan],
+    relay,
+    lastEndpoint: remembered,
+  });
+  assert.deepEqual(plan.addresses, [remembered, lan, relay]);
+  assert.equal(
+    mobileConnectPlan({ endpoints: [lan], lastEndpoint: "ws://127.0.0.1:4173/mobile/connect" }).addresses[0],
+    "ws://127.0.0.1:4173/mobile/connect",
+  );
+  assert.equal(
+    mobileConnectPlan({ endpoints: [lan], lastEndpoint: undeclared }).addresses.includes(undeclared),
+    false,
+  );
+  assert.equal(
+    mobileConnectPlan({ endpoints: [lan], lastEndpoint: "ws://1.2.3.4:4173/mobile/connect" }).addresses.includes("ws://1.2.3.4:4173/mobile/connect"),
+    false,
+  );
+  assert.equal(
+    mobileConnectPlan({ endpoints: [lan], lastEndpoint: "ws://user:secret@10.1.2.3:4173/mobile/connect" }).addresses.length,
+    1,
+  );
+});
+
+test("a failure names only the routes that were actually dialed", () => {
+  const addresses = [lan, relay];
+  const beforeRelay = mobileAttemptCounts(addresses, relay, 1);
+  assert.equal(beforeRelay.triedRelay, false);
+  assert.equal(beforeRelay.triedDirect, true);
+  assert.match(mobileConnectionFailure(beforeRelay.triedRelay, beforeRelay.triedDirect), /直接地址/);
+  assert.doesNotMatch(mobileConnectionFailure(beforeRelay.triedRelay, beforeRelay.triedDirect), /都失败/);
+  const both = mobileAttemptCounts(addresses, relay, 2);
+  assert.equal(both.triedRelay, true);
+  assert.equal(both.triedDirect, true);
+  assert.match(mobileConnectionFailure(both.triedRelay, both.triedDirect), /都失败/);
 });
 
 test("relay credentials and fragments are not dialable", () => {

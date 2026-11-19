@@ -13,7 +13,9 @@ export function mobileConnectPlan(
   const direct = computer.endpoints.filter((address) => connectable(address));
   const remembered =
     computer.lastEndpoint &&
-    (computer.lastEndpoint === relay || direct.includes(computer.lastEndpoint))
+    (computer.lastEndpoint === relay ||
+      direct.includes(computer.lastEndpoint) ||
+      privateDirect(computer.lastEndpoint))
       ? computer.lastEndpoint
       : undefined;
   const addresses = [
@@ -25,6 +27,19 @@ export function mobileConnectPlan(
     ]),
   ];
   return { addresses, relay };
+}
+
+/** Failure text follows addresses that were actually dialed, not the whole plan. */
+export function mobileAttemptCounts(
+  addresses: readonly string[],
+  relay: string | undefined,
+  attempted: number,
+) {
+  const tried = addresses.slice(0, Math.max(0, attempted));
+  return {
+    triedRelay: !!relay && tried.includes(relay),
+    triedDirect: tried.some((address) => address !== relay),
+  };
 }
 
 export function mobileRouteLabel(address: string, relay?: string) {
@@ -50,4 +65,28 @@ function connectable(address: string) {
 
 function declaredRelay(relay?: string) {
   return relay && connectable(relay) ? relay : undefined;
+}
+
+function privateDirect(address: string) {
+  if (!connectable(address)) return false;
+  const url = new URL(address);
+  return url.protocol === "ws:" && privateHost(url.hostname);
+}
+
+function privateHost(hostname: string) {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
+  if (host.includes(":") && (host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")))
+    return true;
+  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!parts) return false;
+  const a = Number(parts[1]);
+  const b = Number(parts[2]);
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 169 && b === 254)
+  );
 }

@@ -10,6 +10,7 @@ import {
   type MobileKeypair,
 } from "../../src/protocol/mobile-wire";
 import {
+  mobileAttemptCounts,
   mobileConnectPlan,
   mobileConnectionFailure,
   mobileRouteLabel,
@@ -147,12 +148,12 @@ export class MobileConnection {
     let last: unknown;
     const deadline = Date.now() + 15000;
     const plan = mobileConnectPlan(this.computer, this.discovered);
-    const triedRelay = plan.addresses.some((address) => address === plan.relay);
-    const triedDirect = plan.addresses.some((address) => address !== plan.relay);
+    let attempted = 0;
     for (const address of plan.addresses) {
       if (this.closed) throw Error("连接已断开");
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
+      attempted++;
       try {
         await this.open(address, Math.min(remaining, address.startsWith("wss:") ? 8000 : 1000));
         this.route = mobileRouteLabel(address, plan.relay);
@@ -171,9 +172,10 @@ export class MobileConnection {
       }
     }
     if (this.authorityError) throw this.authorityError;
+    const attempts = mobileAttemptCounts(plan.addresses, plan.relay, attempted);
     throw last instanceof Error && /连接已断开|电脑身份不一致/.test(last.message)
       ? last
-      : Error(mobileConnectionFailure(triedRelay, triedDirect));
+      : Error(mobileConnectionFailure(attempts.triedRelay, attempts.triedDirect));
   }
   private async open(address: string, timeoutMs: number) {
     const digest = await Crypto.digestStringAsync(

@@ -38,6 +38,8 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 const WARNING_FIELD_PATTERN = /\b(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*([^\s"'<>]+)/gi;
+const JSON_SECRET_KEY =
+  /^(?:x[-_])?(?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|client[-_]?secret|secret[-_]?key|private[-_]?key|password|passwd|secret|token|credential|credentials|authorization)$/i;
 
 export function redactSecrets(input: string): RedactionResult {
   let text = input;
@@ -49,12 +51,51 @@ export function redactSecrets(input: string): RedactionResult {
       return replacement.replace(/\$(\d+)/g, (_, index: string) => args[Number(index)] ?? '');
     });
   }
+  const json = redactJsonSecrets(text);
+  if (json.redacted) {
+    text = json.text;
+    redacted = true;
+  }
 
   return {
     text,
     redacted,
     warnings: detectSuspiciousFields(text),
   };
+}
+
+function redactJsonSecrets(input: string): { text: string; redacted: boolean } {
+  const trimmed = input.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      let changed = false;
+      const scrub = (node: unknown): unknown => {
+        if (Array.isArray(node)) return node.map(scrub);
+        if (node && typeof node === 'object') {
+          return Object.fromEntries(Object.entries(node).map(([key, value]) => {
+            if (JSON_SECRET_KEY.test(key)) {
+              changed = true;
+              return [key, '<redacted>'];
+            }
+            return [key, scrub(value)];
+          }));
+        }
+        return node;
+      };
+      const next = scrub(JSON.parse(input));
+      if (changed) return { text: JSON.stringify(next, null, input.includes('\n') ? 2 : undefined), redacted: true };
+      return { text: input, redacted: false };
+    } catch {
+      /* Fall through to field patterns embedded in a larger string. */
+    }
+  }
+  const embedded = input.replace(
+    /("(?:\\.|[^"\\])*(?:password|passwd|api[_-]?key|secret|token|credential|authorization)(?:\\.|[^"\\])*"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
+    (_match, key: string) => {
+      return key + '"<redacted>"';
+    },
+  );
+  return { text: embedded, redacted: embedded !== input };
 }
 
 export function capForModel(input: string, maxChars = MODEL_OUTPUT_CAP): CappedResult {
@@ -103,7 +144,8 @@ export function isSensitiveFilePath(filePath: string): boolean {
 function detectSuspiciousFields(text: string): string[] {
   const fields = new Set<string>();
   for (const match of text.matchAll(WARNING_FIELD_PATTERN)) {
-    fields.add(match[1].toLowerCase());
+    const field = match[1];
+    if (field) fields.add(field.toLowerCase());
   }
   return [...fields].map((field) => `possible secret-like field: ${field}`);
 }
