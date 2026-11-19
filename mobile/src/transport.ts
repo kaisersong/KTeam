@@ -9,6 +9,11 @@ import {
   newMobileKeypair,
   type MobileKeypair,
 } from "../../src/protocol/mobile-wire";
+import {
+  mobileConnectPlan,
+  mobileConnectionFailure,
+  mobileRouteLabel,
+} from "../../src/protocol/mobile-routes";
 export type Computer = {
   installationId: string;
   computerName: string;
@@ -141,23 +146,16 @@ export class MobileConnection {
   private async connectRoutes() {
     let last: unknown;
     const deadline = Date.now() + 15000;
-    const endpoints = [
-      ...new Set([
-        ...(this.computer.lastEndpoint ? [this.computer.lastEndpoint] : []),
-        ...(this.computer.relay ? [this.computer.relay] : []),
-        "wss://relay.kaihub.space/mobile/connect?installationId=" +
-          encodeURIComponent(this.computer.installationId),
-        ...this.discovered,
-        ...this.computer.endpoints,
-      ]),
-    ];
-    for (const address of endpoints) {
+    const plan = mobileConnectPlan(this.computer, this.discovered);
+    const triedRelay = plan.addresses.some((address) => address === plan.relay);
+    const triedDirect = plan.addresses.some((address) => address !== plan.relay);
+    for (const address of plan.addresses) {
       if (this.closed) throw Error("连接已断开");
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       try {
         await this.open(address, Math.min(remaining, address.startsWith("wss:") ? 8000 : 1000));
-        this.route = address.startsWith("wss:") ? "远程连接" : "直连";
+        this.route = mobileRouteLabel(address, plan.relay);
         if (this.computer.lastEndpoint !== address) {
           this.computer.lastEndpoint = address;
           this.onRouteUpdate?.(this.computer);
@@ -172,9 +170,10 @@ export class MobileConnection {
           throw e;
       }
     }
-    throw last instanceof Error
+    if (this.authorityError) throw this.authorityError;
+    throw last instanceof Error && /连接已断开|电脑身份不一致/.test(last.message)
       ? last
-      : Error("无法连接电脑，请确认电脑已开机并开启手机连接");
+      : Error(mobileConnectionFailure(triedRelay, triedDirect));
   }
   private async open(address: string, timeoutMs: number) {
     const digest = await Crypto.digestStringAsync(

@@ -107,6 +107,8 @@ import {
   mergeMessages,
   visibleRooms,
 } from "../src/protocol/mobile-message-cache";
+import { mobileApprovalCard } from "../src/protocol/mobile-approval-card";
+import { mobileRecoveryNotice } from "../src/protocol/work-recovery-view";
 const uid = () => Crypto.randomUUID().replace(/-/g, "");
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const names: Record<string, string> = {
@@ -1584,8 +1586,10 @@ function AppBody() {
               </Pressable>
             )}
           </View>
-          {work?.jobs?.[0] &&
-            ["blocked", "unknown", "stopped"].includes(work.jobs[0].state) && (
+          {(() => {
+            const recoveryJob = mobileRecoveryNotice(room.roomId, work);
+            if (!recoveryJob) return null;
+            return (
               <View
                 style={[
                   s.card,
@@ -1600,11 +1604,12 @@ function AppBody() {
                 <Text
                   style={[s.caption, { color: colors.muted, marginTop: 6 }]}
                 >
-                  {names[work.jobs[0].reason] ??
+                  {names[recoveryJob.reason ?? ""] ??
                     "电脑上的执行已停止或结果待核对，请在电脑查看工作记录。"}
                 </Text>
               </View>
-            )}
+            );
+          })()}
           {work?.jobs
             ?.filter((j: any) => ["running", "routing"].includes(j.state))
             .map((j: any) => (
@@ -1815,7 +1820,9 @@ function AppBody() {
           {!inbox?.approvals?.length && !inbox?.questions?.length && (
             <Text style={{ color: colors.muted }}>暂时没有待处理事项</Text>
           )}
-          {inbox?.approvals?.map((a: any) => (
+          {inbox?.approvals?.map((a: any) => {
+            const card = mobileApprovalCard(a);
+            return (
             <View
               key={a.id}
               style={[
@@ -1828,34 +1835,60 @@ function AppBody() {
                 需要确认
               </Text>
               <Text style={{ color: colors.muted, marginVertical: 12 }}>
-                {a.toolName}
+                {card.toolName}
               </Text>
+              {card.reason ? (
+                <Text style={{ color: colors.text, marginBottom: 8 }}>{card.reason}</Text>
+              ) : null}
+              {card.risk ? (
+                <Text style={{ color: colors.muted, marginBottom: 8 }}>{card.risk}</Text>
+              ) : null}
+              {card.inspection ? (
+                <Text style={{ color: colors.text, marginBottom: 8 }}>{card.inspection}</Text>
+              ) : null}
+              {card.targets.map((target) => (
+                <Text key={target.label + target.target} selectable style={{ color: colors.text }}>
+                  {target.label} {target.target}
+                </Text>
+              ))}
+              {card.directories.map((directory) => (
+                <Text key={directory} selectable style={{ color: colors.text }}>
+                  涉及目录 {directory}
+                </Text>
+              ))}
               <Text
                 selectable
                 style={{
                   color: colors.text,
                   fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
                   fontSize: 12,
+                  marginVertical: 8,
                 }}
               >
-                {a.display}
+                {card.parameters}
               </Text>
+              {card.expiresAt ? (
+                <Text style={[s.caption, { color: colors.muted, marginBottom: 8 }]}>
+                  有效期至 {new Date(card.expiresAt).toLocaleString()}
+                </Text>
+              ) : null}
               <View style={s.actions}>
-                {button(
+                {card.decisions.includes("deny") && button(
                   "拒绝",
-                  () => void decide(a, "deny"),
+                  () => void decide({ ...a, hash: card.hash }, "deny"),
                   undefined,
                   busy || offline,
                 )}
-                {button(
+                {card.decisions.includes("allow_once") && button(
                   "允许一次",
-                  () => void decide(a, "allow_once"),
+                  () => void decide({ ...a, hash: card.hash }, "allow_once"),
                   <Check size={16} color={colors.green} />,
                   busy || offline,
                 )}
               </View>
             </View>
-          ))}
+            );
+          })}
           {inbox?.questions?.map((q: any) => (
             <Question
               key={q.id}

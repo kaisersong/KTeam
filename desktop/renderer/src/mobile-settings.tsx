@@ -90,7 +90,7 @@ export function MobileSettings() {
         <Smartphone size={22} /> 手机连接
       </h2>
       <p className="settings-description">
-        打开手机 KTeam，点“扫码连接电脑”。手机和电脑请使用同一 Wi-Fi。
+        打开手机 KTeam，点“扫码连接电脑”。未保存远程中继时，手机只连接这台电脑公布的局域网地址，不会改连其他中继。
       </p>
       {error && (
         <p role="alert" className="flow-error">
@@ -211,7 +211,10 @@ export function MobileSettings() {
             <summary>远程连接</summary>
             <p className="settings-description">
               配置加密中继后，离开同一 Wi-Fi
-              仍能连接此电脑。中继地址和凭据由服务部署方提供。
+              仍能连接此电脑。中继地址和凭据由服务部署方提供。中继失败时，手机仍会尝试局域网直接连接。
+              {data.relay?.configured
+                ? ` 当前远程中继是 ${data.relay.url}。`
+                : " 当前没有配置远程中继。"}
             </p>
             <input
               aria-label="中继地址"

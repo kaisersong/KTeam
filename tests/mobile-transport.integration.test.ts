@@ -83,6 +83,39 @@ test("the actual phone transport retains idle revocation across reconnects and n
       relay: url,
       endpoints: [url, "ws://127.0.0.1:1/mobile/connect"],
     });
+    const hidden =
+      "wss://relay.kaihub.space/mobile/connect?installationId=" +
+      payload.installationId;
+    const direct = new MobileConnection({
+      ...candidate,
+      relay: "ws://127.0.0.1:1/mobile/connect",
+      endpoints: ["ws://127.0.0.1:9/mobile/connect", url],
+      lastEndpoint: hidden,
+    });
+    const beforeDirect = opened.length;
+    await direct.connect();
+    const directOpened = opened.slice(beforeDirect);
+    assert.equal(
+      directOpened.some((item) => item.includes("kaihub")),
+      false,
+      "an undeclared relay must not be dialed",
+    );
+    assert.equal(directOpened.at(-1), url);
+    assert.match(direct.route, /^直接连接 /);
+    direct.close();
+    const relayFirst = new MobileConnection({
+      ...candidate,
+      relay: "ws://127.0.0.1:1/mobile/connect",
+      endpoints: [url],
+      lastEndpoint: "ws://127.0.0.1:1/mobile/connect",
+    });
+    const beforeRelay = opened.length;
+    await relayFirst.connect();
+    const relayOpened = opened.slice(beforeRelay);
+    assert.equal(relayOpened[0], "ws://127.0.0.1:1/mobile/connect");
+    assert.equal(relayOpened.includes(url), true);
+    assert.match(relayFirst.route, /^直接连接 /);
+    relayFirst.close();
     const stalled = http.createServer();
     let stalledSocket: any;
     const stalledSockets = new Set<any>();
