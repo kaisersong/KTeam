@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
@@ -10,6 +11,16 @@ const mobile = join(root, "mobile");
 const shared = join(root, "src/protocol/mobile-wire.ts");
 const rootModules = join(root, "node_modules");
 const mobileRequire = createRequire(join(mobile, "package.json"));
+// Root `npm ci` does not install mobile/package-lock.json. Load the pinned mobile
+// tree before resolving its toolchain; otherwise this file exits before either assertion.
+const pinnedMobileModules = ["metro-resolver/package.json", "typescript/package.json", "buffer/package.json", "expo/package.json", "expo/metro-config.js", "expo/tsconfig.base.json"];
+const mobilePackage = (rel: string) => join(mobile, "node_modules", rel);
+if (!pinnedMobileModules.every(rel => existsSync(mobilePackage(rel)))) {
+  const installed = spawnSync("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], {cwd: mobile, stdio: "inherit"});
+  if (installed.error) throw installed.error;
+  if (installed.status !== 0) throw Object.assign(Error("mobile_install_failed"), {status: installed.status, signal: installed.signal});
+  if (!pinnedMobileModules.every(rel => existsSync(mobilePackage(rel)))) throw Error("mobile_install_incomplete");
+}
 const ts = mobileRequire("typescript") as {
   readConfigFile: (file: string, read: (file: string) => string | undefined) => { config: { compilerOptions?: object }; error?: unknown };
   sys: {
