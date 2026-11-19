@@ -18,7 +18,11 @@ export function inspectOperation(toolName:string,input:Record<string,unknown>,cw
   }
   if(word==='cp'&&tokens[i+1]){const operands=tokens.slice(i+1).slice(0,tokens.slice(i+1).findIndex(t=>/^[;|&]+$/.test(t))<0?undefined:tokens.slice(i+1).findIndex(t=>/^[;|&]+$/.test(t))).filter(t=>!t.startsWith('-')).map(literal);if(operands.length>=2){add('copy',path(operands[0]!),'复制来源');add('overwrite',path(operands.at(-1)!),'复制目标，可能覆盖已有文件');}}
   if(/^(?:kill|pkill|killall|nohup)$/.test(word)||['npm','pnpm','yarn'].includes(word)&&/\b(?:start|dev|serve)\b/.test(command))add('process',tokens.slice(i,i+4).join(' '),'启动或结束进程');
-  if(word==='>'||word==='>>'){if(tokens[i+1])add('overwrite',path(literal(tokens[i+1]!)),word==='>'?'重定向覆盖文件':'追加输出文件');}
+  if((word==='>'||word==='>>')&&tokens[i+1]){
+   const target=literal(tokens[i+1]!);
+   if(paths===posix&&target==='/dev/stdout')add('path',target,'重定向到标准输出');
+   else add('overwrite',path(target),word==='>'?'重定向覆盖文件':'追加输出文件');
+  }
   else if(paths===posix&&word.startsWith('/')&&!word.startsWith('//')||paths===win32&&/^(?:[A-Za-z]:[\\/]|\\)/.test(word))add('path',word,'命令包含绝对路径');
  }
  const destructive=facts.some(f=>f.kind==='delete'||f.kind==='unknown');

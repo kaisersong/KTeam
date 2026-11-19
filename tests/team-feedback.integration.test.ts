@@ -24,6 +24,8 @@ test('approval facts expose actual legacy paths and require separate inspection 
  assert.ok(details.facts.some(f=>f.reason.includes('切换')&&f.target==='/old/project'));
  assert.ok(details.facts.some(f=>f.kind==='process'));
  assert.equal(inspectOperation('bash',{command:'rm -rf ./env'},'/project').mixedInspection,false);
+ const pipe=inspectOperation('bash',{command:'printf ok > /dev/stdout | head'},'/project');
+ assert.deepEqual(pipe.facts,[{kind:'path',target:'/dev/stdout',reason:'重定向到标准输出'}]);
  const windows=inspectOperation('bash',{command:String.raw`dir C:\old\env & rmdir /s /q C:\old\env & cd /d C:\old\project`},String.raw`C:\new\project`);
  assert.equal(windows.mixedInspection,true);assert.ok(windows.facts.some(f=>f.kind==='delete'&&f.target===String.raw`C:\old\env`));assert.ok(windows.facts.some(f=>f.reason.includes('切换')&&f.target===String.raw`C:\old\project`));assert.ok(!windows.facts.some(f=>/\\[sq]$/i.test(f.target)));
  const awk=inspectOperation('bash',{command:"cd /work/tree; awk '/^not ok/{f=1} f{print; c++} c>45{exit}' /tmp/report.tap | head -60"},'/home/kai');

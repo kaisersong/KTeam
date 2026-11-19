@@ -65,3 +65,14 @@ test('GitHub CLI status and GET queries preserve read-only semantics through quo
   'METHOD=DELETE; gh api repos/example/repo --method "$METHOD"','E=$(cat input); gh api $E','gh api repos/example/repo; rm /work/file',
  ])assert.equal(readOnlyShell(command),false,command);
 });
+
+test('Git remote listing and literal stdout pipes do not make read-only checks into writes',()=>{
+ const pm='cd /work && git branch --show-current; git remote -v; git log --oneline -2; git status --short | head';
+ const quality=`JID=$(gh api repos/example/project/actions/runs/123/jobs --jq '.jobs[0].id') && echo "JOB=$JID" && gh api "repos/example/project/actions/jobs/$JID/logs" > /dev/stdout 2>/dev/null | grep -Ei "floor|coverage" | head -50`;
+ assert.equal(readOnlyShell(pm),true);
+ assert.equal(readOnlyShell(quality),process.platform!=='win32');
+ assert.equal(readOnlyShell(quality.replace('"repos/example/project/actions/jobs/$JID/logs"','repos/example/project/actions/jobs/$JID/logs')),false);
+ for(const command of ['git remote set-url origin new-url','git branch -D branch','gh api repos/example/project > result.log | head','gh api repos/example/project > /dev/stdout','gh api repos/example/project >&2 > /dev/stdout | head','ls 2>/dev/stdout | head','ls >> /dev/stdout | head','ls 3>/dev/stdout | head','gh api repos/example/project -X DELETE > /dev/stdout | head']){
+  assert.equal(readOnlyShell(command),false,command);
+ }
+});

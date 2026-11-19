@@ -41,13 +41,18 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
   if(depth>4||!tokens.length)return false;
   const blocks:('test'|'body'|'else'|'loop-await'|'loop')[]=[];let segment:Token[]=[];let good=true,seen=false;
   const wordOK=(word:Word)=>word.refs.every(name=>variables.has(name))&&word.subs.every(sub=>inspect(sub,new Set(variables),depth+1,new Set(safeGitVariables)));
-  function check(){
-   if(!segment.length)return;seen=true;let words:Word[]=[];
+  function check(piped=false){
+   if(!segment.length)return;seen=true;let words:Word[]=[];let redirected=false;
    for(let i=0;i<segment.length;i++){
     const token=segment[i]!;
     if(token.kind==='op'){
-     if(['>&1','>&2'].includes(token.value)){if(words.at(-1)?.value==='2'||words.at(-1)?.value==='1')words.pop();continue;}
-     const target=segment[++i];if(token.value!=='>'||target?.kind!=='word'||target.value!=='/dev/null'||target.refs.length||target.subs.length){good=false;return;}
+     if(['>&1','>&2'].includes(token.value)){redirected=true;if(words.at(-1)?.value==='2'||words.at(-1)?.value==='1')words.pop();continue;}
+     const target=segment[++i];
+     // The first output redirect of a pipeline stage may reuse its own stdout pipe.
+     const descriptor=words.at(-1)?.value??'';
+     const pipeOutput=target?.value==='/dev/stdout'&&process.platform!=='win32'&&piped&&!redirected&&(descriptor==='1'||!/^\d+$/.test(descriptor));
+     if(token.value!=='>'||target?.kind!=='word'||(target.value!=='/dev/null'&&!pipeOutput)||target.refs.length||target.subs.length){good=false;return;}
+     redirected=true;
      if(words.at(-1)?.value==='2'||words.at(-1)?.value==='1')words.pop();continue;
     }
     if(!wordOK(token)){good=false;return;}words.push(token);
@@ -84,7 +89,8 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
    if(head==='sed'){const script=fixed(words[2]);if(fixed(words[1])!=='-n'||!script||!/^([0-9]+|\$)?(,([0-9]+|\$))?p$/.test(script)||words.slice(3).some(word=>word.value.startsWith('-')||word.subs.length||word.refs.some(name=>!safeGitVariables.has(name)))){good=false;return;}}
    if(head==='git'){
     let args=words.slice(1);while(fixed(args[0])==='--no-pager'||fixed(args[0])==='-C'){if(fixed(args[0])==='-C'){if(!args[1]||args[1].subs.length||args[1].refs.some(name=>!safeGitVariables.has(name))||args[1].value.startsWith('-')){good=false;return;}args=args.slice(2);}else args=args.slice(1);}
-    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version',...(allowLocalChanges?['add','commit','worktree','checkout','switch','merge']:[])].includes(verb)){good=false;return;}
+    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version','branch','remote',...(allowLocalChanges?['add','commit','worktree','checkout','switch','merge']:[])].includes(verb)){good=false;return;}
+    if((verb==='branch'||verb==='remote')&&(args.length!==1||fixed(args[0])!==(verb==='branch'?'--show-current':'-v'))){good=false;return;}
     if(['checkout','switch','merge'].includes(verb)&&(!allowLocalChanges||args.some(word=>fixed(word)===undefined)||!localGitWorkflow(verb,args.map(word=>word.value)))){good=false;return;}
     if(verb==='worktree'&&(fixed(args[0])!=='add'||!args.some(word=>fixed(word)==='--detach'))){good=false;return;}
     if(args.some(word=>word.subs.length||word.refs.some(name=>!safeGitVariables.has(name))||/[*?\[]/.test(word.value)||word.value==='-o'||['--output','--ext-diff','--textconv','--filters','--open-files-in-pager','--exec','--upload-pack','--receive-pack'].some(option=>{const name=word.value.split('=')[0]!;return name.startsWith('--')&&name!=='--'&&option.startsWith(name);}))){good=false;return;}
@@ -93,7 +99,7 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
    if(head==='printf'){const format=fixed(words[1]);if(!format||format.startsWith('-')||/%(?:[-+ #0]*[0-9]*(?:\.[0-9]+)?)n/.test(format.replaceAll('%%','')))good=false;}
    if(head==='cd'&&(words.length!==2||!words[1]!.value||words[1]!.value.startsWith('-')))good=false;
   }
-  for(const token of tokens){if(token.kind==='op'&&[';','&&','||','|'].includes(token.value)){check();if(!good)return false;}else segment.push(token);}
+  for(const token of tokens){if(token.kind==='op'&&[';','&&','||','|'].includes(token.value)){check(token.value==='|');if(!good)return false;}else segment.push(token);}
   check();return good&&seen&&!blocks.length;
  }
  try{return inspect(scan());}catch{return false;}
