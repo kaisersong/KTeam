@@ -24,6 +24,9 @@ export type Computer = {
   endpoints: string[];
   relay?: string;
   lastEndpoint?: string;
+  epoch?: number;
+  appliedRevokeSeq?: number;
+  authorityLocked?: boolean;
   key: { publicKey: string; secretKey: string };
 };
 export type Invitation = {
@@ -115,7 +118,18 @@ export class MobileConnection {
   private connecting?: Promise<void>;
   private discovery?: Zeroconf;
   private discovered: string[] = [];
-  constructor(readonly computer: Computer, private onRouteUpdate?: (c: Computer) => void) {
+  constructor(
+    readonly computer: Computer,
+    private onRouteUpdate?: (c: Computer) => void,
+    private onAuthority?: (event: {
+      type: "close" | "ready" | "revoke";
+      code?: number;
+      installationId?: string;
+      deviceId?: string;
+      epoch?: number;
+      seq?: number;
+    }) => void,
+  ) {
     this.discovery = new Zeroconf();
     this.discovery.on("resolved", (s: any) => {
       if (
@@ -234,6 +248,7 @@ export class MobileConnection {
         // A later route failure must never hide the authority decision as offline.
         if (event.code === 4401 || event.code === 4403)
           this.authorityError = Error(code);
+        if (!this.closed) this.onAuthority?.({ type: "close", code: event.code });
         if (!ready) reject(Error(code));
         if (this.socket === socket) {
           this.ready = false;
@@ -260,9 +275,45 @@ export class MobileConnection {
           }
           const value = this.frames.receive(message.packet);
           if (!value) return;
+          if (value.type === "device-revoked") {
+            this.onAuthority?.({
+              type: "revoke",
+              installationId: value.installationId,
+              deviceId: value.deviceId,
+              epoch: value.epoch,
+              seq: value.seq,
+            });
+            this.authorityError = Error("mobile_device_revoked");
+            clearTimeout(timer);
+            for (const p of this.pending.values()) {
+              clearTimeout(p.timer);
+              p.reject(this.authorityError);
+            }
+            this.pending.clear();
+            try {
+              const id = Crypto.randomUUID();
+              for (const packet of this.frames.encode({ id, method: "revoke.ack", input: {} }))
+                socket.send(JSON.stringify({ type: "record", packet }));
+            } catch {}
+            if (!ready) reject(this.authorityError);
+            return;
+          }
           if (value.type === "ready") {
             if (value.installationId !== this.computer.installationId)
               throw Error("电脑身份不一致");
+            if (this.computer.credentialId.startsWith("device-")) {
+              const generationMatches =
+                value.deviceId === this.computer.credentialId &&
+                Number.isInteger(value.epoch) &&
+                (this.computer.epoch == null || value.epoch === this.computer.epoch);
+              if (!generationMatches) throw Error("mobile_authority_unproven");
+            }
+            this.onAuthority?.({
+              type: "ready",
+              installationId: value.installationId,
+              deviceId: value.deviceId,
+              epoch: value.epoch,
+            });
             // Routing changes arrive only inside the authenticated Noise channel.
             // Never learn a remote address from an unauthenticated discovery peer.
             if (value.relay === null || typeof value.relay === "string") {

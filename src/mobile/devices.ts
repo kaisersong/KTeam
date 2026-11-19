@@ -13,14 +13,28 @@ import {
   newMobileKeypair,
   type MobileKeypair,
 } from "../protocol/mobile-wire.js";
+
+/** Human comparison only. The identity is the full Noise static key, not these 12 hex characters. */
+export function mobilePairFingerprint(peerKey: string) {
+  return createHash("sha256").update(peerKey).digest("hex").slice(0, 12);
+}
+export type MobileRevocation = {
+  v: 1;
+  installationId: string;
+  deviceId: string;
+  epoch: number;
+  seq: number;
+};
 export type MobilePrincipal = {
   kind: "device" | "invite";
   id: string;
   epoch: number;
   peerKey?: string;
+  revoked?: MobileRevocation;
 };
 export class MobileDevices {
   private state: any;
+  private revocations: MobileRevocation[] = [];
   constructor(private store: TeamStore) {
     this.state = store.state<any>("mobile-devices:v1");
     if (!this.state) {
@@ -93,17 +107,13 @@ export class MobileDevices {
         .map((i: any) => ({
           id: i.id,
           name: i.claim.name,
-          fingerprint: createHash("sha256")
-            .update(i.claim.peerKey)
-            .digest("hex")
-            .slice(0, 12),
           expiresAt: i.expiresAt,
         })),
     };
   }
   configure(value: unknown) {
     const i = record(value);
-    fields(i, ["action", "id", "port", "url", "token", "allowApprovals"]);
+    fields(i, ["action", "id", "port", "url", "token", "allowApprovals", "fingerprint"]);
     const action = text(i.action, "action");
     if (action === "enable") {
       if (
@@ -127,8 +137,12 @@ export class MobileDevices {
         invite.status !== "pending"
       )
         throw new KTeamError("mobile_invite_expired", 409);
-      // The Noise static key proves identity. A display name cannot do so.
-      const previous = this.state.devices.find((d: any) => d.peerKey === invite.claim.peerKey);
+      const typed = text(i.fingerprint, "fingerprint").trim().toLowerCase();
+      const bound = invite.claim.peerKey;
+      // The person types the 12 characters shown on the phone. The stored identity is the claim's full key.
+      if (!/^[0-9a-f]{12}$/.test(typed) || typed !== mobilePairFingerprint(bound))
+        throw new KTeamError("mobile_pair_mismatch", 409);
+      const previous = this.state.devices.find((d: any) => d.peerKey === bound);
       const secret = randomBytes(32).toString("base64"),
         id = previous?.id ?? "device-" + randomBytes(16).toString("hex");
       const device = {
@@ -138,7 +152,7 @@ export class MobileDevices {
         pairedAt: Date.now(),
         epoch: (previous?.epoch ?? 0) + 1,
         psk: mobileB64(createHash("sha256").update(secret).digest()),
-        peerKey: invite.claim.peerKey,
+        peerKey: bound,
         allowApprovals: i.allowApprovals === true,
       };
       this.state.devices = this.state.devices.filter((d: any) => d.peerKey !== invite.claim.peerKey);
@@ -149,12 +163,24 @@ export class MobileDevices {
         secret,
         installationId: this.installationId,
         publicKey: this.state.key.publicKey,
+        epoch: device.epoch,
+        fingerprint: mobilePairFingerprint(bound),
       };
     } else if (action === "revoke") {
       const d = this.state.devices.find((d: any) => d.id === i.id);
       if (!d) throw new KTeamError("mobile_device_missing", 404);
+      const notice: MobileRevocation = {
+        v: 1,
+        installationId: this.installationId,
+        deviceId: d.id,
+        epoch: d.epoch,
+        seq: (d.revokeSeq ?? 0) + 1,
+      };
+      d.revokeSeq = notice.seq;
+      d.revokeNotice = notice;
       d.epoch++;
       d.revokedAt = Date.now();
+      this.revocations.push(notice);
     } else if (action === "relay") {
       if (i.url === undefined || i.url === "") {
         delete this.state.relay;
@@ -256,7 +282,38 @@ export class MobileDevices {
       };
     throw new KTeamError("mobile_auth_required", 401);
   }
+  /** Revoked devices can still finish Noise so the phone can receive one encrypted notice. They cannot call methods. */
+  delivery(id: unknown) {
+    if (typeof id === "string") {
+      const revoked = this.state.devices.find(
+        (d: any) => d.id === id && d.revokedAt && d.revokeNotice,
+      );
+      if (revoked)
+        return {
+          principal: {
+            kind: "device",
+            id: revoked.id,
+            epoch: revoked.epoch,
+            peerKey: revoked.peerKey,
+            revoked: revoked.revokeNotice,
+          } as MobilePrincipal,
+          psk: mobileBytes(revoked.psk, 32),
+        };
+    }
+    return this.authenticate(id);
+  }
+  activeRevocation(id: string) {
+    const d = this.state.devices.find((d: any) => d.id === id && d.revokedAt && d.revokeNotice);
+    return d?.revokeNotice as MobileRevocation | undefined;
+  }
+  takeRevocations() {
+    const notices = this.revocations;
+    this.revocations = [];
+    return notices;
+  }
   assert(p: MobilePrincipal, approve = false) {
+    if (p.kind === "device" && this.state.devices.find((d: any) => d.id === p.id)?.revokedAt)
+      throw new KTeamError("mobile_device_revoked", 403);
     const current = this.authenticate(p.id).principal;
     if (
       current.kind !== p.kind ||
@@ -280,6 +337,7 @@ export class MobileDevices {
       i.claim = { name, peerKey };
       this.save();
     }
+    const fingerprint = mobilePairFingerprint(peerKey);
     if (input.action === "finish") {
       if (i.status !== "approved")
         throw new KTeamError("mobile_pair_pending", 409);
@@ -289,7 +347,7 @@ export class MobileDevices {
       return { ok: true };
     }
     return i.status === "approved"
-      ? { ok: true, paired: true, ...i.result }
-      : { ok: true, pending: true };
+      ? { ok: true, paired: true, fingerprint, ...i.result }
+      : { ok: true, pending: true, fingerprint };
   }
 }

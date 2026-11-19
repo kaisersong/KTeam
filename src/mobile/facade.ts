@@ -6,6 +6,7 @@ import type { MobileDevices, MobilePrincipal } from "./devices.js";
 import { generatedFilePreview } from "../runtime/generated-files.js";
 import { generatedFileRecords } from "../runtime/generated-file-receipts.js";
 import { BotCapabilities } from "../service/bot-capabilities.js";
+import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
 export class MobileFacade {
   constructor(
     private deps: any,
@@ -40,6 +41,13 @@ export class MobileFacade {
       throw new KTeamError("mobile_operation_invalid");
     const payload = { ...input };
     delete payload.operationId;
+    if (method === "approvals.decide") {
+      if (!["allow_once", "deny"].includes(String(payload.decision)))
+        throw new KTeamError("mobile_approval_scope_forbidden", 403);
+      const approvalId = text(payload.id, "approval_id");
+      if (operationId !== mobileApprovalOperationId(approvalId))
+        throw new KTeamError("mobile_operation_invalid");
+    }
     const id = "mobile-operation:" + p.id + ":" + operationId,
       digest = createHash("sha256")
         .update(JSON.stringify({ method, input: payload }))
@@ -52,6 +60,15 @@ export class MobileFacade {
       if (prior.status === "rejected") throw new KTeamError(prior.code, 409);
       throw new KTeamError("mobile_operation_unknown", 409);
     }
+    if (method === "approvals.decide") {
+      const approval = this.store.operation(String(payload.id));
+      if (
+        !approval ||
+        approval.status !== "pending" ||
+        approval.hash !== payload.expectedHash
+      )
+        throw new KTeamError("tool_approval_changed", 409);
+    }
     this.store.saveOperation(
       {
         id,
@@ -60,6 +77,13 @@ export class MobileFacade {
         digest,
         ...(["messages.send", "attachments.send"].includes(method)
           ? { roomId: payload.roomId, messageId: payload.id }
+          : {}),
+        ...(method === "approvals.decide"
+          ? {
+              approvalId: payload.id,
+              decision: payload.decision,
+              expectedHash: payload.expectedHash,
+            }
           : {}),
         status: "executing",
         createdAt: Date.now(),

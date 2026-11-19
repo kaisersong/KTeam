@@ -10,7 +10,8 @@ export function MobileSettings() {
     [copied, setCopied] = useState(false),
     [busy, setBusy] = useState(false),
     [relayUrl, setRelayUrl] = useState(""),
-    [relayToken, setRelayToken] = useState("");
+    [relayToken, setRelayToken] = useState(""),
+    [typedFingerprint, setTypedFingerprint] = useState<Record<string, string>>({});
   const [now, setNow] = useState(Date.now());
   const preparing = useRef(false);
   const load = async () => {
@@ -168,15 +169,30 @@ export function MobileSettings() {
             <div className="settings-field" key={r.id}>
               <div>
                 <strong>{r.name} 请求连接</strong>
-                <small>设备指纹 {r.fingerprint}</small>
+                <small>输入这部手机屏幕上的 12 位指纹</small>
               </div>
+              <input
+                aria-label={"手机指纹 " + r.name}
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={12}
+                value={typedFingerprint[r.id] ?? ""}
+                placeholder="手机上的 12 位指纹"
+                onChange={(e) =>
+                  setTypedFingerprint((current) => ({
+                    ...current,
+                    [r.id]: e.target.value,
+                  }))
+                }
+              />
               <button
                 className="primary"
-                disabled={busy}
+                disabled={busy || (typedFingerprint[r.id] ?? "").trim().length !== 12}
                 onClick={() =>
                   void change({
                     action: "approve",
                     id: r.id,
+                    fingerprint: (typedFingerprint[r.id] ?? "").trim().toLowerCase(),
                     allowApprovals: true,
                   })
                 }

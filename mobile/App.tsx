@@ -109,6 +109,9 @@ import {
 } from "../src/protocol/mobile-message-cache";
 import { mobileApprovalCard } from "../src/protocol/mobile-approval-card";
 import { mobileRecoveryNotice } from "../src/protocol/work-recovery-view";
+import { acceptPairing } from "../src/protocol/mobile-pairing";
+import { ResponseBarrier, applyPhoneAuthority } from "../src/protocol/mobile-authority";
+import { mobileB64 } from "../src/protocol/mobile-wire";
 const uid = () => Crypto.randomUUID().replace(/-/g, "");
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const names: Record<string, string> = {
@@ -309,6 +312,8 @@ function AppBody() {
     [torch, setTorch] = useState(false),
     [pairingName, setPairingName] = useState("电脑"),
     [pairingPhase, setPairingPhase] = useState("connecting"),
+    [pairFingerprint, setPairFingerprint] = useState(""),
+    [authorityLock, setAuthorityLock] = useState(false),
     [manualPair, setManualPair] = useState(false),
     [attachmentMenu, setAttachmentMenu] = useState(false),
     [pairLink, setPairLink] = useState(""),
@@ -343,10 +348,16 @@ function AppBody() {
     list = useRef<FlatList>(null),
     pairGeneration = useRef(0),
     pairingActive = useRef(false),
+    pairConfirmed = useRef(false),
+    heldPair = useRef<any>(null),
+    localFingerprint = useRef(""),
+    computerRef = useRef<any>(undefined),
+    writeBarrier = useRef(new ResponseBarrier()),
     pairingConnection = useRef<MobileConnection | undefined>(undefined),
     scanConsumed = useRef(false),
     pairingCandidate = useRef<Computer | undefined>(undefined),
-    pairAction = useRef<(link: string) => void>(() => {});
+    pairAction = useRef<(link: string) => void>(() => {}),
+    commitPair = useRef<(value: any) => Promise<boolean>>(async () => false);
   const openConnections = () => {
     setRoom(undefined);
     setTab("我");
@@ -377,21 +388,79 @@ function AppBody() {
   };
   roomRef.current = room;
   messagesRef.current = messages;
+  computerRef.current = computer;
+  const applyAuthority = (event: any) => {
+    const current = computerRef.current;
+    if (!current) return;
+    const reduced = applyPhoneAuthority(
+      { computer: current, locked: current.authorityLocked === true },
+      event,
+      writeBarrier.current,
+      () => {
+        computerRef.current = undefined;
+        setAuthorityLock(false);
+        setComputer(undefined);
+        setMessages([]);
+        setWork(undefined);
+        setInbox(undefined);
+        setFiles([]);
+        setRooms([]);
+        setRoom(undefined);
+        setStatus("这部手机的连接已撤销");
+        void forgetComputer(current);
+      },
+    );
+    if (reduced.effect === "wipe") return;
+    if (reduced.effect === "lock") {
+      const locked = { ...current, authorityLocked: true };
+      computerRef.current = locked;
+      setComputer(locked);
+      setAuthorityLock(true);
+      setStatus("撤销状态未核实");
+      void saveComputer(locked);
+      return;
+    }
+    if (reduced.effect === "unlock") {
+      const open = {
+        ...current,
+        authorityLocked: false,
+        ...(reduced.epoch != null ? { epoch: reduced.epoch } : {}),
+      };
+      computerRef.current = open;
+      setComputer(open);
+      setAuthorityLock(false);
+      void saveComputer(open);
+    }
+  };
   const call = useCallback(
     async (method: string, input: any = {}) => {
       const transport = connection.current;
       if (!transport) throw Error("请先连接电脑");
       if (transport.computer.credentialId !== computer?.credentialId)
         throw Error("电脑已切换，请重试");
+      const token = writeBarrier.current.token();
+      if (
+        (authorityLock || computer?.authorityLocked) &&
+        [
+          "messages.send",
+          "attachments.stage",
+          "attachments.cancel",
+          "attachments.send",
+          "questions.answer",
+          "approvals.decide",
+          "inbox.change",
+          "work.stop",
+        ].includes(method)
+      )
+        throw Error("撤销状态未核实，暂不能发送或确认");
       let result: any;
       try {
         result = await transport.call(method, input);
+        if (!writeBarrier.current.accepts(token)) throw Error("会话已锁定");
       } catch (e) {
         if (
           connection.current === transport &&
           [
-            "mobile_auth_required",
-            "mobile_device_revoked",
             "team_scope_changed",
             "skill_room_denied",
           ].includes(errorText(e))
@@ -405,16 +474,6 @@ function AppBody() {
           setRoom(undefined);
           setMembers([]);
           await clearReadCache(transport.computer).catch(() => {});
-          if (
-            ["mobile_auth_required", "mobile_device_revoked"].includes(
-              errorText(e),
-            )
-          ) {
-            transport.close();
-            setComputer(undefined);
-            setTab("我");
-            setStatus("连接已失效，请重新配对");
-          }
         }
         throw e;
       }
@@ -569,10 +628,15 @@ function AppBody() {
       return;
     }
     const c = computer,
-      transport = new MobileConnection(c, (updated) => {
-        void saveComputer(updated).catch(() => {});
-      });
+      transport = new MobileConnection(
+        c,
+        (updated) => {
+          void saveComputer(updated).catch(() => {});
+        },
+        (event) => applyAuthority(event),
+      );
     connection.current = transport;
+    setAuthorityLock(c.authorityLocked === true);
     setOffline(true);
     setStatus("连接中…");
     void Promise.all([readCache(c, "rooms"), readCache(c, "bots")])
@@ -748,10 +812,13 @@ function AppBody() {
   const pair = async (link: string) => {
     if (pairingActive.current) return;
     pairingActive.current = true;
+    pairConfirmed.current = false;
+    heldPair.current = null;
     setRoom(undefined);
     setTab("我");
     setManualPair(false);
     setPairingPhase("connecting");
+    setPairFingerprint("");
     const attempt = ++pairGeneration.current;
     setPairing(true);
     setScan(false);
@@ -768,35 +835,72 @@ function AppBody() {
           : pairingComputer(invite, await deviceIdentity());
       if (attempt !== pairGeneration.current) return;
       pairingCandidate.current = candidate;
+      const identity = await deviceIdentity();
+      localFingerprint.current = (
+        await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          mobileB64(identity.publicKey),
+        )
+      ).slice(0, 12);
+      setPairFingerprint(localFingerprint.current);
       setPairingName(invite.computerName);
       transport = new MobileConnection(candidate);
       pairingConnection.current = transport;
       await transport.connect();
       setPairingPhase("confirming");
-      setStatus("请在电脑确认这部手机");
+      setStatus("请核对指纹并在两端确认");
+      let finished = false;
+      const commit = async (v: any) => {
+        if (finished) return true;
+        const connection = transport;
+        if (!connection) throw Error("配对连接已断开");
+        const decision = acceptPairing({
+          confirmed: pairConfirmed.current,
+          paired: v.paired,
+          localFingerprint: localFingerprint.current,
+          remoteFingerprint: v.fingerprint,
+          deviceId: v.deviceId,
+          secret: v.secret,
+          epoch: v.epoch,
+        });
+        if (!decision.persist) {
+          if (v.paired && v.fingerprint && v.fingerprint !== localFingerprint.current)
+            throw Error("指纹与这部手机不一致");
+          return false;
+        }
+        const saved = {
+          ...candidate,
+          credentialId: decision.deviceId,
+          secret: decision.secret,
+          epoch: decision.epoch,
+          appliedRevokeSeq: 0,
+          authorityLocked: false,
+        };
+        await connection.call("pair", { action: "finish" });
+        await saveComputer(saved);
+        finished = true;
+        if (attempt !== pairGeneration.current) return true;
+        pairingCandidate.current = undefined;
+        heldPair.current = null;
+        setSaved(await computers());
+        setComputer(saved);
+        setPairLink("");
+        setTab("会话");
+        return true;
+      };
+      commitPair.current = commit;
       while (
         attempt === pairGeneration.current &&
         Date.now() < invite.expiresAt
       ) {
+        if (finished) return;
         const v = await transport.call("pair", {
           name: Platform.OS === "ios" ? "我的 iPhone" : "我的 Android",
         });
         if (attempt !== pairGeneration.current) return;
         if (v.paired) {
-          const c = {
-            ...candidate,
-            credentialId: v.deviceId,
-            secret: v.secret,
-          };
-          await saveComputer(c);
-          if (attempt !== pairGeneration.current) return;
-          pairingCandidate.current = undefined;
-          await transport.call("pair", { action: "finish" }).catch(() => {});
-          setSaved(await computers());
-          setComputer(c);
-          setPairLink("");
-          setTab("会话");
-          return;
+          heldPair.current = v;
+          if (pairConfirmed.current && (await commit(v))) return;
         }
         await new Promise((r) => setTimeout(r, 1200));
       }
@@ -897,10 +1001,16 @@ function AppBody() {
         await getPending(computer!);
         await refresh();
       } else if (v.status === "not_received") {
-        Alert.alert("电脑尚未收到", "沿用同一编号重新发送？", [
-          { text: "取消" },
-          { text: "重新发送", onPress: () => void retrySend(item) },
-        ]);
+        Alert.alert(
+          item.method === "approvals.decide" ? "尚未确认电脑收到这次决定" : "电脑尚未收到",
+          item.method === "approvals.decide"
+            ? "这不能证明操作没有执行。只有同一个决定、审批仍在等待且哈希未变时才能再试一次。"
+            : "沿用同一编号重新发送？",
+          [
+            { text: "取消" },
+            { text: "重新发送", onPress: () => void retrySend(item) },
+          ],
+        );
       } else if (v.status === "rejected") {
         setError(names[v.code] ?? v.code);
         await clearPending(computer!, item.operationId);
@@ -915,6 +1025,15 @@ function AppBody() {
   const retrySend = async (item: any) => {
     setBusy(true);
     try {
+      if (item.method === "approvals.decide") {
+        const inbox = await call("inbox.read");
+        const still = inbox.approvals?.find(
+          (approval: any) =>
+            approval.id === item.input?.id &&
+            approval.hash === item.input?.expectedHash,
+        );
+        if (!still) throw Error("审批已不在等待，不会重新提交。");
+      }
       await call(item.method, { ...item.input, operationId: item.operationId });
       await clearPending(computer!, item.operationId);
       await getPending(computer!);
@@ -1054,14 +1173,27 @@ function AppBody() {
     }
   };
   const decide = async (a: any, decision: string) => {
+    if (!computer) return;
     setBusy(true);
     try {
-      await call("approvals.decide", {
-        operationId: uid(),
-        id: a.id,
-        expectedHash: a.hash,
-        decision,
-      });
+      const operationId =
+        "approval_" +
+        (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, a.id)).slice(0, 32);
+      const earlier = (await pending(computer)).find(
+        (item) => item.operationId === operationId || item.input?.id === a.id,
+      );
+      if (earlier?.input?.decision && earlier.input.decision !== decision) {
+        setError("已提交过另一个决定，结果待核对，不能改成相反决定。");
+        return;
+      }
+      const item = {
+        operationId,
+        method: "approvals.decide",
+        input: { id: a.id, expectedHash: a.hash, decision },
+      };
+      await savePending(computer, operationId, item);
+      await call("approvals.decide", { ...item.input, operationId });
+      await clearPending(computer, operationId);
       const next = await call("inbox.read");
       setInbox(next);
     } catch (e) {
@@ -1960,7 +2092,7 @@ function AppBody() {
               },
             ]}
           >
-            {pairingPhase === "confirming" ? "请在电脑上确认" : "正在连接电脑"}
+            {pairingPhase === "confirming" ? "请在两端确认同一指纹" : "正在连接电脑"}
           </Text>
           <Text
             style={{ color: colors.text, fontSize: 17, textAlign: "center" }}
@@ -1979,9 +2111,23 @@ function AppBody() {
             ]}
           >
             {pairingPhase === "confirming"
-              ? "在电脑 KTeam 点“确认连接”，这里会自动进入团队。"
+              ? "电脑上的指纹必须与这里一致。确认后才会保存连接。"
               : "请保持电脑唤醒，稍候即可。"}
           </Text>
+          {pairFingerprint ? (
+            <Text
+              selectable
+              style={{ color: colors.text, fontSize: 20, letterSpacing: 1, textAlign: "center" }}
+            >
+              {pairFingerprint}
+            </Text>
+          ) : null}
+          {pairingPhase === "confirming" &&
+            button("确认这部手机", () => {
+              pairConfirmed.current = true;
+              const held = heldPair.current;
+              if (held) void commitPair.current(held).catch((e) => tell(e));
+            })}
           {button("取消连接", () => {
             cancelPair();
           })}
