@@ -25,6 +25,7 @@ test('Git object reads and repository version probes stay read-only inside the c
   `cd /work && for rev in 8fddba4 1e2556b; do echo "== $rev =="; git show $rev:desktop/renderer/src/main.tsx | grep -oE 'ComposerAttachmentList[^>]{0,160}' | head -2; done`,
   `cd /work && sed -n '15,30p' scripts/verify-sources.mjs; for d in /work/kswarm /work/intent-broker /work/.sources/kswarm; do if [ -d "$d" ]; then echo "$d -> $(git -C "$d" rev-parse HEAD 2>/dev/null | cut -c1-7)"; fi; done`,
   'git status --short; git log -3 --oneline; git --no-pager diff --no-ext-diff --no-textconv',
+  'git rev-parse --abbrev-ref @{u}; echo "EXIT=$?"; gh run list --limit 3 | head',
  ])assert(readOnlyShell(command),command);
  for(const command of ['git push origin main','git -c alias.inspect="!touch bad" inspect','git show HEAD --output=bad','git show HEAD --out=bad','git show *','git diff --ext-diff','git cat-file --filters HEAD:file','R=$(cat file); git show $R','for rev in --output=bad; do git show $rev; done','sed -i s/a/b/ file','sed -n "1e touch bad" file','sed -n "1w bad" file'])assert.equal(readOnlyShell(command),false,command);
 });

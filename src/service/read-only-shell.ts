@@ -29,8 +29,10 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
     if(c==='\\'&&quote==='"'){const next=command[index+1];if(!next||next==='\n')fail();word.value+=['$','"','\\'].includes(next!)?next:'\\'+next;index+=2;continue;}
     if(quote!=="'"&&c==='$'){
      if(command[index+1]==='('){index+=2;word.subs.push(scan(depth+1,true));word.value+='@sub';continue;}
+     if(command[index+1]==='?'){word.value+='0';index+=2;continue;}
      const match=command.slice(index+1).match(/^[A-Za-z_][A-Za-z0-9_]*/);if(!match)fail();word.refs.push(match![0]);word.value+='@var';index+=match![0].length+1;continue;
     }
+    if(index===start&&command.startsWith('@{u}',index)&&/^[\s;&|<>)]|^$/.test(command.slice(index+4))){word.value+='@{u}';index+=4;continue;}
     if(quote!=="'"&&(/[{}#`\\]/.test(c)))fail();word.value+=c;index++;
    }
    word.raw=command.slice(start,index);if(quote||++count>512||!literalAllowed(word.value.replace(/^[A-Za-z_][A-Za-z0-9_]*=/,'')))fail();tokens.push(word);
