@@ -99,7 +99,16 @@ export class WorkHandoffs {
   job.currentHandoffId=id;job.handoffVersion=version;this.store.save(job);
   try{
    // Dispatching each receipt starts the original peer lane immediately; no worker waits here.
-   for(const request of requests){const receipt=JSON.parse(await this.chats.contact(scope,{...request,wait:false},id));op=this.store.saveOperation({...op,children:[...op.children,{botId:request.botId,jobId:receipt.jobId,roomId:receipt.roomId,requestMessageId:receipt.messageId}]},op.revision);}
+   for(const request of requests){
+    const receipt=JSON.parse(await this.chats.contact(scope,{...request,wait:false},id));
+    if(receipt.sent===false){
+     // The private message was never dispatched. Preserve this as a known
+     // failed result without invalidating the other members' real work.
+     op=this.store.saveOperation({...op,dispatchFailures:[...(op.dispatchFailures??[]),{botId:request.botId,state:'blocked',reason:receipt.reason}]},op.revision);
+    }else{
+     op=this.store.saveOperation({...op,children:[...op.children,{botId:request.botId,jobId:receipt.jobId,roomId:receipt.roomId,requestMessageId:receipt.messageId}]},op.revision);
+    }
+   }
    await scope.assertCurrent();op=this.store.saveOperation({...op,status:'waiting'},op.revision);job.currentHandoffId=id;job.handoffVersion=version;job.handoffWait={operationId:id,doneWhen,deadline,children:op.children.map((child:any)=>({...child,state:this.store.job(child.jobId)?.state??'unknown'}))};this.store.save(job);
    return JSON.stringify({waiting:true,completed:false,operationId:id,children:op.children.map((child:any)=>({botId:child.botId,jobId:child.jobId})),next:'当前工作将挂起，实际结果回来后接续。'});
   }catch(error){const current=this.store.operation(id);this.store.saveOperation({...current,status:'unknown',reason:'handoff_result_unknown'},current.revision);this.invalidateChildren(job.id);throw error;}
@@ -152,7 +161,7 @@ export class WorkHandoffs {
     if(hash(job.handoffWait?.children)!==hash(states)){job.handoffWait={...job.handoffWait,children:states};this.store.save(job);}
     if(children.some((child:any)=>child.job&&!terminal.has(child.job.state))){const current=this.store.operation(op.id);if(current?.status==='parked')this.store.saveOperation({...current,lastCheckedAt:this.now(),retryAt:null},current.revision);continue;}
     await this.guard(job);
-    const results:any[]=[];
+    const results:any[]=[...(op.dispatchFailures??[])];
     if(op.approvalId){const approval=this.store.operation(op.approvalId);if(!approval||approval.handoffId!==op.id||!approval.durable||approval.expiresAt<=this.now())throw new KTeamError('tool_approval_expired',409);if(approval.status==='pending'){const current=this.store.operation(op.id);this.store.saveOperation({...current,lastCheckedAt:this.now(),retryAt:null},current.revision);continue;}if(!['allowed','denied'].includes(approval.status))throw new KTeamError('tool_approval_result_unknown',409);results.push({state:'delivered',approvalId:op.approvalId});}
     if(op.questionId){const answer=await this.chats.answeredQuestion(op.questionId);if(!answer){const current=this.store.operation(op.id);this.store.saveOperation({...current,lastCheckedAt:this.now(),pollAt:this.now()+5000,retryAt:null},current.revision);continue;}const {answer:privateBody,...receipt}=answer;results.push(receipt);}
     if(op.condition){const observed=await this.conditions.observe(job,op);if(!observed.ready){const current=this.store.operation(op.id);this.store.saveOperation({...current,lastCheckedAt:this.now(),pollAt:this.now()+5000,retryAt:null,readFailures:0,lastError:null},current.revision);if(job.handoffWait?.lastError){delete job.handoffWait.lastError;this.store.save(job);}continue;}results.push(...observed.results!);}

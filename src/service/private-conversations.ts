@@ -96,7 +96,14 @@ export class PrivateConversations {
    if(!durable&&this.store.operationsWithPrefix('bot-contact:').filter(r=>r.rootJobId===rootJobId&&!r.handoffId).length>=8)throw new KTeamError('bot_contact_budget_exhausted');
    return this.store.saveOperation({id,handoffId:durable?invocationId:undefined,status:'preparing',sourceRoomId:scope.roomId,sourceJobId:scope.jobId,originMessageId:scope.originId,rootJobId,fromBotId:scope.botId,toBotId:toId,path:[...path,toId]},0);
   });
-  let room;try{room=await this.coordinator.privatePair(scope.botId,toId,scope.roomId,()=>this.source(scope,toId).then(()=>{}));}catch(error){this.store.saveOperation({...op,status:'failed'},op.revision);throw error;}
+  let room;
+  try{room=await this.coordinator.privatePair(scope.botId,toId,scope.roomId,()=>this.source(scope,toId).then(()=>{}));}
+  catch(error){
+   const reason=error instanceof KTeamError?error.code:undefined;
+   this.store.saveOperation({...op,status:'failed',reason},op.revision);
+   if(durable&&(reason==='native_installation_changed'||reason==='native_probe_required'))return JSON.stringify({sent:false,completed:false,state:'blocked',reason});
+   throw error;
+  }
   op=this.store.saveOperation({...op,status:'sending',roomId:room.roomId},op.revision);
   let message;try{message=await this.send(scope,room.roomId,'consult',body,id,toId);}catch(error){this.store.saveOperation({...op,status:'unknown'},op.revision);throw error;}
   const jobId='job-'+id;this.store.transaction(()=>{op=this.store.saveOperation({...op,status:'sent',messageId:message.messageId,jobId},op.revision);this.store.enqueueFollowup({id:jobId,roomId:room.roomId,originId:message.messageId,trigger:'peer',peer:{sourceRoomId:scope.roomId,sourceJobId:scope.jobId,rootJobId,fromBotId:scope.botId,toBotId:toId,path:[...path,toId]}});});this.dispatch();
