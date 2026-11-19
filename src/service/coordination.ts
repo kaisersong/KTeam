@@ -52,7 +52,15 @@ export class TeamCoordinator{
   const frozen=this.store.state<any>('conversation:'+roomId);if(!frozen)throw new KTeamError('conversation_identity_changed',409);
   const actual=snapshot??await this.upstream.membership(roomId);
   this.verifyRoom(actual,roomId,frozen.title,frozen.goal,frozen.members);
-  for(const member of frozen.members)await this.frozen(member);
+  for(const member of frozen.members as Member[]){
+   // A direct room created with a new Bot retains the provisioning snapshot.
+   // After creation, validate it against the Bot's existing Codex binding.
+   if(member.modelId==='local-agent:codex'&&!member.existing&&this.models.boundIdentity){
+    const binding=this.store.binding(member.botId);
+    if(!binding)throw new KTeamError('model_binding_changed',409);
+    await this.frozen({...member,existing:true,bindingRevision:binding.revision});
+   }else await this.frozen(member);
+  }
   return Number(actual.room.revision);
  }
  /** Restore only a previously receipted, least-privilege discussion contract. Never replay work. */
