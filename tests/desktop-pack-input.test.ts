@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
-import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
+import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,realpathSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -185,6 +185,60 @@ test('root dotenv files and stale build identity stay out of the stage until a f
     assert.equal(lstatSync(join(dir,'build','build-info.json')).mode,sourceMode);
     assert.throws(()=>pack.placeFreshIdentity(mkdtempSync(join(tmpdir(),'kteam-pack-no-identity-')),staged.destination),(error:NodeJS.ErrnoException)=>error.code==='pack_identity_missing');
   }finally{remove(dir);remove(stage);}
+});
+
+test('file: dependency links and .bin links resolve inside the stage and writes do not change their sources',()=>{
+  const parent=mkdtempSync(join(tmpdir(),'kteam-pack-file-deps-')),stage=mkdtempSync(join(tmpdir(),'kteam-pack-file-stage-'));
+  const project=join(parent,'kteam'),kswarm=join(parent,'kswarm'),broker=join(parent,'intent-broker');
+  mkdirSync(project,{recursive:true});mkdirSync(kswarm,{recursive:true});mkdirSync(broker,{recursive:true});
+  writeFileSync(join(project,'package.json'),JSON.stringify({name:'kteam',dependencies:{kswarm:'file:../kswarm','intent-broker':'file:../intent-broker'}})+'\n');
+  writeFileSync(join(kswarm,'package.json'),'{"name":"kswarm"}\n',{mode:0o644});
+  writeFileSync(join(kswarm,'marker.txt'),'kswarm-source\n',{mode:0o644});
+  symlinkSync('../mydocs/kswarm',join(kswarm,'docs'));
+  writeFileSync(join(broker,'package.json'),'{"name":"intent-broker"}\n',{mode:0o644});
+  writeFileSync(join(broker,'marker.txt'),'broker-source\n',{mode:0o644});
+  symlinkSync('../mydocs/intent-broker',join(broker,'docs'));
+  mkdirSync(join(project,'node_modules','pkg'),{recursive:true});
+  writeFileSync(join(project,'node_modules','pkg','bin.js'),'bin-source\n',{mode:0o644});
+  mkdirSync(join(project,'node_modules','.bin'));
+  symlinkSync('../../kswarm',join(project,'node_modules','kswarm'));
+  symlinkSync('../../intent-broker',join(project,'node_modules','intent-broker'));
+  symlinkSync('../pkg/bin.js',join(project,'node_modules','.bin','tool'));
+  symlinkSync(join(project,'node_modules','pkg','bin.js'),join(project,'node_modules','.bin','abs-tool'));
+  try{
+    const staged=pack.stagePackTree(project,stage).destination;
+    const deps:[string,string][]=[['kswarm','kswarm-source\n'],['intent-broker','broker-source\n']];
+    for(const [name,sourceText] of deps){
+      const copy=join(staged,'node_modules',name);
+      const source=join(parent,name,'marker.txt');
+      assert.equal(lstatSync(copy).isSymbolicLink(),false);
+      assert.equal(lstatSync(copy).isDirectory(),true);
+      assert.equal(existsSync(join(copy,'docs')),false);
+      const copied=join(copy,'marker.txt');
+      assert.notEqual(lstatSync(source).ino,lstatSync(copied).ino);
+      assert.equal(realpathSync(copied).startsWith(realpathSync(staged)),true);
+      const mode=lstatSync(source).mode;
+      writeFileSync(copied,'changed\n');
+      chmodSync(copied,0o700);
+      assert.equal(readFileSync(source,'utf8'),sourceText);
+      assert.equal(lstatSync(source).mode,mode);
+    }
+    const linked=join(staged,'node_modules','.bin','tool');
+    const absolute=join(staged,'node_modules','.bin','abs-tool');
+    const stageRoot=realpathSync(staged),projectRoot=realpathSync(project);
+    for(const link of [linked,absolute]){
+      assert.equal(lstatSync(link).isSymbolicLink(),true);
+      const resolved=realpathSync(link);
+      assert.equal(resolved.startsWith(stageRoot),true);
+      assert.equal(resolved.startsWith(projectRoot),false);
+    }
+    const sourceBin=join(project,'node_modules','pkg','bin.js');
+    const mode=lstatSync(sourceBin).mode;
+    writeFileSync(linked,'changed-bin\n');
+    chmodSync(linked,0o700);
+    assert.equal(readFileSync(sourceBin,'utf8'),'bin-source\n');
+    assert.equal(lstatSync(sourceBin).mode,mode);
+  }finally{remove(parent);remove(stage);}
 });
 
 test('an unknown dangling symlink below the project root fails closed',()=>{

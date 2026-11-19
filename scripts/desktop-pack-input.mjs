@@ -1,8 +1,11 @@
 // electron-builder 26.15.7 follows a symlink with stat while collecting the
 // project. A files exclusion does not run before that stat. Staging keeps the
 // source tree unchanged: files are cloned or copied into a new inode, and the
-// two known documentation links are left out. Any other dangling link, at any
-// depth, fails closed. Fresh build identity is copied only after the build.
+// two known documentation links are left out. A link that resolves outside the
+// project, including file:../kswarm, is copied instead of pointed back at that
+// directory. Links that stay inside the project are rewritten relative to the
+// stage. Any other dangling link, at any depth, fails closed. Fresh build
+// identity is copied only after the build.
 import {spawnSync} from 'node:child_process';
 import {constants,copyFileSync,lstatSync,mkdirSync,readlinkSync,readdirSync,realpathSync,rmSync,statSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -84,12 +87,32 @@ export function stagePackTree(root,destination){
   const hidden=new Set(plan.hide);
   rmSync(target,{recursive:true,force:true});
   mkdirSync(target,{recursive:true});
-  try{mirror(source,target,source,hidden,'');}
+  try{mirror(source,target,source,target,hidden,'');}
   catch(error){rmSync(target,{recursive:true,force:true});throw error;}
   return {plan,destination:target};
 }
 
-function mirror(src,dest,source,hidden,rel){
+function insidePath(root,path){return path===root||path.startsWith(root+sep);}
+function materializeExternal(from,to,seen){
+  const info=lstatSync(from);
+  if(info.isSymbolicLink()){
+    const facts=symlinkFacts(from);
+    if(facts.dangling)return;
+    const resolved=resolve(dirname(from),facts.target);
+    if(seen.has(resolved))throw failure('pack_stage_symlink_cycle',resolved);
+    seen.add(resolved);
+    materializeExternal(resolved,to,seen);
+    return;
+  }
+  if(info.isDirectory()){
+    mkdirSync(to,{recursive:true});
+    for(const name of readdirSync(from))materializeExternal(join(from,name),join(to,name),seen);
+    return;
+  }
+  if(info.isFile()){copyIndependent(from,to);return;}
+  throw failure('pack_stage_unsupported',from);
+}
+function mirror(src,dest,source,stageRoot,hidden,rel){
   for(const name of readdirSync(src)){
     const next=rel?rel+'/'+name:name;
     if(hidden.has(next)||sensitiveRoot(name)&&!rel||omitted(next)||!included(next)&&!includedPrefix(next))continue;
@@ -98,14 +121,17 @@ function mirror(src,dest,source,hidden,rel){
       const facts=symlinkFacts(from);
       if(facts.dangling)throw failure('pack_dangling_symlink',next);
       const resolved=resolve(dirname(from),facts.target);
-      const inside=resolved===source||resolved.startsWith(source+sep);
-      symlinkSync(inside?facts.target:resolved,to);
+      if(insidePath(source,resolved)){
+        const stagedTarget=join(stageRoot,relative(source,resolved));
+        const link=relative(dirname(to),stagedTarget)||'.';
+        symlinkSync(link,to);
+      }else materializeExternal(resolved,to,new Set([resolved]));
       continue;
     }
     if(info.isDirectory()){
       if(!hasIncludedDescendant(next)&&!included(next))continue;
       mkdirSync(to);
-      mirror(from,to,source,hidden,next);
+      mirror(from,to,source,stageRoot,hidden,next);
       continue;
     }
     if(!included(next))continue;
