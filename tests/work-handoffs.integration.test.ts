@@ -42,6 +42,38 @@ test('a failed child returns a read-only outcome to the parent instead of being 
   await automation.tick();await until(()=>f.store.jobs().some(job=>job.trigger==='peer'&&job.state==='blocked'));await automation.tick();assert.equal(activityRecords([f.store.job('handoff-root')],f.roomId)[0]!.state,'needs_review');assert.equal(childCalls,1);assert.equal(resumes,1);const parent=f.store.job('handoff-root');assert.equal(parent.state,'delivered',JSON.stringify(parent));const task=(await f.upstream.aimp(f.roomId,'tasks')).tasks[0];assert.match(task.caveats[0],/未全部完成/);assert.match((await f.upstream.conversationMessage(f.roomId,parent.results[0].messageId)).message.text,/未完成/);await automation.tick();assert.equal(childCalls,1);
  }finally{await automation?.close();await f.end();}
 });
+
+test('a known native installation change before dispatch keeps the healthy private peer and returns a partial result',async()=>{
+ const f=await setup();let automation:TeamAutomation|undefined;
+ try{
+  const [owner,quality,native]=f.bots;
+  const privatePair=f.coordinator.privatePair.bind(f.coordinator);
+  f.coordinator.privatePair=(from,to,room,guard)=>to===native!.id?Promise.reject(new KTeamError('native_installation_changed',409)):privatePair(from,to,room,guard);
+  automation=new TeamAutomation(f.upstream,f.store,1,async input=>{
+   await input.onRequest?.();
+   const prompt=JSON.parse(input.prompt);
+   const answer=(text:string)=>({text,model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}});
+   if(prompt.sourceConversation)return answer('质量已返回独立核对。');
+   if(prompt.handoff){
+    assert.equal(prompt.handoff.readonly,true);
+    assert.equal(input.tools?.length,0);
+    assert(prompt.handoff.results.some((result:any)=>result.botId===quality!.id&&result.state==='delivered'));
+    assert(prompt.handoff.results.some((result:any)=>result.botId===native!.id&&result.reason==='native_installation_changed'&&result.state==='blocked'));
+    return answer('质量已核对，原生成员待重新检测。');
+   }
+   await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({requests:[quality,native].map(bot=>({botId:bot!.id,message:'独立核对。'})),doneWhen:'核对回执。'},{});
+   await input.onRequest?.();throw Error('yield');
+  },f.coordinator);
+  await automation.tick();
+  await until(()=>f.store.jobs().some(job=>job.peer?.toBotId===quality!.id&&job.state==='delivered'));
+  await automation.tick();
+  const root=f.store.job('handoff-root'),op=f.store.operation(root.currentHandoffId);
+  assert.equal(root.state,'delivered');assert.equal(root.needsReview,true);assert.equal(root.results[0].botId,owner!.id);
+  assert.equal(op.status,'returned');assert.equal(op.children.length,1);
+  assert.equal(f.store.jobs().filter(job=>job.peer?.toBotId===native!.id).length,0);
+  assert.equal(f.store.operationsWithPrefix('bot-contact:').find(row=>row.toBotId===native!.id)?.status,'failed');
+ }finally{await automation?.close();await f.end();}
+});
 test('changed member profiles fence an old waiting scope without another parent inference',async()=>{
  const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,parentCalls=0;
  try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();const prompt=JSON.parse(input.prompt);if(prompt.sourceConversation){await hold.wait(input.signal);await input.onRequest?.();return {text:'stale',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}parentCalls++;await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({requests:[{botId:f.bots[1]!.id,message:'核对资料。'}],doneWhen:'返回结果。'},{});await input.onRequest?.();throw Error('yield');},f.coordinator);
