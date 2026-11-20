@@ -98,8 +98,8 @@ export class TeamAssistant {
   const binding=this.store.binding(identity.botId);if(!binding)return;
   const core=await sharedRuntime();
   const guard=async()=>{this.controller.signal.throwIfAborted();if(!this.enabled()||this.store.workPaused()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet||this.store.binding(identity.botId)?.revision!==binding.revision)throw new KTeamError('assistant_scope_changed');await this.authorize(identity.botId,identity.roomId);};
-  let candidates:Awaited<ReturnType<TeamAssistant['readAttention']>>['records']=[];
-  if(this.inbox){this.inbox.dispose();await this.inbox.drain();}if(!this.inboxStore)this.inboxStore=new core.AssistantInboxStore(join(this.store.root,'assistant-attention.sqlite'));{this.inbox=new core.AssistantInboxService({store:this.inboxStore,profile:()=>({active:this.enabled(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}),outbox:{list:()=>[]},launch:async()=>{throw new KTeamError('assistant_notice_readonly');},read:async()=>{const batch=await this.readAttention(identity);candidates=batch.records.slice(0,100);return batch;},triage:async(records:any[],signal:AbortSignal)=>{
+  let scan:Awaited<ReturnType<TeamAssistant['readAttention']>>|undefined;
+  if(this.inbox){this.inbox.dispose();await this.inbox.drain();}if(!this.inboxStore)this.inboxStore=new core.AssistantInboxStore(join(this.store.root,'assistant-attention.sqlite'));{this.inbox=new core.AssistantInboxService({store:this.inboxStore,profile:()=>({active:this.enabled(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}),outbox:{list:()=>[]},launch:async()=>{throw new KTeamError('assistant_notice_readonly');},read:async()=>{scan=await this.readAttention(identity);return scan;},triage:async(records:any[],signal:AbortSignal)=>{
    const current=this.store.binding(identity.botId);if(!current)throw new KTeamError('model_binding_changed');
    const budget={calls:0};const sources=records.map(r=>({roomId:r.locator?.roomId,roomRevision:Number(r.locator?.roomRevision)}));
    if(this.choose){const decisions:any[]=[];for(const record of records){const picked=await this.choose({state:{task:'判断是否现在需要本人：只对明确待决策、阻塞、重要交付给出notify；普通讨论或重复进度用wait。不要虚构已完成。',record},choices:[{id:'notify',description:'这条真实进展值得现在提醒用户，并需要一个具体下一步'},{id:'wait',description:'可以等待，没有需要本人处理的新事项'}],guard:async()=>{await guard();await this.validateSources(sources);},signal:AbortSignal.any([signal,this.controller.signal]),onRequest:witness=>this.store.reserveCall(budget,this.store.settings(identity.roomId)!,false,witness)});if(!picked){decisions.length=0;break;}decisions.push({sourceKey:record.key,priority:picked.chosen==='notify'?'now':'later',reason:record.reason,nextStep:record.nextStep});this.store.setState('assistant-decision-model',{model:picked.model,provider:'system-one',at:Date.now()});}if(decisions.length===records.length)return decisions;}
@@ -113,16 +113,18 @@ export class TeamAssistant {
    return {text:response.text};}},records,signal);
   },validate:async(batch:any)=>{await guard();for(const record of batch.records){await this.validateSources([{roomId:record.locator.roomId,roomRevision:Number(record.locator.roomRevision)}]);}return batch;},commitCurrent:()=>this.enabled()&&!this.closed&&!this.store.workPaused()});}
   await guard();const state=await this.inbox.refresh('scheduler');await guard();
-  for(const candidate of candidates)this.recordDecision(candidate);
+  for(const candidate of scan?.records.slice(0,100)??[])this.recordDecision(candidate);
+  const currentSources=new Map(scan?.groups.map(group=>[group.roomId,group]));
   const deliveredToday=this.store.operationsWithPrefix('assistant-notice:').filter(op=>op.day===calendarWindow().today);
   for(const item of state.items){if(item.priority!=='now'||item.status!=='suggested'||!item.locator?.roomId||deliveredToday.length>=4)continue;
    const id='assistant-notice:'+item.sourceId;if(this.store.operation(id))continue;
    const sourceRoomRevision=Number(item.locator.roomRevision);
-   const group=await this.team(item.locator.roomId).catch(error=>{
-    if(error instanceof KTeamError&&[403,404].includes(error.status))return undefined;
-    throw error;
-   });
+   const group=currentSources.get(item.locator.roomId);
    if(!group||!this.noticeMatches({sourceId:item.sourceId,sourceRoomRevision},group))continue;
+   try{await this.validateSources([group]);}catch(error){
+    if(error instanceof KTeamError&&([403,404].includes(error.status)||error.code==='assistant_team_changed'))continue;
+    throw error;
+   }
    await guard();
    const settings=this.store.settings(identity.roomId)!;
    const jobId='job-'+id;
@@ -160,7 +162,7 @@ export class TeamAssistant {
    }
    records.push({source:'internal',accountKey,sourceId,title:group.title+' · 工作进展',summary:JSON.stringify({execution:group.execution,waitingForUser:group.waitingForUser,latestRun:run,latestMessage:latest,shared:group.shared}).slice(0,1000),reason:'团队有新的可核对工作记录',nextStep:'核对真实进展，仅在需要用户决策、出现阻塞或有实际交付时提醒',priority:'later',observedAt:Date.now(),locator});
   }
-  return {records,coverage:[{key:'internal:'+this.store.installationId(),source:'internal',state:snapshot.coverage.some(c=>c.state!=='ok')||snapshot.hasMore?'partial':'ok',...(snapshot.coverage.some(c=>c.state!=='ok')||snapshot.hasMore?{code:'limited'}:{}),checkedAt:Date.now()}]};
+  return {records,groups:snapshot.groups,coverage:[{key:'internal:'+this.store.installationId(),source:'internal',state:snapshot.coverage.some(c=>c.state!=='ok')||snapshot.hasMore?'partial':'ok',...(snapshot.coverage.some(c=>c.state!=='ok')||snapshot.hasMore?{code:'limited'}:{}),checkedAt:Date.now()}]};
  }
  async close(){this.closed=true;this.controller.abort();if(this.timer)clearInterval(this.timer);this.inbox?.dispose();await this.scanning?.catch(()=>{});await this.inbox?.drain();this.inboxStore?.close();}
 }
