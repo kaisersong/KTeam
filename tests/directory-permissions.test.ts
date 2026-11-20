@@ -88,6 +88,11 @@ test('a revoked remote reviewer cannot commit a decision after asynchronous appr
   assert.equal(f.store.operation(pending.id).status,'pending');
   assert.equal(existsSync(output),false);
   assert.equal(f.approvals.permissions.list().length,0);
+  let pauseChecks=0;
+  await assert.rejects(f.approvals.decide(decision,()=>{if(++pauseChecks===2)f.store.setState('all-work-paused',true);}),/team_paused/);
+  assert.equal(f.store.operation(pending.id).status,'pending');
+  assert.equal(existsSync(output),false);
+  f.store.setState('all-work-paused',false);
   await f.approvals.decide(decision);
   await work;
   assert.equal(readFileSync(output,'utf8'),'confirmed once');
