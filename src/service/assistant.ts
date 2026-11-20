@@ -76,10 +76,10 @@ export class TeamAssistant {
  start(){if(this.closed||this.timer)return;this.timer=setInterval(()=>void this.scan(),30000);this.timer.unref();void this.scan();}
  scan():Promise<void>{if(this.scanning)return this.scanning;if(this.closed||!this.enabled())return Promise.resolve();const run=this.scanBody();this.scanning=run.finally(()=>{this.scanning=undefined;});return this.scanning;}
  private async scanBody(){try{
-  const identity=this.identity();if(!identity||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet)return;
+  const identity=this.identity();if(!identity||this.store.workPaused()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet)return;
   const binding=this.store.binding(identity.botId);if(!binding)return;
   const core=await sharedRuntime();
-  const guard=async()=>{this.controller.signal.throwIfAborted();if(!this.enabled()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet||this.store.binding(identity.botId)?.revision!==binding.revision)throw new KTeamError('assistant_scope_changed');await this.authorize(identity.botId,identity.roomId);};
+  const guard=async()=>{this.controller.signal.throwIfAborted();if(!this.enabled()||this.store.workPaused()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet||this.store.binding(identity.botId)?.revision!==binding.revision)throw new KTeamError('assistant_scope_changed');await this.authorize(identity.botId,identity.roomId);};
   if(this.inbox){this.inbox.dispose();await this.inbox.drain();}if(!this.inboxStore)this.inboxStore=new core.AssistantInboxStore(join(this.store.root,'assistant-attention.sqlite'));{this.inbox=new core.AssistantInboxService({store:this.inboxStore,profile:()=>({active:this.enabled(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}),outbox:{list:()=>[]},launch:async()=>{throw new KTeamError('assistant_notice_readonly');},read:async()=>this.readAttention(identity),triage:async(records:any[],signal:AbortSignal)=>{
    const current=this.store.binding(identity.botId);if(!current)throw new KTeamError('model_binding_changed');
    const budget={calls:0};const sources=records.map(r=>({roomId:r.locator?.roomId,roomRevision:Number(r.locator?.roomRevision)}));

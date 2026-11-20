@@ -87,6 +87,8 @@ export class TeamStore {
  binding(botId:string):Binding|null{const row=this.db.prepare('SELECT value_json FROM bot_bindings WHERE bot_id=?').get(botId);return row?JSON.parse(String(row.value_json)):null;}
  bindingsForModel(modelId:string):Binding[]{return this.db.prepare("SELECT value_json FROM bot_bindings WHERE json_extract(value_json,'$.modelId')=?").all(modelId).map(row=>JSON.parse(String(row.value_json)));}
  bind(value:Binding){this.db.prepare('INSERT INTO bot_bindings VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET value_json=excluded.value_json').run(value.botId,JSON.stringify(value));return value;}
+ workPaused(){return this.state<boolean>('all-work-paused')===true;}
+ hasUnconfirmedFleetStops(){return !!this.db.prepare("SELECT 1 FROM team_jobs WHERE json_extract(value_json,'$.stopCause')='fleet' AND (json_extract(value_json,'$.stopResultUnknown')=1 OR state='unknown' OR json_extract(value_json,'$.failure.code') IN ('native_stop_unconfirmed','harness_runtime_close_failed')) LIMIT 1").get();}
  settings(roomId:string):TeamSettings|null{const row=this.db.prepare('SELECT value_json FROM team_settings WHERE room_id=?').get(roomId);return row?JSON.parse(String(row.value_json)):null;}
  configure(value:TeamSettings,expectedRevision:number){const previous=this.settings(value.roomId);if((previous?.revision??0)!==expectedRevision)throw new KTeamError('team_revision_conflict',409);const next={...value,revision:expectedRevision+1};this.db.prepare('INSERT INTO team_settings VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET value_json=excluded.value_json').run(value.roomId,JSON.stringify(next));return next;}
  enqueueFollowup(value:any){const job={scopeRevision:this.settings(value.roomId)?.revision,...value,state:this.settings(value.roomId)?.paused?'held':'queued',calls:0,createdAt:new Date().toISOString()};this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(job.id,job.roomId,job.originId,job.state,JSON.stringify(job));}
@@ -120,7 +122,7 @@ export class TeamStore {
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
  job(id:string):any{const row=this.db.prepare('SELECT value_json FROM team_jobs WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
- waitingJobs():any[]{return this.db.prepare("SELECT value_json FROM team_jobs WHERE state='waiting' ORDER BY rowid LIMIT 100").all().map(row=>JSON.parse(String(row.value_json)));}
+ waitingJobs():any[]{return this.db.prepare("SELECT value_json FROM team_jobs WHERE state='waiting' ORDER BY rowid").all().map(row=>JSON.parse(String(row.value_json)));}
  recordedJobs(roomId:string){return this.db.prepare('SELECT value_json FROM team_jobs WHERE room_id=? ORDER BY rowid DESC LIMIT 10000').all(roomId).map(r=>JSON.parse(String(r.value_json)));}
  jobForMessage(roomId:string,messageId:string){const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE room_id=? AND EXISTS(SELECT 1 FROM json_each(team_jobs.value_json,'$.results') WHERE json_extract(value,'$.messageId')=?) ORDER BY rowid DESC LIMIT 1").get(roomId,messageId);return row?JSON.parse(String(row.value_json)):null;}
  inboxJobs(){return this.db.prepare("SELECT id,room_id AS roomId,state,substr(json_extract(value_json,'$.reason'),1,512) AS reason FROM (SELECT * FROM team_jobs ORDER BY rowid DESC LIMIT 100) WHERE state IN ('unknown','blocked')").all();}
@@ -162,11 +164,13 @@ export class TeamStore {
  }
  save(job:any){this.db.prepare('UPDATE team_jobs SET state=?,value_json=? WHERE id=?').run(job.state,JSON.stringify(job),job.id);}
  claim(excludedRooms:string[]=[],peerOnly=false,availability:{bots?:string[];discussions?:string[]}={}){
+  if(this.workPaused())return null;
   this.db.prepare("UPDATE team_jobs SET state='blocked',value_json=json_set(value_json,'$.state','blocked','$.reason','group_dependency_failed') WHERE state='queued' AND EXISTS (SELECT 1 FROM json_each(team_jobs.value_json,'$.dependsOnJobIds') dependency JOIN team_jobs parent ON parent.id=dependency.value WHERE parent.state IN ('blocked','unknown','stopped','cancelled'))").run();
   const row=this.db.prepare("SELECT value_json FROM team_jobs WHERE state='queued' AND (json_extract(value_json,'$.afterJobId') IS NULL OR json_extract(value_json,'$.afterJobId') IN (SELECT id FROM team_jobs WHERE state IN ('delivered','noop'))) AND (room_id NOT IN (SELECT value FROM json_each(?)) OR json_extract(value_json,'$.trigger') IN ('group-response','group-discussion') OR json_extract(value_json,'$.groupPlanPending')=1) AND (?=0 OR json_extract(value_json,'$.groupPlanPending')=1 OR json_extract(value_json,'$.trigger') IN ('peer','assistant-relay','group-response','group-discussion')) AND (CASE WHEN json_extract(value_json,'$.trigger')='group-discussion' OR json_extract(value_json,'$.groupPlanPending')=1 THEN '' ELSE coalesce(json_extract(value_json,'$.groupResponse.botId'),json_extract(value_json,'$.peer.toBotId'),json_extract(value_json,'$.groupPlan.ownerId'),json_extract(value_json,'$.execution.botId'),json_extract(value_json,'$.activeBotId'),'') END) NOT IN (SELECT value FROM json_each(?)) AND NOT EXISTS (SELECT 1 FROM json_each(team_jobs.value_json,'$.dependsOnJobIds') dependency LEFT JOIN team_jobs parent ON parent.id=dependency.value WHERE parent.id IS NULL OR parent.state NOT IN ('delivered','noop')) ORDER BY CASE WHEN json_extract(value_json,'$.trigger') IN ('peer','assistant-relay','group-response','group-discussion') THEN 0 ELSE 1 END,rowid LIMIT 1").get(JSON.stringify(excludedRooms),peerOnly?1:0,JSON.stringify(availability.bots??[]));if(!row)return null;
   const job=JSON.parse(String(row.value_json));job.state='routing';job.claimedAt=new Date().toISOString();const changed=this.db.prepare("UPDATE team_jobs SET state='routing',value_json=? WHERE id=? AND state='queued'").run(JSON.stringify(job),job.id);return changed.changes===1?job:null;
  }
  reserveCall(job:any,team:TeamSettings,persistJob=true,witness?:any){
+  if(this.workPaused())throw new KTeamError('team_paused',409);
   const previousCalls=job.calls;
   this.db.exec('BEGIN IMMEDIATE');try{
    const receiptId=witness?'request-attempt:'+witness.attemptId:undefined;if(receiptId&&this.operation(receiptId)?.counted){this.db.exec('COMMIT');return;}

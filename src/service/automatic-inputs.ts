@@ -42,7 +42,7 @@ export class AutomaticInputs {
   const bindings=members.filter(member=>member.status==='active'&&member.subject?.kind==='agent').flatMap(member=>{const binding=this.store.binding(member.subject.logicalAgentId);return binding?[{botId:binding.botId,revision:binding.revision,fingerprint:binding.fingerprint}]:[];});
   this.store.completeSubmission(id,messageId,false,{id:key,roomId,envelopeId:id,messageId,bodyHash:hash(message.text),sequence:message.roomSequence,roomRevision:(snapshot.room as any).revision,settingsRevision:settings.revision,bindings,targets,status:'pending',createdAt:Date.now()});this.start(roomId);
  }
- private start(roomId:string){if(this.closed||this.running.has(roomId)||this.running.size>=3)return;const run=this.drain(roomId).finally(()=>{this.running.delete(roomId);if(!this.closed){this.wakePending();this.wake();}});this.running.set(roomId,run);}
+ private start(roomId:string){if(this.closed||this.store.workPaused()||this.running.has(roomId)||this.running.size>=3)return;const run=this.drain(roomId).finally(()=>{this.running.delete(roomId);if(!this.closed){this.wakePending();this.wake();}});this.running.set(roomId,run);}
  async recover(){
   // Repair only a latest, authenticated user message that never got an execution.
   // Synthetic notification IDs are not Room message IDs and may never hold it hostage.
@@ -80,17 +80,19 @@ export class AutomaticInputs {
   }})();this.repairing=run.finally(()=>{this.repairing=undefined;});return this.repairing;
  }
 
+ suspend(){for(const controller of this.controllers)controller.abort();}
  async settle(){while(this.running.size)await Promise.all([...this.running.values()]);}
  async close(){this.closed=true;for(const controller of this.controllers)controller.abort();await this.settle();await this.repairing;}
  private async drain(roomId:string){
-  for(;;){if(this.closed)return;const op=this.records(roomId).filter(op=>pending.has(op.status)).sort((a,b)=>a.sequence-b.sequence)[0];if(!op)return;const controller=new AbortController();this.controllers.add(controller);const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(30000)]);
-   try{await this.process(op,signal);}catch(error){if(this.closed)return;this.save(op,{status:'needs_review',reason:error instanceof KTeamError?error.code:'message_handling_failed'});}finally{this.controllers.delete(controller);}
+  for(;;){if(this.closed||this.store.workPaused())return;const op=this.records(roomId).filter(op=>pending.has(op.status)).sort((a,b)=>a.sequence-b.sequence)[0];if(!op)return;const controller=new AbortController();this.controllers.add(controller);const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(30000)]);
+   try{await this.process(op,signal);}catch(error){if(this.closed||this.store.workPaused())return;this.save(op,{status:'needs_review',reason:error instanceof KTeamError?error.code:'message_handling_failed'});}finally{this.controllers.delete(controller);}
   }
  }
  private async process(original:any,signal:AbortSignal){
   let op=this.store.operation(original.id);const guard=async()=>{
-   if(this.closed)throw new KTeamError('host_stopping',503);await this.coordinator.guardConversation(op.roomId);const settings=this.store.settings(op.roomId),snapshot=await this.upstream.membership(op.roomId),message=await this.source(op.roomId,op.envelopeId,op.messageId);
+   signal.throwIfAborted();if(this.closed)throw new KTeamError('host_stopping',503);await this.coordinator.guardConversation(op.roomId);const settings=this.store.settings(op.roomId),snapshot=await this.upstream.membership(op.roomId),message=await this.source(op.roomId,op.envelopeId,op.messageId);
    if(!settings||settings.revision!==op.settingsRevision||(snapshot.room as any).revision!==op.roomRevision||hash(message.text)!==op.bodyHash||op.bindings.some((binding:any)=>{const current=this.store.binding(binding.botId);return !current||current.revision!==binding.revision||current.fingerprint!==binding.fingerprint;}))throw new KTeamError('work_input_target_changed',409);
+   signal.throwIfAborted();
   };
   await guard();if(op.status==='deciding')op=this.save(op,{status:'decided',chosen:op.targets.length?'queue_0':'new',reason:'decision_interrupted'});const work:any[]=[];const message=await this.source(op.roomId,op.envelopeId,op.messageId),choices=[{id:'new',description:'独立的新请求或独立核对当前公开资料/代码事实，不补充、重做或重放旧事项；仍按原权限处理。'}];
   for(const [index,target] of op.targets.entries()){
