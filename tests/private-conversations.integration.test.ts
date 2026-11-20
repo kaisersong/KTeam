@@ -135,6 +135,8 @@ test('assistant notice only publishes if the source is still current',async()=>{
     noticeCalls++;
     await input.onRequest?.();
     assert.ok(input.tools?.every(tool=>tool.definition.name==='get_team_work'));
+    input.onText?.('合成提醒草稿');
+    assert.equal(f.store.job(receipt.jobId).partialText,undefined);
     if(mode==='changed_during_turn')await send('合成验收范围已在推理期间解决');
     if(mode==='disabled')assistant.setEnabled(false);
     return {text:'合成提醒，请确认验收范围。',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};
@@ -142,6 +144,7 @@ test('assistant notice only publishes if the source is still current',async()=>{
    await automation.tick();
    const job=f.store.job(receipt.jobId);
    assert.equal(job.state,mode==='current'?'delivered':'noop',mode+': '+JSON.stringify(job));
+   assert.equal(job.answerDraft,undefined,mode);
    assert.equal(noticeCalls,['superseded','revoked'].includes(mode)?0:1,mode);
    const transcript=await f.upstream.messages(f.master.roomId,0,100);
    assert.equal(transcript.messages.filter((message:any)=>message.text==='合成提醒，请确认验收范围。').length,mode==='current'?1:0,mode);
