@@ -33,7 +33,7 @@ test('a Codex upgrade probes once and delivers queued work without switching the
   assert.deepEqual(f.store.binding(bot.bot.id),binding);
   assert.equal(f.local.probeView('codex').fingerprint,'upgraded-fixture');
   assert.equal(f.calls.length,4);
-  assert.equal(f.calls[2].args.includes('read-only'),true);
+  assert.ok(f.calls[2].args.some((arg:string)=>arg.startsWith('permissions.kteam-scoped.filesystem=')&&!arg.includes('=\"write\"')));
   assert.equal(f.calls[3].args.includes('resume'),false);
   assert.equal(f.store.stateEntries('native-session:')[0]?.value.installationFingerprint,'upgraded-fixture');
  }finally{await automation?.close();await f.close();}

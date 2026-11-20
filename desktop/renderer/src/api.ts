@@ -63,7 +63,7 @@ export interface KTeamAPI {
  exportConversation(input?:any):Promise<any>;
  codexWriteGrant(botId:string):Promise<CodexGrantView>;
  saveCodexWriteGrant(input:{botId:string;path:string|null;expectedRevision:number}):Promise<CodexGrantView>;
- dispatchCodex(input:{roomId:string;botId:string;text:string;id:string;allowWrite:boolean;replyToMessageId?:string}):Promise<{messageId:string}>;
+ dispatchCodex(input:{roomId:string;botId:string;text:string;id:string;allowWrite:boolean;expectedGrantRevision?:number;replyToMessageId?:string}):Promise<{messageId:string}>;
  chooseWorkspace(input?:any):Promise<any>;
 
  builtinAgent(modelId?:string):Promise<any>;probeBuiltinAgent(input:{modelId:string}):Promise<any>;

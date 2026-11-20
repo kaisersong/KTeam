@@ -14,6 +14,7 @@ export function codexPolicy(cwd: string, writeRoot?: string) {
   : `":minimal"="read",${literal(cwd)}="read"`;
  return [
   ...override('default_permissions', literal(profile)),
+  // Codex otherwise adds both temp roots as writable on this platform.
   ...override(`permissions.${profile}.filesystem`, `{${filesystem},":slash_tmp"="none",":tmpdir"="none"}`),
   ...override(`permissions.${profile}.network.enabled`, 'false'),
   ...override('approval_policy', '"never"'),
@@ -21,7 +22,7 @@ export function codexPolicy(cwd: string, writeRoot?: string) {
   ...override('mcp_servers', '{}'),
   ...override('projects', '{}'),
   ...override('shell_environment_policy.inherit', '"none"'),
-  ...override('shell_environment_policy.set', `{PATH=${literal(process.platform === 'win32' ? process.env.SystemRoot + '\\System32' : '/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin')}}`),
+  ...override('shell_environment_policy.set', `{PATH=${literal(process.platform === 'win32' ? (process.env.SystemRoot ?? 'C:\\Windows') + '\\System32' : '/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin')}}`),
   ...['hooks','apps','plugins','remote_plugin','plugin_discovery_prefetch','shell_snapshot','image_generation'].flatMap(feature => override(`features.${feature}`, 'false')),
  ];
 }
@@ -45,7 +46,8 @@ export function codexConnection(env: NodeJS.ProcessEnv) {
   for (const [key,value] of Object.entries(model)) {
    if (typeof value !== 'string' && typeof value !== 'boolean' && typeof value !== 'number') throw new KTeamError('native_codex_provider_unsupported', 409);
    if (key === 'base_url') {
-    const url = new URL(String(value));
+    let url: URL;
+    try {url=new URL(String(value));} catch {throw new KTeamError('native_codex_provider_unsupported',409);}
     if (url.username || url.password || url.search || url.hash || !['http:','https:'].includes(url.protocol)) throw new KTeamError('native_codex_provider_unsupported', 409);
    }
    if (key === 'env_key' && typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) && process.env[value]) env[value] = process.env[value];

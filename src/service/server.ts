@@ -132,8 +132,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         const managed=!!teamStore.settings(input.room_id);
         const result=await collaboration.send(input,envelope=>{if(!managed)return;teamStore.transaction(()=>{
           const previous=teamStore.operation(dispatchId),submission=teamStore.submission(envelope.id);
-          if(previous&&(!dispatch||previous.roomId!==envelope.room_id||previous.botId!==dispatch.botId||previous.allowWrite!==dispatch.allowWrite)||dispatch&&submission&&!previous)throw new KTeamError('codex_dispatch_conflict',409);
-          if(dispatch&&!previous)teamStore.saveOperation({id:dispatchId,roomId:envelope.room_id,...dispatch},0);
+          if(previous&&(!dispatch||previous.roomId!==envelope.room_id||previous.botId!==dispatch.botId||previous.allowWrite!==dispatch.allowWrite||dispatch.allowWrite&&previous.grantRevision!==dispatch.grantRevision)||dispatch&&submission&&!previous)throw new KTeamError('codex_dispatch_conflict',409);
+          if(dispatch&&!previous){
+            if(dispatch.allowWrite&&codexWriteGrant(teamStore,dispatch.botId).revision!==dispatch.grantRevision)throw new KTeamError('codex_write_grant_changed',409);
+            teamStore.saveOperation({id:dispatchId,roomId:envelope.room_id,...dispatch},0);
+          }
           teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);
         });},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
         if(managed) {const settings=teamStore.settings(input.room_id)!;const membership=await upstream.membership(input.room_id);const hasHosted=(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='agent'&&teamStore.binding(m.subject.logicalAgentId));if(hasHosted&&settings.delivery!=='external-agent')await automation.automatic!.accept(input.room_id,input.id,String(result.messageId));else teamStore.completeSubmission(input.id,String(result.messageId),false);void automation.tick();}
@@ -315,14 +318,16 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       if(url.pathname==='/v1/codex/dispatch'&&req.method==='POST'){
         if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);
-        const input=record(await body(req));fields(input,['envelope','botId','allowWrite']);
+        const input=record(await body(req));fields(input,['envelope','botId','allowWrite','expectedGrantRevision']);
         const envelope=validateL0(input.envelope),botId=text(input.botId,'bot_id');
         if(typeof input.allowWrite!=='boolean')throw new KTeamError('invalid_input');
         const settings=teamStore.settings(envelope.room_id),membership=await upstream.membership(envelope.room_id);
         await coordinator.guardConversation(envelope.room_id,membership);
         if(settings?.kind!=='group'||settings.delivery==='external-agent'||!(membership.members as any[]).some(member=>member.status==='active'&&member.subject?.kind==='agent'&&member.subject.logicalAgentId===botId))throw new KTeamError('codex_dispatch_member_unavailable',403);
         const binding=assertCodexBinding(teamStore,botId),grant=codexWriteGrant(teamStore,botId);
-        return send(res,201,await sendHumanMessage(envelope,{botId,bindingRevision:binding.revision,allowWrite:input.allowWrite,grantRevision:grant.revision,path:grant.path}));
+        if(input.allowWrite&&(!Number.isSafeInteger(input.expectedGrantRevision)||Number(input.expectedGrantRevision)<0))throw new KTeamError('invalid_input');
+        if(input.allowWrite&&!teamStore.operation('codex-dispatch:'+envelope.id)&&input.expectedGrantRevision!==grant.revision)throw new KTeamError('codex_write_grant_changed',409);
+        return send(res,201,await sendHumanMessage(envelope,{botId,bindingRevision:binding.revision,allowWrite:input.allowWrite,grantRevision:input.allowWrite?Number(input.expectedGrantRevision):grant.revision,path:grant.path}));
       }
       if (url.pathname === '/v1/messages' && req.method === 'POST')return send(res,201,await sendHumanMessage(await body(req)));
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);

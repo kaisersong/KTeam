@@ -64,7 +64,7 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  send:(input:any)=>call('/v1/messages',messageEnvelope(input)),
  codexWriteGrant:(botId:string)=>call('/v1/codex/write-grant?botId='+room(botId)),
  saveCodexWriteGrant:(input:unknown)=>call('/v1/codex/write-grant',input),
- dispatchCodex:(input:any)=>call('/v1/codex/dispatch',{envelope:messageEnvelope({...input,mentions:['agent://kteam.local/'+room(input.botId)]}),botId:input.botId,allowWrite:input.allowWrite}),
+ dispatchCodex:(input:any)=>call('/v1/codex/dispatch',{envelope:messageEnvelope({...input,mentions:['agent://kteam.local/'+room(input.botId)]}),botId:input.botId,allowWrite:input.allowWrite,expectedGrantRevision:input.expectedGrantRevision}),
  messages:(input:any)=>{const after=input.after??0,limit=input.limit??100,before=input.before;if(!Number.isSafeInteger(after)||after<0||!Number.isInteger(limit)||limit<1||limit>100||(before!==undefined&&(!Number.isSafeInteger(before)||before<1)))throw Error('invalid_pagination');return call(`/v1/teams/${room(input.roomId)}/messages?after=${after}&limit=${limit}${before!==undefined?'&before='+before:''}${input.tail===true?'&tail=true':''}`);},
  settings:(id:unknown)=>call(`/v1/teams/${room(id)}/settings`),work:(id:unknown)=>call(`/v1/teams/${room(id)}/work`),
  reconcile:(id:unknown)=>call(`/v1/teams/${room(id)}/reconcile`,{}),

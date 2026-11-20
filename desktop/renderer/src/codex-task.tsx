@@ -29,20 +29,20 @@ export function CodexDispatchDialog({roomId,bots,initialText,initialBot,onClose,
  const [grant,setGrant]=useState<CodexGrantView>();
  const intent=useRef<{id:string;key:string}|undefined>(undefined);
  useEffect(()=>{let live=true;setGrant(undefined);if(botId)void api.codexWriteGrant(botId).then(value=>{if(live)setGrant(value);}).catch(error=>{if(live)setError(explain(error));});return()=>{live=false;};},[botId]);
- const submit=async()=>{if(busy||!botId||!body.trim())return;const key=JSON.stringify([botId,body,allowWrite]);if(intent.current?.key!==key)intent.current={key,id:'msg_'+crypto.randomUUID().replaceAll('-','')};setBusy(true);setError('');try{await api.dispatchCodex({roomId,botId,text:body,id:intent.current.id,allowWrite});onSent();}catch(error){setError(explain(error));}finally{setBusy(false);}};
+ const submit=async()=>{if(busy||!botId||!body.trim())return;const expectedGrantRevision=allowWrite?grant?.grant.revision:undefined;const key=JSON.stringify([botId,body,allowWrite,expectedGrantRevision]);if(intent.current?.key!==key)intent.current={key,id:'msg_'+crypto.randomUUID().replaceAll('-','')};setBusy(true);setError('');try{await api.dispatchCodex({roomId,botId,text:body,id:intent.current.id,allowWrite,expectedGrantRevision});onSent();}catch(error){setError(explain(error));}finally{setBusy(false);}};
  return <Modal title="派发 Codex 任务" onClose={onClose}>
   {error&&<p className="flow-error" role="alert">{error}</p>}
   <label>执行成员<select value={botId} disabled={busy} onChange={event=>{setBotId(event.target.value);setAllowWrite(false);setError('');}}>{bots.map(bot=><option key={bot.id} value={bot.id}>{label(bot)}</option>)}</select></label>
   {grant&&<p className="form-note">{grant.grant.path??'该成员尚未获得目录写入授权'}</p>}
   <label>任务要求<textarea value={body} disabled={busy} maxLength={32768} onChange={event=>setBody(event.target.value)}/></label>
-  <label><input type="checkbox" checked={allowWrite} disabled={busy||grant?.supported!==true} onChange={event=>setAllowWrite(event.target.checked)}/> 允许本任务修改文件</label>
+  <label className="workspace-inline"><input type="checkbox" checked={allowWrite} disabled={busy||grant?.supported!==true} onChange={event=>setAllowWrite(event.target.checked)}/> 允许本任务修改文件</label>
   <button type="button" className="primary full" disabled={busy||!botId||!body.trim()} onClick={()=>void submit()}>派发任务</button>
  </Modal>;
 }
 
 export function CodexWorkBlocked({job,bots,onSettings,onDispatch}:{job:any;bots:Bot[];onSettings:(bot:Bot)=>void;onDispatch:()=>void}) {
  const reason=job.failure?.code??job.reason;
- if(!['blocked','stopped'].includes(job.state)||!job.codexDispatch||!['codex_write_grant_required','codex_task_write_required','codex_write_grant_changed','codex_write_target_outside','codex_write_sandbox_denied','native_codex_write_sandbox_unavailable'].includes(reason))return null;
+ if(!['blocked','stopped'].includes(job.state)||!job.codexDispatch||!['codex_write_grant_required','codex_task_write_required','codex_write_grant_changed','codex_write_target_outside','codex_write_directory_invalid','codex_write_sandbox_denied','native_codex_write_sandbox_unavailable'].includes(reason))return null;
  const bot=bots.find(bot=>bot.id===job.codexDispatch.botId);
  return <section className="conversation-note" role="status">
   <p>{bot?label(bot):job.codexDispatch.botId} · {explain(reason)}</p>
