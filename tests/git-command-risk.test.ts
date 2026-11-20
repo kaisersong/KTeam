@@ -7,6 +7,8 @@ test('Git option scope distinguishes grep counts and switch creation from global
  const core=await sharedRuntime();
  for(const command of ["git grep -c 'sourceMessageIds:\\[\\]' origin/main -- src/","git grep -o 'cost:null' HEAD -- src/",'git switch -c local origin/main','git fetch origin','git -C /work/repo grep -c config HEAD','git commit -m "config remote gc"']){assert.equal(gitCommandRisk(command),false,command);assert.equal(terminalRequiresConfirmation(core,command),false,command);}
  assert.equal(terminalRequiresConfirmation(core,analystQuery),false);
+ assert.equal(terminalRequiresConfirmation(core,'git config --get-all remote.origin.fetch'),false);
+ for(const command of ['git config remote.origin.fetch replacement','git remote set-url origin new-url','GIT_CONFIG=/outside/config git config --get-all remote.origin.fetch','git --git-dir=/outside config --get-all remote.origin.fetch'])assert.equal(terminalRequiresConfirmation(core,command),true,command);
  assert.equal(gitCommandRisk('GIT_TERMINAL_PROMPT=0 timeout 25 git ls-remote --heads origin 2>&1'),false);
  for(const command of [
   'timeout 25 git remote set-url origin https://example.invalid/repo',

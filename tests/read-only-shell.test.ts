@@ -73,7 +73,7 @@ test('Git remote listing and literal stdout pipes do not make read-only checks i
  assert.equal(readOnlyShell(pm),true);
  assert.equal(readOnlyShell(quality),process.platform!=='win32');
  assert.equal(readOnlyShell(quality.replace('"repos/example/project/actions/jobs/$JID/logs"','repos/example/project/actions/jobs/$JID/logs')),false);
- for(const command of ['git remote set-url origin new-url','git branch -D branch','gh api repos/example/project > result.log | head','gh api repos/example/project > /dev/stdout','gh api repos/example/project >&2 > /dev/stdout | head','ls 2>/dev/stdout | head','ls >> /dev/stdout | head','ls 3>/dev/stdout | head','gh api repos/example/project -X DELETE > /dev/stdout | head']){
+ for(const command of ['git remote set-url origin new-url','git branch -D branch','git branch -a --contains HEAD extra','git config remote.origin.fetch changed','git config --get-all remote.origin.fetch extra','git config --get-all http.extraHeader','git config --file /outside/config --get-all remote.origin.fetch','git for-each-ref --output=/outside/result','gh api repos/example/project > result.log | head','gh api repos/example/project > /dev/stdout','gh api repos/example/project >&2 > /dev/stdout | head','ls 2>/dev/stdout | head','ls >> /dev/stdout | head','ls 3>/dev/stdout | head','gh api repos/example/project -X DELETE > /dev/stdout | head']){
   assert.equal(readOnlyShell(command),false,command);
  }
 });

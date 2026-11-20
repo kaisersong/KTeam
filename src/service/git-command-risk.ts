@@ -1,3 +1,19 @@
+/** Git metadata queries used by both shell policy paths. */
+export function gitMetadataQuery(verb:string,args:string[]):boolean{
+ if(verb==='config')return args.length===2&&['--get','--get-all'].includes(args[0]!)&&/^remote\.[A-Za-z0-9][A-Za-z0-9._/-]*\.fetch$/.test(args[1]!);
+ if(verb==='remote')return args.length===0||args.length===1&&['-v','--verbose'].includes(args[0]!);
+ if(verb==='branch'){
+  if(args.length===1&&args[0]==='--show-current')return true;
+  const selectors=new Set(['-a','-r','--all','--remotes','--list']);
+  const filterStart=args.findIndex(arg=>!selectors.has(arg));
+  return filterStart===-1||args.length===filterStart+2&&args[filterStart]==='--contains'&&/^[A-Za-z0-9][A-Za-z0-9._/@~^-]*$/.test(args[filterStart+1]!);
+ }
+ return verb==='for-each-ref'&&args.every(arg=>{
+  if(arg.startsWith('--format='))return !arg.slice('--format='.length).replace(/%%|%[0-9a-fA-F]{2}|%\((?:refname|objectname|objecttype|(?:author|committer|creator)date)(?::[\w-]+)?\)/g,'').includes('%');
+  return /^--sort=-?(?:refname|objectname|objecttype|(?:author|committer|creator)date)$/.test(arg)||/^--count=\d+$/.test(arg)||/^refs\/[A-Za-z0-9._/-]+$/.test(arg);
+ });
+}
+
 /** Literal argv inspection: Git global options end at the subcommand. */
 function words(segment:string):string[]|undefined{
  const result:string[]=[];let word='',quote='',started=false;
@@ -29,13 +45,16 @@ export function gitCommandRisk(segment:string):boolean|undefined{
  }
  if(args[0]==='command'){args.shift();while(['-p','--'].includes(args[0]??''))args.shift();}
  const program=args.shift()?.replaceAll('\\','/').split('/').at(-1)?.replace(/\.exe$/i,'').toLowerCase();if(program!=='git')return;
+ let standardOptions=true;
  while(args[0]?.startsWith('-')){
   const option=args.shift()!;if(option==='--')break;
   if(option.startsWith('-c')||/^--(?:config-env|exec-path)(?:=|$)/.test(option))return true;
+  if(option!=='-C'&&option!=='--no-pager')standardOptions=false;
   if(['-C','--git-dir','--work-tree','--namespace','--super-prefix'].includes(option)&&args.shift()===undefined)return true;
  }
  const verb=args.shift();if(!verb)return false;
- if(['push','reset','clean','restore','rebase','filter-branch','config','remote','gc'].includes(verb))return true;
+ if(verb==='config'||verb==='remote')return !standardOptions||assignments.length>0||!gitMetadataQuery(verb,args);
+ if(['push','reset','clean','restore','rebase','filter-branch','gc'].includes(verb))return true;
  if(['checkout','switch'].includes(verb))return args.some(arg=>arg==='--'||/^(?:-[fBC]|--(?:force|discard-changes|force-create))(?:=|$)/.test(arg));
  if(verb==='merge')return args.some(arg=>/^--(?:abort|strategy)(?:-|=|$)/.test(arg)||/^-s/.test(arg));
  if(['branch','tag'].includes(verb))return args.some(arg=>/^-[dD]/.test(arg)||/^--delete(?:=|$)/.test(arg));

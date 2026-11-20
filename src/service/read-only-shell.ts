@@ -1,5 +1,6 @@
 import {readOnlyGh} from './gh-query.js';
 import {localGitWorkflow} from './git-local-workflow.js';
+import {gitMetadataQuery} from './git-command-risk.js';
 /** A bounded recognizer for local read-only shell checks, not a general shell parser.
  * Unknown grammar stays on the ordinary approval path. No shell is run to classify it. */
 type Word={kind:'word';value:string;raw:string;refs:string[];subs:Token[][]};
@@ -91,8 +92,8 @@ function inspectShell(command:string,literalAllowed:(word:string)=>boolean,onCom
    if(head==='sed'){const script=fixed(words[2]);if(fixed(words[1])!=='-n'||!script||!/^([0-9]+|\$)?(,([0-9]+|\$))?p$/.test(script)||words.slice(3).some(word=>word.value.startsWith('-')||word.subs.length||word.refs.some(name=>!safeGitVariables.has(name)))){good=false;return;}}
    if(head==='git'){
     let args=words.slice(1);while(fixed(args[0])==='--no-pager'||fixed(args[0])==='-C'){if(fixed(args[0])==='-C'){if(!args[1]||args[1].subs.length||args[1].refs.some(name=>!safeGitVariables.has(name))||args[1].value.startsWith('-')){good=false;return;}args=args.slice(2);}else args=args.slice(1);}
-    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version','branch','remote',...(allowLocalChanges?['add','commit','worktree','checkout','switch','merge']:[])].includes(verb)){good=false;return;}
-    if((verb==='branch'||verb==='remote')&&(args.length!==1||fixed(args[0])!==(verb==='branch'?'--show-current':'-v'))){good=false;return;}
+    const verb=fixed(args.shift());if(!verb||!['show','log','status','diff','rev-parse','ls-files','ls-tree','cat-file','--version','version','branch','remote','config','for-each-ref',...(allowLocalChanges?['add','commit','worktree','checkout','switch','merge']:[])].includes(verb)){good=false;return;}
+    if(['branch','remote','config','for-each-ref'].includes(verb)&&(args.some(word=>fixed(word)===undefined)||!gitMetadataQuery(verb,args.map(word=>word.value)))){good=false;return;}
     if(['checkout','switch','merge'].includes(verb)&&(!allowLocalChanges||args.some(word=>fixed(word)===undefined)||!localGitWorkflow(verb,args.map(word=>word.value)))){good=false;return;}
     if(verb==='worktree'&&(fixed(args[0])!=='add'||!args.some(word=>fixed(word)==='--detach'))){good=false;return;}
     if(args.some(word=>word.subs.length||word.refs.some(name=>!safeGitVariables.has(name))||/[*?\[]/.test(word.value)||word.value==='-o'||['--output','--ext-diff','--textconv','--filters','--open-files-in-pager','--exec','--upload-pack','--receive-pack'].some(option=>{const name=word.value.split('=')[0]!;return name.startsWith('--')&&name!=='--'&&option.startsWith(name);}))){good=false;return;}
