@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {copyFileSync,existsSync,mkdirSync,mkdtempSync,readdirSync,readlinkSync,realpathSync,rmSync,symlinkSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
-import {dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
+import {basename,delimiter,dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 
 function failed(code,status,signal){
   const error=Error(code);
@@ -99,9 +99,16 @@ export function withMobileInstall(options,body=()=>undefined){
   try{
     copyMobileSource(sourceRoot,privateRoot);
     if(containsPath(sourceRoot,privateRoot))throw Error('mobile_install_not_private');
-    const command=options.command??(process.platform==='win32'?'npm.cmd':'npm');
+    const env=options.env??process.env;
     const args=options.args??['ci','--ignore-scripts','--no-audit','--no-fund'];
-    const result=runInstall(command,args,{cwd:privateRoot,stdio:options.stdio??'inherit',env:options.env??process.env});
+    const npm=env.npm_execpath;
+    const useNodeNpm=!options.command&&npm&&isAbsolute(npm)&&basename(npm).toLowerCase()==='npm-cli.js'&&existsSync(npm);
+    // A relative npm.cmd can make cmd's %~dp0 resolve inside the private install's cwd.
+    const windowsNpm=()=>Object.entries(env).find(([name])=>name.toLowerCase()==='path')?.[1]?.split(delimiter)
+      .filter(directory=>isAbsolute(directory)).map(directory=>join(directory,'npm.cmd')).find(existsSync);
+    const command=options.command??(useNodeNpm?process.execPath:process.platform==='win32'?windowsNpm():'npm');
+    if(!command)throw failed('mobile_install_npm_unavailable');
+    const result=runInstall(command,useNodeNpm?[npm,...args]:args,{cwd:privateRoot,stdio:options.stdio??'inherit',env});
     if(result.error)throw result.error;
     if(result.status!==0||result.signal)throw failed('mobile_install_failed',result.status,result.signal);
     return body(privateRoot);

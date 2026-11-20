@@ -336,3 +336,17 @@ test('killing the runner leaves the install writing only its private tree',async
     if(writerRoot)rmSync(join(writerRoot,'..'),{recursive:true,force:true});
   }
 });
+
+test('private installs reuse the absolute npm CLI entry instead of resolving a launcher from the new cwd',()=>{
+ const dir=temp();
+ try{
+  const mobile=join(dir,'source'),npm=join(dir,'npm-cli.js'),marker=join(dir,'npm-ran');
+  packageRoot(mobile);
+  writeFileSync(npm,'require("node:fs").writeFileSync(process.env.MOBILE_NPM_TEST_MARKER, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }));');
+  withMobileInstall({mobile,stdio:'ignore',env:{...process.env,npm_execpath:npm,MOBILE_NPM_TEST_MARKER:marker}},root=>{
+   const record=JSON.parse(readFileSync(marker,'utf8'));
+   assert.equal(realpathSync(record.cwd),realpathSync(root));
+   assert.deepEqual(record.args,['ci','--ignore-scripts','--no-audit','--no-fund']);
+  });
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
