@@ -19,7 +19,7 @@ export function spawnBatchFile(scriptPath,args=[],options={}){
   const command='"'+[quoteCmdArgument(scriptPath),...args.map(quoteCmdArgument)].join(' ')+'"';
   return spawnSync(options.comSpec??process.env.ComSpec??'cmd.exe',['/d','/s','/c',command],{
     cwd:options.cwd,env:options.env??process.env,stdio:options.stdio,encoding:options.encoding,
-    windowsVerbatimArguments:true,windowsHide:true,
+    windowsVerbatimArguments:true,windowsHide:true,timeout:options.timeout,
   });
 }
 

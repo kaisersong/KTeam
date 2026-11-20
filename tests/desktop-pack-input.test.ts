@@ -9,7 +9,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const {spawnBatchFile}=createRequire(import.meta.url)(join(root,'scripts/mobile-install.mjs')) as {spawnBatchFile:(scriptPath:string,args:string[],options?:{encoding?:BufferEncoding})=>{status:number|null;error?:Error;stdout?:string}};
+const {spawnBatchFile}=createRequire(import.meta.url)(join(root,'scripts/mobile-install.mjs')) as {spawnBatchFile:(scriptPath:string,args:string[],options?:{encoding?:BufferEncoding;timeout?:number})=>{status:number|null;error?:Error;stdout?:string}};
 const pack=createRequire(import.meta.url)(join(root,'scripts/desktop-pack-input.mjs')) as {
   packInputPlan:(dir:string)=>{hide:string[];links:Array<{name:string;target:string;dangling:boolean}>};
   stagePackTree:(dir:string,destination:string)=>{plan:{hide:string[]};destination:string};
@@ -290,7 +290,7 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
   const kswarm=join(parent,'kswarm'),broker=join(parent,'intent-broker'),project=join(parent,'kteam'),privateDir=join(parent,'private');
   mkdirSync(join(kswarm,'bin'),{recursive:true});mkdirSync(broker,{recursive:true});mkdirSync(project,{recursive:true});mkdirSync(privateDir);
   writeFileSync(join(privateDir,'secret.txt'),'private-source\n',{mode:0o600});
-  writeFileSync(join(kswarm,'index.js'),'console.log("kswarm-marker")\n',{mode:0o644});
+  writeFileSync(join(kswarm,'index.js'),'#!/usr/bin/env node\nconsole.log("kswarm-marker")\n',{mode:0o644});
   symlinkSync('../index.js',join(kswarm,'bin','run.js'));
   writeFileSync(join(kswarm,'package.json'),JSON.stringify({name:'kswarm',version:'0.0.0',main:'index.js',bin:{'kswarm-marker':'./bin/run.js'}})+'\n');
   writeFileSync(join(kswarm,'.env'),'fixture-dotenv-not-for-assertions\n',{mode:0o600});
@@ -324,7 +324,7 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
     assert.equal(realpathSync.native(stagedIndex).startsWith(realpathSync.native(staged)),true);
     assert.equal(realpathSync.native(stagedIndex).startsWith(realpathSync.native(kswarm)),false);
     const bin=join(staged,'node_modules','.bin',process.platform==='win32'?'kswarm-marker.cmd':'kswarm-marker');
-    const ran=process.platform==='win32'?spawnBatchFile(bin,[],{encoding:'utf8'}):spawnSync(process.execPath,[bin],{encoding:'utf8'});
+    const ran=process.platform==='win32'?spawnBatchFile(bin,[],{encoding:'utf8',timeout:15000}):spawnSync(process.execPath,[bin],{encoding:'utf8'});
     if(ran.error)throw ran.error;
     assert.equal(ran.status,0);
     assert.equal((ran.stdout??'').trim(),'kswarm-marker');
