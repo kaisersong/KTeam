@@ -348,7 +348,7 @@ test('private installs reuse the absolute npm CLI entry instead of resolving a l
   writeFileSync(npm,'require("node:fs").writeFileSync(process.env.MOBILE_NPM_TEST_MARKER, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }));');
   withMobileInstall({mobile,stdio:'ignore',env:{...process.env,npm_execpath:npm,MOBILE_NPM_TEST_MARKER:marker}},root=>{
    const record=JSON.parse(readFileSync(marker,'utf8'));
-   assert.equal(realpathSync(record.cwd),realpathSync(root));
+   assert.equal(realpathSync.native(record.cwd),realpathSync.native(root));
    assert.deepEqual(record.args,['ci','--ignore-scripts','--no-audit','--no-fund']);
   });
  }finally{rmSync(dir,{recursive:true,force:true});}
