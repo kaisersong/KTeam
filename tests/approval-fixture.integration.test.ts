@@ -11,6 +11,7 @@ import {saveBotProfile} from '../src/service/bot-profile.js';
 import {initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI} from '../desktop/semantic-api.js';
+import {mobileApprovalCard} from '../src/protocol/mobile-approval-card.js';
 
 const {FIXTURE_TEXT,startApprovalFixture}=await import(new URL('../../scripts/manual-approval-fixture.mjs',import.meta.url).href) as {FIXTURE_TEXT:string;startApprovalFixture:(directory:string)=>Promise<{file:string;baseUrl:string;requests:()=>number;close:()=>Promise<void>}>};
 
@@ -47,6 +48,12 @@ test('loopback fixture creates a real read-only approval, allow once leaves the 
     await api.send({roomId:member.roomId,text:'请读取夹具文件。',id:'msg_'+'a'.repeat(32)});
     const first=await until(pending);
     assert.match(first.id,/^tool-approval:/);assert.match(first.hash,/^[a-f0-9]{64}$/);assert.equal(first.toolName,'bash');assert.match(String(first.display),/cat/);assert.match(String(first.display),/fixture-note\.pem/);
+    const inbox=await hostRequest(root,'kteam-main','/v1/inbox') as {approvals?:Array<{id?:string;hash?:string}>};
+    const visible=(inbox.approvals??[]).find(item=>item.id===first.id);
+    assert.ok(visible,'the phone inbox reads this same approval list');
+    const card=mobileApprovalCard(visible);
+    assert.equal(card.hash,first.hash);
+    assert.deepEqual(card.decisions,['deny','allow_once']);
     assert.equal(readFileSync(fixture.file,'utf8'),FIXTURE_TEXT);
     await api.decideToolApproval({id:first.id,expectedHash:first.hash,decision:'allow_once'});
     await until(async()=>fixture.requests()>=2||undefined);
