@@ -100,7 +100,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const collaboration = new CollaborationService(upstream);
   const teamStore = new TeamStore(options.root);
   const localAgents=new LocalAgents(options.root,teamStore,upstream);
-  void localAgents.rememberBoundCodex().catch(()=>{/* An unavailable CLI stays visible through normal diagnostics. */});
+  void localAgents.rememberBoundInstallations().catch(()=>{/* An unavailable CLI stays visible through normal diagnostics. */});
   const builtinAgent=new BuiltinAgent(teamStore);
   const modelSettings=new ModelSettings(undefined,()=>onboarding.ensureConfigured()),integrationSettings=new IntegrationSettings(),enterpriseConnectors=new EnterpriseConnectors({configRoot:process.env.KTEAM_MODEL_CONFIG_DIR??join(options.root,'runtime')}),mailConnectors=new MailConnectors();
   const conversations=new ConversationService(options.root,upstream,teamStore);
