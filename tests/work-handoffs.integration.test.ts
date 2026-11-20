@@ -1,3 +1,4 @@
+import {PeerExchanges} from '../src/service/peer-exchanges.js';
 import {WorkHandoffs} from '../src/service/work-handoffs.js';
 import {activityRecords} from '../src/protocol/activity-records.js';
 import {test} from 'node:test';
@@ -17,18 +18,29 @@ function gate(){let release!:()=>void;const promise=new Promise<void>(resolve=>r
 const pause=()=>new Promise(resolve=>setTimeout(resolve,10));
 async function until(check:()=>boolean){const deadline=Date.now()+10000;while(!check()&&Date.now()<deadline)await pause();assert.ok(check(),'bounded state wait');}
 test('parallel member work releases the parent lane and resumes the same authoritative task exactly once',async()=>{
- const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,calls=0;
+ const f=await setup(),hold=gate(),reviewHold=gate();let automation:TeamAutomation|undefined,calls=0;
  try{automation=new TeamAutomation(f.upstream,f.store,1,async input=>{await input.onRequest?.();calls++;const prompt=JSON.parse(input.prompt);
-   if(prompt.sourceConversation){await hold.wait(input.signal);return {text:'真实成员结果：'+(input.system.includes('资料员')?'来源已核对':'验收范围已核对'),model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}
+   if(prompt.sourceConversation){const sourceCheck=input.system.includes('你是 KTeam 的长期成员 '+f.bots[1]!.name+'。');await (sourceCheck?hold:reviewHold).wait(input.signal);return {text:'真实成员结果：'+(sourceCheck?'来源已核对':'验收范围已核对'),model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}
    if(prompt.handoff){assert.equal(prompt.handoff.results.length,2);assert.equal(prompt.handoff.readonly,false);assert.ok(prompt.handoff.results.every((result:any)=>result.state==='delivered'&&result.messageId));return {text:'已按两位成员的真实结果汇总：来源及验收范围均已核对。',model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}};}
    const tool=input.tools!.find(tool=>tool.definition.name==='delegate_work');assert.ok(tool);const receipt=JSON.parse(await tool.execute({requests:f.bots.slice(1).map(bot=>({botId:bot.id,message:'请独立核对你的范围。'})),doneWhen:'两位成员分别返回有依据的结果。'},{}));assert.equal(receipt.waiting,true);await input.onRequest?.();throw Error('must yield before another model');
   },f.coordinator);
   await automation.tick();assert.equal(f.store.job('handoff-root').state,'waiting',JSON.stringify(f.store.jobs()));await until(()=>f.store.jobs().filter(job=>job.trigger==='peer'&&job.state==='running').length===2);await until(()=>calls===3);const before=calls,parentTask=f.store.job('handoff-root').task;
   assert.equal(parentTask.state,'blocked');for(let i=0;i<3;i++)await automation.tick();assert.equal(calls,before);assert.equal(f.store.job('handoff-root').calls,1);
-  hold.release();await until(()=>f.store.jobs().filter(job=>job.trigger==='peer'&&job.state==='delivered').length===2);await automation.tick();const parent=f.store.job('handoff-root');assert.equal(parent.state,'delivered',JSON.stringify(parent));assert.equal(parent.results.length,1);assert.equal(parent.results[0].taskRef,parentTask.taskRef);assert.equal(parent.calls,2);
+  hold.release();
+  await until(()=>f.store.jobs().some(job=>job.peer?.toBotId===f.bots[1]!.id&&job.state==='delivered'));
+  await automation.handoffs!.wake();
+  const root=f.store.job('handoff-root');
+  const progress=root.handoffWait.children.find((child:any)=>child.botId===f.bots[1]!.id);
+  assert.equal(progress.state,'delivered');
+  const exchanges=new PeerExchanges(f.upstream,f.store);
+  const listed=await exchanges.list(f.roomId,{originIds:[root.originId]});
+  assert(listed.exchanges.some(exchange=>exchange.id===progress.exchangeId));
+  const receipt=await exchanges.messages(f.roomId,progress.exchangeId);
+  assert(receipt.messages.some(message=>String(message.text).includes('来源已核对')));
+  reviewHold.release();await until(()=>f.store.jobs().filter(job=>job.trigger==='peer'&&job.state==='delivered').length===2);await automation.tick();const parent=f.store.job('handoff-root');assert.equal(parent.state,'delivered',JSON.stringify(parent));assert.equal(parent.results.length,1);assert.equal(parent.results[0].taskRef,parentTask.taskRef);assert.equal(parent.calls,2);
   const tasks=(await f.upstream.aimp(f.roomId,'tasks')).tasks;assert.equal(tasks.length,1);assert.equal(tasks[0].state,'delivered');assert.ok(tasks[0].epoch>parentTask.epoch);
   const replies=(await f.upstream.messages(f.roomId,0,100)).messages.filter((message:any)=>message.sender?.logicalAgentId===f.bots[0]!.id&&message.sourceRef?.kind==='aimp_reply');assert.equal(replies.length,1);assert.match(replies[0].text,/两位成员/);await automation.tick();assert.equal(calls,before+1);
- }finally{hold.release();await automation?.close();await f.end();}
+ }finally{hold.release();reviewHold.release();await automation?.close();await f.end();}
 });
 test('pausing a waiting parent stops its real child executions and never resumes after the Room is reopened',async()=>{
  const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,calls=0;
@@ -44,7 +56,7 @@ test('a failed child returns a read-only outcome to the parent instead of being 
 });
 
 test('a known native installation change before dispatch keeps the healthy private peer and returns a partial result',async()=>{
- const f=await setup();let automation:TeamAutomation|undefined;
+ const f=await setup(),hold=gate();let automation:TeamAutomation|undefined;
  try{
   const [owner,quality,native]=f.bots;
   const privatePair=f.coordinator.privatePair.bind(f.coordinator);
@@ -53,7 +65,7 @@ test('a known native installation change before dispatch keeps the healthy priva
    await input.onRequest?.();
    const prompt=JSON.parse(input.prompt);
    const answer=(text:string)=>({text,model:'fixture',fingerprint:'fixture',usage:{inputTokens:1,outputTokens:1}});
-   if(prompt.sourceConversation)return answer('质量已返回独立核对。');
+   if(prompt.sourceConversation){await hold.wait(input.signal);return answer('质量已返回独立核对。');}
    if(prompt.handoff){
     assert.equal(prompt.handoff.readonly,true);
     assert.equal(input.tools?.length,0);
@@ -65,6 +77,11 @@ test('a known native installation change before dispatch keeps the healthy priva
    await input.onRequest?.();throw Error('yield');
   },f.coordinator);
   await automation.tick();
+  await automation.handoffs!.wake();
+  const waiting=f.store.job('handoff-root').handoffWait;
+  assert(waiting.children.some((child:any)=>child.botId===native!.id&&child.state==='blocked'&&child.reason==='native_installation_changed'));
+  assert(waiting.children.some((child:any)=>child.botId===quality!.id&&['queued','running'].includes(child.state)&&child.jobId));
+  hold.release();
   await until(()=>f.store.jobs().some(job=>job.peer?.toBotId===quality!.id&&job.state==='delivered'));
   await automation.tick();
   const root=f.store.job('handoff-root'),op=f.store.operation(root.currentHandoffId);
@@ -72,7 +89,7 @@ test('a known native installation change before dispatch keeps the healthy priva
   assert.equal(op.status,'returned');assert.equal(op.children.length,1);
   assert.equal(f.store.jobs().filter(job=>job.peer?.toBotId===native!.id).length,0);
   assert.equal(f.store.operationsWithPrefix('bot-contact:').find(row=>row.toBotId===native!.id)?.status,'failed');
- }finally{await automation?.close();await f.end();}
+ }finally{hold.release();await automation?.close();await f.end();}
 });
 test('changed member profiles fence an old waiting scope without another parent inference',async()=>{
  const f=await setup(),hold=gate();let automation:TeamAutomation|undefined,parentCalls=0;

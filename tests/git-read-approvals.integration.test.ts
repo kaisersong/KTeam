@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync,realpathSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync,realpathSync,symlinkSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
 import {directoryAccess} from '../src/service/directory-access.js';
 import {sharedRuntime,modelIdentity,runtimeArtifactRevision} from '../src/runtime/native.js';import {createHarness} from '../src/runtime/harness.js';import {TeamStore} from '../src/service/team-store.js';import {ToolApprovals} from '../src/service/tool-approvals.js';import {runtimeIntegrationRevision} from '../src/service/integration-settings.js';
 import {realUpstreams} from './helpers/real-upstreams.js';import {TeamCoordinator} from '../src/service/coordination.js';import {WorkHandoffs} from '../src/service/work-handoffs.js';import {PrivateConversations} from '../src/service/private-conversations.js';import {CollaborationService,LOCAL_HUMAN} from '../src/service/collaboration.js';
@@ -58,5 +58,45 @@ test('the screenshot find and grep check executes without prompts through the re
   assert.equal(await h.registryOptions.permissionManager.check('bash',{command}),'allow');const result=await registry.executeTool('bash',{command});assert.match(result,/3bd8bdec-proof/);assert.match(result,/Content-Security-Policy fixture/);assert.equal(prompts,0);
   const deletion=`find "${directory}" -name "3bd8bdec*" -delete`;assert.notEqual(await h.registryOptions.permissionManager.check('bash',{command:deletion}),'allow');await registry.executeTool('bash',{command:deletion});assert.equal(existsSync(join(directory,'3bd8bdec-proof.png')),true);
   writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['bash:find*']}}));const denied=await createHarness({workspace:f.repo,signal:AbortSignal.timeout(10000),assertCurrent:async()=>{}});assert.equal(await denied.registryOptions.permissionManager.check('bash',{command}),'deny');
+ }finally{registry?.dispose();f.close();}
+});
+
+test('structured Git metadata reads use the existing registry and obey workspace and explicit deny rules',{skip:process.platform==='win32'},async()=>{
+ const f=await fixture();let registry:any;
+ try{
+  const repo=realpathSync(f.repo);
+  const git=(...args:string[])=>execFileSync('git',['-c','user.name=Fixture','-c','user.email=fixture@example.test',...args],{cwd:repo,encoding:'utf8'}).trim();
+  git('init','-q');git('commit','-qm','structured read fixture','--allow-empty');
+  const revision=git('rev-parse','HEAD');
+  git('remote','add','origin','https://example.test/git-inspect.git');
+  const create=()=>createHarness({workspace:repo,discussionOnly:true,transientReadOnly:true,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{}});
+  const harness=await create();
+  registry=new f.core.ToolRegistry(harness.registryOptions,harness.tools);
+  for(const [input,expected] of [
+   [{operation:'refs'},revision],
+   [{operation:'history',revision},'structured read fixture'],
+   [{operation:'containing_branches',revision},git('branch','--show-current')],
+   [{operation:'fetch_refspec'},'+refs/heads/*:refs/remotes/origin/*'],
+  ] as const){
+   assert.equal(await harness.registryOptions.permissionManager.check('git_inspect',input),'allow',input.operation);
+   const result=await registry.executeTool('git_inspect',input);
+   assert.ok(result.includes(expected),result);
+  }
+  const link=join(repo,'external');
+  symlinkSync(realpathSync(f.root),link,'dir');
+  for(const input of [
+   {operation:'history',repository:f.root},
+   {operation:'history',repository:link},
+   {operation:'history',revision:'--output=elsewhere'},
+   {operation:'fetch_refspec',key:'remote.origin.url'},
+  ]) {
+   assert.equal(await harness.registryOptions.permissionManager.check('git_inspect',input),'deny');
+  }
+  git('config','include.path',join(f.root,'outside.gitconfig'));
+  assert.equal(await harness.registryOptions.permissionManager.check('git_inspect',{operation:'history'}),'deny');
+  git('config','--unset','include.path');
+  writeFileSync(join(f.config,'settings.json'),JSON.stringify({permissions:{deny:['bash:git config*']}}));
+  const denied=await create();
+  assert.equal(await denied.registryOptions.permissionManager.check('git_inspect',{operation:'fetch_refspec'}),'deny');
  }finally{registry?.dispose();f.close();}
 });

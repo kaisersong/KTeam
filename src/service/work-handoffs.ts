@@ -1,3 +1,4 @@
+import {peerExchangeId} from './peer-exchanges.js';
 import {memberHandoffDeadline} from './work-deadlines.js';
 import {executionFailure} from '../protocol/execution-failure.js';
 import {originalMessage} from './room-reads.js';
@@ -14,6 +15,17 @@ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).d
 const eventId=(value:string)=>'msg_'+hash(value).slice(0,32);
 const terminal=new Set(['delivered','blocked','unknown','stopped','noop','cancelled']);
 
+export function handoffChildJob(store:Pick<TeamStore,'job'>,job:any,child:any){
+ const record=store.job(child.jobId);
+ if(!record||record.roomId!==child.roomId||record.originId!==child.requestMessageId||
+    record.peer?.sourceJobId!==job.id||record.peer?.rootJobId!==(job.peer?.rootJobId??job.id)||
+    record.peer?.toBotId!==child.botId||record.peer?.sourceRoomId!==job.roomId)return undefined;
+ return record;
+}
+
+export function handoffChildReceipt(record:any,botId:string){
+ return record?.state==='delivered'?record.results?.find((result:any)=>result.botId===botId&&result.messageId&&result.taskRef):undefined;
+}
 
 /** Durable references to the existing peer jobs and AIMP task, never a second task owner. */
 export class WorkHandoffs {
@@ -109,9 +121,28 @@ export class WorkHandoffs {
      op=this.store.saveOperation({...op,children:[...op.children,{botId:request.botId,jobId:receipt.jobId,roomId:receipt.roomId,requestMessageId:receipt.messageId}]},op.revision);
     }
    }
-   await scope.assertCurrent();op=this.store.saveOperation({...op,status:'waiting'},op.revision);job.currentHandoffId=id;job.handoffVersion=version;job.handoffWait={operationId:id,doneWhen,deadline,children:op.children.map((child:any)=>({...child,state:this.store.job(child.jobId)?.state??'unknown'}))};this.store.save(job);
+   await scope.assertCurrent();op=this.store.saveOperation({...op,status:'waiting'},op.revision);job.currentHandoffId=id;job.handoffVersion=version;job.handoffWait={operationId:id,doneWhen,deadline,children:this.memberProgress(job,op)};this.store.save(job);
    return JSON.stringify({waiting:true,completed:false,operationId:id,children:op.children.map((child:any)=>({botId:child.botId,jobId:child.jobId})),next:'当前工作将挂起，实际结果回来后接续。'});
   }catch(error){const current=this.store.operation(id);this.store.saveOperation({...current,status:'unknown',reason:'handoff_result_unknown'},current.revision);this.invalidateChildren(job.id);throw error;}
+ }
+ private memberProgress(job:any,op:any){
+  const questions=this.chats.questions();
+  const members=(op.children??[]).map((child:any)=>{
+   const record=handoffChildJob(this.store,job,child);
+   const rootJobId=job.peer?.rootJobId??job.id;
+   if(!record)return {botId:child.botId,jobId:child.jobId,state:'unknown',reason:'handoff_result_invalid'};
+   const question=questions.find(question=>question.jobId===record.id);
+   const approval=record.handoffWait?.approvalId?this.store.operation(record.handoffWait.approvalId):undefined;
+   const pending=approval?.status==='pending'&&approval.jobId===record.id&&approval.botId===child.botId&&approval.expiresAt>this.now();
+   const result=handoffChildReceipt(record,child.botId);
+   const failure=executionFailure(record);
+   return {botId:child.botId,jobId:child.jobId,state:question||pending?'waiting_user':record.state==='delivered'&&!result?'unknown':record.state,
+    ...(result?{exchangeId:peerExchangeId(rootJobId,child.roomId)}:{}),
+    questionRoomId:question?.roomId,approvalRoomId:pending?approval.displayRoomId:undefined,approvalInGroup:pending&&!!approval.directoryGroupScope,
+    reason:failure?.code??record.reason,model:failure?.model};
+  });
+  const failures=(op.dispatchFailures??[]).map((failure:any)=>({botId:failure.botId,state:'blocked',reason:failure.reason}));
+  return [...members,...failures];
  }
  async park(job:any){
   const op=this.store.operation(job.currentHandoffId);if(!op||!this.wantsPause(job))throw new KTeamError('handoff_result_unknown',409);
@@ -156,8 +187,8 @@ export class WorkHandoffs {
      job.handoffWait=latest.handoffWait;
     }
     if((op.condition||op.questionId)&&op.pollAt&&op.pollAt>this.now())continue;
-    const children=op.children.map((child:any)=>({...child,job:this.store.job(child.jobId)}));
-    const questions=this.chats.questions();const states=children.map((child:any)=>{const question=questions.find(question=>question.jobId===child.jobId),approval=child.job?.handoffWait?.approvalId?this.store.operation(child.job.handoffWait.approvalId):undefined,failure=executionFailure(child.job);return {botId:child.botId,jobId:child.jobId,roomId:child.roomId,state:question||approval?.status==='pending'?'waiting_user':child.job?.state??'unknown',questionRoomId:question?.roomId,approvalRoomId:approval?.status==='pending'?approval.displayRoomId:undefined,approvalInGroup:!!approval?.directoryGroupScope,reason:failure?.code??child.job?.reason,model:failure?.model};});
+    const children=op.children.map((child:any)=>({...child,job:handoffChildJob(this.store,job,child)}));
+    const states=this.memberProgress(job,op);
     if(hash(job.handoffWait?.children)!==hash(states)){job.handoffWait={...job.handoffWait,children:states};this.store.save(job);}
     if(children.some((child:any)=>child.job&&!terminal.has(child.job.state))){const current=this.store.operation(op.id);if(current?.status==='parked')this.store.saveOperation({...current,lastCheckedAt:this.now(),retryAt:null},current.revision);continue;}
     await this.guard(job);
@@ -167,7 +198,7 @@ export class WorkHandoffs {
     if(op.condition){const observed=await this.conditions.observe(job,op);if(!observed.ready){const current=this.store.operation(op.id);this.store.saveOperation({...current,lastCheckedAt:this.now(),pollAt:this.now()+5000,retryAt:null,readFailures:0,lastError:null},current.revision);if(job.handoffWait?.lastError){delete job.handoffWait.lastError;this.store.save(job);}continue;}results.push(...observed.results!);}
     for(const child of children){
      if(child.job?.state!=='delivered'){results.push({botId:child.botId,state:child.job?.state??'unknown',reason:child.job?.reason??'child_result_missing'});continue;}
-     await this.chats.validatePeer(child.job);await this.coordinator.guardConversation(child.roomId);const receipt=child.job.results?.find((result:any)=>result.botId===child.botId);if(!receipt)throw new KTeamError('handoff_result_invalid',409);
+     await this.chats.validatePeer(child.job);await this.coordinator.guardConversation(child.roomId);const receipt=handoffChildReceipt(child.job,child.botId);if(!receipt)throw new KTeamError('handoff_result_invalid',409);
      const actual=(await this.upstream.conversationMessage(child.roomId,receipt.messageId)).message as any;
      const task=((await this.upstream.aimp(child.roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===receipt.taskRef);
      if(actual.sender?.logicalAgentId!==child.botId||actual.sourceRef?.kind!=='aimp_reply'||actual.sourceRef?.taskRef!==receipt.taskRef||!task?.artifactVerification?.verified||!['delivered','accepted'].includes(task.state))throw new KTeamError('handoff_result_invalid',409);
