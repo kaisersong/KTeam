@@ -61,7 +61,7 @@ test("mobile typecheck resolves buffer from the mobile install when the root ins
   };
   const resolved = ts.resolveModuleName("buffer", shared, parsed.options, resolutionHost);
   const file = resolved.resolvedModule?.resolvedFileName;
-  assert.equal(file && realpathSync(file), realpathSync(join(mobile, "node_modules/buffer/index.d.ts")));
+  assert.equal(file && realpathSync.native(file), realpathSync.native(join(mobile, "node_modules/buffer/index.d.ts")));
   assert.match(readFileSync(file!, "utf8"), /export class Buffer/);
 });
 
@@ -76,7 +76,7 @@ test("metro resolves the shared wire file's buffer runtime from the mobile insta
     if (hidesRootInstall(file)) return { exists: false };
     try {
       const stat = statSync(file);
-      return { exists: true, type: stat.isDirectory() ? "d" : "f", realPath: realpathSync(file) };
+      return { exists: true, type: stat.isDirectory() ? "d" : "f", realPath: realpathSync.native(file) };
     } catch {
       return { exists: false };
     }
@@ -104,7 +104,7 @@ test("metro resolves the shared wire file's buffer runtime from the mobile insta
     unstable_logWarning: () => {},
   }, "buffer", "ios");
   assert.equal(resolved.type, "sourceFile");
-  assert.equal(realpathSync(resolved.filePath), realpathSync(join(mobile, "node_modules/buffer/index.js")));
+  assert.equal(realpathSync.native(resolved.filePath), realpathSync.native(join(mobile, "node_modules/buffer/index.js")));
   const runtime = mobileRequire(resolved.filePath) as { Buffer: { from: (value: string, encoding: string) => { toString: () => string } } };
   assert.equal(runtime.Buffer.from("YQ==", "base64").toString(), "a");
   assert.equal(existsSync(join(dirname(resolved.filePath), "package.json")), true);

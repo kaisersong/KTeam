@@ -24,14 +24,14 @@ export function spawnBatchFile(scriptPath,args=[],options={}){
 }
 
 function containsPath(parent,child){
-  const root=realpathSync(parent);
-  const file=realpathSync(child);
+  const root=realpathSync.native(parent);
+  const file=realpathSync.native(child);
   return file===root||file.startsWith(root+sep);
 }
 
 function linkEscapes(root,linkPath){
   let resolved;
-  try{resolved=realpathSync(linkPath);}
+  try{resolved=realpathSync.native(linkPath);}
   catch{resolved=resolve(dirname(linkPath),readlinkSync(linkPath));}
   const fromRoot=relative(root,resolved);
   return fromRoot==='..'||fromRoot.startsWith('..'+sep)||isAbsolute(fromRoot);
@@ -39,7 +39,7 @@ function linkEscapes(root,linkPath){
 
 /** Refuse a symlink whose target is outside this source. Links that stay inside are kept. */
 function assertNoEscapingLink(sourceRoot){
-  const root=realpathSync(sourceRoot);
+  const root=realpathSync.native(sourceRoot);
   const visit=(directory)=>{
     for(const entry of readdirSync(directory,{withFileTypes:true})){
       if(entry.name==='node_modules')continue;
@@ -55,7 +55,7 @@ function assertNoEscapingLink(sourceRoot){
 }
 
 function copyMobileSource(source,destination){
-  const root=realpathSync(source);
+  const root=realpathSync.native(source);
   mkdirSync(destination,{recursive:true});
   const visit=(directory,destDir)=>{
     for(const entry of readdirSync(directory,{withFileTypes:true})){
@@ -64,7 +64,7 @@ function copyMobileSource(source,destination){
       const to=join(destDir,entry.name);
       if(entry.isSymbolicLink()){
         let resolved;
-        try{resolved=realpathSync(from);}
+        try{resolved=realpathSync.native(from);}
         catch{resolved=resolve(directory,readlinkSync(from));}
         symlinkSync(relative(directory,resolved),to);
         continue;
@@ -111,7 +111,7 @@ export function withMobileInstall(options,body=()=>undefined){
     const result=runInstall(command,useNodeNpm?[npm,...args]:args,{cwd:privateRoot,stdio:options.stdio??'inherit',env});
     if(result.error)throw result.error;
     if(result.status!==0||result.signal)throw failed('mobile_install_failed',result.status,result.signal);
-    return body(privateRoot);
+    return body(realpathSync.native(privateRoot));
   }finally{rmSync(parent,{recursive:true,force:true});}
 }
 
@@ -127,10 +127,10 @@ export function requireFromMobileInstall(mobile,specifier){
     throw error;
   }
   let install;
-  try{install=realpathSync(join(mobile,'node_modules'));}
+  try{install=realpathSync.native(join(mobile,'node_modules'));}
   catch{install='';}
   if(!resolved.startsWith(sep)&&!/^[A-Za-z]:[\\/]/.test(resolved))throw failed('mobile_dependency_outside_mobile:'+specifier);
-  const file=realpathSync(resolved);
+  const file=realpathSync.native(resolved);
   if(!install||(file!==install&&!file.startsWith(install+sep)))throw failed('mobile_dependency_outside_mobile:'+specifier);
   return require(specifier);
 }
