@@ -39,7 +39,7 @@ test('budget rollback restores memory and persistent call count before any new r
   fault.exec('DROP TRIGGER fail_budget');store.reserveCall(job,team);assert.equal(job.calls,1);assert.equal(store.jobs()[0].calls,1);
  }finally{fault.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
-for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-unconfirmed'])test('controller reconciles '+loss+' receipt with real broker facts without repeating inference',async()=>{
+for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-unconfirmed','timeout','budget'])test('controller handles '+loss+' outcome with real broker facts without repeating inference',async()=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-receipt-')));
  const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
  const broker=createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});
@@ -47,7 +47,7 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
  broker.aimp.configure({roomId,expectedRevision:0,goal:'draft',allowedActions:['discussion'],maxRuns:6},user);
  broker.room.sendRoomMessage({roomId,threadId:'thread',kind:'text',text:'@CEO 草稿',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:'origin'},user);
  const origin=broker.room.getCollaborationRoom({roomId},user).messages[0];
- const store=new TeamStore(root);store.configure({roomId,goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
+ const store=new TeamStore(root);store.configure({roomId,goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:loss==='budget'?1:20},0);
  store.bind({botId:'a',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.enqueue('job',roomId,origin.messageId);
  let lost=false,inferences=0;
  const upstream={...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'}]}),aimp:async(_room:string,command:string,input:any={})=>{
@@ -59,10 +59,17 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
   if(!lost&&(command+(input.act?':'+input.act:'')===loss||command===loss)){lost=true;throw new KTeamError('upstream_operation_unknown',503);}
   return result;
  }} as unknown as Upstreams;
- const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();await input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
+ const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();await input.onRequest?.();if(loss==='timeout')throw new DOMException('Execution timed out','TimeoutError');if(loss==='budget')await input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
  try{
   await automation.tick();const job=store.jobs()[0];assert.equal(inferences,1,JSON.stringify(job));assert.equal(job.calls,1);
   if(loss==='chat-unconfirmed'){assert.equal(job.state,'unknown');assert.ok(job.answerDraft);assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');}
+  else if(loss==='timeout'||loss==='budget'){
+   assert.equal(job.state,'blocked');
+   assert.equal(projectWork(job).stopNotice?.cause,loss);
+   assert.equal(projectWork(job).stopNotice?.confirmed,true);
+   assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');
+   assert.ok(!broker.room.getCollaborationRoom({roomId},user).messages.some((message:any)=>message.sourceRef?.kind==='aimp_reply'));
+  }
   else{assert.equal(job.state,'delivered');assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].artifactVerification.verified,true);assert.equal(broker.room.getCollaborationRoom({roomId},user).messages.length,2);}
  }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
