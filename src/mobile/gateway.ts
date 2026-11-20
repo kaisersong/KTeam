@@ -3,8 +3,14 @@ import Bonjour from "bonjour-service";
 import { MobileRelayClient } from "./relay.js";
 import { WebSocketServer, WebSocket } from "ws";
 import { MobileHandshake, MobileFrames } from "../protocol/mobile-wire.js";
-import { MobileDevices, type MobilePrincipal } from "./devices.js";
+import { MobileDevices, type MobilePrincipal, type MobileRevocation } from "./devices.js";
 import { KTeamError } from "../errors.js";
+type LiveSession = {
+  principal?: MobilePrincipal;
+  frames?: MobileFrames;
+  revokeOnly?: boolean;
+  deadline?: ReturnType<typeof setTimeout>;
+};
 export class MobileGateway {
   private discovery?: Bonjour;
   private relay?: MobileRelayClient;
@@ -12,6 +18,7 @@ export class MobileGateway {
   private server?: http.Server;
   private wss?: WebSocketServer;
   private sockets = new Map<WebSocket, MobilePrincipal | undefined>();
+  private sessions = new Map<WebSocket, LiveSession>();
   private actualPort = 0;
   private stopping = false;
   constructor(
@@ -105,6 +112,8 @@ export class MobileGateway {
       return;
     }
     this.sockets.set(socket, undefined);
+    const session: LiveSession = {};
+    this.sessions.set(socket, session);
     let principal: MobilePrincipal | undefined,
       noise: MobileHandshake | undefined,
       frames: MobileFrames | undefined,
@@ -121,7 +130,9 @@ export class MobileGateway {
     };
     socket.on("close", () => {
       clearTimeout(timer);
+      clearTimeout(session.deadline);
       this.sockets.delete(socket);
+      this.sessions.delete(socket);
     });
     socket.on("error", () => {});
     socket.on("message", (data) => {
@@ -138,8 +149,9 @@ export class MobileGateway {
             if (!noise) {
               if (message.type !== "hello" || message.v !== 1)
                 throw Error("mobile_protocol_mismatch");
-              const auth = this.devices.authenticate(message.credentialId);
+              const auth = this.devices.delivery(message.credentialId);
               principal = auth.principal;
+              session.principal = principal;
               this.sockets.set(socket, principal);
               noise = new MobileHandshake(
                 false,
@@ -165,13 +177,21 @@ export class MobileGateway {
                 (principal!.peerKey && principal!.peerKey !== noise.remoteKey)
               )
                 throw Error("mobile_peer_changed");
-              this.devices.assert(principal!);
               frames = new MobileFrames(noise);
+              session.frames = frames;
               clearTimeout(timer);
+              if (principal!.revoked) {
+                this.holdForRevoke(socket, session, principal!.revoked);
+                return;
+              }
+              this.devices.assert(principal!);
               send({
                 type: "ready",
                 v: 1,
                 installationId: this.devices.installationId,
+                ...(principal!.kind === "device"
+                  ? { deviceId: principal!.id, epoch: principal!.epoch }
+                  : {}),
                 relay: this.devices.relay
                   ? this.devices.relay.url + "/mobile/connect?installationId=" +
                     encodeURIComponent(this.devices.installationId)
@@ -179,7 +199,7 @@ export class MobileGateway {
               });
               return;
             }
-            this.devices.assert(principal!);
+            if (!session.revokeOnly) this.devices.assert(principal!);
             if (message.type !== "record") throw Error("mobile_frame_invalid");
             const request = frames.receive(message.packet);
             if (!request) return;
@@ -190,6 +210,18 @@ export class MobileGateway {
               request.method.length > 64
             )
               throw Error("mobile_request_invalid");
+            if (session.revokeOnly) {
+              send({
+                id: request.id,
+                ok: request.method === "revoke.ack",
+                ...(request.method === "revoke.ack"
+                  ? { value: { ok: true } }
+                  : { code: "mobile_device_revoked" }),
+              });
+              clearTimeout(session.deadline);
+              socket.close(4403, "device revoked");
+              return;
+            }
             try {
               if (principal!.kind === "invite" && request.method !== "pair")
                 throw new KTeamError("mobile_pair_required", 403);
@@ -225,11 +257,30 @@ export class MobileGateway {
         .catch(() => socket.close());
     });
   }
+  private holdForRevoke(socket: WebSocket, session: LiveSession, notice: MobileRevocation) {
+    if (!session.frames || session.revokeOnly) return;
+    session.revokeOnly = true;
+    for (const packet of session.frames.encode({ type: "device-revoked", ...notice }))
+      socket.send(JSON.stringify({ type: "record", packet }));
+    session.deadline = setTimeout(() => socket.close(4403, "device revoked"), 3000);
+    session.deadline.unref?.();
+  }
   reconcile() {
     this.syncRelay();
-    for (const [s, p] of this.sockets) {
+    for (const notice of this.devices.takeRevocations()) {
+      const current = this.devices.activeRevocation(notice.deviceId);
+      if (current?.epoch !== notice.epoch || current?.seq !== notice.seq) continue;
+      for (const [socket, session] of this.sessions) {
+        if (session.principal?.kind !== "device" || session.principal.id !== notice.deviceId)
+          continue;
+        if (session.frames) this.holdForRevoke(socket, session, notice);
+        else socket.close(4403, "device revoked");
+      }
+    }
+    for (const [s, session] of this.sessions) {
+      if (session.revokeOnly) continue;
       try {
-        if (p) this.devices.assert(p);
+        if (session.principal) this.devices.assert(session.principal);
       } catch {
         s.close(4403, "device revoked");
       }
@@ -242,6 +293,8 @@ export class MobileGateway {
     this.relay?.close();
     this.relay = undefined;
     this.relayConfig = "";
+    for (const session of this.sessions.values()) clearTimeout(session.deadline);
+    this.sessions.clear();
     for (const s of this.sockets.keys()) s.terminate();
     this.sockets.clear();
     this.wss?.close();
