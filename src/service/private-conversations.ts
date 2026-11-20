@@ -1,4 +1,5 @@
 import {teamCollaborationReceipts} from './team-collaboration-policy.js';
+import {deliverUserBrief, type UserBrief} from './user-brief.js';
 import {MasterRelay} from './master-relay.js';
 import {originalMessage,ownerPage,recentContext} from './room-reads.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -18,6 +19,15 @@ export class PrivateConversations {
  async source(scope:BotContactScope,toId?:string){await scope.assertCurrent();const snapshot=await this.upstream.membership(scope.roomId),active=(snapshot.members as any[]).filter(m=>m.status==='active');if((snapshot.room as any)?.status!=='active'||!active.some(m=>m.subject?.kind==='user'&&m.subject.userId==='user.local')||!active.some(m=>m.subject?.logicalAgentId===scope.botId)||(toId&&!active.some(m=>m.subject?.logicalAgentId===toId)))throw new KTeamError('bot_private_scope_denied',403);return snapshot;}
  private async send(scope:BotContactScope,targetRoom:string,purpose:string,body:string,id:string,toId?:string){await this.source(scope,toId);if(this.store.settings(targetRoom)?.paused)throw new KTeamError('bot_private_target_paused',409);const membership=await this.upstream.membership(targetRoom);await this.coordinator.guardConversation(targetRoom,membership);const result=await this.upstream.sendBotPrivate(targetRoom,{logicalAgentId:scope.botId,sourceRoomId:scope.roomId,admission:scope.admission,text:body,threadId:'bot-private',idempotencyKey:id,expectedRoomRevision:(membership.room as any).revision,recipientLogicalAgentId:toId,originMessageId:scope.originId,exchangeId:id,purpose});await scope.assertCurrent();return result.message as any;}
  async direct(scope:BotContactScope){await this.source(scope);const result=await this.coordinator.direct(scope.botId,{requestSource:'user'});await this.source(scope);return result.roomId;}
+ async publishBrief(scope:BotContactScope,brief:UserBrief,publicMessageId:string,sourceRoomId:string){
+  const linkedScope={...scope,originId:sourceRoomId===scope.roomId?publicMessageId:scope.originId};
+  return deliverUserBrief({
+   upstream:this.upstream,store:this.store,brief,roomId:sourceRoomId,messageId:publicMessageId,botId:scope.botId,jobId:scope.jobId,
+   guard:()=>this.source(scope),direct:()=>this.direct(scope),
+   taskRef:sourceRoomId===scope.roomId?String(scope.admission.taskRef):undefined,
+   send:(roomId,body,id)=>this.send(linkedScope,roomId,'notice',body,id)
+  });
+ }
  async notifyApproval(scope:BotContactScope){
   await scope.assertCurrent();
   // Group work is approved at its source. Peer work retains the guarded root group.
