@@ -129,6 +129,17 @@ test("original host mobile facade reads real rooms and receipts without main cre
       }),
       /mobile_admin_forbidden/,
     );
+    await assert.rejects(
+      hostRequest(root, "kteam-companion", "/v1/work/pause-all", {}),
+      /app_settings_forbidden/,
+    );
+    await hostRequest(root, "kteam-main", "/v1/work/pause-all", {});
+    assert.equal((await hostRequest(root, "kteam-main", "/v1/status")).workPaused, true);
+    await assert.rejects(
+      hostRequest(root, "kteam-companion", "/v1/work/resume-all", {}),
+      /app_settings_forbidden/,
+    );
+    await hostRequest(root, "kteam-main", "/v1/work/resume-all", {});
     const settings = await hostRequest(
       root,
       "kteam-main",

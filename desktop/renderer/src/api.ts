@@ -70,7 +70,7 @@ export interface KTeamAPI {
  createTeam(input:{title:string;goal?:string;memberAgentIds:string[];requestId:string}):Promise<any>;
  send(input:{roomId:string;text:string;id:string;replyToMessageId?:string;mentions?:string[]}):Promise<any>;
  messages(input:{roomId:string;after?:number;before?:number;tail?:boolean;limit?:number}):Promise<{messages:Message[];hasMoreBefore?:boolean;nextSequence?:number;previousSequence?:number}>;
- settings(roomId:string):Promise<any>;work(roomId:string):Promise<any>;pause(roomId:string):Promise<any>;resume(roomId:string):Promise<any>;
+ settings(roomId:string):Promise<any>;work(roomId:string):Promise<any>;pauseAll():Promise<any>;resumeAll():Promise<any>;pause(roomId:string):Promise<any>;resume(roomId:string):Promise<any>;
  seen(input:{roomId:string;sequences:number[];responseScope?:'requested'}):Promise<any>;review(input:{roomId:string;taskRef:string;decision:'pass'|'rework'}):Promise<any>;
  reconcile(roomId:string):Promise<any>;
 }
@@ -125,7 +125,7 @@ const reasons:Record<string,string>={
  execution_failed:'本次工作执行失败',tool_execution_failed:'工具执行失败',
  team_roles_changed:'团队分工已更新，请读取最新状态后再选择',team_coordinator_not_member:'只能从本群当前成员中选择负责人',team_roles_response_invalid:'分工判断结果不完整，请先选择负责人',team_roles_inference_failed:'暂时未能判断分工，请先选择负责人',recovery_unavailable:'这轮工作暂时不能继续，请读取最新状态',recovery_superseded:'已有更新的工作，请继续最新一轮',recovery_in_progress:'正在处理这项工作，无需重复继续',recovery_waiting_stop:'正在核对原执行是否已停止，稍后会显示继续入口',recovery_member_changed:'原成员或执行方式已变化，请核对成员设置后重新发起',recovery_forbidden:'请在 KTeam 桌面版继续工作',execution_interrupted:'工作执行被中断',execution_timeout:'本次工作执行超时',execution_lease_lost:'执行资格已失效，工作已停止',execution_admission_unverified:'连接校验中断，正在核对恢复条件',model_response_incomplete:'模型未返回完整结果',iteration_budget_exhausted:'成员尚未提交完整答复，已有执行记录已保留',group_research_evidence_missing:'本轮尚未取得有效的源码或原始资料读取回执，暂不能交付查证结论',
  team_stopped:'本轮工作已停止',model_execution_failed:'模型执行失败，请检查服务状态',model_response_protocol_invalid:'模型响应格式不完整或返回了未执行的工具请求，已完成的结果已保留',team_has_no_bound_agents:'团队成员尚未绑定 KTeam 执行方式',
- origin_message_missing:'原消息不可用',aimp_session_required:'团队协作契约尚未建立',stop_protocol_result_unknown:'停止请求的协议结果未知，模型调用已中止',
+ origin_message_missing:'原消息不可用',aimp_session_required:'团队协作契约尚未建立',stop_protocol_result_unknown:'已暂停派工，部分任务的停止结果仍需核对',fleet_stop_pending:'正在停止当前工作，请等待停止结果后再恢复',
  upstream_operation_unknown:'发送结果待核对，请先核对结果。重复发送会沿用同一编号。',team_scope_changed:'团队设置已变化，本次工作已停止',team_paused:'团队已暂停，未开工的消息会在继续后处理',host_restarted_result_unknown:'后台重启中断了本轮工作，已有结果已保留',
 };
 export const explain=(error:unknown)=>{const code=error instanceof Error?error.message:String(error);return reasons[code]??code;};

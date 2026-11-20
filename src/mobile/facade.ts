@@ -320,7 +320,7 @@ export class MobileFacade {
         fields(i, ["id", "expectedHash", "decision"]);
         if (!["allow_once", "deny"].includes(i.decision))
           throw new KTeamError("mobile_approval_scope_forbidden", 403);
-        const result = await d.approvals.decide(i);
+        const result = await d.approvals.decide(i, () => this.assert(p, true));
         void d.automation.tick();
         return result;
       }

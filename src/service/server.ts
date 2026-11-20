@@ -219,7 +219,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/routines/remove'&&req.method==='POST')return send(res,200,await automation.routines.remove(await body(req)));
         throw new KTeamError('route_not_found',404);
       }
-      if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, upstream: await upstream.probe() });
+      if(url.pathname==='/v1/work/pause-all'||url.pathname==='/v1/work/resume-all'){
+        if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);
+        if(req.method==='POST')return send(res,200,await (url.pathname.endsWith('/pause-all')?automation.pauseAll():automation.resumeAll()));
+      }
+      if (url.pathname === '/v1/status' && req.method === 'GET') return send(res, 200, { ok: true, ownerEpoch: owner.epoch, instanceId, workPaused:teamStore.workPaused(), upstream: await upstream.probe() });
       if(url.pathname==='/v1/builtin-agent'&&req.method==='GET')return send(res,200,{ok:true,agent:await builtinAgent.status(url.searchParams.get('modelId')??undefined)});
       if(url.pathname==='/v1/builtin-agent/probe'&&req.method==='POST')return send(res,202,{ok:true,agent:await builtinAgent.start(await body(req))});
       if(url.pathname==='/v1/local-agents'&&req.method==='GET')return send(res,200,await localAgents.catalog());

@@ -195,8 +195,8 @@ export class WorkRecovery {
   const priorTask = tasks.find(task => task.taskRef === job.task?.taskRef);
   const needsStop = priorTask && ['proposed','committed','working','blocked'].includes(priorTask.state);
   return {jobId: job.id, state: job.state, hostInterrupted: failure?.code === 'host_restarted_result_unknown',
-   canContinue: !this.store.settings(roomId)?.paused && !jobs.some(active) && !needsStop && !continuation,
-   reason: this.store.settings(roomId)?.paused ? 'team_paused' : needsStop ? 'recovery_waiting_stop' : undefined,
+   canContinue: !this.store.workPaused() && !this.store.settings(roomId)?.paused && !jobs.some(active) && !needsStop && !continuation,
+   reason: this.store.workPaused() || this.store.settings(roomId)?.paused ? 'team_paused' : needsStop ? 'recovery_waiting_stop' : undefined,
    hasGeneratedFiles:this.store.hasGeneratedFiles(roomId,job.id), hasDraft: !!(job.answerDraft || job.partialText), completedReplies: (job.results ?? []).length,
    native: !!job.activeBotId && this.store.binding(job.activeBotId)?.kind === 'local-native'};
  }
@@ -219,7 +219,7 @@ export class WorkRecovery {
   const operationId = 'work-recovery:' + jobId, existing = this.store.operation(operationId);
   if (existing) return {ok: true, jobId: existing.jobId, reused: true};
   if (latestWork(this.store.jobs(roomId))?.id !== jobId) throw new KTeamError('recovery_superseded', 409);
-  if (this.store.settings(roomId)?.paused) throw new KTeamError('team_paused', 409);
+  if (this.store.workPaused() || this.store.settings(roomId)?.paused) throw new KTeamError('team_paused', 409);
   if (this.store.jobs(roomId).some(active)) throw new KTeamError('recovery_in_progress', 409);
   const tasks = (await this.upstream.aimp(roomId, 'tasks')).tasks as any[];
   const concurrent = this.store.operation(operationId);
@@ -242,7 +242,7 @@ export class WorkRecovery {
    const old = this.store.operation(operationId);
    if (old) return {ok: true, jobId: old.jobId, reused: true};
    if (latestWork(this.store.jobs(roomId))?.id !== jobId || this.store.jobs(roomId).some(active)) throw new KTeamError('recovery_in_progress', 409);
-   if (this.store.settings(roomId)?.paused) throw new KTeamError('team_paused', 409);
+   if (this.store.workPaused() || this.store.settings(roomId)?.paused) throw new KTeamError('team_paused', 409);
    if(routine)new Routines(this.upstream,this.store).assertJob({...prior,trigger:'recovery',routine});
    const nextId = 'job-recovery-' + digest(jobId).slice(0, 32);
    if(autoId)this.store.saveOperation({id:autoId,sourceJobId:jobId,status:'queued'},0);
