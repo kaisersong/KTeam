@@ -276,7 +276,12 @@ export class TeamAutomation {
    if(job.trigger==='assistant-notice'&&teamAwareness&&!teamAwareness.groups.some(g=>g.roomId===job.notice?.sourceRoomId)){teamAwareness.groups.push(await this.assistant.team(job.notice.sourceRoomId));}
    const awarenessSources=new Map<string,any>((teamAwareness?.groups??[]).map(g=>[g.roomId,g]));
    const recordAwareness=(groups:any[])=>{for(const group of groups){const prior=awarenessSources.get(group.roomId);if(prior&&prior.roomRevision!==group.roomRevision)throw new KTeamError('assistant_team_changed',409);awarenessSources.set(group.roomId,{roomId:group.roomId,roomRevision:group.roomRevision});}};
-   if(job.trigger==='assistant-notice'&&!teamAwareness?.groups.some(group=>group.roomId===job.notice?.sourceRoomId)){job.state='noop';job.reason='assistant_scope_changed';this.store.save(job);return;}
+   if(job.trigger==='assistant-notice'){
+    const source=teamAwareness?.groups.find(group=>group.roomId===job.notice?.sourceRoomId);
+    if(!source||!this.assistant.noticeMatches(job.notice,source)){
+     job.state='noop';job.reason='assistant_notice_source_changed';this.store.save(job);return;
+    }
+   }
    const conversation=this.conversations?await this.conversations.data(job.roomId):undefined;
    const protocol=this.coordinator?{session:await this.coordinator.ensureConversationContract(job.roomId)}:await this.upstream.aimp(job.roomId,'session');if(!protocol.session)throw new KTeamError('aimp_session_required');if((protocol.session as any).goal!==team.goal)throw new KTeamError('conversation_contract_changed',409);
    const history=messages.slice(-60).map(m=>({messageId:m.messageId,replyToMessageId:m.replyToMessageId,from:m.sender.kind==='user'?'用户':bots.find(b=>b.id===m.sender.logicalAgentId)?.name??'成员',text:String(m.text??'').slice(0,6000)}));
@@ -468,7 +473,14 @@ export class TeamAutomation {
     artifactsOwner.assertPublishable();mailIntent.assertPublishable();const effectSnapshot=await this.upstream.aimpEffects(job.roomId,task.taskRef);if((effectSnapshot.effects as any[]).some(effect=>['registered','executing','unknown'].includes(effect.state)))throw new KTeamError('delivery_effect_unresolved',409);
     job.answerDraft=response.text;this.store.save(job);
     if(this.coordinator)await this.upstream.requireReady();
+    const noticeSource=job.trigger==='assistant-notice'?await this.assistant.team(job.notice.sourceRoomId):undefined;
     const expectedRoomRevision=await this.coordinator?.guardConversation(job.roomId);await assertBotCurrent();this.current(team,signal);
+    if(noticeSource&&(!this.assistant.enabled()||!this.assistant.noticeMatches(job.notice,noticeSource))){
+     await this.stopTask(job.roomId,task,'主动提醒的来源或设置已变化');
+     delete job.task;delete job.partialText;delete job.answerDraft;
+     job.state='noop';job.reason='assistant_notice_source_changed';job.finishedAt=new Date().toISOString();
+     this.store.save(job);return;
+    }
     let sent;
     try{sent=await this.upstream.aimp(job.roomId,'chat',{...admission,expectedRoomRevision,text:response.text,model:response.model,usage:response.usage});}
     catch(error){
