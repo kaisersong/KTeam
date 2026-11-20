@@ -3,14 +3,15 @@ import {showGeneratedFile} from './artifact-viewer';
 import {toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
-import React,{useState}from'react';
+import React,{useRef,useState}from'react';
 import{Terminal,Check,ShieldCheck,X,FileText}from'lucide-react';
 import{api,explain,type Bot}from'./api';
 type ApprovalDecision='allow_once'|'allow_always'|'allow_directory'|'allow_directory_routine'|'deny';
 export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;onDecide:(decision:ApprovalDecision,applyToGroup?:boolean)=>Promise<void>}){
  const [applyToGroup,setApplyToGroup]=useState(true);
  const [busy,setBusy]=useState<ApprovalDecision>();
- const [settled,setSettled]=useState(false);
+ const [settled,setSettled]=useState<"allowed"|"denied">();
+ const deciding=useRef(false);
  const [error,setError]=useState('');
  const [grants,setGrants]=useState<any[]>();
  const splitRequired=approval.inspectionRequired===true;
@@ -23,10 +24,11 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
  const relevant=affected.filter((fact:any,index:number)=>affected.findIndex((other:any)=>other.target===fact.target&&other.kind===fact.kind)===index);
 
  async function decide(decision:ApprovalDecision){
-  setBusy(decision);setError('');
-  try{await onDecide(decision,groupScope&&decision===directoryDecision?applyToGroup:undefined);setSettled(true);}
+  if(deciding.current)return;
+  deciding.current=true;setBusy(decision);setError('');
+  try{await onDecide(decision,groupScope&&decision===directoryDecision?applyToGroup:undefined);setSettled(decision==='deny'?'denied':'allowed');}
   catch(e){setError(explain(e));}
-  finally{setBusy(undefined);}
+  finally{deciding.current=false;setBusy(undefined);}
  }
  async function toggleGrants(){
   if(grants){setGrants(undefined);return;}
@@ -39,12 +41,13 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
   catch(e){setError(explain(e));}
  }
 
- if(settled)return null;
+ if(settled)return <ApprovalReceiptNotice approval={{...approval,status:settled}} bot={bot}/>;
  return <section className="tool-approval approval-card" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
   <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
   <p>{description.summary}{description.target&&<> · <code>{description.target}</code></>}</p>
   {splitRequired?<p className="approval-warning" role="alert">检查与删除混在同一条命令。请拒绝这次申请，让成员先单独检查，再提交修改。</p>:
-   approval.reason&&<p className="approval-reason">{approval.highRisk&&affected.length?'这次操作可能修改或清除已有内容，需要单独确认。':approval.reason}</p>}
+   approval.reason&&<p className="approval-reason">{approval.reason}</p>}
+  {approval.terminalTrigger&&<p className="approval-trigger"><span>触发确认的命令段</span><code>{approval.terminalTrigger}</code></p>}
   {relevant.length>0&&<ul className="approval-targets" aria-label="修改目标">{relevant.map((fact:any)=><li key={fact.kind+':'+fact.target}><span>{fact.kind==='delete'?'删除或清空':fact.kind==='overwrite'?'写入或覆盖':'目标待核对'}</span><code>{fact.target}</code></li>)}</ul>}
   {directories.length>0&&!splitRequired&&<div className="approval-scope">
    <ul aria-label="授权目录">{directories.map(path=><li key={path}><code>{path}</code></li>)}</ul>
@@ -86,9 +89,17 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
   </footer>
  </section>;
 }
-export function ExpiredApprovalNotice({approval,bot}:{approval:any;bot?:Bot}){
+export function ApprovalReceiptNotice({approval,bot,onWork}:{approval:any;bot?:Bot;onWork?:()=>void}){
  const description=toolApprovalSummary(approval.toolName,approval.display);
- return <section className="tool-approval expired" aria-label="审批已过期"><h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 的一项操作未获批准</h3><p>{description.summary}{description.target?'：'+description.target:''}</p><small>已过期，工作已暂停，可重新发起。{typeof approval.cancelledAt==='number'?new Date(approval.cancelledAt).toLocaleString('zh-CN'):''}</small></section>;
+ const allowed=approval.status==='allowed',denied=approval.status==='denied',expired=approval.status==='expired';
+ const title=allowed?'已批准':denied?'已拒绝':expired?'审批已过期':'审批已取消';
+ const detail=allowed?'执行结果请查看工作记录。':denied?'已拒绝这项操作。':expired?'工作已暂停，可重新发起。':approval.reason?explain(approval.reason):'这项申请已关闭。';
+ return <section className="tool-approval approval-receipt" data-notification-target={approval.id} tabIndex={-1} aria-label={title}>
+  <h3><ShieldCheck size={16}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} · {title}</h3>
+  <p>{description.summary}{description.target&&<> · <code>{description.target}</code></>}</p>
+  <small role="status">{detail}</small>
+  {onWork&&<button type="button" className="text-button" onClick={onWork}>查看工作记录</button>}
+ </section>;
 }
 export function toolActivity(events:any[],bots:Bot[]){
  const descriptions:Record<string,string>={read:'正在查阅本机资料',glob:'正在定位资料',grep:'正在检索资料',bash:'正在检查本机资料',web_fetch:'正在核对网络资料',web_search:'正在查找公开来源',update_shared_context:'正在整理共享纪要',ask_user:'等待你在私聊中确认'};

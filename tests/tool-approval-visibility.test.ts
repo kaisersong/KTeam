@@ -41,3 +41,25 @@ test('A6: durable approvals past expiry surface as expired history without becom
  assert.equal(f.approvals.list().length,0);
  const recent=f.approvals.recent();assert.equal(recent.length,1);assert.equal(recent[0]!.status,'expired');assert.equal(recent[0]!.cancelledAt,now-1000);assert.equal(recent[0]!.roomId,'private');assert.equal(recent[0]!.sourceRoomId,'room');
  }finally{f.close();}});
+
+test('group approval decisions remain visible in the original card room across restart and idempotent retry',async()=>{
+ const f=await fixture();let restarted:ToolApprovals|undefined;
+ try{
+  const pending=f.approvals.ask({roomId:'private',displayRoomId:'group',botId:'bot',jobId:'job'},'bash',
+   {command:'git status; git push origin main'},f.controller.signal,async()=>{});
+  const card=await f.pending();
+  assert.equal(card.terminalTrigger,'git push origin main');
+  assert.equal(card.canAlways,false);
+  const decision={id:card.id,expectedHash:card.hash,decision:'allow_once'};
+  await f.approvals.decide(decision);
+  assert.equal(await pending,true);
+  const [receipt]=f.approvals.recent('group',5,true);
+  assert.equal(receipt?.status,'allowed');
+  assert.ok(receipt?.decidedAt);
+  assert.equal(f.approvals.recent('private',5,true).length,0);
+  assert.equal(f.approvals.recent().length,0);
+  restarted=new ToolApprovals(f.store);
+  assert.equal((await restarted.decide(decision)).reused,true);
+  assert.deepEqual(restarted.recent('group',5,true),[receipt]);
+ }finally{restarted?.close();f.close();}
+});

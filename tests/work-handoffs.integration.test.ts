@@ -36,7 +36,8 @@ test('parallel member work releases the parent lane and resumes the same authori
   const listed=await exchanges.list(f.roomId,{originIds:[root.originId]});
   assert(listed.exchanges.some(exchange=>exchange.id===progress.exchangeId));
   const receipt=await exchanges.messages(f.roomId,progress.exchangeId);
-  assert(receipt.messages.some(message=>String(message.text).includes('来源已核对')));
+  assert(receipt.messages.some(message=>message.messageId===progress.resultMessageId&&String(message.text).includes('来源已核对')));
+  assert(receipt.messages.some(message=>message.messageId===progress.requestMessageId));
   reviewHold.release();await until(()=>f.store.jobs().filter(job=>job.trigger==='peer'&&job.state==='delivered').length===2);await automation.tick();const parent=f.store.job('handoff-root');assert.equal(parent.state,'delivered',JSON.stringify(parent));assert.equal(parent.results.length,1);assert.equal(parent.results[0].taskRef,parentTask.taskRef);assert.equal(parent.calls,2);
   const tasks=(await f.upstream.aimp(f.roomId,'tasks')).tasks;assert.equal(tasks.length,1);assert.equal(tasks[0].state,'delivered');assert.ok(tasks[0].epoch>parentTask.epoch);
   const replies=(await f.upstream.messages(f.roomId,0,100)).messages.filter((message:any)=>message.sender?.logicalAgentId===f.bots[0]!.id&&message.sourceRef?.kind==='aimp_reply');assert.equal(replies.length,1);assert.match(replies[0].text,/两位成员/);await automation.tick();assert.equal(calls,before+1);

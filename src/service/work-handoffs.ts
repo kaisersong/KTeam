@@ -137,8 +137,8 @@ export class WorkHandoffs {
    const result=handoffChildReceipt(record,child.botId);
    const failure=executionFailure(record);
    return {botId:child.botId,jobId:child.jobId,state:question||pending?'waiting_user':record.state==='delivered'&&!result?'unknown':record.state,
-    ...(result?{exchangeId:peerExchangeId(rootJobId,child.roomId)}:{}),
-    questionRoomId:question?.roomId,approvalRoomId:pending?approval.displayRoomId:undefined,approvalInGroup:pending&&!!approval.directoryGroupScope,
+    exchangeId:peerExchangeId(rootJobId,child.roomId),requestMessageId:child.requestMessageId,resultMessageId:result?.messageId,
+    questionRoomId:question?.roomId,questionId:question?.id,approvalRoomId:pending?approval.displayRoomId??approval.roomId:undefined,approvalId:pending?approval.id:undefined,
     reason:failure?.code??record.reason,model:failure?.model};
   });
   const failures=(op.dispatchFailures??[]).map((failure:any)=>({botId:failure.botId,state:'blocked',reason:failure.reason}));
