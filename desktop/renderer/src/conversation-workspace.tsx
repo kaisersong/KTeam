@@ -17,11 +17,11 @@ import {Markdown} from './Markdown';
 export type WorkspaceTab='details'|'shared'|'library'|'computer'|'search'|'activity'|'inspector'|'routines';
 const tabs:[WorkspaceTab,string][]=[['details','详情'],['shared','共享'],['library','资料库'],['computer','电脑']];
 const cleanName=(bot:Bot)=>bot.name.replace(/ · KTeam .+$/,'');
-type Props={sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
+type Props={workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
 export function ConversationWorkspace(p:Props){
  const user=useUserProfile();
  const [memberAction,setMemberAction]=useState<"add"|Bot>();
- const {room,bots,settings,jobs,tasks,data,tab,setTab}=p;
+ const {room,bots,settings,jobs,tasks,data,tab,setTab,workControl}=p;
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[notes,setNotes]=useState(''),[editing,setEditing]=useState(false),[revision,setRevision]=useState(0),[computer,setComputer]=useState<any>(),[usage,setUsage]=useState<any>(),[search,setSearch]=useState(''),[results,setResults]=useState<any>(),[preview,setPreview]=useState<any>(),[pins,setPins]=useState<Message[]>([]);
  const alive=useRef(true),searchGeneration=useRef(0),saveIntent=useRef<{body:string;id:string}|undefined>(undefined);
  useEffect(()=>()=>{alive.current=false;},[]);
@@ -45,6 +45,11 @@ export function ConversationWorkspace(p:Props){
  {pins.length>0&&<section className="workspace-section"><h3><Pin size={15}/>置顶消息</h3>{pins.map(m=><button className="pin-preview" key={m.messageId} onClick={()=>p.onMessage(m)}>{messageDisplayText(m).slice(0,160)||(attachmentMessageView(m)?'附件消息':'')}</button>)}{pinKey.split(',').length>50&&<p className="muted">显示最近 50 条置顶消息。</p>}</section>}
  <Inspector onAddMember={()=>setMemberAction('add')} onRemoveMember={setMemberAction} room={room} bots={bots} settings={settings} jobs={jobs} tasks={tasks} onPause={()=>{}} onBot={p.onBot} onReview={p.onReview}/>
  <button className="secondary full" disabled={busy} onClick={()=>void run(p.onPause)}>{settings?.paused?'继续回复':'暂停回复'}</button>
+ {workControl&&<section className="workspace-section">
+  <h3>本机工作</h3>
+  <p className="muted">适用于本机的所有会话。</p>
+  <button className="secondary" disabled={busy||workControl.disabled} onClick={()=>void run(workControl.toggle)}>{workControl.paused?'继续全部工作':'暂停全部工作'}</button>
+ </section>}
  {jobs.filter(job=>(job.answerDraftAvailable||job.answerDraft||job.partialText)&&['unknown','blocked','stopped'].includes(job.state)).map(job=><WorkDraft key={job.id} roomId={room.roomId} job={job}/>)}
  <details className="workspace-section usage-details"><summary>用量<ArrowRight size={15}/></summary>{usage?<><p className="muted">{usage.scope}</p><dl><dt>模型调用</dt><dd>{usage.calls} 次</dd><dt>已报告输入</dt><dd>{usage.inputTokens.toLocaleString()} tokens</dd><dt>已报告输出</dt><dd>{usage.outputTokens.toLocaleString()} tokens</dd><dt>费用</dt><dd>模型未提供</dd></dl>{usage.latest&&<p className="muted">最近一次：{usage.latest.model}<br/>{usage.latest.contextLimit?`输入 ${usage.latest.inputTokens.toLocaleString()} / 上下文上限 ${usage.latest.contextLimit.toLocaleString()} tokens`:'上下文上限未提供'}<br/>统计不包含原 Agent 未报告的内部调用和缓存明细。</p>}</>:<p className="muted">正在读取实际用量…</p>}</details></>}
  {tab==='routines'&&<RoomRoutines roomId={room.roomId} bots={bots} onBack={()=>setTab('details')} onLocate={messageId=>void run(async()=>{const value=await api.conversationMessage({roomId:room.roomId,messageId});if(alive.current)p.onMessage(value.message);})}/>}

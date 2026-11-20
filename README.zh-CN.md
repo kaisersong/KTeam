@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.9.6。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.7。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -144,8 +144,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.9.6.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.9.6.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.7.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.7.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -202,6 +202,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.9.7
+
+全部工作的暂停和恢复入口移到群组详情。暂停期间，聊天中显示简短状态。
 
 ### v0.9.6
 
