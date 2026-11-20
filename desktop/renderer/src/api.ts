@@ -90,7 +90,7 @@ const reasons:Record<string,string>={
  codex_write_grant_changed:'成员目录授权已变更，请核对后重新派工',
  codex_write_directory_invalid:'无法使用这个目录，请选择有效的项目父目录',
  codex_write_target_outside:'成员工作目录超出了已授权范围',
- codex_write_sandbox_denied:'Codex 的文件操作被沙箱拒绝，请核对实际目标是否超出授权范围',
+ codex_write_sandbox_denied:'Codex 报告文件操作受限，请核对实际目标是否超出授权范围',
  codex_dispatch_member_unavailable:'执行成员已变更或不在当前群组',
  codex_dispatch_conflict:'派工提交已变化，请先核对原任务',
  codex_member_required:'请选择已绑定本机 Codex 的成员',

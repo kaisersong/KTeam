@@ -7,7 +7,7 @@ import {test} from 'node:test';
 import {privateTempDir} from './helpers/private-temp.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {codexWriteGrant,currentCodexWriteRoot,saveCodexWriteGrant} from '../src/service/codex-write-grants.js';
-import {codexPolicy} from '../src/runtime/codex-task-policy.js';
+import {codexPolicy,codexWriteDenied} from '../src/runtime/codex-task-policy.js';
 
 test('directory grants follow the selected member and directory identity, with revision fencing after revoke',()=>{
  const fixture=realpathSync(privateTempDir(join(tmpdir(),'kteam-codex-grants-'))), root=join(fixture,'data'),projects=join(fixture,'projects');
@@ -55,4 +55,10 @@ test('the installed Codex sandbox writes existing and future projects and denies
   assert.equal(readFileSync(external,'utf8'),'external');
   assert.equal(readFileSync(externalTemp,'utf8'),'temp');
  }finally{rmSync(fixture,{recursive:true,force:true});rmSync(temp,{recursive:true,force:true});}
+});
+
+test('recognizes native file denials from a failed command or Codex’s actual error report',()=>{
+ assert.equal(codexWriteDenied([{type:'command_execution',exit_code:1,aggregated_output:'zsh: operation not permitted: fixture'}]),true);
+ assert.equal(codexWriteDenied([], '`exec_command` returned exit status `1`. The shell reported `zsh:1: operation not permitted: fixture-link`.'),true);
+ assert.equal(codexWriteDenied([{type:'command_execution',exit_code:0,aggregated_output:'permission denied'}],'已读取文件'),false);
 });

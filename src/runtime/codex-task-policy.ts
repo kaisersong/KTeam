@@ -63,9 +63,11 @@ export function codexTaskArgs(cwd: string, prompt: string, env: NodeJS.ProcessEn
  return ['exec','--strict-config','--ignore-user-config','--ignore-rules','--ephemeral','--json','--skip-git-repo-check',...codexConnection(env),...codexPolicy(cwd,writeRoot),'--',prompt];
 }
 
-export function codexWriteDenied(tools: unknown[] = []) {
- return tools.some(tool => {
+const filesystemDenial = /\b(?:operation not permitted|permission denied|read-only file system)\b/i;
+
+export function codexWriteDenied(tools: unknown[] = [], report = '') {
+ return filesystemDenial.test(report) || tools.some(tool => {
   const item = tool as {type?: string; exit_code?: number; aggregated_output?: string; status?: string};
-  return item.type === 'command_execution' && item.exit_code !== 0 && /\b(?:operation not permitted|permission denied|read-only file system)\b/i.test(item.aggregated_output ?? '');
+  return item.type === 'command_execution' && item.exit_code !== 0 && filesystemDenial.test(item.aggregated_output ?? '');
  });
 }
