@@ -422,9 +422,8 @@ export class TeamAutomation {
     if(suppression){
      heartbeat?.stop();
      await this.stopTask(job.roomId,task,'本轮保持安静');
-     job.delivery='suppressed';job.deliveryReason=suppression;
-     job.state=job.results?.length?'delivered':'noop';job.reason=suppression;
-     delete job.partialText;delete job.answerDraft;delete job.task;this.store.save(job);return;
+     if(!job.results?.length){job.delivery='suppressed';job.deliveryReason=suppression;}
+     delete job.partialText;delete job.answerDraft;delete job.task;this.store.save(job);continue;
     }
     heartbeat?.stop();heartbeat=undefined;job.execution={phase:'delivery',botId,model:binding.model};this.current(team,signal);
     await assertBotCurrent();await this.upstream.aimp(job.roomId,'execution-check',admission);
@@ -468,6 +467,7 @@ export class TeamAutomation {
     job.results=[...(job.results??[]),{botId,messageId:message.messageId,taskRef:task.taskRef,model:response.model,usage:response.usage,usageReported:(response as any).usageReported,profileRevision:profile(bot).revision,fingerprint:binding.fingerprint,...(binding.kind==='local-native'&&response.fingerprint?{installationFingerprint:response.fingerprint}:{}),source:binding.kind,regenerationOf:job.regenerationOf}];delete job.partialText;delete job.answerDraft;delete job.task;this.store.save(job);
     history.push({messageId:message.messageId,replyToMessageId:origin.messageId,from:bot.name,text:response.text});
    }
+   if(job.delivery==='suppressed'&&!job.results?.length){job.state='noop';job.reason=job.deliveryReason;job.finishedAt=new Date().toISOString();this.store.save(job);return;}
    job.state='delivered';job.needsReview=!!continuation?.readonly;job.finishedAt=new Date().toISOString();this.store.save(job);
   }catch(error){
    if(error instanceof KTeamError&&['work_waiting_for_members','work_waiting_for_approval'].includes(error.code)&&!signal.aborted&&this.handoffs?.wantsPause(job)){heartbeat?.stop();try{await this.handoffs.park(job);return;}catch(parkError){error=parkError;}}
