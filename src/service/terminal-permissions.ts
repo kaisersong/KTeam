@@ -1,4 +1,4 @@
-export const HARNESS_PERMISSION_POLICY_VERSION='directory-shell-7';
+export const HARNESS_PERMISSION_POLICY_VERSION='directory-shell-8';
 import {readOnlyShell,routineShell} from './read-only-shell.js';
 import {readOnlyWindowsShell} from './windows-shell.js';
 import {gitCommandRisk} from './git-command-risk.js';
@@ -39,8 +39,7 @@ export function terminalRequiresConfirmation(core:any,command:string){
   || /\b(?:curl|wget)\b[^;|&\n]*(?:--upload-file|--data|-d\s|-X\s+(?:POST|PUT|PATCH|DELETE))/.test(plain);
 }
 export function lowRiskTerminalQuery(core:any,command:string){
- if(process.platform==='win32'&&core.classifyBashCommand(command).level==='safe'&&readOnlyWindowsShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return true;
- if(process.platform!=='win32'&&core.classifyBashCommand(command).level==='safe'&&readOnlyShell(command,word=>!core.isSensitiveToolInvocation('read',{file_path:word})))return true;
+ if(readOnlyTerminalCommands(core,command))return true;
  if(terminalRequiresConfirmation(core,command))return false;
  const segments=terminalCommands(core,command);if(!segments)return false;
  return segments.every((raw:string)=>{
