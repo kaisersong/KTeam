@@ -128,7 +128,7 @@ test('interrupting the pack runner while its child is running leaves source link
   const dir=tree(),marker=join(tmpdir(),'kteam-pack-entered-'+process.pid),stage=join(tmpdir(),'kteam-pack-interrupt-'+process.pid);
   const stopped=marker+'.stopped',release=marker+'.release';
   const script=`import {runPack} from './scripts/desktop-pack-input.mjs';
-const code=runPack({root:process.argv[1],stdio:'ignore',requireIdentity:false,stage:process.argv[3],build:[process.execPath,'-e','process.exit(0)'],pack:[process.execPath,'-e','const fs=require("node:fs");const ready=process.argv[1],finish=()=>{fs.writeFileSync(ready+".stopped","done");process.exit(7);};fs.writeFileSync(ready,"in");setInterval(()=>{if(fs.existsSync(ready+".release"))finish();},50);setTimeout(finish,12000);',process.argv[2]]});
+const code=runPack({root:process.argv[1],stdio:'ignore',requireIdentity:false,stage:process.argv[3],build:[process.execPath,'-e','process.exit(0)'],pack:[process.execPath,'-e','const fs=require("node:fs");const ready=process.argv[1],finish=()=>{fs.writeFileSync(ready+".stopped","done");process.exit(7);};fs.writeFileSync(ready,String(process.pid));setInterval(()=>{if(fs.existsSync(ready+".release"))finish();},50);setTimeout(finish,12000);',process.argv[2]]});
 process.exit(code);`;
   const child=node(script,[dir,marker,stage],{detached:process.platform!=='win32'});
   const exited=new Promise<number|null>((resolve,reject)=>{
@@ -156,10 +156,18 @@ process.exit(code);`;
   }finally{
     if(child.exitCode===null&&child.signalCode===null)stopPack(child,'SIGKILL');
     if(process.platform==='win32'&&existsSync(marker)){
-      writeFileSync(release,'stop');
+      const pid=Number(readFileSync(marker,'utf8'));
+      assert.ok(Number.isSafeInteger(pid)&&pid>0);
+      const active=()=>{
+        if(existsSync(stopped))return false;
+        try{process.kill(pid,0);return true;}
+        catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}
+      };
+      if(active())writeFileSync(release,'stop');
       const deadline=Date.now()+5000;
-      while(!existsSync(stopped)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
-      assert.equal(existsSync(stopped),true);
+      // The CI job may already retire the child with the runner.
+      while(active()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+      assert.equal(active(),false);
     }
     remove(dir);remove(stage);rmSync(marker,{force:true});rmSync(stopped,{force:true});rmSync(release,{force:true});
   }
