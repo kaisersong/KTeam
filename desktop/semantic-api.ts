@@ -66,6 +66,7 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  reconcile:(id:unknown)=>call(`/v1/teams/${room(id)}/reconcile`,{}),
  recoverWork:(input:any)=>call(`/v1/teams/${room(input.roomId)}/recover`,{jobId:text(input.jobId),requestId:text(input.requestId)}),
  teamRoles:(id:unknown)=>call(`/v1/teams/${room(id)}/roles`),ensureTeamRoles:(input:any)=>call(`/v1/teams/${room(input.roomId)}/roles`,{action:'ensure',...(input.force===true?{force:true}:{})}),assignTeamCoordinator:(input:any)=>call(`/v1/teams/${room(input.roomId)}/roles`,{action:'assign',coordinatorBotId:text(input.coordinatorBotId),expectedRevision:input.expectedRevision,requestId:text(input.requestId)}),
+ pauseAll:()=>call('/v1/work/pause-all',{}),resumeAll:()=>call('/v1/work/resume-all',{}),
  pause:(id:unknown)=>call(`/v1/teams/${room(id)}/pause`,{}),resume:(id:unknown)=>call(`/v1/teams/${room(id)}/resume`,{}),
  seen:(input:any)=>call(`/v1/teams/${room(input.roomId)}/seen`,{sequences:input.sequences,...(input.responseScope?{responseScope:input.responseScope}:{})}),review:(input:any)=>call(`/v1/teams/${room(input.roomId)}/review`,{taskRef:input.taskRef,decision:input.decision}),
 };}

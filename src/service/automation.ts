@@ -61,6 +61,7 @@ export function parseRouting(text:string,allowed:string[]){
 const reason=executionFailureCode;
 
 export class TeamAutomation {
+ private fleetStop?:Promise<{ok:true;paused:true}>;
  private active=new Map<string,{job:any;controller:AbortController;completion:Promise<void>}>();
  private timer:NodeJS.Timeout|undefined;
  readonly automatic?:AutomaticInputs;readonly inputs?:WorkInputs;readonly handoffs?:WorkHandoffs;readonly routines:Routines;readonly assistant:TeamAssistant;readonly privateChats?:PrivateConversations;
@@ -130,8 +131,8 @@ export class TeamAutomation {
   return this.dispatching.then(async()=>{await Promise.all(completions);});
  }
  private async tickBody():Promise<Promise<void>[]>{
-  if(!this.accepting||this.starting||this.polling)return [];this.polling=true;const completions:Promise<void>[]=[];
-  try{if(this.coordinator)await new WorkRecovery(this.upstream,this.store,this.coordinator).wakeSafe();this.automatic?.wakePending();await this.routines.wake();await this.handoffs?.wake();await this.wakeFollowups();reviewUnansweredGroupTurns(this.store);reviewFailedGroupRouting(this.store);reviewExhaustedResearch(this.store);while(this.accepting&&this.active.size<6){
+  if(!this.accepting||this.starting||this.polling||this.store.workPaused())return [];this.polling=true;const completions:Promise<void>[]=[];
+  try{if(this.coordinator)await new WorkRecovery(this.upstream,this.store,this.coordinator).wakeSafe();this.automatic?.wakePending();await this.routines.wake();await this.handoffs?.wake();await this.wakeFollowups();reviewUnansweredGroupTurns(this.store);reviewFailedGroupRouting(this.store);reviewExhaustedResearch(this.store);while(this.accepting&&!this.store.workPaused()&&this.active.size<6){
    const ordinary=[...this.active.values()].filter(v=>!v.job.groupPlanPending&&!['peer','assistant-relay','group-response','group-discussion'].includes(v.job.trigger)).length;
    const job=this.store.claim([...new Set([...this.active.values()].filter(v=>!['group-response','group-discussion'].includes(v.job.trigger)).map(v=>v.job.roomId).concat(memoryReviewRooms(this.store.root),this.automatic?.busyRooms()??[]))],ordinary>=3,{bots:[...this.active.values()].filter(v=>v.job.trigger!=='group-discussion'&&!v.job.groupPlanPending).map(v=>v.job.groupResponse?.botId??v.job.peer?.toBotId??v.job.groupPlan?.ownerId??v.job.execution?.botId??v.job.activeBotId).filter(Boolean)});if(!job)break;
    const controller=new AbortController();const completion=this.run(job,controller.signal).finally(()=>{this.active.delete(job.id);});
@@ -165,13 +166,49 @@ export class TeamAutomation {
    }catch{/* Temporary reads do not create work or move the due receipt. */}
   }
  }
+ pauseAll(){
+  if(this.fleetStop)return this.fleetStop;
+  this.store.setState('all-work-paused',true);
+  this.automatic?.suspend();
+  this.fleetStop=this.stopAllActive().finally(()=>{this.fleetStop=undefined;});
+  return this.fleetStop;
+ }
+ async resumeAll(){
+  if(this.fleetStop)throw new KTeamError('fleet_stop_pending',409);
+  this.store.setState('all-work-paused',false);
+  void this.tick();
+  return {ok:true,paused:false};
+ }
+ private async stopAllActive():Promise<{ok:true;paused:true}>{
+  const active=[...this.active.values()];
+  for(const item of active){
+   item.job.stopCause='fleet';
+   item.job.state='stopping';
+   this.store.save(item.job);
+   item.controller.abort(new KTeamError('team_paused',409));
+  }
+  await this.dispatching;
+  await Promise.all(active.map(item=>item.completion));
+  await this.automatic?.settle();
+  const waiting=this.store.waitingJobs();
+  for(const job of waiting)await this.stopWaiting(job,'fleet');
+  if(this.store.hasUnconfirmedFleetStops())throw new KTeamError('stop_protocol_result_unknown',503);
+  return {ok:true,paused:true};
+ }
+ private async stopWaiting(job:any,cause:'manual'|'fleet'){
+  if(this.store.job(job.id)?.state!=='waiting')return;
+  this.handoffs?.cancel(job);
+  try{if(job.task)await this.stopTask(job.roomId,job.task,'用户暂停工作，停止等待中的任务');}
+  catch{job.stopResultUnknown=true;}
+  job.stopCause=cause;job.state='stopped';job.reason='team_stopped';job.finishedAt=new Date().toISOString();this.store.save(job);
+ }
  async pause(roomId:string){
   const settings=this.store.pause(roomId);
-  const waiting=this.store.waitingJobs().filter(job=>job.roomId===roomId);let waitingStopUnknown=false;
-  for(const job of waiting){this.handoffs?.cancel(job);try{if(job.task)await this.stopTask(roomId,job.task,'用户暂停会话，停止等待成员结果');}catch{waitingStopUnknown=true;job.stopResultUnknown=true;this.store.save(job);}}
+  const waiting=this.store.waitingJobs().filter(job=>job.roomId===roomId);
+  for(const job of waiting)await this.stopWaiting(job,'manual');
   const roots=new Set(this.store.jobs(roomId).map(j=>j.peer?.rootJobId??j.id));for(const contact of this.store.operationsWithPrefix('bot-contact:'))if(contact.sourceRoomId===roomId)roots.add(contact.rootJobId);
-  const affected=[...this.active.values()].filter(item=>item.job.roomId===roomId||((item.job.peer??item.job.masterRelay)&&((item.job.peer??item.job.masterRelay).sourceRoomId===roomId||roots.has((item.job.peer??item.job.masterRelay).rootJobId))));let failed=waitingStopUnknown;
-  for(const active of affected){active.job.state='stopping';this.store.save(active.job);try{if(active.job.task)await this.stopTask(active.job.roomId,active.job.task,'用户暂停原会话，停止关联工作');}catch{failed=true;}finally{active.controller.abort(new Error('team_paused'));}}
+  const affected=[...this.active.values()].filter(item=>item.job.roomId===roomId||((item.job.peer??item.job.masterRelay)&&((item.job.peer??item.job.masterRelay).sourceRoomId===roomId||roots.has((item.job.peer??item.job.masterRelay).rootJobId))));let failed=waiting.some(job=>job.stopResultUnknown);
+  for(const active of affected){active.job.stopCause??='manual';active.job.state='stopping';this.store.save(active.job);try{if(active.job.task)await this.stopTask(active.job.roomId,active.job.task,'用户暂停原会话，停止关联工作');}catch{failed=true;}finally{active.controller.abort(new Error('team_paused'));}}
   await Promise.all(affected.map(item=>item.completion));
   if(failed||affected.some(item=>item.job.stopResultUnknown))throw new KTeamError('stop_protocol_result_unknown',503);
   return {ok:true,settings,stopped:affected.every(item=>!this.active.has(item.job.id))};
@@ -183,7 +220,7 @@ export class TeamAutomation {
   await this.upstream.aimp(roomId,'event',{id:randomId(),roomId,threadId:current.threadId,taskRef:current.taskRef,targetEvent:{id:current.headId,hash:current.headHash},act:'stop',body:message,payload:{kind:'task.stop@1',must_understand:true,reason:message}});
  }
  private assertBinding(botId:string,captured:{revision:number;fingerprint:string;modelId:string}){const actual=this.store.binding(botId);if(this.store.state('source-changing:'+botId)||!actual||actual.revision!==captured.revision||actual.fingerprint!==captured.fingerprint||actual.modelId!==captured.modelId)throw new KTeamError('model_binding_changed',409);}
- private current(team:TeamSettings,signal:AbortSignal){signal.throwIfAborted();const latest=this.store.settings(team.roomId);if(!latest||latest.paused||latest.revision!==team.revision)throw new KTeamError('team_scope_changed');}
+ private current(team:TeamSettings,signal:AbortSignal){signal.throwIfAborted();if(this.store.workPaused())throw new KTeamError('team_paused',409);const latest=this.store.settings(team.roomId);if(!latest||latest.paused||latest.revision!==team.revision)throw new KTeamError('team_scope_changed');}
  private async assertRoomMember(roomId:string,botId:string){const snapshot=await this.upstream.membership(roomId),members=snapshot.members as any[];if((snapshot.room as any)?.status!=='active'||!members.some(m=>m.status==='active'&&m.subject?.kind==='agent'&&m.subject.logicalAgentId===botId)||!members.some(m=>m.status==='active'&&m.subject?.kind==='user'&&m.subject.userId==='user.local'))throw new KTeamError('team_scope_changed',403);}
  private async run(job:any,signal:AbortSignal){
   let heartbeat:ExecutionHeartbeat|undefined,executionSignal=signal;const continuation=job.handoffResume;
@@ -474,7 +511,10 @@ export class TeamAutomation {
    this.invalidateHandoffChildren(job.id);
    job.failure=await captureExecutionFailure(error,job,executionSignal);if(signal.aborted&&!['harness_runtime_close_failed','native_stop_unconfirmed'].includes(job.failure.code))job.failure.code='team_stopped';
    if(job.task){try{await this.stopTask(job.roomId,job.task,'本次工作已停止，等待核对或重新分派');}catch{job.stopResultUnknown=true;}}
-   job.state=signal.aborted?'stopped':error instanceof KTeamError&&['upstream_operation_unknown','native_result_unknown','tool_batch_execution_unknown','tool_approval_result_unknown'].includes(error.code)?'unknown':'blocked';job.reason=signal.aborted?'team_stopped':job.failure.code;job.finishedAt=job.failure.at;this.store.save(job);
+   job.state=signal.aborted?'stopped':error instanceof KTeamError&&['upstream_operation_unknown','native_result_unknown','tool_batch_execution_unknown','tool_approval_result_unknown'].includes(error.code)?'unknown':'blocked';job.reason=signal.aborted?'team_stopped':job.failure.code;job.finishedAt=job.failure.at;
+   if(job.failure.code==='execution_timeout')job.stopCause='timeout';
+   if(job.failure.code==='team_budget_exhausted')job.stopCause='budget';
+   this.store.save(job);
   }finally{heartbeat?.stop();}
  }
 }

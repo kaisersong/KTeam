@@ -71,3 +71,30 @@ test('authorized directory handles interpreter pipes, shell eval and SSH without
  assert.equal(await h.registryOptions.permissionManager.check('bash',{command:'ssh kai-mbp pwd > '+join(f.root,'outside.txt'),workdir:f.workspace}),'prompt');
  assert.equal(f.approvals.list().length,0);
  }finally{f.close();}});
+
+
+test('a revoked remote reviewer cannot commit a decision after asynchronous approval validation', async () => {
+ const f=await fixture();
+ try{
+  const {registry}=await f.make();
+  const output=join(f.workspace,'remote-approval.txt');
+  const work=registry.executeTool('write',{file_path:output,content:'confirmed once'});
+  const pending=await f.pending();
+  const decision={id:pending.id,expectedHash:pending.hash,decision:'allow_once'};
+  let checks=0;
+  const assertReviewer=()=>{if(++checks===2)throw new Error('mobile_device_revoked');};
+  await assert.rejects(f.approvals.decide(decision,assertReviewer),/mobile_device_revoked/);
+  assert.equal(checks,2);
+  assert.equal(f.store.operation(pending.id).status,'pending');
+  assert.equal(existsSync(output),false);
+  assert.equal(f.approvals.permissions.list().length,0);
+  let pauseChecks=0;
+  await assert.rejects(f.approvals.decide(decision,()=>{if(++pauseChecks===2)f.store.setState('all-work-paused',true);}),/team_paused/);
+  assert.equal(f.store.operation(pending.id).status,'pending');
+  assert.equal(existsSync(output),false);
+  f.store.setState('all-work-paused',false);
+  await f.approvals.decide(decision);
+  await work;
+  assert.equal(readFileSync(output,'utf8'),'confirmed once');
+ }finally{f.close();}
+});

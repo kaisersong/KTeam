@@ -76,10 +76,10 @@ export class TeamAssistant {
  start(){if(this.closed||this.timer)return;this.timer=setInterval(()=>void this.scan(),30000);this.timer.unref();void this.scan();}
  scan():Promise<void>{if(this.scanning)return this.scanning;if(this.closed||!this.enabled())return Promise.resolve();const run=this.scanBody();this.scanning=run.finally(()=>{this.scanning=undefined;});return this.scanning;}
  private async scanBody(){try{
-  const identity=this.identity();if(!identity||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet)return;
+  const identity=this.identity();if(!identity||this.store.workPaused()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet)return;
   const binding=this.store.binding(identity.botId);if(!binding)return;
   const core=await sharedRuntime();
-  const guard=async()=>{this.controller.signal.throwIfAborted();if(!this.enabled()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet||this.store.binding(identity.botId)?.revision!==binding.revision)throw new KTeamError('assistant_scope_changed');await this.authorize(identity.botId,identity.roomId);};
+  const guard=async()=>{this.controller.signal.throwIfAborted();if(!this.enabled()||this.store.workPaused()||this.store.settings(identity.roomId)?.paused||this.store.settings(identity.roomId)?.quiet||this.store.binding(identity.botId)?.revision!==binding.revision)throw new KTeamError('assistant_scope_changed');await this.authorize(identity.botId,identity.roomId);};
   if(this.inbox){this.inbox.dispose();await this.inbox.drain();}if(!this.inboxStore)this.inboxStore=new core.AssistantInboxStore(join(this.store.root,'assistant-attention.sqlite'));{this.inbox=new core.AssistantInboxService({store:this.inboxStore,profile:()=>({active:this.enabled(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}),outbox:{list:()=>[]},launch:async()=>{throw new KTeamError('assistant_notice_readonly');},read:async()=>this.readAttention(identity),triage:async(records:any[],signal:AbortSignal)=>{
    const current=this.store.binding(identity.botId);if(!current)throw new KTeamError('model_binding_changed');
    const budget={calls:0};const sources=records.map(r=>({roomId:r.locator?.roomId,roomRevision:Number(r.locator?.roomRevision)}));
@@ -92,18 +92,19 @@ export class TeamAssistant {
     response=await this.localAgents.turn({binding:current,botId:identity.botId,roomId:identity.roomId,profileRevision:profile(bot).revision,system:args.systemPrompt,prompt:args.userMessage,signal,readonly:true,purpose:'decision',onRequest,assertCurrent:guard});
    }else response=await this.turn({modelId:current.modelId,fingerprint:current.fingerprint,system:args.systemPrompt,prompt:args.userMessage,tools:[],maxIterations:1,requestKind:'routing',signal,onRequest});
    return {text:response.text};}},records,signal);
-  },validate:async(batch:any)=>{await guard();for(const record of batch.records){await this.groupScope(record.locator.roomId);}return batch;},commitCurrent:()=>this.enabled()&&!this.closed});}
+  },validate:async(batch:any)=>{await guard();for(const record of batch.records){await this.groupScope(record.locator.roomId);}return batch;},commitCurrent:()=>this.enabled()&&!this.closed&&!this.store.workPaused()});}
   await guard();const state=await this.inbox.refresh('scheduler');await guard();
   const deliveredToday=this.store.operationsWithPrefix('assistant-notice:').filter(op=>op.day===calendarWindow().today);
   for(const item of state.items){if(item.priority!=='now'||item.status!=='suggested'||!item.locator?.roomId||deliveredToday.length>=4)continue;
    const id='assistant-notice:'+item.sourceId;if(this.store.operation(id))continue;
    await guard();await this.groupScope(item.locator.roomId);
+   if(this.store.workPaused())return;
    const settings=this.store.settings(identity.roomId)!;
    const jobId='job-'+id;
    this.store.transaction(()=>{this.store.saveOperation({id,status:'queued',day:calendarWindow().today,jobId,roomId:identity.roomId,sourceRoomId:item.locator.roomId},0);this.store.enqueueFollowup({id:jobId,roomId:identity.roomId,originId:id,trigger:'assistant-notice',notice:{title:item.title,summary:item.summary,reason:item.reason,nextStep:item.nextStep,sourceRoomId:item.locator.roomId,sourceId:item.sourceId},noticeBinding:binding,noticeSettingsRevision:settings.revision});});deliveredToday.push({id});
   }
  this.store.setState('assistant-scan-health',{state:'ready',at:new Date().toISOString()});
- }catch(e){if(!this.closed)this.store.setState('assistant-scan-health',{state:'unavailable',at:new Date().toISOString(),code:e instanceof KTeamError?e.code:'assistant_scan_failed'});}}
+ }catch(e){if(!this.closed&&!this.store.workPaused())this.store.setState('assistant-scan-health',{state:'unavailable',at:new Date().toISOString(),code:e instanceof KTeamError?e.code:'assistant_scan_failed'});}}
  private async readAttention(identity:{botId:string;roomId:string}){
   const snapshot=await this.snapshot(identity.botId,identity.roomId),records:any[]=[];let page=snapshot;while(page.hasMore){this.controller.signal.throwIfAborted();page=await this.snapshot(identity.botId,identity.roomId,page.nextOffset!);snapshot.groups.push(...page.groups);snapshot.coverage.push(...page.coverage);}snapshot.hasMore=false;await this.validateSources(snapshot.groups);
   for(const group of snapshot.groups){

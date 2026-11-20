@@ -9,6 +9,7 @@ import {TeamStore} from '../src/service/team-store.js';
 import {TeamAutomation} from '../src/service/automation.js';
 import type {Upstreams} from '../src/adapters/upstream.js';
 import {DatabaseSync} from 'node:sqlite';
+import {projectWork} from '../src/service/work-projection.js';
 import {KTeamError} from '../src/errors.js';
 
 const user={sessionId:'test',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()};
@@ -38,7 +39,7 @@ test('budget rollback restores memory and persistent call count before any new r
   fault.exec('DROP TRIGGER fail_budget');store.reserveCall(job,team);assert.equal(job.calls,1);assert.equal(store.jobs()[0].calls,1);
  }finally{fault.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
-for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-unconfirmed'])test('controller reconciles '+loss+' receipt with real broker facts without repeating inference',async()=>{
+for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-unconfirmed','timeout','budget'])test('controller handles '+loss+' outcome with real broker facts without repeating inference',async()=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-receipt-')));
  const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
  const broker=createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});
@@ -46,7 +47,7 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
  broker.aimp.configure({roomId,expectedRevision:0,goal:'draft',allowedActions:['discussion'],maxRuns:6},user);
  broker.room.sendRoomMessage({roomId,threadId:'thread',kind:'text',text:'@CEO 草稿',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:'origin'},user);
  const origin=broker.room.getCollaborationRoom({roomId},user).messages[0];
- const store=new TeamStore(root);store.configure({roomId,goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
+ const store=new TeamStore(root);store.configure({roomId,goal:'draft',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:loss==='budget'?1:20},0);
  store.bind({botId:'a',kind:'xiaok-hosted',modelId:'fixture',model:'fixture',fingerprint:'none',revision:1});store.enqueue('job',roomId,origin.messageId);
  let lost=false,inferences=0;
  const upstream={...originalReads(broker,roomId),listBots:async()=>({agents:[{id:'a',name:'CEO'}]}),aimp:async(_room:string,command:string,input:any={})=>{
@@ -58,10 +59,17 @@ for(const loss of ['none','chat','agent-event:deliver','verify-delivery','chat-u
   if(!lost&&(command+(input.act?':'+input.act:'')===loss||command===loss)){lost=true;throw new KTeamError('upstream_operation_unknown',503);}
   return result;
  }} as unknown as Upstreams;
- const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();await input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
+ const automation=new TeamAutomation(upstream,store,1,async input=>{inferences++;input.signal.throwIfAborted();await input.onRequest?.();if(loss==='timeout')throw new DOMException('Execution timed out','TimeoutError');if(loss==='budget')await input.onRequest?.();return {text:'# 草稿\n事实缺口。',model:'fixture',fingerprint:'none',usage:{inputTokens:1,outputTokens:1}};});
  try{
   await automation.tick();const job=store.jobs()[0];assert.equal(inferences,1,JSON.stringify(job));assert.equal(job.calls,1);
   if(loss==='chat-unconfirmed'){assert.equal(job.state,'unknown');assert.ok(job.answerDraft);assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');}
+  else if(loss==='timeout'||loss==='budget'){
+   assert.equal(job.state,'blocked');
+   assert.equal(projectWork(job).stopNotice?.cause,loss);
+   assert.equal(projectWork(job).stopNotice?.confirmed,true);
+   assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');
+   assert.ok(!broker.room.getCollaborationRoom({roomId},user).messages.some((message:any)=>message.sourceRef?.kind==='aimp_reply'));
+  }
   else{assert.equal(job.state,'delivered');assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].artifactVerification.verified,true);assert.equal(broker.room.getCollaborationRoom({roomId},user).messages.length,2);}
  }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
@@ -93,7 +101,7 @@ test('pause holds unstarted messages; explicit resume releases only held work, n
   store.enqueue('new','room','new');assert.equal(store.claim().id,'new');
  }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
-for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stopFailure:false},{hold:'begin-execution',stopFailure:false},{hold:'event',stopFailure:true}])test('pause during '+scenario.hold+' late receipt reports fence '+(scenario.stopFailure?'unknown':'persisted'),async()=>{
+for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stopFailure:false},{hold:'begin-execution',stopFailure:false},{hold:'event',stopFailure:true},{hold:'begin-execution',stopFailure:false,fleet:true},{hold:'begin-execution',stopFailure:true,fleet:true}])test((scenario.fleet?'fleet pause':'room pause')+' during '+scenario.hold+' late receipt reports fence '+(scenario.stopFailure?'unknown':'persisted'),async()=>{
  const {hold,stopFailure}=scenario;
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-race-')));
  const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
@@ -119,11 +127,23 @@ for(const scenario of [{hold:'event',stopFailure:false},{hold:'agent-event',stop
  } as unknown as Upstreams;
  const automation=new TeamAutomation(upstream,store,1);
  try{
-  const completion=automation.tick();await seen;const stopped=automation.pause(roomId);release();
+  const completion=automation.tick();await seen;const stopped=scenario.fleet?automation.pauseAll():automation.pause(roomId);
+  if(scenario.fleet)await assert.rejects(automation.resumeAll(),/fleet_stop_pending/);
+  release();
   if(stopFailure)await assert.rejects(stopped,/stop_protocol_result_unknown/);else await stopped;
   await completion;
   if(!stopFailure)assert.equal(broker.aimp.listTasks(roomId,user).tasks[0].state,'halted');
-  assert.equal(store.jobs(roomId)[0].state,'stopped');
+  const job=store.jobs(roomId)[0];assert.equal(job.state,'stopped');
+  const notice=projectWork(job).stopNotice;
+  assert.equal(notice?.cause,scenario.fleet?'fleet':'manual');
+  assert.equal(notice?.confirmed,!stopFailure);
+  if(scenario.fleet){
+   assert.equal(store.workPaused(),true);
+   assert.equal(store.settings(roomId)?.paused,false);
+   if(stopFailure)await assert.rejects(automation.pauseAll(),/stop_protocol_result_unknown/);
+   await automation.resumeAll();
+   assert.equal(store.workPaused(),false);
+  }
  }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
 });
 
@@ -152,4 +172,28 @@ for(const target of ['b','human','gone'])test('structured group mention targets 
   if(target==='b'){assert.equal(job.state,'delivered');assert.deepEqual(job.members,['b']);const replies=broker.room.getCollaborationRoom({roomId},user).messages.filter((m:any)=>m.sender.kind==='agent');assert.equal(replies.length,1);assert.equal(replies[0].sender.logicalAgentId,'b');await automation.tick();assert.equal(inferences,1);}
   else assert.equal(job.state,'noop');
  }finally{await automation.close();store.close();broker.close();removeTempRoot(root);}
+});
+
+test('fleet pause persists across restart and explicit resume preserves room-specific holds', async () => {
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-fleet-pause-')));
+ let store=new TeamStore(root);
+ let automation=new TeamAutomation({} as Upstreams,store,1);
+ try{
+  for(const roomId of ['open','held'])store.configure({roomId,goal:'',mode:'auto',paused:false,quiet:false,revision:0,maxRuns:6,dailyCalls:20},0);
+  store.pause('held');
+  await automation.pauseAll();
+  store.enqueue('open-job','open','open-origin');
+  store.enqueue('held-job','held','held-origin');
+  assert.equal(store.claim(),null);
+  assert.throws(()=>store.reserveCall({calls:0},store.settings('open')!,false),/team_paused/);
+  await automation.close();store.close();
+  store=new TeamStore(root);automation=new TeamAutomation({} as Upstreams,store,2);
+  assert.equal(store.workPaused(),true);
+  assert.equal(store.claim(),null);
+  assert.equal(store.settings('held')?.paused,true);
+  await automation.close();
+  await automation.resumeAll();
+  assert.equal(store.claim()?.id,'open-job');
+  assert.equal(store.job('held-job').state,'held');
+ }finally{await automation.close();store.close();removeTempRoot(root);}
 });
