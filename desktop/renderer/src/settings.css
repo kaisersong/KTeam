@@ -31,7 +31,7 @@
 .profile-name-save{flex:none;min-width:54px}.profile-name>div{flex-wrap:wrap}.profile-name>div>small{font-size:11px}
 
 /* Theme surfaces and foregrounds share tokens; nested textareas stay transparent. */
-[data-app-theme=dark]{color-scheme:dark;--settings-surface:#20251e;--surface-panel:#252d20;--panel:#2b3325;--rail:#1b2019;--line:#46513e;--green:#a0c880;--muted:#a8b49d;--text-primary:#e5eadf;--text-secondary:#b9c8ab;--danger:#efbfa6;background:#20251e;color:var(--text-primary)}
+[data-app-theme=dark]{color-scheme:dark;--settings-surface:#20251e;--composer-menu-surface:#2b3325;--surface-panel:#252d20;--panel:#2b3325;--rail:#1b2019;--line:#46513e;--green:#a0c880;--muted:#a8b49d;--text-primary:#e5eadf;--text-secondary:#b9c8ab;--danger:#efbfa6;background:#20251e;color:var(--text-primary)}
 [data-app-theme=dark] :is(.app-shell,.main-area,.modal,.conversation-workspace,.inspector,.titlebar,.conversation-header,.composer-area){background:#20251e;color:var(--text-primary)}
 [data-app-theme=dark] .sidebar{background:var(--rail)}
 [data-app-theme=dark] :is(.composer,.composer-mentions,.message-menu,.conversation-menu,.tool-approval,.proposal-card,.settings-editor){background:var(--panel);border-color:var(--line);color:var(--text-primary)}

@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { TeamStore } from "../src/service/team-store.js";
-import { MobileDevices } from "../src/mobile/devices.js";
+import { MobileDevices, mobilePairFingerprint } from "../src/mobile/devices.js";
 import { MobileGateway } from "../src/mobile/gateway.js";
+import { mobileB64 } from "../src/protocol/mobile-wire.js";
 import { mobileClient } from "./helpers/mobile-client.js";
 import { realUpstreams } from "./helpers/real-upstreams.js";
 import { TeamCoordinator } from "../src/service/coordination.js";
@@ -43,6 +44,7 @@ test("actual encrypted gateway requires desktop confirmation, independent device
     devices.configure({
       action: "approve",
       id: payload.inviteId,
+      fingerprint: mobilePairFingerprint(mobileB64(pair.key.publicKey)),
       allowApprovals: true,
     });
     const credential = await pair.call("pair", { name: "合成手机" });
@@ -151,6 +153,7 @@ test("original host mobile facade reads real rooms and receipts without main cre
     await hostRequest(root, "kteam-main", "/v1/mobile/settings", {
       action: "approve",
       id: invite.payload.inviteId,
+      fingerprint: mobilePairFingerprint(mobileB64(pair.key.publicKey)),
       allowApprovals: true,
     });
     const credential = await pair.call("pair", { name: "隔离验收手机" });
@@ -316,7 +319,11 @@ test("blind remote relay carries actual encrypted device traffic and closes revo
       publicKey: invite.payload.publicKey,
     });
     await pair.call("pair", { name: "远程合成手机" });
-    devices.configure({ action: "approve", id: invite.payload.inviteId });
+    devices.configure({
+      action: "approve",
+      id: invite.payload.inviteId,
+      fingerprint: mobilePairFingerprint(mobileB64(pair.key.publicKey)),
+    });
     const credential = await pair.call("pair", { name: "远程合成手机" });
     await pair.call("pair", { action: "finish" });
     pair.close();
@@ -361,7 +368,7 @@ test("confirmed re-pairing reuses the proven device identity, rotates credential
       }, key);
       clients.push(client);
       assert.equal((await client.call("pair", { name: "我的 iPhone" })).pending, true);
-      devices.configure({ action: "approve", id: payload.inviteId, allowApprovals: approvals });
+      devices.configure({ action: "approve", id: payload.inviteId, fingerprint: mobilePairFingerprint(mobileB64(client.key.publicKey)), allowApprovals: approvals });
       const credential = await client.call("pair", { name: "我的 iPhone" });
       await client.call("pair", { action: "finish" });
       client.close();

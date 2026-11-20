@@ -33,3 +33,9 @@ export function currentRecoveryJob<T extends RecoveryCandidate>(roomId:string|un
  const job=latestWorkRoot(jobs.filter(job=>job.roomId===roomId));
  if(job?.id===recovery.jobId&&interrupted.has(job.state))return job;
 }
+
+/** Phone notice uses the same root as the desktop. The newest job is not the root. */
+export function mobileRecoveryNotice<T extends RecoveryCandidate>(roomId:string|undefined,work?:{jobs?:readonly T[];recovery?:{jobId?:string}|null}|null):T|undefined{
+ if(!work?.jobs)return;
+ return currentRecoveryJob(roomId,work.jobs,work.recovery);
+}

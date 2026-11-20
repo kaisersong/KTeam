@@ -127,3 +127,101 @@ test('production contact registry reconnects preflight, receives the target repl
 });
 
 test('group approval stays at its guarded source without creating a private chat or duplicate notices',async()=>{const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{const scope=await admission(f,f.a.bot.id),before=(await f.upstream.membership(f.roomId)).room,roomId=await chats.notifyApproval(scope);assert.equal(roomId,f.roomId);assert.equal(await chats.notifyApproval(scope),f.roomId);const rows=(await new CollaborationService(f.upstream).messages(roomId,0,100)).messages.filter((message:any)=>message.sourceRef?.purpose==='approval');assert.equal(rows.length,0);assert.deepEqual((await f.upstream.membership(f.roomId)).room,before);await assert.rejects(chats.notifyApproval({...scope,assertCurrent:async()=>{throw new KTeamError('team_scope_changed',409);}}),/team_scope_changed/);}finally{chats.close();await f.close();}});
+
+test('user briefs need a real group excerpt and reserve duplicate requests before sending', async () => {
+ const f = await setup();
+ const chats = new PrivateConversations(f.upstream, f.store, f.coordinator, () => {});
+ try {
+  const scope = await admission(f, f.a.bot.id);
+  const body = 'Please choose the beta or stable release by Friday.';
+  const brief = {body, kind:'decision' as const, expectsReply:true, sourceMessageId:undefined};
+  const publish = (messageId:string, value=brief) => chats.publishBrief(scope, value, messageId, f.roomId);
+  const original = await f.upstream.aimp(f.roomId, 'chat', {...scope.admission, text:'Team: the release is awaiting a decision. '+body});
+  const messageId = original.message.messageId;
+  assert.equal((await publish(scope.originId)).deliveryReason, 'brief_source_invalid');
+  assert.equal((await publish(messageId, {...brief, body:'Unpublished details from the peer room'})).deliveryReason, 'brief_source_invalid');
+  const results = await Promise.all([publish(messageId), publish(messageId)]);
+  assert.deepEqual(results.map(result => result.deliveryReason).sort(), ['decision','duplicate_suppressed']);
+  const receipt = results.find(result => result.delivery === 'dm')!;
+  const actual = (await f.upstream.conversationMessage(receipt.roomId, receipt.messageId)).message;
+  assert.match(actual.text, /Please choose the beta/);
+  assert.equal(actual.sourceRef.originRoomId, f.roomId);
+  assert.equal(actual.sourceRef.originMessageId, messageId);
+ } finally { chats.close(); await f.close(); }
+});
+
+test('a lost proactive private receipt cannot be replayed', async () => {
+ const f = await setup();
+ const chats = new PrivateConversations(f.upstream, f.store, f.coordinator, () => {});
+ try {
+  const scope = await admission(f, f.a.bot.id);
+  const brief = {body:'Approve option A or B.', kind:'decision' as const, expectsReply:true, sourceMessageId:undefined};
+  const sent = await f.upstream.aimp(f.roomId, 'chat', {...scope.admission, text:'Awaiting release decision. '+brief.body});
+  const publish = () => chats.publishBrief(scope, brief, sent.message.messageId, f.roomId);
+  const send = f.upstream.sendBotPrivate.bind(f.upstream);
+  let attempts = 0;
+  f.upstream.sendBotPrivate = async (...args:any[]) => {
+   attempts++;
+   await send(...args);
+   throw new Error('synthetic_receipt_lost');
+  };
+  assert.equal((await publish()).deliveryReason, 'brief_delivery_unknown');
+  assert.equal((await publish()).deliveryReason, 'duplicate_suppressed');
+  assert.equal(attempts, 1);
+ } finally { chats.close(); await f.close(); }
+});
+
+test('explicit silence and internal notes finish the normal direct turn without publishing', async () => {
+ const f = await setup();
+ let automation:TeamAutomation|undefined;
+ try {
+  const turn = async () => ({text:'（无需发言）',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}});
+  automation = new TeamAutomation(f.upstream, f.store, 1, turn, f.coordinator);
+  for (const [jobId, input, reason] of [
+   ['internal-note', 'Please evaluate the current plan.', 'internal_note_suppressed'],
+   ['explicit-silence', '停好后不用回复', 'user_requested_silence'],
+  ]) {
+   const origin = await f.upstream.sendMessage(f.a.roomId,{text:input,kind:'text',threadId:'brief-test',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});
+   f.store.enqueue(jobId!,f.a.roomId,origin.message.messageId);
+   await automation.tick();
+   const job = f.store.job(jobId!);
+   assert.equal(job.state,'noop',JSON.stringify(job));
+   assert.equal(job.deliveryReason,reason);
+  }
+  const history = await f.upstream.messages(f.a.roomId,0,100);
+  assert.equal(history.messages.filter((message:any)=>message.sender?.kind==='agent'&&message.sourceRef?.kind!=='aimp_event').length,0);
+ } finally { await automation?.close(); await f.close(); }
+});
+
+test('group work stages a private brief and publishes the public original first', async () => {
+ const f = await setup();
+ let automation:TeamAutomation|undefined;
+ try {
+  const team = f.store.settings(f.roomId)!;
+  f.store.configure({...team,mode:'mentions'},team.revision);
+  const body = 'Choose the beta or stable release by Friday.';
+  const groupText = 'The team has prepared both release tracks. '+body;
+  let staged = false;
+  automation = new TeamAutomation(f.upstream, f.store, 1, async input => {
+   const tool = input.tools?.find(tool => tool.definition.name === 'notify_user');
+   assert.ok(tool);
+   const result = await tool.execute({text:body,kind:'decision',expects_reply:true}, {} as any);
+   assert.deepEqual(JSON.parse(String(result)), {staged:true});
+   const direct = await f.upstream.messages(f.a.roomId,0,100);
+   assert.ok(!direct.messages.some((message:any) => message.sourceRef?.purpose === 'notice'));
+   staged = true;
+   return {text:groupText,model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};
+  }, f.coordinator);
+  const original = await f.upstream.sendMessage(f.roomId,{text:'@'+f.a.bot.name+' prepare the release options',kind:'text',threadId:'brief-test',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});
+  f.store.enqueue('group-brief',f.roomId,original.message.messageId);
+  await automation.tick();
+  const job = f.store.job('group-brief');
+  assert.equal(staged,true,JSON.stringify(job));
+  assert.equal(job.state,'delivered',JSON.stringify(job));
+  const brief = job.briefDeliveries[0];
+  assert.equal(brief.delivery,'dm',JSON.stringify(brief));
+  const notice = (await f.upstream.conversationMessage(brief.roomId,brief.messageId)).message;
+  assert.equal(notice.sourceRef.originMessageId, job.results[0].messageId);
+  assert.equal((await f.upstream.conversationMessage(f.roomId,notice.sourceRef.originMessageId)).message.text, groupText);
+ } finally { await automation?.close(); await f.close(); }
+});

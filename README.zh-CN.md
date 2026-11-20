@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.9.4。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.5。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -37,6 +37,14 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 **KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活和完整状态迁移等仍未完成。本版新增限作用域的 effect 只读核对及 HTML/邮件宿主回执，不代表所有工具已认证，也不代替业务验收。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
 
 ---
+
+## 0.9.5 有什么
+
+- **在群里跟进分工。** 顶部状态可以定位原消息、成员派单、回执和对应的授权卡。
+- **看懂审批依据。** 策略能定位时，卡片显示触发确认的命令段。批准或拒绝与实际执行结果分别记录。
+- **输入框更适合键盘操作。** @ 候选跟随明暗主题和选中项滚动，中文输入法确认时保留输入，粘贴目录会插入路径。
+- **使用限范围的 Git 只读查询。** 成员可查询当前工作目录内普通仓库的引用、提交历史、分支包含关系和远端抓取规则。
+- **手机连接和审批与桌面对齐。** 配对核对所选桌面身份，手机通过已公布的地址连接，审批内容在展示前脱敏。
 
 ## 0.9.4 有什么
 
@@ -130,8 +138,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.9.4.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.9.4.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.5.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.5.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -188,6 +196,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.9.5
+
+新增 Git 只读查询，改进群协作定位、审批回执与消息输入，修复手机配对和审批接续。完整改动见 [0.9.5 发布说明](release-notes/0.9.5.md)。
 
 ### v0.9.4
 

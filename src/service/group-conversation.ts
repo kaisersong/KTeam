@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {KTeamError,record} from '../errors.js';
 import {executionFailure} from '../protocol/execution-failure.js';
+import {handoffChildJob,handoffChildReceipt} from './work-handoffs.js';
 export interface GroupStage {requests:{botId:string;message:string}[];doneWhen:string}
 export interface GroupConversationPlan {mode:'discussion'|'work'|'direct'|'research';members:string[];reason:string;ownerId?:string;stages:GroupStage[];coordinatorReview?:string[];stageOperations?:string[];discussionQueued?:boolean;dependencies?:Record<string,string[]>}
 function invalidPlan(causeCode:string,field:string):never {
@@ -98,10 +99,16 @@ export function groupWorkFacts(store:any,roomId:string){
   const seen=new Set<string>();let blockedBy=job;
   while(blockedBy?.afterJobId&&!seen.has(blockedBy.id)&&seen.size<16){seen.add(blockedBy.id);const parent=store.job(blockedBy.afterJobId);if(!parent||parent.roomId!==roomId)break;blockedBy=parent;}
   const handoff=job.currentHandoffId?store.operation(job.currentHandoffId):undefined;
-  return {jobId:job.id,originId:job.originId,state:job.state,reason:executionFailure(job)?.code??job.reason,botId:job.activeBotId,blockedBy:blockedBy!==job?{jobId:blockedBy.id,state:blockedBy.state,reason:executionFailure(blockedBy)?.code??blockedBy.reason}:undefined,handoff:handoff?.roomId===roomId?{state:handoff.status,reason:handoff.reason,children:(handoff.children??[]).map((child:any)=>({botId:child.botId,state:store.job(child.jobId)?.state??'unknown',reason:store.job(child.jobId)?.reason}))}:undefined,completedToolCount:(job.toolTrace??[]).filter((tool:any)=>tool.state==='completed').length};
+  const members=(handoff?.children??[]).map((child:any)=>{
+   const record=handoffChildJob(store,job,child);
+   if(!record||record.state==='delivered'&&!handoffChildReceipt(record,child.botId))
+    return {botId:child.botId,state:'unknown',reason:'handoff_result_invalid'};
+   return {botId:child.botId,state:record.state,reason:executionFailure(record)?.code??record.reason};
+  });
+  return {jobId:job.id,originId:job.originId,state:job.state,reason:executionFailure(job)?.code??job.reason,botId:job.activeBotId,blockedBy:blockedBy!==job?{jobId:blockedBy.id,state:blockedBy.state,reason:executionFailure(blockedBy)?.code??blockedBy.reason}:undefined,handoff:handoff?.roomId===roomId&&handoff.jobId===job.id?{state:handoff.status,reason:handoff.reason,children:[...members,...(handoff.dispatchFailures??[]).map((failure:any)=>({botId:failure.botId,state:'blocked',reason:failure.reason}))]}:undefined,completedToolCount:(job.toolTrace??[]).filter((tool:any)=>tool.state==='completed').length};
  });
 }
-export const researchHasEvidence=(job:any)=>(job.toolTrace??[]).some((tool:any)=>['read','glob','grep','web_fetch','web_search'].includes(tool.name)&&tool.state==='completed'&&!tool.code&&typeof tool.result==='string'&&tool.result.length>0&&!/^\s*(?:Error(?:\s*\(|:)|Exit code:\s*[1-9])/i.test(tool.result));
+export const researchHasEvidence=(job:any)=>(job.toolTrace??[]).some((tool:any)=>['read','glob','grep','git_inspect','web_fetch','web_search'].includes(tool.name)&&tool.state==='completed'&&!tool.code&&typeof tool.result==='string'&&tool.result.trim().length>0&&!/^\s*(?:Error(?:\s*\(|:)|Exit code:\s*[1-9])/i.test(tool.result));
 
 /** Recheck the latest unacknowledged human turn once, including records from
  * the previous policy. Discussion-only jobs cannot replay its execution. */

@@ -2,6 +2,7 @@ import {readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {extractFile} from '@electron/asar';
+import {sourceGitIdentity} from './build-identity.mjs';
 import {verifiedPlatform} from './release-platform.mjs';
 
 const pkg=JSON.parse(readFileSync('package.json','utf8'));
@@ -11,9 +12,8 @@ const {key}=verifiedPlatform('release_platform_not_verified');
 const sha256=name=>createHash('sha256').update(readFileSync(`release/${name}`)).digest('hex');
 const identity=asar=>{
  const info=JSON.parse(extractFile(asar,'build/build-info.json').toString());
- const revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
- if(info.dirty||info.version!==pkg.version||info.revision!==revision)throw Error('release_build_identity_mismatch');
- if(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim())throw Error('release_worktree_dirty');
+ const source=sourceGitIdentity(process.cwd());
+ if(info.dirty||info.version!==pkg.version||info.revision!==source.revision)throw Error('release_build_identity_mismatch');
  return info;
 };
 let artifacts;

@@ -11,6 +11,7 @@ export async function mobileClient(
   url: string,
   invite: { credentialId: string; secret: string; publicKey: string },
   key: MobileKeypair = newMobileKeypair(),
+  options: { ackRevoke?: boolean; onClose?: (code: number) => void } = {},
 ) {
   const socket = new WebSocket(url,{headers:{Origin:"kteam://mobile"}}),
     noise = new MobileHandshake(
@@ -25,10 +26,18 @@ export async function mobileClient(
     { resolve: (r: any) => void; reject: (e: Error) => void }
   >();
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
     const timeout = setTimeout(
-      () => reject(Error("mobile_client_timeout")),
+      () => finish(Error("mobile_client_timeout")),
       10000,
     );
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
     socket.on("open", () =>
       socket.send(
         JSON.stringify({
@@ -39,12 +48,14 @@ export async function mobileClient(
         }),
       ),
     );
-    socket.on("error", reject);
-    socket.on("close", () => {
-      clearTimeout(timeout);
-      reject(Error("mobile_connection_closed"));
-      for (const p of pending.values())
-        p.reject(Error("mobile_connection_closed"));
+    socket.on("error", (error) =>
+      finish(error instanceof Error ? error : Error("mobile_connection_closed")),
+    );
+    socket.on("close", (code: number) => {
+      options.onClose?.(code);
+      finish(Error("mobile_connection_closed"));
+      for (const item of pending.values())
+        item.reject(Error("mobile_connection_closed"));
       pending.clear();
     });
     socket.on("message", (data) => {
@@ -60,9 +71,21 @@ export async function mobileClient(
         }
         const value = frames.receive(message.packet);
         if (!value) return;
+        if (value.type === "device-revoked") {
+          const error = Error("mobile_device_revoked");
+          for (const item of pending.values()) item.reject(error);
+          pending.clear();
+          if (options.ackRevoke !== false) {
+            try {
+              for (const packet of frames.encode({ id: randomUUID(), method: "revoke.ack", input: {} }))
+                socket.send(JSON.stringify({ type: "record", packet }));
+            } catch {}
+          }
+          finish(error);
+          return;
+        }
         if (value.type === "ready") {
-          clearTimeout(timeout);
-          resolve();
+          finish();
           return;
         }
         const p = pending.get(value.id);
@@ -71,8 +94,7 @@ export async function mobileClient(
           value.ok ? p.resolve(value.value) : p.reject(Error(value.code));
         }
       } catch (error) {
-        clearTimeout(timeout);
-        reject(error);
+        finish(error instanceof Error ? error : Error("mobile_connection_closed"));
         socket.terminate();
       }
     });

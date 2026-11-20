@@ -65,8 +65,15 @@ test('reply speakers use the canonical same-room agent identity and respect expl
 test('work facts expose actual blocked ancestry and child states without private conversation bodies',async()=>{
  const {groupWorkFacts,researchHasEvidence}=await import('../src/service/group-conversation.js');
  const rows:any[]=[{id:'next',roomId:'r',state:'queued',afterJobId:'old'},{id:'old',roomId:'r',state:'blocked',reason:'handoff_result_unknown',currentHandoffId:'handoff'},{id:'public',roomId:'r',groupResponse:{},state:'delivered'}];
- const store={jobs:()=>rows,job:(id:string)=>id==='child'?{state:'waiting',reason:'approval_required',partialText:'PRIVATE'}:rows.find(j=>j.id===id),operation:()=>({roomId:'r',status:'waiting',children:[{botId:'dev',jobId:'child',text:'PRIVATE'}]})};
+ const child={id:'child',roomId:'peer',originId:'request',state:'waiting',reason:'approval_required',partialText:'PRIVATE',peer:{sourceJobId:'old',rootJobId:'old',toBotId:'dev',sourceRoomId:'r'}};
+ const store={jobs:()=>rows,job:(id:string)=>id==='child'?child:rows.find(j=>j.id===id),operation:()=>({roomId:'r',jobId:'old',status:'waiting',children:[{botId:'dev',jobId:'child',roomId:'peer',requestMessageId:'request',text:'PRIVATE'}]})};
  const facts=groupWorkFacts(store,'r');assert.equal(facts.length,2);assert.equal(facts[0].blockedBy.state,'blocked');assert.equal(facts[1].handoff.children[0].state,'waiting');assert(!JSON.stringify(facts).includes('PRIVATE'));
+ child.state='delivered';
+ assert.equal(groupWorkFacts(store,'r')[1].handoff.children[0].state,'unknown');
+ child.state='waiting';
+ child.peer.sourceJobId='superseded';
+ assert.equal(groupWorkFacts(store,'r')[1].handoff.children[0].reason,'handoff_result_invalid');
+ assert.equal(researchHasEvidence({toolTrace:[{name:'git_inspect',state:'completed',result:''}]}),false);
  for(const tool of [{name:'tool_search',state:'completed',result:'found'},{name:'read',state:'failed',result:'failed'},{name:'read',state:'completed',result:''},{name:'read',state:'completed',result:'Error: missing'},{name:'write',state:'completed',result:'written'}])assert.equal(researchHasEvidence({toolTrace:[tool]}),false);
  assert.equal(researchHasEvidence({toolTrace:[{name:'web_fetch',state:'completed',result:'actual source'}]}),true);
 });

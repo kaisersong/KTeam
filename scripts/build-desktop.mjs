@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
 import {execFileSync} from 'node:child_process';
 import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+import {sourceGitIdentity} from './build-identity.mjs';
 execFileSync(process.execPath,['scripts/ensure-connector-cli.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-bot-motion.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-service-bundles.mjs'],{stdio:'inherit'});
@@ -9,8 +10,8 @@ execFileSync(process.execPath,['scripts/build-icon.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/ensure-electron.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-runtime.mjs'],{stdio:'inherit'});
 execFileSync(process.execPath,['scripts/build-splash-runtime.mjs'],{stdio:'inherit'});
-const version=JSON.parse(readFileSync('package.json','utf8')).version,revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty=!!execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim();
-const buildInfo=JSON.stringify({version,revision,dirty,lockfileSha256:createHash('sha256').update(readFileSync('package-lock.json')).digest('hex'),buildNumber:process.env.GITHUB_RUN_NUMBER??revision.slice(0,7),official:!dirty&&process.env.RELEASE_SHA===revision&&process.env.RELEASE_TAG==='v'+version,builtAt:new Date().toISOString()},null,2);
+const version=JSON.parse(readFileSync('package.json','utf8')).version,source=sourceGitIdentity(process.cwd()),revision=source.revision;
+const buildInfo=JSON.stringify({version,revision,dirty:source.dirty,lockfileSha256:createHash('sha256').update(readFileSync('package-lock.json')).digest('hex'),buildNumber:process.env.GITHUB_RUN_NUMBER??revision.slice(0,7),official:source.dirty===false&&process.env.RELEASE_SHA===revision&&process.env.RELEASE_TAG==='v'+version,builtAt:new Date().toISOString()},null,2);
 writeFileSync('build/build-info.json',buildInfo);
 // extraResources excludes its source from ASAR; use a separate staging path.
 mkdirSync('build/package-identity',{recursive:true});writeFileSync('build/package-identity/build-info.json',buildInfo);

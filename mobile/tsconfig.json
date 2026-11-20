@@ -1,7 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "paths": {
+      "buffer": ["./node_modules/buffer"]
+    }
   },
   "include": [
     "**/*.ts",
