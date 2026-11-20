@@ -10,7 +10,7 @@
 import {spawnSync} from 'node:child_process';
 import {constants,copyFileSync,lstatSync,mkdirSync,readlinkSync,readdirSync,realpathSync,rmSync,statSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {basename,dirname,join,relative,resolve,sep} from 'node:path';
+import {basename,dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 
 export const NON_PAYLOAD_LINKS=['design-qa.md','docs'];
 export const PACK_ROOT_FILES=['package.json','package-lock.json','electron-builder.yml','LICENSE','NOTICE'];
@@ -24,7 +24,7 @@ export function commandStatus(result){
 }
 
 function failure(code,detail){const error=new Error(detail?code+':'+detail:code);error.code=code;return error;}
-function canonical(path){try{return realpathSync(path);}catch{return resolve(path);}}
+function canonical(path){try{return realpathSync.native(path);}catch{return resolve(path);}}
 function display(path){return path.split(sep).join('/');}
 function sensitiveName(name){return name==='.git'||name==='.env'||name.startsWith('.env.');}
 function omitted(rel){
@@ -83,11 +83,11 @@ export function packInputPlan(root){
 function copyIndependent(from,to){copyFileSync(from,to,cloneFlag);}
 
 export function stagePackTree(root,destination){
-  const source=realpathSync(resolve(root));
+  const source=realpathSync.native(resolve(root));
   const requested=resolve(destination);
   const parent=canonical(dirname(requested));
   const target=join(parent,basename(requested));
-  if(target===source||target.startsWith(source+sep))throw failure('pack_stage_inside_source');
+  if(insidePath(source,target))throw failure('pack_stage_inside_source');
   const plan=packInputPlan(source);
   const hidden=new Set(plan.hide);
   rmSync(target,{recursive:true,force:true});
@@ -97,7 +97,10 @@ export function stagePackTree(root,destination){
   return {plan,destination:target};
 }
 
-function insidePath(root,path){return path===root||path.startsWith(root+sep);}
+function insidePath(root,path){
+  const rel=relative(root,path);
+  return !isAbsolute(rel)&&rel!=='..'&&!rel.startsWith('..'+sep);
+}
 function dependencyRootLink(rel){
   const parts=rel.split('/');
   if(parts[0]!=='node_modules')return false;
@@ -114,9 +117,9 @@ function copyDependency(from,to,packageRoot,stagedRoot){
     if(facts.loop)throw failure('pack_stage_symlink_cycle',from);
     if(facts.dangling)return;
     const resolved=resolve(dirname(from),facts.target);
-    let real;try{real=realpathSync(resolved);}catch(error){if(error&&error.code==='ELOOP')throw failure('pack_stage_symlink_cycle',resolved);throw error;}
+    let real;try{real=realpathSync.native(resolved);}catch(error){if(error&&error.code==='ELOOP')throw failure('pack_stage_symlink_cycle',resolved);throw error;}
     if(!insidePath(packageRoot,real))return;
-    symlinkSync(relative(dirname(to),join(stagedRoot,relative(packageRoot,real)))||'.',to);
+    symlinkSync(relative(dirname(to),join(stagedRoot,relative(packageRoot,real)))||'.',to,statSync(real).isDirectory()?'dir':'file');
     return;
   }
   if(info.isDirectory()){
@@ -137,7 +140,7 @@ function mirror(src,dest,source,stageRoot,hidden,rel){
       if(facts.dangling)throw failure('pack_dangling_symlink',next);
       const resolved=resolve(dirname(from),facts.target);
       let realTarget;
-      try{realTarget=realpathSync(resolved);}
+      try{realTarget=realpathSync.native(resolved);}
       catch(error){
         if(error&&error.code==='ELOOP')throw failure('pack_stage_symlink_cycle',next);
         if(error&&error.code==='ENOENT')throw failure('pack_dangling_symlink',next);
@@ -149,9 +152,9 @@ function mirror(src,dest,source,stageRoot,hidden,rel){
       if(logicalInside||realInside){
         const basis=logicalInside?resolved:realTarget;
         const stagedTarget=join(stageRoot,relative(source,basis));
-        symlinkSync(relative(dirname(to),stagedTarget)||'.',to);
+        symlinkSync(relative(dirname(to),stagedTarget)||'.',to,statSync(realTarget).isDirectory()?'dir':'file');
       }else if(dependencyRootLink(next)){
-        const packageRoot=realpathSync(resolved);
+        const packageRoot=realpathSync.native(resolved);
         copyDependency(packageRoot,to,packageRoot,to);
       }else throw failure('pack_external_link_unscoped',next);
       continue;
@@ -196,7 +199,7 @@ export function statVisiblePackEntries(root){
 }
 
 export function runPack(options){
-  const root=realpathSync(resolve(options.root));
+  const root=realpathSync.native(resolve(options.root));
   const stdio=options.stdio??'inherit';
   const env=options.env??process.env;
   const built=spawnSync(options.build[0],options.build.slice(1),{cwd:root,stdio,env});

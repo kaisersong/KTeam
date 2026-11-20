@@ -4,7 +4,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {chmodSync,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,readlinkSync,realpathSync,readdirSync,rmSync,statSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,sep} from 'node:path';
+import {isAbsolute,join,sep} from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 
@@ -25,7 +25,7 @@ const npmCommand=process.platform==='win32'?'npm.cmd':'npm';
 function stopPack(child:{pid?:number,kill:(signal?:NodeJS.Signals)=>boolean},signal:NodeJS.Signals){
   const pid=child.pid;
   if(!pid)return;
-  if(process.platform==='win32'){spawnSync('taskkill',['/PID',String(pid),'/T','/F'],{stdio:'ignore'});return;}
+  if(process.platform==='win32'){child.kill('SIGTERM');return;}
   try{process.kill(-pid,signal);}catch{try{child.kill(signal);}catch{/* The child has already exited. */}}
 }
 function tree(){
@@ -124,12 +124,17 @@ test('a signalled build is a failed command and does not start packing or move l
   }finally{remove(dir);remove(stage);}
 });
 
-test('SIGINT while the pack child is running leaves the source links in place',async()=>{
+test('interrupting the pack runner while its child is running leaves source links in place',async()=>{
   const dir=tree(),marker=join(tmpdir(),'kteam-pack-entered-'+process.pid),stage=join(tmpdir(),'kteam-pack-interrupt-'+process.pid);
+  const stopped=marker+'.stopped',release=marker+'.release';
   const script=`import {runPack} from './scripts/desktop-pack-input.mjs';
-const code=runPack({root:process.argv[1],stdio:'ignore',requireIdentity:false,stage:process.argv[3],build:[process.execPath,'-e','process.exit(0)'],pack:[process.execPath,'-e','require("fs").writeFileSync(process.argv[1],"in"); setInterval(()=>{},1000);',process.argv[2]]});
+const code=runPack({root:process.argv[1],stdio:'ignore',requireIdentity:false,stage:process.argv[3],build:[process.execPath,'-e','process.exit(0)'],pack:[process.execPath,'-e','const fs=require("node:fs");const ready=process.argv[1],finish=()=>{fs.writeFileSync(ready+".stopped","done");process.exit(7);};fs.writeFileSync(ready,"in");setInterval(()=>{if(fs.existsSync(ready+".release"))finish();},50);setTimeout(finish,12000);',process.argv[2]]});
 process.exit(code);`;
-  const child=node(script,[dir,marker,stage],{detached:true});
+  const child=node(script,[dir,marker,stage],{detached:process.platform!=='win32'});
+  const exited=new Promise<number|null>((resolve,reject)=>{
+    child.once('exit',resolve);
+    child.once('error',reject);
+  });
   try{
     const deadline=Date.now()+5000;
     while(!existsSync(marker)){
@@ -137,17 +142,26 @@ process.exit(code);`;
       await new Promise(resolve=>setTimeout(resolve,20));
     }
     stopPack(child,'SIGINT');
-    const code=await new Promise<number|null>((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(Error('pack_child_survived_sigint')),5000);
-      child.once('exit',status=>{clearTimeout(timer);resolve(status);});
-    });
-    assert.notEqual(code,0);
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+      const code=await Promise.race([exited,new Promise<never>((_,reject)=>{
+        timer=setTimeout(()=>reject(Error('pack_runner_survived_interrupt')),5000);
+      })]);
+      assert.notEqual(code,0);
+      if(process.platform==='win32')assert.equal(existsSync(stopped),false);
+    }finally{clearTimeout(timer);}
     assert.equal(readlinkSync(join(dir,'docs')),'missing-docs-checkout');
     assert.equal(slash(readlinkSync(join(dir,'design-qa.md'))),'docs/design/desktop/design-qa-presence-peer-exchanges.md');
     assert.equal(existsSync(join(dir,'package.json')),true);
   }finally{
-    stopPack(child,'SIGKILL');
-    remove(dir);remove(stage);rmSync(marker,{force:true});
+    if(child.exitCode===null&&child.signalCode===null)stopPack(child,'SIGKILL');
+    if(process.platform==='win32'&&existsSync(marker)){
+      writeFileSync(release,'stop');
+      const deadline=Date.now()+5000;
+      while(!existsSync(stopped)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+      assert.equal(existsSync(stopped),true);
+    }
+    remove(dir);remove(stage);rmSync(marker,{force:true});rmSync(stopped,{force:true});rmSync(release,{force:true});
   }
 });
 
@@ -230,7 +244,7 @@ test('file: dependency links and .bin links resolve inside the stage and writes 
       assert.equal(existsSync(join(copy,'docs')),false);
       const copied=join(copy,'marker.txt');
       assert.notEqual(lstatSync(source).ino,lstatSync(copied).ino);
-      assert.equal(realpathSync(copied).startsWith(realpathSync(staged)),true);
+      assert.equal(realpathSync.native(copied).startsWith(realpathSync.native(staged)),true);
       const mode=lstatSync(source).mode;
       writeFileSync(copied,'changed\n');
       chmodSync(copied,0o700);
@@ -240,10 +254,10 @@ test('file: dependency links and .bin links resolve inside the stage and writes 
     const linked=join(staged,'node_modules','.bin','tool');
     const absolute=join(staged,'node_modules','.bin','abs-tool');
     const aliased=join(staged,'node_modules','.bin','alias-tool');
-    const stageRoot=realpathSync(staged),projectRoot=realpathSync(project);
+    const stageRoot=realpathSync.native(staged),projectRoot=realpathSync.native(project);
     for(const link of [linked,absolute,aliased]){
       assert.equal(lstatSync(link).isSymbolicLink(),true);
-      const resolved=realpathSync(link);
+      const resolved=realpathSync.native(link);
       assert.equal(resolved.startsWith(stageRoot),true);
       assert.equal(resolved.startsWith(projectRoot),false);
     }
@@ -286,11 +300,16 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
   writeFileSync(join(broker,'index.js'),'module.exports=1\n',{mode:0o644});
   writeFileSync(join(broker,'package.json'),JSON.stringify({name:'intent-broker',version:'0.0.0',main:'index.js'})+'\n');
   writeFileSync(join(project,'package.json'),JSON.stringify({name:'kteam-pack-fixture',version:'0.0.0',dependencies:{kswarm:'file:../kswarm','intent-broker':'file:../intent-broker'}})+'\n');
-  const installed=spawnSync(npmCommand,['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'],{cwd:project,stdio:['ignore','pipe','pipe'],shell:process.platform==='win32'&&npmCommand.endsWith('.cmd'),windowsHide:true});
+  const cli=process.env.npm_execpath;
+  const pinned=!!cli&&isAbsolute(cli)&&existsSync(cli);
+  const flags=['install','--ignore-scripts','--no-audit','--no-fund','--package-lock=false'];
+  const installed=spawnSync(pinned?process.execPath:npmCommand,pinned?[cli!,...flags]:flags,{
+    cwd:project,stdio:['ignore','pipe','pipe'],shell:!pinned&&process.platform==='win32',windowsHide:true,timeout:30000,
+  });
   if(installed.error)throw installed.error;
   if(installed.status!==0)throw Error('npm_install_failed:'+(installed.stderr??''));
-  assert.equal(realpathSync(join(project,'node_modules','kswarm')),realpathSync(kswarm));
-  assert.equal(realpathSync(join(project,'node_modules','intent-broker')),realpathSync(broker));
+  assert.equal(realpathSync.native(join(project,'node_modules','kswarm')),realpathSync.native(kswarm));
+  assert.equal(realpathSync.native(join(project,'node_modules','intent-broker')),realpathSync.native(broker));
   if(process.platform!=='win32'){
     assert.equal(slash(readlinkSync(join(project,'node_modules','kswarm'))),'../../kswarm');
     assert.equal(slash(readlinkSync(join(project,'node_modules','intent-broker'))),'../../intent-broker');
@@ -302,8 +321,8 @@ test('npm install file:../ dependencies link as ../../ and stay isolated after s
     const stagedIndex=join(staged,'node_modules','kswarm','index.js');
     assert.equal(lstatSync(join(staged,'node_modules','kswarm')).isSymbolicLink(),false);
     assert.equal(lstatSync(join(staged,'node_modules','intent-broker')).isSymbolicLink(),false);
-    assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(staged)),true);
-    assert.equal(realpathSync(stagedIndex).startsWith(realpathSync(kswarm)),false);
+    assert.equal(realpathSync.native(stagedIndex).startsWith(realpathSync.native(staged)),true);
+    assert.equal(realpathSync.native(stagedIndex).startsWith(realpathSync.native(kswarm)),false);
     const bin=join(staged,'node_modules','.bin',process.platform==='win32'?'kswarm-marker.cmd':'kswarm-marker');
     const ran=process.platform==='win32'?spawnBatchFile(bin,[],{encoding:'utf8'}):spawnSync(process.execPath,[bin],{encoding:'utf8'});
     if(ran.error)throw ran.error;
