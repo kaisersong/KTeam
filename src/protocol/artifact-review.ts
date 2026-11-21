@@ -29,6 +29,7 @@ export interface ArtifactReviewView {
   lines: ReviewLine[];
   source?: {jobId:string; messageId:string};
   decision?: ArtifactReviewDecision;
+  peerReviewers?: {id:string;name:string}[];
 }
 
 export const artifactLines = (text: string) => text.split(/\r\n|\r|\n/);

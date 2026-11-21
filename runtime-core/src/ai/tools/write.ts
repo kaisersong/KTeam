@@ -44,11 +44,13 @@ export function createWriteTool(options: WorkspaceToolOptions = {}): WriteTool {
     async execute(input, context) {
       const { file_path, content } = input as { file_path: string; content: string };
       const resolvedPath = assertWorkspacePath(file_path, cwd, 'write', allowOutsideCwd, options.outsideCwdGuard);
+      let beforeHash: string | null | undefined;
+      const afterHash = createHash('sha256').update(content, 'utf8').digest('hex');
       if (context?.compoundPhase) {
-        let beforeHash: string | null = null;
+        beforeHash = null;
         try { beforeHash = createHash('sha256').update(readFileSync(resolvedPath)).digest('hex'); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-        await context.compoundPhase.beforeFileMutation?.({ filePath: resolvedPath, beforeHash, afterHash:createHash('sha256').update(content,'utf8').digest('hex') });
+        await context.compoundPhase.beforeFileMutation?.({ filePath: resolvedPath, beforeHash, afterHash });
         let currentHash: string | null = null;
         try { currentHash = createHash('sha256').update(readFileSync(resolvedPath)).digest('hex'); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -63,13 +65,15 @@ export function createWriteTool(options: WorkspaceToolOptions = {}): WriteTool {
         writeFileSync(tmp, content, 'utf-8');
         renameSync(tmp, resolvedPath);
       }
-      await context?.compoundPhase?.fileMutationCommitted?.({ filePath: resolvedPath, afterHash: createHash('sha256').update(content, 'utf8').digest('hex') });
+      await context?.compoundPhase?.fileMutationCommitted?.({ filePath: resolvedPath, afterHash });
       if (context?.toolInvocationId) {
         context.runtimeFactSink?.emit({
           invocationId: context.toolInvocationId,
           toolName: 'write',
           factKind: 'file_mutation',
           normalizedFilePaths: [resolvedPath],
+          beforeSha256: beforeHash,
+          afterSha256: afterHash,
         });
       }
       return `已写入: ${resolvedPath}（${content.length} 字符）`;

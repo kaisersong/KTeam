@@ -272,7 +272,7 @@ export class WorkRecovery {
   const priorTask = tasks.find(task => task.taskRef === job.task?.taskRef);
   const needsStop = priorTask && ['proposed','committed','working','blocked'].includes(priorTask.state);
   return {jobId: job.id, state: job.state, hostInterrupted: failure?.code === 'host_restarted_result_unknown',
-   canContinue: !this.store.workPaused() && !this.store.settings(roomId)?.paused && !jobs.some(active) && !needsStop && !continuation,
+   canContinue: !job.artifactPeerReview && !this.store.workPaused() && !this.store.settings(roomId)?.paused && !jobs.some(active) && !needsStop && !continuation,
    reason: this.store.workPaused() || this.store.settings(roomId)?.paused ? 'team_paused' : needsStop ? 'recovery_waiting_stop' : undefined,
    hasGeneratedFiles:this.store.hasGeneratedFiles(roomId,job.id), hasDraft: !!(job.answerDraft || job.partialText), completedReplies: (job.results ?? []).length,
    native: !!job.activeBotId && this.store.binding(job.activeBotId)?.kind === 'local-native'};
@@ -293,6 +293,7 @@ export class WorkRecovery {
    prior={...prior,state:'blocked',results:prior.results.filter((result:any)=>result!==receipt),failure:{code:'model_response_protocol_invalid',phase:'delivery',botId:receipt.botId,model:receipt.model,at:new Date().toISOString(),evidence:'captured'}};
   }
   if (!prior || prior.roomId !== roomId || !interrupted(prior)) throw new KTeamError('recovery_unavailable', 409);
+  if(prior.artifactPeerReview)throw new KTeamError('artifact_peer_restart_required',409);
   const operationId = 'work-recovery:' + jobId, existing = this.store.operation(operationId);
   if (existing) return {ok: true, jobId: existing.jobId, reused: true};
   if (latestWork(this.store.jobs(roomId))?.id !== jobId) throw new KTeamError('recovery_superseded', 409);

@@ -9,6 +9,15 @@ const WRITE_METHODS = new Set([
   "approvals.decide",
   "inbox.change",
   "work.stop",
+  "artifacts.peerReview",
+  "artifacts.reviewDecision",
+  "routines.save",
+  "routines.trial",
+  "routines.pause",
+  "routines.remove",
+  "plugins.install",
+  "plugins.change",
+  "members.create",
 ]);
 
 export function isMobileWrite(method: string) {

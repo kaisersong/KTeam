@@ -120,3 +120,29 @@ test('interrupted routine recovers from its scheduler receipt, delivers once and
   await assert.rejects(recovery.continue(latest.roomId,{jobId:latest.id,requestId:'paused'}),/routine_scope_changed/);
  }finally{await automation?.close();await f.end();}
 });
+
+test('a paused routine trial uses one work receipt without advancing the recurring schedule',async()=>{
+ const f=await setup();let now=Date.now();
+ const routines=new Routines(f.upstream,f.store,()=>now);
+ try{
+  const {routine}=await routines.save({...input(f,now),enabled:false});
+  const request={roomId:f.member.roomId,id:routine.id,expectedRevision:routine.revision,requestId:'trial-once'};
+  const [first,second]=await Promise.all([routines.trial(request),routines.trial(request)]);
+  assert.equal(first.jobId,second.jobId);
+  assert.equal(Number(first.reused)+Number(second.reused),1);
+  assert.equal(f.store.jobs().length,1);
+  await assert.rejects(routines.trial({...request,requestId:'second-trial'}),/routine_run_active/);
+  await assert.rejects(routines.trial({...request,roomId:'other-room'}),/routine_not_found/);
+  await assert.rejects(routines.trial({...request,expectedRevision:0}),/routine_request_conflict/);
+  const job=f.store.job(first.jobId);
+  await routines.admit(job);
+  const listed=(await routines.list(f.member.roomId)).items[0]!;
+  assert.equal(listed.runs[0]?.trial,true);
+  assert.equal(listed.nextAt,null);
+  assert.equal(listed.runCount,0);
+  assert.equal(listed.enabled,false);
+  job.state='unknown';f.store.save(job);
+  now+=60000;
+  await assert.rejects(routines.trial({...request,requestId:'uncertain-trial'}),/routine_result_needs_review/);
+ }finally{await f.end();}
+});

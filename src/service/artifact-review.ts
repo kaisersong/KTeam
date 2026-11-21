@@ -31,7 +31,7 @@ interface ReviewRecord {
 }
 
 export class ArtifactReview {
-  constructor(private store: TeamStore, private conversations: ConversationService, private inputs: WorkInputs) {}
+  constructor(private upstream:Pick<import('../adapters/upstream.js').Upstreams,'listBots'>,private store: TeamStore, private conversations: ConversationService, private inputs: WorkInputs) {}
 
   private source(roomId: string, toolCallId: string) {
     const receipts = this.store.generatedFilesForTool(roomId,toolCallId);
@@ -73,6 +73,9 @@ export class ArtifactReview {
     const membership = await this.conversations.scope(roomId);
     const source = this.source(roomId,toolCallId);
     assertReviewer(membership,source.botId);
+    const reviewers=(membership.members as any[]).filter(member=>member.status==='active'&&member.subject?.kind==='agent'&&member.subject.logicalAgentId!==source.botId&&this.store.binding(member.subject.logicalAgentId)?.kind==='xiaok-hosted');
+    const names=reviewers.length?(await this.upstream.listBots()).agents as any[]:[];
+    if(reviewers.length)assertReviewer(await this.conversations.scope(roomId),source.botId);
     const decided = this.store.operation(source.id) as ReviewRecord | null;
     if (reconcile && decided && this.decision(decided).status==='preparing') {
       await this.inputs.view(roomId);
@@ -102,10 +105,34 @@ export class ArtifactReview {
       lines:compareArtifactLines(baseline ? artifactLines(baseline.content) : undefined,current),
       source:{jobId:source.job.id,messageId:source.resultMessageId},
       decision,
+      peerReviewers:historical?[]:names.filter(bot=>!bot.archivedAt&&reviewers.some(member=>member.subject.logicalAgentId===bot.id)).map(bot=>({id:bot.id,name:bot.name})),
     };
   }
 
-  async submit(roomId: string, value: unknown) {
+  async requestPeer(roomId:string,value:unknown,assertCurrent=()=>{}) {
+    const input=record(value);
+    fields(input,['toolCallId','expectedSha256','botId','requestId']);
+    const toolCallId=text(input.toolCallId,'tool_call_id'),botId=text(input.botId,'bot_id');
+    const membership=await this.conversations.scope(roomId);
+    const source=this.source(roomId,toolCallId);
+    const assertSnapshot=(snapshot:Record<string,unknown>)=>{
+      assertReviewer(snapshot,source.botId);
+      assertReviewer(snapshot,botId);
+      if(botId===source.botId||this.store.binding(botId)?.kind!=='xiaok-hosted')throw new KTeamError('artifact_peer_unavailable',409);
+    };
+    assertSnapshot(membership);assertCurrent();
+    if(source.sha256!==input.expectedSha256)throw new KTeamError('artifact_review_changed',409);
+    const peer={toolCallId,sha256:source.sha256};
+    const requestId=text(input.requestId,'request_id',128);
+    const id='msg_'+digest(JSON.stringify([roomId,requestId,'peer-review'])).slice(0,32);
+    const result=await this.inputs.submit({
+      roomId,jobId:source.job.id,id,mode:'queue',replyToMessageId:source.resultMessageId,
+      text:'请独立复核「'+source.name+'」的指定版本（SHA-256 '+source.sha256+'），在原会话回复发现、原文位置和未覆盖范围。',
+    },{botId,peer,beforeSend:()=>{assertCurrent();this.version(source);},assertSnapshot});
+    return {ok:true as const,messageId:result.messageId,jobId:result.receipt.queuedJobId};
+  }
+
+  async submit(roomId: string, value: unknown, assertCurrent=()=>{}) {
     const input = record(value);
     fields(input,['toolCallId','expectedSha256','action','notes']);
     const toolCallId = text(input.toolCallId,'tool_call_id');
@@ -126,7 +153,7 @@ export class ArtifactReview {
     const membership = await this.conversations.scope(roomId);
     const source = this.source(roomId,toolCallId);
     if (input.expectedSha256!==source.sha256) throw new KTeamError('artifact_review_changed',409);
-    assertReviewer(membership,source.botId);
+    assertReviewer(membership,source.botId);assertCurrent();
     const intent = digest(JSON.stringify([source.sha256,action,notes]));
     let saved = this.store.operation(source.id) as ReviewRecord | null;
     if (saved) {
@@ -153,7 +180,7 @@ export class ArtifactReview {
       ].join('\n\n');
       await this.inputs.submit({
         roomId,jobId:source.job.id,id:saved.inputId,text:body,mode:'queue',replyToMessageId:source.resultMessageId,
-      },{botId:source.botId,beforeSend:()=>{this.version(source);},assertSnapshot:snapshot=>assertReviewer(snapshot,source.botId)});
+      },{botId:source.botId,beforeSend:()=>{assertCurrent();this.version(source);},assertSnapshot:snapshot=>assertReviewer(snapshot,source.botId)});
     }
     return {ok:true,decision:this.decision(saved)};
   }
