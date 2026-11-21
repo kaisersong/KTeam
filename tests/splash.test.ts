@@ -8,16 +8,20 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {SplashService,splashEnvironment} from '../desktop/splash-service.js';
 import {SPLASH_SHA256} from '../desktop/splash-runtime-identity.js';
-import {spaceCommand,runSpaceCommand} from '../desktop/renderer/src/hidden-space.js';
+import {spaceCommand,spaceCommandCandidate,runSpaceCommand} from '../desktop/renderer/src/space-command.js';
 import {createDesktopAPI,dispatchDesktop,DESKTOP_METHODS} from '../desktop/semantic-api.js';
 
-test('hidden command recognizes exact namespace, rejects arguments/attachments, never forwards normal chat',async()=>{
+test('local space command recognizes exact namespace, rejects arguments/attachments, never forwards normal chat',async()=>{
  let opens=0;const open=async()=>{opens++;};
  assert.equal(spaceCommand('/spacex'),false);assert.equal(spaceCommand('explain /space'),false);
  assert.equal(await runSpaceCommand('hello',0,open),false);
  await assert.rejects(runSpaceCommand('/space deploy',0,open),/用法/);
  await assert.rejects(runSpaceCommand('/space',1,open),/附件/);
  await runSpaceCommand(' /space open ',0,open);assert.equal(opens,1);
+});
+test('the composer offers the local space command only for its own prefix',()=>{
+ for(const candidate of ['/','/s','/sp','/space','/space '])assert.equal(spaceCommandCandidate(candidate),true,candidate);
+ for(const other of ['', '/spacex','/skill space','/space open','hello /space'])assert.equal(spaceCommandCandidate(other),false,other);
 });
 test('semantic splash uses native capability only and denies arbitrary process parameters',async()=>{
  let calls=0;const api=createDesktopAPI(async()=>{throw Error('broker_must_not_be_called');},{nativeActions:{openSplash:async()=>{calls++;return {ok:true};}}});

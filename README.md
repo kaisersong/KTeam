@@ -90,7 +90,7 @@ The reviewed [combined optimization roadmap](https://github.com/kaisersong/mydoc
 - **Targeted group replies.** Type `@` to search and select a group member. Stable member identities travel with text and attachment messages, so the selected Agent responds even when display names overlap.
 - **Clearer approvals.** Human-readable summaries, collapsed technical details and lightweight system notices. Terminal grants apply to the actual command directory and survive recovery; deletion, reset and outbound operations still require separate confirmation.
 - **Reliable continuation.** Verified stale approval waits and interrupted scheduled work can continue without replaying completed or unknown operations.
-- **Skills and local spaces.** Left-aligned `/` Skill choices in direct chats. The hidden `/space` command opens a loopback-only workbench for local pages.
+- **Skills and local spaces.** Left-aligned `/` Skill choices in direct chats. The desktop composer lists `/space` to open a loopback-only workbench for local pages.
 - **Mail connections.** Gmail/Outlook OAuth joins QQ, 163 and generic IMAP/SMTP. OAuth requires your own client ID; credentials are encrypted and sending requires approval. Live provider account acceptance remains separate from the verified local callback and TLS flows.
 
 ## What's in 0.5
