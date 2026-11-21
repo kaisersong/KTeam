@@ -74,6 +74,9 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm ci
         working-directory: kteam
+      - name: Verify bundled connector CLI
+        run: node scripts/ensure-connector-cli.mjs
+        working-directory: kteam
       - name: Install and verify pinned Electron / Node 24 runtime
         if: runner.os == 'macOS' || runner.os == 'Windows'
         run: |
