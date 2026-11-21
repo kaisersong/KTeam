@@ -116,7 +116,7 @@ export class AssistantDaily {
   }];
  }
  async catalog(includeYzj:boolean){return {ok:true,...await this.sources.catalog(includeYzj)};}
- async confirm(raw:unknown) {
+ async confirm(raw:unknown,assertCurrent?:()=>void) {
   const input=this.parse(dailyCommit,raw);
   const cached=this.store.operation('assistant-daily-commit:'+input.id);
   const selection=sha(JSON.stringify(input.sources));
@@ -141,6 +141,8 @@ export class AssistantDaily {
   }
   const config={...draft.config,sources:verified};
   const appliedRevision=input.expectedRevision+1;
+  await this.verifyScope?.();
+  assertCurrent?.();
   this.store.transaction(()=>{
    if(this.draft()?.id!==input.id||(this.plan()?.revision??0)!==input.expectedRevision)throw new KTeamError('daily_plan_changed',409);
    this.store.setState(planKey,{revision:appliedRevision,changedAt:this.now(),config,skips:draft.skips,previous:plan?{config:plan.config,skips:plan.skips}:undefined});
@@ -194,10 +196,11 @@ export class AssistantDaily {
   const row=this.store.state<{until:number;observedAt:number;deadline?:number;revision:string}>(snoozePrefix+item.id);
   return Boolean(row&&row.until>now&&row.revision===item.source.revision&&row.deadline===item.deadline&&(!item.deadline?item.observedAt===row.observedAt:true));
  }
- async snooze(raw:unknown) {
+ async snooze(raw:unknown,assertCurrent?:()=>void) {
   const {id}=this.parse(actionId,raw);
   const view=await this.view();
   const item=view.items.find(row=>row.id===id);
+  assertCurrent?.();
   if(item&&this.plan()?.revision===view.revision){
    const now=this.now();
    this.store.setState(snoozePrefix+id,{until:now+3600000,revision:item.source.revision,observedAt:item.observedAt,deadline:item.deadline});
@@ -217,6 +220,7 @@ export class AssistantDaily {
   await verify();
   return {item,verify};
  }
+ async assertItemVisible(raw:unknown){const {id}=this.parse(actionId,raw);await this.accessibleItem(id);}
  async original(raw:unknown){
   const {id}=this.parse(actionId,raw);
   const {item,verify}=await this.accessibleItem(id);
@@ -224,7 +228,7 @@ export class AssistantDaily {
   await verify();
   return {ok:true,...result};
  }
- async replyDraft(raw:unknown,botId:string) {
+ async replyDraft(raw:unknown,botId:string,assertCurrent?:()=>void) {
   const {id}=this.parse(actionId.extend({allowModel:z.literal(true)}),raw);
   const {item,verify}=await this.accessibleItem(id);
   const binding=this.store.binding(botId);
@@ -234,6 +238,7 @@ export class AssistantDaily {
   if(!context?.text.trim()||context.text==='请在原会话核对内容')throw new KTeamError('daily_reply_context_unavailable',409);
   const check=async()=>{
    await verify();
+   assertCurrent?.();
    if(this.store.binding(botId)?.revision!==binding.revision)throw new KTeamError('model_binding_changed',409);
   };
   const core=await sharedRuntime();

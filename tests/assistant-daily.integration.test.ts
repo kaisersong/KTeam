@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
+import {mobileClient} from './helpers/mobile-client.js';
+import {mobilePairFingerprint} from '../src/mobile/devices.js';
+import {mobileB64} from '../src/protocol/mobile-wire.js';
 import {join,resolve} from 'node:path';
 import {test} from 'node:test';
 import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
@@ -19,6 +22,8 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  process.env.KTEAM_MODEL_CONFIG_DIR=modelRoot;
  let host:Awaited<ReturnType<typeof startHost>>|undefined;
+ let pair:Awaited<ReturnType<typeof mobileClient>>|undefined;
+ let phone:Awaited<ReturnType<typeof mobileClient>>|undefined;
  const calls:{propose:boolean;hasResult:boolean;changingEvening:boolean}[]=[];
  const provider=createServer(async(req,res)=>{
   let raw='';
@@ -53,8 +58,23 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   const api=createDesktopAPI((route,value)=>hostRequest(root,'kteam-main',route,value));
   const assistant=await api.ensureAssistant();
   assert.ok(assistant.roomId,JSON.stringify(assistant));
+  const settings=await api.changeMobileSettings({action:'enable'}),invite=await api.changeMobileSettings({action:'invite'});
+  const url='ws://127.0.0.1:'+settings.port+'/mobile/connect';
+  const {inviteId,secret,publicKey}=invite.payload;
+  pair=await mobileClient(url,{credentialId:inviteId,secret,publicKey});
+  await pair.call('pair',{name:'每日工作验收手机'});
+  await api.changeMobileSettings({action:'approve',id:inviteId,fingerprint:mobilePairFingerprint(mobileB64(pair.key.publicKey)),allowApprovals:false});
+  const device=await pair.call('pair',{name:'每日工作验收手机'});
+  await pair.call('pair',{action:'finish'});
+  pair.close();
+  phone=await mobileClient(url,{credentialId:device.deviceId,secret:device.secret,publicKey:device.publicKey},pair.key);
+  assert.ok((await phone.call('hello')).capabilities.includes('assistant_daily_work'));
+  await assert.rejects(phone.call('dailyWork.today',{roomId:'foreign-room'}),/assistant_scope_required/);
+  await assert.rejects(phone.call('dailyWork.confirm',{roomId:'foreign-room',operationId:'foreign-daily-plan'}),/assistant_scope_required/);
   async function draft(text:string,previousRevision:number) {
-   await api.send({roomId:assistant.roomId,text,id:'msg_'+String(previousRevision+1).repeat(32)});
+   const id='msg_'+String(previousRevision+1).repeat(32);
+   if(previousRevision===0)await api.send({roomId:assistant.roomId,text,id});
+   else await phone!.call('messages.send',{roomId:assistant.roomId,text,id,createdAt:new Date().toISOString(),operationId:'mobile-daily-chat'});
    const end=Date.now()+30000;
    while(Date.now()<end){
     const plan:any=await dispatchDesktop(api,'dailyWorkPlan',[]);
@@ -65,7 +85,9 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.fail('No draft received through the actual desktop semantic API: '+JSON.stringify(calls));
   }
   const first=await draft('请帮我将早报改成九点十五。',0);
+  const phoneScope={roomId:assistant.roomId};
   assert.equal(first.config,null);
+  assert.equal((await phone.call('dailyWork.plan',phoneScope)).draft.id,first.draft.id);
   assert.equal(first.draft.config.schedule.morning,'09:15');
   const approve={id:first.draft.id,expectedRevision:0,sources:[]};
   await assert.rejects(hostRequest(root,'kteam-companion','/v1/assistant/daily/confirm',approve),/assistant_scope_required/);
@@ -74,7 +96,14 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   const later=await draft('长期把晚报改到十七点半。',1);
   assert.equal(later.config.schedule.evening,'18:00');
   assert.equal(later.draft.config.schedule.evening,'17:30');
-  await api.confirmDailyWork({id:later.draft.id,expectedRevision:1,sources:[]});
+  const mobileConfirm={...phoneScope,id:later.draft.id,expectedRevision:1,sources:[],operationId:'mobile-daily-confirm'};
+  assert.equal((await phone.call('dailyWork.confirm',mobileConfirm)).appliedRevision,2);
+  assert.equal((await phone.call('dailyWork.confirm',mobileConfirm)).revision,2);
+  assert.equal((await phone.call('operations.get',{operationId:mobileConfirm.operationId})).result.appliedRevision,2);
+  assert.equal((await phone.call('dailyWork.today',phoneScope)).config.schedule.evening,'17:30');
+  assert.equal((await phone.call('dailyWork.refresh',{...phoneScope,operationId:'mobile-daily-refresh'})).revision,2);
+  await api.changeMobileSettings({action:'revoke',id:device.deviceId});
+  await assert.rejects(phone.call('dailyWork.plan',phoneScope));
   await host.close();
   host=await startHost({root,upstream:options});
   const today=await api.dailyWorkToday();
@@ -83,6 +112,8 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.equal(today.config.schedule.evening,'17:30');
   assert.equal(today.draft,undefined);
  }finally{
+  pair?.close();
+  phone?.close();
   await host?.close();
   provider.closeAllConnections();
   await new Promise<void>(done=>provider.close(()=>done()));
