@@ -149,6 +149,7 @@ export class WorkRecovery {
  private async wakeModelRecovery(){
   for(const roomId of new Set(this.store.jobs().map(job=>job.roomId))){
    const jobs=this.store.jobs(roomId),job=latestWork(jobs),failure=job&&executionFailure(job);
+   if(job)await this.retryGroupReplyFormat(job,jobs);
    if(!job||job.state!=='blocked'||failure?.phase!=='model'||job.stopResultUnknown||!job.finishedAt||Date.now()-Date.parse(job.finishedAt)<5000||this.store.settings(roomId)?.paused||jobs.some(job=>active(job)||job.state==='waiting')||this.store.operation('work-recovery:'+job.id)||memoryReviewRooms(this.store.root).includes(roomId))continue;
    const groupReview=failure.code==='model_connection_failed'&&failure.evidence==='captured'
     &&jobs.some(next=>next.state==='queued'&&next.afterJobId===job.id)&&this.interruptedGroupReview(job);
@@ -175,6 +176,56 @@ export class WorkRecovery {
     await this.continue(roomId,{jobId:job.id,requestId:autoId},autoId);
    }catch{/* Retry observations later. Explicit denial never changes this job's eligibility. */}
   }
+ }
+ /** Retry an isolated, tool-free group reply against the same source once. */
+ private async retryGroupReplyFormat(source:any,jobs:any[]){
+  const roomId=source.roomId,settings=this.store.settings(roomId);
+  if(this.store.workPaused()||settings?.kind!=='group'||settings.paused||settings.quiet||
+   !['waiting','delivered','noop','running'].includes(source.state)||
+   memoryReviewRooms(this.store.root).includes(roomId))return;
+  const replies=jobs.filter(job=>job.originId===source.originId&&job.groupResponse?.sourceJobId===source.id);
+  const candidates=replies.filter(job=>{
+   const failure=executionFailure(job),reply=job.groupResponse;
+   const age=Date.now()-Date.parse(job.finishedAt??'');
+   return job.state==='blocked'&&!job.groupReplyFormatRetry&&!job.stopResultUnknown
+    &&failure?.code==='model_response_protocol_invalid'&&failure.phase==='model'&&failure.evidence==='captured'
+    &&age>=5000&&age<=86400000&&reply.mode!=='research'&&!reply.planningBlocked&&job.activeBotId===reply.botId
+    &&source.groupPlan?.members.includes(reply.botId)&&!job.results?.length&&!job.toolTrace?.length
+    &&!job.currentHandoffId&&!job.answerDraft
+    &&!replies.some(other=>other.id!==job.id&&other.groupResponse.botId===reply.botId)
+    &&!this.store.operation('group-reply-format:'+job.id);
+  });
+  if(!candidates.length)return;
+  try{
+   const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
+   const membership=await this.upstream.membership(roomId);
+   await this.coordinator.guardConversation(roomId,membership);
+   if((membership.room as any)?.status!=='active')return;
+   const roster=(await this.upstream.listBots()).agents as any[];
+   for(const prior of candidates){
+    const botId=prior.groupResponse.botId,binding=this.store.binding(botId),captured=prior.executionScope?.binding;
+    const bot=roster.find(bot=>bot.id===botId&&!bot.archivedAt);
+    if(!bot||profile(bot).revision!==prior.executionScope?.profileRevision||
+      this.store.state('source-changing:'+botId)||this.store.state('harness-fence:'+botId)||
+      binding?.kind!=='xiaok-hosted'||binding.revision!==captured?.revision||binding.fingerprint!==captured?.fingerprint||
+      !tasks.some(task=>task.taskRef===prior.task?.taskRef&&task.state==='halted')||
+      !(membership.members as any[]).some(member=>member.status==='active'&&member.subject?.logicalAgentId===botId))continue;
+    this.store.transaction(()=>{
+     const current=this.store.job(prior.id),currentJobs=this.store.jobs(roomId),operationId='group-reply-format:'+prior.id;
+     if(this.store.workPaused()||this.store.settings(roomId)?.revision!==settings.revision||
+      latestWork(currentJobs)?.id!==source.id||current?.state!=='blocked'||current.stopResultUnknown||
+      currentJobs.some(other=>other.id!==prior.id&&other.groupResponse?.botId===botId&&other.originId===source.originId)||
+      this.store.operation(operationId)||this.store.hasGeneratedFiles(roomId,prior.id)||
+      this.store.operationsWithPrefix('tool-approval:').some(row=>row.jobId===prior.id)||
+      this.store.operationsWithPrefix('harness-process:'+prior.id+':').length)return;
+     const id='job-'+operationId;
+     this.store.enqueueFollowup({id,roomId,originId:source.originId,trigger:'group-response',
+      groupResponse:structuredClone(prior.groupResponse),groupReplyFormatRetry:true,
+      dependsOnJobIds:prior.dependsOnJobIds??[]});
+     this.store.saveOperation({id:operationId,sourceJobId:prior.id,jobId:id,status:'queued'},0);
+    });
+   }
+  }catch{/* Scope or terminal task receipts could not be verified. */}
  }
  /** A network failure during group review can strand every later message.
   * Reopen that review once for the original user turn, with old stage receipts. */
