@@ -47,6 +47,17 @@ function ReviewEditor({identity,view,refresh}:{identity:Identity;view:ArtifactRe
  };
  const [decision,setDecision]=useState<ArtifactReviewDecision>();
  const [busy,setBusy]=useState(false);
+ const [reviewer,setReviewer]=useState('');
+ const [requested,setRequested]=useState(false);
+ const peerRequests=useRef(new Map<string,string>());
+ const requestPeer=async()=>{
+  setBusy(true);setError('');
+  const requestId=peerRequests.current.get(reviewer)??crypto.randomUUID();
+  peerRequests.current.set(reviewer,requestId);
+  try{await api.requestPeerReview({...identity,expectedSha256:view.sha256,botId:reviewer,requestId});setRequested(true);}
+  catch(error){setError(reviewError(error));}
+  finally{setBusy(false);}
+ };
  const [showDelivery,setShowDelivery]=useState(false);
  const [delivery,setDelivery]=useState<{text?:string;error?:string}>();
  const [error,setError]=useState('');
@@ -142,6 +153,15 @@ function ReviewEditor({identity,view,refresh}:{identity:Identity;view:ArtifactRe
    </div>
   </div>
   <aside className="artifact-review-notes" aria-label="审阅意见">
+   {!!view.peerReviewers?.length&&<details>
+    <summary>请另一位成员复核</summary>
+    <label>复核成员<select value={reviewer} disabled={busy} onChange={event=>{setReviewer(event.target.value);setRequested(false);}}>
+     <option value="">选择成员</option>
+     {view.peerReviewers.map(bot=><option key={bot.id} value={bot.id}>{bot.name}</option>)}
+    </select></label>
+    <button type="button" className="secondary" disabled={!reviewer||busy||requested} onClick={()=>void requestPeer()}>发送复核消息</button>
+    {requested&&<p role="status">请求已发送，复核意见将回到原会话。</p>}
+   </details>}
    <h3>审阅意见</h3>
    {deliveryId&&<button type="button" className="text-button" aria-expanded={showDelivery}
     onClick={()=>setShowDelivery(value=>!value)}>{showDelivery?'收起原交付':'查看原交付'}</button>}
