@@ -137,6 +137,7 @@ export class MobileFacade {
             "attachments",
             "mentions",
             "artifacts",
+            "artifact_review_read",
             "inbox",
             "approval_once",
             "single_chat_skills",
@@ -202,6 +203,14 @@ export class MobileFacade {
         const r = generatedFileRecords(this.store, i.roomId, i.cursor);
         await d.conversations.scope(i.roomId);
         return r;
+      }
+      case "artifacts.review": {
+        fields(i, ["roomId", "toolCallId"]);
+        const roomId = text(i.roomId, "room_id");
+        const toolCallId = text(i.toolCallId, "tool_call_id");
+        const { name, sha256, baselineSha256, historical, lines } =
+          await d.artifactReview.view(roomId, toolCallId, { reconcile: false });
+        return { ok: true, name, sha256, baselineSha256, historical, lines };
       }
       case "artifacts.preview": {
         fields(i, ["roomId", "toolCallId"]);

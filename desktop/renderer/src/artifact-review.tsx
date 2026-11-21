@@ -1,6 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
-import type {ArtifactReviewDecision,ArtifactReviewNote,ArtifactReviewView} from '../../../src/protocol/artifact-review';
+import type {ArtifactReviewDecision,ArtifactReviewView} from '../../../src/protocol/artifact-review';
 import {api,explain} from './api';
+import {messageDisplayText} from '../../../src/protocol/message-attachments';
+import {readReviewDraft,saveReviewDraft,type ReviewDraft,type Range} from './artifact-review-draft';
 
 type Identity={roomId:string;toolCallId:string};
 const labels={
@@ -32,25 +34,63 @@ export function ArtifactReviewPanel({roomId,toolCallId}:Identity){
 }
 
 function ReviewEditor({identity,view,refresh}:{identity:Identity;view:ArtifactReviewView;refresh:()=>void}){
- const [range,setRange]=useState<{start:number;end:number}>();
- const [draft,setDraft]=useState('');
- const [notes,setNotes]=useState<ArtifactReviewNote[]>([]);
+ const draftKey=JSON.stringify([identity.roomId,identity.toolCallId,view.sha256]);
+ const maxLine=view.lines.reduce((max,line)=>Math.max(max,line.after??0),0);
+ const [saved,setSaved]=useState(()=>readReviewDraft(draftKey,maxLine));
+ const savedRef=useRef(saved);
+ const {range,draft,notes}={range:saved.range,draft:saved.text,notes:saved.notes};
+ const save=(patch:Partial<ReviewDraft>)=>{
+  const next={...savedRef.current,...patch};
+  savedRef.current=next;
+  setSaved(next);
+  saveReviewDraft(draftKey,next);
+ };
  const [decision,setDecision]=useState<ArtifactReviewDecision>();
  const [busy,setBusy]=useState(false);
+ const [showDelivery,setShowDelivery]=useState(false);
+ const [delivery,setDelivery]=useState<{text?:string;error?:string}>();
  const [error,setError]=useState('');
  const noteInput=useRef<HTMLTextAreaElement>(null);
+ const lines=useRef<HTMLDivElement>(null);
+ const positionWrite=useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+ const deliveryId=view.source?.messageId;
+ useEffect(()=>{
+  if(!showDelivery||!deliveryId)return;
+  let live=true;
+  setDelivery(undefined);
+  void api.conversationMessage({roomId:identity.roomId,messageId:deliveryId})
+   .then(result=>{if(live)setDelivery({text:messageDisplayText(result.message)});})
+   .catch(error=>{if(live)setDelivery({error:explain(error)});});
+  return()=>{live=false;};
+ },[showDelivery,deliveryId,identity.roomId]);
  const receipt=view.decision?.status==='preparing' ? decision??view.decision : view.decision??decision;
  const pending=receipt?.status==='preparing';
  const currentNotes=pending?receipt.notes:notes;
+ const locate=(line:number,focus=false)=>{
+  const container=lines.current;
+  const target=container?.querySelector<HTMLButtonElement>('[data-review-line="'+line+'"]');
+  if(!container||!target)return;
+  container.scrollTop+=target.getBoundingClientRect().top-container.getBoundingClientRect().top-(focus?container.clientHeight/3:0);
+  if(focus)target.focus({preventScroll:true});
+ };
+ useEffect(()=>{
+  if(savedRef.current.line)locate(savedRef.current.line);
+  return ()=>{
+   if(!positionWrite.current)return;
+   clearTimeout(positionWrite.current);
+   saveReviewDraft(draftKey,savedRef.current);
+  };
+ },[draftKey]);
  const select=(line:number,extend:boolean)=>{
-  setRange(previous=>extend&&previous
-   ?{start:Math.min(previous.start,line),end:Math.max(previous.start,line)}
-   :{start:line,end:line});
+  const next:Range=extend&&range
+   ?{start:Math.min(range.start,line),end:Math.max(range.start,line)}
+   :{start:line,end:line};
+  save({range:next});
  };
  const add=()=>{
   const text=draft.trim();
   if(!range||!text||range.end-range.start>19||notes.length>=8)return;
-  setNotes(previous=>[...previous,{...range,text}]);setDraft('');setRange(undefined);
+  save({notes:[...notes,{...range,text}],text:'',range:undefined});
  };
  const submit=async(action:ArtifactReviewDecision['action'])=>{
   if(busy)return;
@@ -59,6 +99,7 @@ function ReviewEditor({identity,view,refresh}:{identity:Identity;view:ArtifactRe
   try{
    const result=await api.submitArtifactReview({...identity,expectedSha256:view.sha256,action,notes:submitted});
    setDecision(result.decision);
+   save({text:'',notes:[],range:undefined});
   }catch(error){setError(reviewError(error));}
   finally{setBusy(false);}
  };
@@ -68,14 +109,33 @@ function ReviewEditor({identity,view,refresh}:{identity:Identity;view:ArtifactRe
     {view.historical&&'历史版本 · '}{view.baselineSha256?<>基线 <code title={view.baselineSha256}>{view.baselineSha256.slice(0,12)}</code> → </>:<>首次审阅 · </>}
     当前 <code title={view.sha256}>{view.sha256.slice(0,12)}</code>
    </p>
-   <div className="artifact-review-lines">
+   <div ref={lines} className="artifact-review-lines" onScroll={event=>{
+    const container=event.currentTarget;
+    const top=container.getBoundingClientRect().top;
+    const buttons=container.querySelectorAll<HTMLButtonElement>('[data-review-line]');
+    let first=0,last=buttons.length;
+    while(first<last){
+     const middle=(first+last)>>>1;
+     if(buttons[middle].getBoundingClientRect().bottom<=top)first=middle+1;
+     else last=middle;
+    }
+    const line=Number(buttons[first]?.dataset.reviewLine);
+    if(line&&line!==savedRef.current.line){
+     savedRef.current={...savedRef.current,line};
+     clearTimeout(positionWrite.current);
+     positionWrite.current=setTimeout(()=>{
+      positionWrite.current=undefined;
+      saveReviewDraft(draftKey,savedRef.current);
+     },180);
+    }
+   }}>
     {view.lines.map((line,index)=>{
      const selected=!!range&&line.after!==undefined&&line.after>=range.start&&line.after<=range.end;
      return <div className={'artifact-review-line '+line.kind+(selected?' selected':'')} key={index}>
       <span className="artifact-review-number">{line.before??''}</span>
       {line.after===undefined?<span className="artifact-review-number"/>:
-       <button type="button" className="artifact-review-number" disabled={!!receipt} aria-label={'选择第 '+line.after+' 行'} aria-pressed={selected}
-        onClick={event=>{select(line.after!,event.shiftKey);if(!event.shiftKey)noteInput.current?.focus();}}>{line.after}</button>}
+       <button type="button" className="artifact-review-number" data-review-line={line.after} aria-disabled={!!receipt} aria-label={(receipt?'第 ':'选择第 ')+line.after+' 行'} aria-pressed={selected}
+        onClick={event=>{if(!receipt){select(line.after!,event.shiftKey);if(!event.shiftKey)noteInput.current?.focus();}}}>{line.after}</button>}
       <span aria-hidden="true">{line.kind==='added'?'+':line.kind==='removed'?'−':' '}</span><code>{line.text||' '}</code>
      </div>;
     })}
@@ -83,17 +143,23 @@ function ReviewEditor({identity,view,refresh}:{identity:Identity;view:ArtifactRe
   </div>
   <aside className="artifact-review-notes" aria-label="审阅意见">
    <h3>审阅意见</h3>
+   {deliveryId&&<button type="button" className="text-button" aria-expanded={showDelivery}
+    onClick={()=>setShowDelivery(value=>!value)}>{showDelivery?'收起原交付':'查看原交付'}</button>}
+   {showDelivery&&<div className="artifact-review-delivery" aria-label="原交付">
+    {delivery?.error?<p role="alert">原交付暂时无法读取。{delivery.error}</p>:
+     delivery?<p>{delivery.text||'原消息没有可展示的文本。'}</p>:<p role="status">正在读取原交付…</p>}
+   </div>}
    {receipt&&<div role="status"><strong>{labels[receipt.status]}</strong>
     {receipt.workState==='delivered'&&<p>原负责人已提交返工答复。</p>}
     {receipt.followupJobId&&<p><small>返工工作 <code>{receipt.followupJobId}</code></small></p>}
     <button className="text-button" onClick={refresh}>刷新回执</button>
    </div>}
-   {(receipt?.notes??notes).map((note,index)=><article key={index}><strong>第 {note.start===note.end?note.start:note.start+'–'+note.end} 行</strong><p>{note.text}</p>
-    {!receipt&&<button className="text-button" disabled={busy} onClick={()=>setNotes(previous=>previous.filter((_,i)=>i!==index))}>移除</button>}
+   {(receipt?.notes??notes).map((note,index)=><article key={index}><button type="button" className="text-button" onClick={()=>locate(note.start,true)}>第 {note.start===note.end?note.start:note.start+'–'+note.end} 行</button><p>{note.text}</p>
+    {!receipt&&<button className="text-button" disabled={busy} onClick={()=>save({notes:notes.filter((_,i)=>i!==index)})}>移除</button>}
    </article>)}
    {!receipt&&<>
     <label htmlFor="artifact-review-note">{range?'第 '+(range.start===range.end?range.start:range.start+'–'+range.end)+' 行':'选择行号，Shift 点击可扩展范围'}</label>
-    <textarea ref={noteInput} id="artifact-review-note" maxLength={400} value={draft} onChange={event=>setDraft(event.target.value)}/>
+    <textarea ref={noteInput} id="artifact-review-note" maxLength={400} value={draft} onChange={event=>save({text:event.target.value})}/>
     <button className="secondary" disabled={busy||!range||!draft.trim()||range.end-range.start>19||notes.length>=8} onClick={add}>加入意见</button>
     <div className="workspace-inline">
      <button className="secondary" disabled={busy||!notes.length||!!draft.trim()} onClick={()=>void submit('request_changes')}>交回原负责人</button>
