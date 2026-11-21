@@ -1,6 +1,7 @@
 import {spawn,type ChildProcess} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {lstatSync,readFileSync} from 'node:fs';
+import {splashTitle,type SplashOpenResult} from './splash-input.js';
 
 export function splashEnvironment(env:NodeJS.ProcessEnv){
  const names=['SystemRoot','WINDIR','TEMP','TMP','TMPDIR','LANG','TZ'];
@@ -14,7 +15,7 @@ function validateURL(value:unknown){
 }
 export class SplashService {
  private child?:ChildProcess; private starting?:Promise<string>;private ready?:string;private closed=false;
- constructor(private readonly options:{runtime:string;sha256:string;dataDir:string;executable?:string;openExternal:(url:string)=>Promise<unknown>;timeoutMs?:number}){}
+ constructor(private readonly options:{runtime:string;sha256:string;dataDir:string;executable?:string;openExternal:(url:string)=>Promise<unknown>;timeoutMs?:number;fetch?:typeof fetch}){}
  private start(){
   if(this.closed)return Promise.reject(Error('splash_closed'));
   if(this.ready)return Promise.resolve(this.ready);
@@ -40,13 +41,44 @@ export class SplashService {
   this.starting=promise;void promise.catch(()=>{if(this.starting===promise)this.starting=undefined;});
   return promise;
  }
- async open(input:unknown,requestSource:'user'|'agent'|'scheduler'){
+ private async createSpace(workspace:URL,title:string){
+  // A named command stays idempotent across manual retries and desktop restarts.
+  const key='kteam-space-'+createHash('sha256').update(title).digest('hex');
+  const headers={Authorization:'Bearer '+workspace.hash.slice('#token='.length)};
+  const request=this.options.fetch??fetch;
+  const read=(path:string,init?:RequestInit)=>request(new URL(path,workspace),{
+   ...init,redirect:'error',signal:AbortSignal.timeout(5000),headers:{...headers,...init?.headers},
+  });
+  const validId=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9-]{36}$/.test(value);
+  let response:Response|undefined;
+  try{
+   response=await read('/v1/spaces',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify({title})});
+  }catch{/* A lost write response is reconciled by a read only. */}
+  if(response?.ok){
+   const result=await response.json().catch(()=>null);
+   if(validId(result?.id)&&result.title===title)return {id:result.id,title};
+  }else if(response&&response.status<500){
+   throw Error(response.status===429?'splash_create_limited':'splash_create_rejected');
+  }
+  const operation='/v1/operations?'+new URLSearchParams({kind:'create',key});
+  const receipt=await read(operation).then(res=>res.ok?res.json():null).catch(()=>null);
+  if(receipt?.status==='complete'&&validId(receipt.spaceId))return {id:receipt.spaceId,title};
+  throw Error('splash_create_unknown');
+ }
+ async open(input:unknown,requestSource:'user'|'agent'|'scheduler'):Promise<SplashOpenResult>{
   if(requestSource!=='user')throw Error('splash_user_only');
-  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>k!=='requestId')||typeof (input as any).requestId!=='string'||!/^[a-f0-9-]{36}$/.test((input as any).requestId))throw Error('invalid_splash_input');
-  const url=await this.start();if(this.closed)throw Error('splash_closed');
-  await this.options.openExternal(url);
-  const safe=validateURL(url);safe.hash='';
-  return {ok:true as const,opened:true as const,mode:'local' as const,url:safe.href};
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>k!=='requestId'&&k!=='title')
+     ||!('requestId' in input)||typeof input.requestId!=='string'||!/^[a-f0-9-]{36}$/.test(input.requestId))throw Error('invalid_splash_input');
+  const title='title' in input?splashTitle(input.title):undefined;
+  const workspace=validateURL(await this.start());
+  if(this.closed)throw Error('splash_closed');
+  const space=title===undefined?undefined:await this.createSpace(workspace,title);
+  if(this.closed)throw Error('splash_closed');
+  if(space)workspace.hash+='&space='+space.id;
+  try{await this.options.openExternal(workspace.href);}
+  catch(error){if(space)throw Error('splash_created_open_failed');throw error;}
+  workspace.hash='';
+  return {ok:true,opened:true,mode:'local',url:workspace.href,...(space?{space}:{})};
  }
  async close(){
   this.closed=true;this.ready=undefined;

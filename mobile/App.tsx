@@ -1,3 +1,6 @@
+import { ArtifactDiff } from "./src/artifact-diff";
+import { attentionDeadline } from "../src/protocol/attention-order";
+import type { ArtifactReviewView } from "../src/protocol/artifact-review";
 import React, {
   memo,
   useMemo,
@@ -224,7 +227,7 @@ const MessageRow = memo(function MessageRow({
               const found = receipts.filter(
                 (f: any) => (f.file?.name ?? f.name) === filename,
               );
-              if (found.length === 1) void viewFile(found[0]);
+              if (found.length === 1) void viewFile(found[0], receipts);
               else if (/^https?:\/\//i.test(url)) void Linking.openURL(url);
               return false;
             }}
@@ -246,7 +249,7 @@ const MessageRow = memo(function MessageRow({
       {receipts.map((f: any) => (
         <Pressable
           key={f.id}
-          onPress={() => void viewFile(f)}
+          onPress={() => void viewFile(f, receipts)}
           style={[
             s.artifactCard,
             {
@@ -331,6 +334,32 @@ function AppBody() {
     [preview, setPreview] = useState<any>(),
     [latest, setLatest] = useState(true),
     [permission, requestPermission] = useCameraPermissions();
+  const [attentionSelection, setAttentionSelection] = useState<{id:string; kind:"approval"|"question"}>();
+  const [attentionRoom, setAttentionRoom] = useState(false);
+  const inboxScroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const inboxOffset = useRef(0);
+  const restoreInbox = useRef(false);
+  const [diff, setDiff] = useState<{view?:ArtifactReviewView; error?:string}>();
+  const diffPositions = useRef(new Map<string,{offset:number;expanded:string[]}>());
+  const diffRequest = useRef(0);
+  const closeDiff = () => {
+    diffRequest.current++;
+    setDiff(undefined);
+  };
+  const returnToAttention = () => {
+    restoreInbox.current = inboxOffset.current > 0;
+    setAttentionRoom(false);
+    setRoom(undefined);
+    setTab("收件箱");
+  };
+  const closeAttention = () => {
+    if (attentionSelection || tab !== "收件箱") restoreInbox.current = inboxOffset.current > 0;
+    setAttentionSelection(undefined);
+  };
+  const finishAttention = (id:string) => {
+    restoreInbox.current = inboxOffset.current > 0;
+    setAttentionSelection(current => current?.id === id ? undefined : current);
+  };
   const followLatest = useRef(true);
   const followAfterLayout = useRef(true);
   const returnView = useRef<any>(undefined);
@@ -478,7 +507,12 @@ function AppBody() {
         ) {
           setMessages([]);
           setWork(undefined);
+          previewRequest.current++;
           setPreview(undefined);
+          closeDiff();
+          diffPositions.current.clear();
+          setAttentionSelection(undefined);
+          setAttentionRoom(false);
           setInbox(undefined);
           setFiles([]);
           setRooms([]);
@@ -494,7 +528,8 @@ function AppBody() {
     [computer?.credentialId],
   );
   const updateInbox = useCallback((snapshot: any) => {
-    setInbox((current: any) => latestMobileInbox(current, snapshot));
+    const receivedAt = Date.now();
+    setInbox((current: any) => latestMobileInbox(current, { ...snapshot, receivedAt }));
   }, []);
   const tell = (e: unknown) => setError(names[errorText(e)] ?? errorText(e));
   const persist = async (c: Computer, k: string, v: any) => {
@@ -632,6 +667,14 @@ function AppBody() {
     setRooms([]);
     setBots([]);
     setInbox(undefined);
+    setAttentionSelection(undefined);
+    setAttentionRoom(false);
+    inboxOffset.current = 0;
+    restoreInbox.current = false;
+    previewRequest.current++;
+    setPreview(undefined);
+    closeDiff();
+    diffPositions.current.clear();
     setFiles([]);
     setUncertain([]);
     setRoom(undefined);
@@ -816,7 +859,12 @@ function AppBody() {
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       if (room) {
-        setRoom(undefined);
+        if (attentionRoom) returnToAttention();
+        else setRoom(undefined);
+        return true;
+      }
+      if (tab === "收件箱" && attentionSelection) {
+        closeAttention();
         return true;
       }
       if (tab !== "会话") {
@@ -827,7 +875,7 @@ function AppBody() {
       return false;
     });
     return () => sub.remove();
-  }, [room, tab]);
+  }, [room, tab, attentionRoom, attentionSelection]);
   const pair = async (link: string) => {
     if (pairingActive.current) return;
     pairingActive.current = true;
@@ -940,15 +988,19 @@ function AppBody() {
     void pair(link);
   };
   const openRoom = (r: any) => {
+    setAttentionRoom(false);
     setRoom(r);
     setTab("会话");
   };
-  const openInboxRoom = async (roomId: string) => {
-    try {
-      const target = (await call("rooms.list")).rooms.find((room: any) => room.roomId === roomId);
-      if (!target) throw Error("当前无法打开原会话");
-      openRoom(target);
-    } catch (error) { tell(error); }
+  const openInboxRoom = (roomId: string) => {
+    const target = rooms.find((item) => item.roomId === roomId);
+    if (!target) {
+      tell(Error("当前无法打开原会话"));
+      return;
+    }
+    setAttentionRoom(true);
+    setRoom(target);
+    setTab("会话");
   };
   const loadOlder = async () => {
     const r = roomRef.current,
@@ -990,23 +1042,27 @@ function AppBody() {
     }
   };
   const viewFile = useCallback(
-    async (file: any) => {
+    async (file: any, siblings?:any[]) => {
       const request = ++previewRequest.current;
+      closeDiff();
+      const roomId = file.roomId ?? roomRef.current?.roomId;
+      const toolCallId = file.toolCallId ?? file.id;
       const name = file.name ?? file.file?.name ?? "产物";
       setPreview({ name, loading: true });
       try {
         const v = await call("artifacts.preview", {
-          roomId: file.roomId ?? roomRef.current?.roomId,
-          toolCallId: file.toolCallId ?? file.id,
+          roomId,
+          toolCallId,
         });
         if (request === previewRequest.current)
-          setPreview({ ...v, name: v.name ?? name });
+          setPreview({ ...v, name: v.name ?? name, roomId, toolCallId, siblings });
       } catch (e) {
         if (request === previewRequest.current)
           setPreview({
             name,
             error: names[errorText(e)] ?? errorText(e),
             retry: file,
+            siblings,
           });
       }
     },
@@ -1014,7 +1070,25 @@ function AppBody() {
   );
   const closePreview = () => {
     previewRequest.current++;
+    closeDiff();
     setPreview(undefined);
+  };
+  const openDiff = async () => {
+    const request = ++diffRequest.current;
+    setDiff({});
+    try {
+      const view = await call("artifacts.review", { roomId:preview.roomId, toolCallId:preview.toolCallId });
+      if (request === diffRequest.current) setDiff({view});
+    } catch (e) {
+      if (request !== diffRequest.current) return;
+      const code = errorText(e);
+      setDiff({error:{
+        mobile_method_forbidden:"请更新电脑端以查看版本差异。",
+        artifact_review_unavailable:"工作交付后可查看差异。",
+        artifact_review_text_unavailable:"此产物超出行内审阅的文本范围。",
+        generated_file_changed:"产物已更新，请从原工作打开新版本。",
+      }[code] ?? names[code] ?? code});
+    }
   };
   const checkSend = async (item: any) => {
     setBusy(true);
@@ -1229,6 +1303,7 @@ function AppBody() {
       await clearPending(computer, operationId);
       const next = await call("inbox.read");
       updateInbox(next);
+      if (!next.approvals?.some((item:any) => item.id === a.id)) finishAttention(a.id);
     } catch (e) {
       if (e instanceof MobileWriteRefused && !e.sent && operationId)
         await clearPending(computer, operationId).catch(() => {});
@@ -1276,9 +1351,32 @@ function AppBody() {
   const assistantRoom = rooms.find((r) => r.kind === "assistant"),
     needsYou =
       (inbox?.approvals?.length ?? 0) + (inbox?.questions?.length ?? 0);
-  const newAttention = [...(inbox?.approvals ?? []), ...(inbox?.questions ?? [])].filter(
-    (item) => item.inbox?.read !== true,
-  ).length;
+  const attentionItems = useMemo(() => [
+    ...(inbox?.approvals ?? []).map((item:any) => ({ item, kind:"approval" as const })),
+    ...(inbox?.questions ?? []).map((item:any) => ({ item, kind:"question" as const })),
+  ].sort((a,b) => attentionDeadline(a.item.expiresAt) - attentionDeadline(b.item.expiresAt)), [inbox]);
+  const newAttention = attentionItems.filter(({item}) => item.inbox?.read !== true).length;
+  const attentionItem = attentionItems.find(({item,kind}) =>
+    item.id === attentionSelection?.id && kind === attentionSelection?.kind);
+  const attentionTitle = ({item,kind}:typeof attentionItems[number]) =>
+    kind === "question" ? item.question : "审批 · " + mobileApprovalCard(item).toolName;
+  const attentionSource = (item:any) => [
+    rooms.find((r) => r.roomId === (item.sourceRoomId ?? item.roomId))?.title,
+    bots.find((b) => b.id === item.botId)?.name,
+  ].filter(Boolean).join(" · ");
+  const openAttention = ({item,kind}:typeof attentionItems[number]) => {
+    setAttentionSelection({id:item.id,kind});
+    if (!item.inbox || item.inbox.read || offline || writesLocked) return;
+    const transport = connection.current;
+    void call("inbox.change", {operationId:uid(),action:"read",items:[item.inbox]})
+      .then(() => connection.current === transport && call("inbox.read"))
+      .then((snapshot) => { if (snapshot && connection.current === transport) updateInbox(snapshot); })
+      .catch(() => {});
+  };
+  const previewFiles: any[] = preview?.siblings ??
+    (preview?.roomId ? files.filter(file => file.roomId === preview.roomId) : []);
+  const previewIndex = previewFiles.findIndex((file) => (file.toolCallId ?? file.id) === preview?.toolCallId);
+  const diffKey = diff?.view && preview?.roomId && JSON.stringify([computer?.credentialId,preview.roomId,preview.toolCallId,diff.view.sha256]);
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const filtered = visibleRooms(rooms).filter((r) =>
       (r.title ?? "").toLowerCase().includes(queryText.toLowerCase()),
@@ -1336,8 +1434,9 @@ function AppBody() {
         {room ? (
           <GlassSurface interactive style={s.circleControl}>
             <Pressable
-              accessibilityLabel="返回会话"
-              onPress={() => setRoom(undefined)}
+              accessibilityRole="button"
+              accessibilityLabel={attentionRoom ? "返回待办详情" : "返回会话"}
+              onPress={() => attentionRoom ? returnToAttention() : setRoom(undefined)}
               style={s.iconControl}
             >
               <ArrowLeft color={colors.text} size={21} />
@@ -1385,10 +1484,18 @@ function AppBody() {
           </Pressable>
         </GlassSurface>
       </GlassGroup>
-      {room && !preview && !offline && newAttention > 0 && (
+      {room && attentionRoom && (
+        <View style={[s.attentionCard,{borderColor:colors.line,marginHorizontal:16}]}>
+          <Text style={{color:colors.text,flex:1}} accessibilityRole="header">
+            {attentionItem ? attentionTitle(attentionItem) : "原待办已处理或已失效"}
+          </Text>
+          {button("返回待办",returnToAttention)}
+        </View>
+      )}
+      {room && !attentionRoom && !preview && !offline && newAttention > 0 && (
         <Pressable accessibilityRole="button"
           style={[s.attentionCard, { borderColor: colors.line, marginHorizontal: 16 }]}
-          onPress={() => { setRoom(undefined); setTab("收件箱"); }}>
+          onPress={() => { closeAttention(); setRoom(undefined); setTab("收件箱"); }}>
           <Inbox size={18} color={colors.green} />
           <Text style={{ color: colors.text, flex: 1 }}>有 {newAttention} 件事需要你处理</Text>
           <ChevronRight size={16} color={colors.muted} />
@@ -1626,7 +1733,7 @@ function AppBody() {
                   {needsYou > 0 && (
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() => setTab("收件箱")}
+                      onPress={() => { closeAttention(); setTab("收件箱"); }}
                       style={[s.attentionCard, { borderColor: colors.line }]}
                     >
                       <Inbox size={18} color={colors.green} />
@@ -1991,15 +2098,42 @@ function AppBody() {
           </GlassSurface>
         </KeyboardAvoidingView>
       )}
-      {tab === "收件箱" && (
-        <ScrollView contentContainerStyle={s.page}>
-          <Text style={[s.sectionTitle, { color: colors.text }]}>
-            需要你处理
-          </Text>
-          {!inbox?.approvals?.length && !inbox?.questions?.length && (
-            <Text style={{ color: colors.muted }}>暂时没有待处理事项</Text>
-          )}
-          {inbox?.approvals?.map((a: any) => {
+      {tab === "收件箱" && !attentionSelection && (
+        <ScrollView ref={inboxScroll} contentContainerStyle={s.page}
+          onContentSizeChange={() => {
+            if (!restoreInbox.current) return;
+            inboxScroll.current?.scrollTo({y:inboxOffset.current,animated:false});
+            restoreInbox.current = false;
+          }}
+          onScroll={event => {
+            if (!restoreInbox.current) inboxOffset.current = event.nativeEvent.contentOffset.y;
+          }} scrollEventThrottle={64}>
+          <Text accessibilityRole="header" style={[s.sectionTitle,{color:colors.text}]}>需要你处理</Text>
+          {offline && inbox?.receivedAt && <Text style={{color:colors.muted}}>
+            离线 · 上次读取于 {new Date(inbox.receivedAt).toLocaleTimeString()}
+          </Text>}
+          {!attentionItems.length && <Text style={{color:colors.muted}}>
+            {inbox ? "暂时没有待处理事项" : offline ? "暂无可用的待办快照" : "正在读取待办…"}
+          </Text>}
+          {attentionItems.map(entry => {
+            const deadline = attentionDeadline(entry.item.expiresAt);
+            return <Pressable key={entry.kind+":"+entry.item.id} accessibilityRole="button"
+              onPress={() => openAttention(entry)} style={[s.card,{backgroundColor:colors.panel,borderColor:colors.line}]}>
+              <Text style={[s.title,{color:colors.text}]} numberOfLines={2}>{attentionTitle(entry)}</Text>
+              <Text style={{color:colors.muted}}>{attentionSource(entry.item)}</Text>
+              {Number.isFinite(deadline) && <Text style={{color:colors.muted}}>有效期至 {new Date(deadline).toLocaleString()}</Text>}
+            </Pressable>;
+          })}
+        </ScrollView>
+      )}
+      {tab === "收件箱" && attentionSelection && (
+        <ScrollView key={attentionSelection.kind+":"+attentionSelection.id} contentContainerStyle={s.page}
+          keyboardShouldPersistTaps="handled">
+          {button("返回待办列表",closeAttention,<ArrowLeft size={18} color={colors.green}/>)}
+          {!attentionItem && <Text accessibilityRole="header" style={{color:colors.text}}>此事项已处理或已失效。</Text>}
+          {attentionItem && <Text style={{color:colors.muted}}>{attentionSource(attentionItem.item)}</Text>}
+          {offline && attentionItem && <Text style={{color:colors.muted}}>离线 · 待电脑连接后可操作</Text>}
+          {(attentionItem?.kind === "approval" ? [attentionItem.item] : []).map((a: any) => {
             const card = mobileApprovalCard(a);
             return (
             <View
@@ -2069,11 +2203,12 @@ function AppBody() {
             </View>
             );
           })}
-          {inbox?.questions?.map((q: any) => (
+          {(attentionItem?.kind === "question" ? [attentionItem.item] : []).map((q: any) => (
             <Question
               key={q.id}
               q={q}
               colors={colors}
+              disabled={offline || writesLocked}
               onOpen={(q.sourceRoomId || q.roomId) && !offline ? () => void openInboxRoom(q.sourceRoomId ?? q.roomId) : undefined}
               onAnswer={async (answer: string) => {
                 await call("questions.answer", {
@@ -2081,7 +2216,9 @@ function AppBody() {
                   id: q.id,
                   answer,
                 });
-                updateInbox(await call("inbox.read"));
+                const snapshot = await call("inbox.read");
+                updateInbox(snapshot);
+                if (!snapshot.questions?.some((item:any) => item.id === q.id)) finishAttention(q.id);
               }}
             />
           ))}
@@ -2336,8 +2473,10 @@ function AppBody() {
               onPress={() => {
                 setTab(value);
                 if (value === "产物") void requestFiles();
-                if (value === "收件箱")
-                  void call("inbox.read").then(updateInbox).catch(tell);
+                if (value === "收件箱") {
+                  closeAttention();
+                  if (!offline) void call("inbox.read").then(updateInbox).catch(tell);
+                }
               }}
               style={[s.tab, tab === value && { backgroundColor: colors.user }]}
             >
@@ -2500,7 +2639,7 @@ function AppBody() {
         visible={!!preview}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={closePreview}
+        onRequestClose={diff ? closeDiff : closePreview}
       >
         <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
           <View style={[s.header, { borderBottomColor: colors.line }]}>
@@ -2511,9 +2650,23 @@ function AppBody() {
             >
               {preview?.name ?? "产物查看器"}
             </Text>
-            {button("关闭", closePreview, <X size={18} color={colors.text} />)}
+            {diff ? button("返回预览",closeDiff) : button("关闭", closePreview, <X size={18} color={colors.text} />)}
           </View>
-          {preview?.loading ? (
+          {preview?.roomId && <View style={[s.actions,{paddingHorizontal:16}]}>
+            {previewIndex > 0 && button("上一个产物",() => void viewFile(previewFiles[previewIndex-1],preview.siblings),undefined,offline)}
+            {previewIndex >= 0 && previewIndex + 1 < previewFiles.length &&
+              button("下一个产物",() => void viewFile(previewFiles[previewIndex+1],preview.siblings),undefined,offline)}
+            {!diff && ["text","markdown"].includes(preview.kind) &&
+              button("查看版本差异",() => void openDiff(),undefined,offline)}
+          </View>}
+          {diff ? (diff.view && diffKey ? <ArtifactDiff key={diffKey} view={diff.view} colors={colors}
+            position={diffPositions.current.get(diffKey)}
+            onPosition={position => {
+              const cache = diffPositions.current;
+              if (!cache.has(diffKey) && cache.size >= 50) cache.delete(cache.keys().next().value!);
+              cache.set(diffKey,position);
+            }}/> : <Text style={{padding:24,color:colors.muted}}>{diff.error ?? "正在读取版本差异…"}</Text>
+          ) : preview?.loading ? (
             <Text style={{ padding: 24, color: colors.muted }}>正在读取…</Text>
           ) : preview?.kind === "licenses" ? (
             <FlatList
@@ -2595,10 +2748,10 @@ function AppBody() {
               <Text style={{ color: colors.text }}>
                 暂时无法打开：{preview.error}
               </Text>
-              {button("重试", () => void viewFile(preview.retry))}
+              {button("重试", () => void viewFile(preview.retry,preview.siblings))}
             </View>
           )}
-          {preview?.content &&
+          {!diff && preview?.content &&
             button("系统分享 / 外部打开", () => {
               void (async () => {
                 const f = new File(
@@ -2675,7 +2828,7 @@ function Attachment({ message, file, call, onOpen, colors }: any) {
     </Pressable>
   );
 }
-function Question({ q, colors, onOpen, onAnswer }: any) {
+function Question({ q, colors, disabled, onOpen, onAnswer }: any) {
   const [answer, setAnswer] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -2692,6 +2845,7 @@ function Question({ q, colors, onOpen, onAnswer }: any) {
       </Pressable>}
       <TextInput
         accessibilityLabel="回答问题"
+        editable={!disabled}
         multiline
         value={answer}
         onChangeText={setAnswer}
@@ -2699,7 +2853,7 @@ function Question({ q, colors, onOpen, onAnswer }: any) {
       />
       <Pressable
         accessibilityRole="button"
-        disabled={busy || !answer.trim()}
+        disabled={disabled || busy || !answer.trim()}
         onPress={() => {
           setBusy(true);
           void onAnswer(answer)

@@ -1,3 +1,4 @@
+import type {SplashOpenInput,SplashOpenResult} from '../../splash-input';
 import type {PlanReviewSetup} from '../../../src/protocol/member-presets';
 import type {ArtifactReviewDecision,ArtifactReviewNote,ArtifactReviewView} from '../../../src/protocol/artifact-review';
 export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
@@ -10,7 +11,7 @@ export interface KTeamAPI {
  groupMembers(roomId:string):Promise<any>;changeGroupMembers(input:any):Promise<any>;
  copyMobileInvitation(input:{link:string}):Promise<{ok:true}>;
  openWebLink(input:{url:string}):Promise<{ok:true}>;
- openSplash(input:{requestId:string}):Promise<{ok:true;opened:true;mode:'local';url:string}>;
+ openSplash(input:SplashOpenInput):Promise<SplashOpenResult>;
  controlCua(input:any):Promise<any>;openComputerPermissionSettings(input:{permission:string}):Promise<any>;
  ensureAssistant():Promise<any>;
  pasteAttachments(input:{roomId:string;allowFiles?:boolean}):Promise<{ok:boolean;count:number;directories?:string[]}>;
@@ -89,6 +90,11 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ splash_title_invalid:'请输入 1 至 100 字的空间名称。',
+ splash_create_limited:'本机空间创建受限，请用 /space 打开工作台查看配额。',
+ splash_create_rejected:'这次创建被本机工作台拒绝，请核对空间名称后重试。',
+ splash_create_unknown:'创建结果待核对。请先用 /space 查看已有空间，或再次发送同名命令。',
+ splash_created_open_failed:'空间已创建，浏览器打开失败。可重新发送同名命令打开。',
  codex_write_grant_required:'该成员尚未获得目录写入授权',
  codex_task_write_required:'本任务尚未获准修改文件',
  codex_write_grant_changed:'成员目录授权已变更，请核对后重新派工',

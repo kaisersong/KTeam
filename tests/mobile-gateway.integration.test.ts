@@ -102,21 +102,29 @@ test("original host mobile facade reads real rooms and receipts without main cre
       { name: "移动验收员", modelId: "fixture", requestId: "mobile-member" },
       { requestSource: "user" },
     );
+    const deliveryMember = await coordinator.createMember(
+      { name: "交付员", modelId: "fixture", requestId: "mobile-delivery-member" },
+      { requestSource: "user" },
+    );
     store.setState("assistant-proactivity", { enabled: false });
-    store.enqueue("mobile-file-job", member.roomId, "synthetic-origin");
-    const job = store.job("mobile-file-job");
-    job.activeBotId = member.bot.id;
-    job.state = "delivered";
-    store.save(job);
     const path = join(f.root, "mobile-report.md");
     writeFileSync(path, "# 合成手机产物\n");
-    recordGeneratedFile(store, job, {
-      id: "mobile-file-call",
-      name: "write",
-      state: "completed",
-      botId: member.bot.id,
-      file: captureGeneratedFile(path, root, member.roomId),
-    });
+    for (const actor of [member, deliveryMember]) {
+      const jobId = "mobile-file-job:" + actor.roomId;
+      store.enqueue(jobId, actor.roomId, "synthetic-origin");
+      const job = store.job(jobId);
+      job.activeBotId = actor.bot.id;
+      job.state = "delivered";
+      job.results = [{botId:actor.bot.id,messageId:"synthetic-delivery"}];
+      store.save(job);
+      recordGeneratedFile(store, job, {
+        id: "mobile-file-call",
+        name: "write",
+        state: "completed",
+        botId: actor.bot.id,
+        file: captureGeneratedFile(path, root, actor.roomId),
+      });
+    }
     store.switchSource(member.bot.id, null, "synthetic");
     store.close();
     initConfig(root, {
@@ -198,6 +206,20 @@ test("original host mobile facade reads real rooms and receipts without main cre
         })
       ).kind,
       "markdown",
+    );
+    const reviewTarget = {roomId:deliveryMember.roomId,toolCallId:"mobile-file-call"};
+    assert.ok((await phone.call("hello")).capabilities.includes("artifact_review_read"));
+    const diff = await phone.call("artifacts.review",reviewTarget);
+    assert.equal(diff.sha256,files.items[0].sha256);
+    assert.deepEqual(diff.lines[0],{kind:"context",after:1,text:"# 合成手机产物"});
+    assert.equal(diff.decision,undefined);
+    await assert.rejects(
+      phone.call("artifacts.review",{...reviewTarget,action:"accept"}),
+      /input|field/,
+    );
+    await assert.rejects(
+      phone.call("artifacts.review.submit",reviewTarget),
+      /mobile_method_forbidden/,
     );
     await assert.rejects(phone.call("host.stop"), /mobile_method_forbidden/);
     await assert.rejects(
@@ -285,6 +307,15 @@ test("original host mobile facade reads real rooms and receipts without main cre
       }),
       /team_scope_changed/,
     );
+    const deliveryRoom = (await f.upstream.membership(deliveryMember.roomId)).room;
+    f.broker.room.archiveRoom(
+      { roomId:deliveryMember.roomId, expectedRoomRevision:deliveryRoom.revision },
+      {
+        sessionId:"mobile-review-scope-revoked",requestSource:"user",
+        actor:{kind:"user",userId:"user.local"},issuedAt:new Date().toISOString(),
+      },
+    );
+    await assert.rejects(phone.call("artifacts.review",reviewTarget),/team_scope_changed/);
   } finally {
     pair?.close();
     phone?.close();
