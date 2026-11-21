@@ -1,3 +1,4 @@
+import type {ArtifactReviewDecision,ArtifactReviewNote,ArtifactReviewView} from '../../../src/protocol/artifact-review';
 export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
@@ -27,6 +28,8 @@ export interface KTeamAPI {
  skillLearning(input:{botId:string;roomId?:string}):Promise<any>;saveLearnedSkill(input:any):Promise<any>;undoLearnedSkill(input:any):Promise<any>;dismissLearnedSkill(input:any):Promise<any>;
  botCapabilities(input:string|{botId:string;roomId:string}):Promise<any>;previewBotSkill(input:any):Promise<any>;pinBotSkill(input:any):Promise<any>;saveBotSkills(input:{botId:string;expectedRevision:number;disabledSkills:string[]}):Promise<any>;botFollowups(botId:string):Promise<any>;cancelBotFollowup(input:{botId:string;id:string;expectedRevision:number}):Promise<any>;
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
+ artifactReview(input:{roomId:string;toolCallId:string}):Promise<ArtifactReviewView>;
+ submitArtifactReview(input:{roomId:string;toolCallId:string;expectedSha256:string;action:ArtifactReviewDecision['action'];notes:ArtifactReviewNote[]}):Promise<{ok:true;decision:ArtifactReviewDecision}>;
  previewGeneratedFile(input:{roomId:string;toolCallId:string}):Promise<{ok:true;name:string;bytes:number;kind:string;content:string;mediaType?:string;reason?:string}>;
  openGeneratedFile(input:{roomId:string;toolCallId:string;target?:'browser'|'system'}):Promise<any>;
  conversationAction(input:any):Promise<any>;

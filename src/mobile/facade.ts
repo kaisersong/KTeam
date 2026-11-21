@@ -7,7 +7,10 @@ import { generatedFilePreview } from "../runtime/generated-files.js";
 import { generatedFileRecords } from "../runtime/generated-file-receipts.js";
 import { BotCapabilities } from "../service/bot-capabilities.js";
 import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
+import { projectInbox } from "../service/inbox.js";
+
 export class MobileFacade {
+  private inboxSequence = 0;
   constructor(
     private deps: any,
     private store: TeamStore,
@@ -173,9 +176,14 @@ export class MobileFacade {
         return d.conversationUpdates.history(i);
       case "conversations.updates":
         return d.conversationUpdates.read(i);
-      case "inbox.read":
+      case "inbox.read": {
         fields(i, []);
-        return d.inboxSource();
+        const snapshot = projectInbox(d.inboxState, d.inboxSource());
+        return {
+          ...snapshot,
+          attentionCursor: { epoch: d.epoch, sequence: ++this.inboxSequence },
+        };
+      }
       case "group.members": {
         fields(i, ["roomId"]);
         const roomId = text(i.roomId, "room_id");
