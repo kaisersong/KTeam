@@ -9,7 +9,7 @@ const key=(source:DailySource)=>JSON.stringify([source.kind,source.account,sourc
 const format=(at:number,timeZone?:string)=>new Intl.DateTimeFormat('zh-CN',{timeZone,dateStyle:'short',timeStyle:'short'}).format(at);
 interface Draft {
  id:string; previousRevision:number; config:DailyConfiguration; skips:string[];
- change:{sourceKinds?:DailySource['kind'][];skipToday?:keyof typeof slotLabel};
+ change:{sourceKinds?:DailySource['kind'][];removeSourceKinds?:DailySource['kind'][];skipToday?:keyof typeof slotLabel};
 }
 interface Plan {
  config:DailyConfiguration|null;
@@ -61,6 +61,7 @@ function DraftCard({draft,previous,onSaved}:{draft:Draft;previous:DailyConfigura
   {draft.config.middayUrgentOnly&&<p>午报只显示紧急事项</p>}
   {draft.change.skipToday&&<p>今日跳过{slotLabel[draft.change.skipToday]}</p>}
   {draft.change.sourceKinds?.length!==undefined&&draft.change.sourceKinds.length>0&&<p>待选择来源 · {draft.change.sourceKinds.map(kind=>kindLabel[kind]).join('、')}</p>}
+  {!!draft.change.removeSourceKinds?.length&&<p>停用后台读取 · {draft.change.removeSourceKinds.map(kind=>kindLabel[kind]).join('、')}</p>}
   <fieldset disabled={busy}>
    <legend>允许后台读取的来源</legend>
    {visible.map(source=><label key={key(source)}><input type="checkbox" checked={selected.some(value=>key(value)===key(source))} onChange={()=>toggle(source)}/>{kindLabel[source.kind]} · {source.label}</label>)}

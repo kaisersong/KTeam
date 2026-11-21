@@ -27,6 +27,7 @@ export const dailyChange = z.object({
  middayUrgentOnly:z.boolean().optional(), paused:z.boolean().optional(),
  skipToday:slot.optional(), restore:z.literal(true).optional(),
  sourceKinds:z.array(dailyKind).max(5).optional(),
+ removeSourceKinds:z.array(dailyKind).max(5).optional(),
 }).strict();
 export type DailyChange = z.infer<typeof dailyChange>;
 export const dailyCommit = z.object({id:z.string().uuid(),expectedRevision:revision,sources:z.array(dailySource).max(24)}).strict();
@@ -49,7 +50,7 @@ export function dailyTimes(plan:DailyConfiguration, now:number) {
 }
 export interface DailyItem {
  id:string; title:string; detail:string; observedAt:number; urgent:boolean;
- deadline?:number; replyDraft?:string; source:DailySource; originalId?:string; url?:string;
+ deadline?:number; source:DailySource; originalId?:string; url?:string;
 }
 export interface DailyCoverage {
  source:DailySource; state:'ok'|'partial'|'unavailable'; checkedAt:number; from:number;

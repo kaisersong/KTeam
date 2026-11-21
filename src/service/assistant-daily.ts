@@ -67,6 +67,8 @@ export class AssistantDaily {
   if(change.schedule) config.schedule={...config.schedule,...change.schedule};
   if(change.weekdays)config.weekdays=[...new Set(change.weekdays)].sort();
   if(change.paused!==undefined)config.paused=change.paused;
+  const removedKinds=change.removeSourceKinds;
+  if(removedKinds)config.sources=config.sources.filter(source=>!removedKinds.includes(source.kind));
   if(change.middayUrgentOnly!==undefined)config.middayUrgentOnly=change.middayUrgentOnly;
   const day=this.briefDate(config,this.now());
   const skips=[...(restored?.skips??current?.skips??[])].filter(key=>key.startsWith(day+':'));
@@ -77,21 +79,40 @@ export class AssistantDaily {
  }
  tools(roomId:string,originId:string,guard:()=>Promise<void>) {
   if(this.assistantRoom()!==roomId)return [];
+  let checkResult:Promise<string>|undefined;
   return [{
    permission:'safe',
    definition:{name:'get_daily_work_plan',description:'读取小 K 已确认的每日工作计划、暂停状态和下次简报时间。',inputSchema:{type:'object',properties:{},additionalProperties:false}},
-   execute:async()=>{await guard();return JSON.stringify(this.summary());},
+   execute:async()=>{
+    await guard();
+    const {config,revision,next}=this.summary();
+    if(!config)return JSON.stringify({configured:false,revision});
+    const {sources,...timing}=config;
+    return JSON.stringify({configured:true,revision,next,...timing,sourceKinds:[...new Set(sources.map(source=>source.kind))]});
+   },
   },{
    permission:'safe',
-   definition:{name:'propose_daily_work_plan',description:'仅把用户明确要求长期启用或调整的每日工作整理成同一私聊中的待确认草案。今天跳过某期用 skipToday；一次查询不改长期计划。来源只能建议类别，账户和会话由用户在卡片选择。没有确认不能声称已生效。',inputSchema:{
+   definition:{name:'propose_daily_work_plan',description:'仅把用户明确要求长期启用或调整的每日工作整理成同一私聊中的待确认草案。今天跳过某期用 skipToday，取消某期时把该时段设为 null。sourceKinds 建议新增类别，具体账户和会话由用户在卡片选择。用户明确要求以后不查某类来源用 removeSourceKinds。没有确认不能声称已生效。',inputSchema:{
     type:'object',additionalProperties:false,properties:{
      schedule:{type:'object',additionalProperties:false,properties:Object.fromEntries(['morning','midday','evening'].map(slot=>[slot,{type:['string','null']}]))},
      weekdays:{type:'array',items:{type:'integer',minimum:1,maximum:7}},
      sourceKinds:{type:'array',items:{enum:['mail','yzj-message','yzj-calendar','yzj-doc','news']}},
+     removeSourceKinds:{type:'array',items:{enum:['mail','yzj-message','yzj-calendar','yzj-doc','news']}},
      middayUrgentOnly:{type:'boolean'},paused:{type:'boolean'},skipToday:{enum:['morning','midday','evening']},restore:{type:'boolean'},
     },
    }},
-   execute:async(value:unknown)=>{await guard();return JSON.stringify({awaitingConfirmation:true,draft:this.propose(value,originId)});},
+   execute:async(value:unknown)=>{await guard();this.propose(value,originId);return JSON.stringify({awaitingConfirmation:true});},
+  },{
+   permission:'safe',
+   definition:{name:'check_daily_work_once',description:'用户明确要求现在检查一次时，刷新其已授权的每日工作来源，仅返回覆盖和事项数量。详情在今日页。此动作不修改长期计划。',inputSchema:{type:'object',properties:{},additionalProperties:false}},
+   execute:()=>checkResult??=(async()=>{
+    await guard();
+    const config=this.plan()?.config;
+    if(!config||config.paused||this.blocked())return JSON.stringify({checked:false,reason:!config?'no_plan':'paused'});
+    const view=await this.refresh();
+    await guard();
+    return JSON.stringify({checked:true,items:view.items.length,urgent:view.items.filter(item=>item.urgent).length,coverage:view.coverage.map(row=>({kind:row.source.kind,state:row.state,checkedAt:row.checkedAt}))});
+   })(),
   }];
  }
  async catalog(includeYzj:boolean){return {ok:true,...await this.sources.catalog(includeYzj)};}
