@@ -35,18 +35,17 @@ fs.mkdirSync(pkg,{recursive:true});
 fs.writeFileSync(path.join(pkg,'package.json'),JSON.stringify({name:'pkg',main:'index.js'}));
 fs.writeFileSync(path.join(pkg,'index.js'),'module.exports='+JSON.stringify({id}));
 const marker=path.join(pkg,'marker.txt');
-const publish=()=>{const next=id+'\\n'+Date.now()+'\\n';const tmp=marker+'.next';fs.writeFileSync(tmp,next);fs.renameSync(tmp,marker);};
-const note=kind=>{const time=Date.now();fs.appendFileSync(log,JSON.stringify({kind,id,time,root,pid:process.pid,ppid:process.ppid})+'\\n');return time;};
+const publish=()=>{const time=Date.now();const next=id+'\\n'+time+'\\n';const tmp=marker+'.next';fs.writeFileSync(tmp,next);fs.renameSync(tmp,marker);return time;};
+const note=(kind,time=Date.now())=>{fs.appendFileSync(log,JSON.stringify({kind,id,time,root,pid:process.pid,ppid:process.ppid})+'\\n');return time;};
 const seen=(since,waitLog,waitId)=>{
   if(!waitLog)return false;
   return fs.readFileSync(waitLog,'utf8').split('\\n').filter(Boolean).some(line=>{try{const row=JSON.parse(line);return row.kind==='write'&&row.id===waitId&&row.time>=since;}catch{return false;}});
 };
 const installStarted=note('install-start');
 if(process.env.HOLD==='1'){
-  while(!fs.existsSync(release)){publish();note('write');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);}
+  while(!fs.existsSync(release)){note('write',publish());Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);}
 }else{
-  publish();
-  note('write');
+  note('write',publish());
   const waitLog=process.env.WAIT_WRITE_LOG,waitId=process.env.WAIT_WRITE_ID;
   if(waitLog){
     const deadline=Date.now()+8000;

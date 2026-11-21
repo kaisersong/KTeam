@@ -16,6 +16,7 @@ const el=id=>document.getElementById(id);
 const fragment=new URLSearchParams(location.hash.slice(1));
 // This is a local session bearer, never a CloudBase key. It expires with the owned runtime.
 const token=fragment.get('token')||sessionStorage.getItem('splash-session');
+const initialSpaceId=fragment.get('space');
 if(fragment.get('token'))sessionStorage.setItem('splash-session',token);
 history.replaceState(null,'','/space');
 let spaces=[],detail=null,selectedFiles=[],busy=false,payload=null;
@@ -49,7 +50,7 @@ async function read(selectedId){
  el('releases').replaceChildren(...(detail?detail.releases:[]).slice().reverse().map(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.createdAt+' · '+r.versionId.slice(0,8);return o;}));
  const q=result[1];el('quota').textContent='素材：'+q.stored+' / '+q.storageLimit+' 字节；待核对存储：'+q.storageReserved+' 字节；正文流量：'+q.used+' / '+q.byteLimit+' 字节；待结算：'+q.reserved+' 字节；访问：'+q.requests+' / '+q.requestLimit+' 次（原型累计额度）';render();
 }
-async function reading(){if(busy)return;busy=true;render();try{await read();}catch(e){say(e.message);}finally{busy=false;render();}}
+async function reading(selectedId){if(busy)return;busy=true;render();try{await read(selectedId);}catch(e){say(e.message);}finally{busy=false;render();}}
 function clearPending(){pending=null;payload=null;savePending();}
 async function perform(){
  if(busy||!pending)return;
@@ -64,7 +65,7 @@ async function perform(){
 }
 function begin(kind,path,data){if(busy||pending)return;pending={kind,path,key:crypto.randomUUID(),spaceId:kind==='create'?null:detail&&detail.id,expectedRevision:data.expectedRevision};payload=data;savePending();void perform();}
 el('createForm').addEventListener('submit',e=>{e.preventDefault();begin('create','/v1/spaces',{title:el('title').value.trim()});});
-el('refresh').addEventListener('click',reading);el('spaces').addEventListener('change',()=>{selectedFiles=[];el('folder').value='';el('fileList').replaceChildren();void reading();});
+el('refresh').addEventListener('click',()=>void reading());el('spaces').addEventListener('change',()=>{selectedFiles=[];el('folder').value='';el('fileList').replaceChildren();void reading();});
 el('folder').addEventListener('change',()=>{
  selectedFiles=Array.from(el('folder').files).filter(f=>!f.webkitRelativePath.split('/').some(x=>x.startsWith('.')||x==='node_modules'));
  const total=selectedFiles.reduce((n,f)=>n+f.size,0);
@@ -89,4 +90,4 @@ el('reconcile').addEventListener('click',async()=>{
 });
 el('retry').addEventListener('click',()=>{if(pending&&pending.kind==='upload'&&selectedFiles.length&&!payload){busy=true;render();void packageFiles().then(data=>{payload=data;busy=false;return perform();}).catch(e=>{busy=false;say(e.message);render();});}else void perform();});
 el('abandon').addEventListener('click',()=>{if(confirm('这只丢弃本页记录，不会取消已经发生的操作。确认后请核对空间列表再发起新操作。')){clearPending();say('记录已放弃，未发送任何撤销或重试请求。');void reading();}});
-render();void reading();`;
+render();void reading(initialSpaceId);`;
