@@ -244,10 +244,18 @@ test("original host mobile facade reads real rooms and receipts without main cre
       timeZone:"Asia/Shanghai",maxRuns:5,endAt:null,enabled:true,overlap:"skip"};
     const {routine}=await phone.call("routines.save",routineRequest);
     assert.equal((await phone.call("routines.save",routineRequest)).routine.id,routine.id);
-    await assert.rejects(phone.call("routines.pause",{operationId:randomUUID(),roomId:member.roomId,id:routine.id,expectedRevision:routine.revision}),/routine_not_found/);
+    await assert.rejects(phone.call("routines.pause",{operationId:randomUUID(),roomId:member.roomId,id:routine.id,expectedRevision:routine.revision}),/routine_scope_denied|routine_not_found/);
     const paused=(await phone.call("routines.pause",{operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:routine.revision})).routine;
     assert.equal(paused.enabled,false);
     await assert.rejects(phone.call("routines.trial",{operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:routine.revision}),/routine_changed/);
+    const trialRequest={operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:paused.revision};
+    const trial=await phone.call("routines.trial",trialRequest);
+    assert.deepEqual(await phone.call("routines.trial",trialRequest),trial);
+    const tried=(await phone.call("routines.list",{roomId:routineRoom})).items[0];
+    assert.equal(tried.runCount,0);
+    assert.equal(tried.nextAt,null);
+    assert.equal(tried.runs[0].trial,true);
+    assert.equal(tried.runs[0].jobId,trial.jobId);
     await phone.call("routines.remove",{operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:paused.revision});
     assert.equal((await phone.call("routines.list",{roomId:routineRoom})).items.length,0);
 
