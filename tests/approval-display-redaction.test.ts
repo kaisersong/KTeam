@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { privateTempDir as mkdtempSync } from "./helpers/private-temp.js";
 import { redactSecrets } from "../runtime-core/src/shared/stream-safety/redact.js";
 import { TeamStore } from "../src/service/team-store.js";
+import { postWriteVerification } from "../src/service/post-write-verification.js";
+import { sharedRuntime } from "../src/runtime/native.js";
 import { ToolApprovals } from "../src/service/tool-approvals.js";
 
 const secretInput = {
@@ -44,6 +46,31 @@ test("host redaction hides JSON, nested and embedded secret values without treat
   const counted = redactSecrets(JSON.stringify({ tokenCount: 3, note: "visible" }));
   assert.match(counted.text, /"tokenCount":3/);
   assert.match(redactSecrets("Authorization: Bearer syntheticfixturecredentialonly").text, /<redacted>/);
+});
+
+const reportWorkflow = [
+  "cat > /tmp/review/tail.md <<'END'",
+  "rm is a literal example and > fake-output.md is document text",
+  "END",
+  "f=/tmp/review",
+  `sed -n '9,339p' "$f/input.md" > /tmp/review/body.md`,
+  `cat /tmp/review/body.md /tmp/review/tail.md > "$f/report.md"`,
+  `rm -f "$f/.probe.txt" /tmp/review/probe.txt`,
+  `wc -l -c "$f/report.md"; echo "--- headings:"; grep -n "^## " "$f/report.md"`,
+].join("\n");
+
+test("document verification recognition rejects inspection before removal and opaque syntax", async () => {
+  const {parseCommandSegments}=await sharedRuntime();
+  assert.ok(postWriteVerification(reportWorkflow,parseCommandSegments));
+  for (const command of [
+    "ls /tmp/review; " + reportWorkflow,
+    "PATH=/tmp/review\n" + reportWorkflow,
+    reportWorkflow.replace("<<'END'", "<<END"),
+    reportWorkflow.replace("rm -f", "rm -rf"),
+    reportWorkflow.replace('wc -l -c', '$(wc -l -c)'),
+    reportWorkflow.replace("rm -f", "test /tmp/review && rm -f"),
+    reportWorkflow.replace("rm -f", "bash -c 'rm -f /tmp/review/probe.txt'; rm -f"),
+  ]) assert.equal(postWriteVerification(command,parseCommandSegments),undefined,command);
 });
 
 test("approval display is redacted while the tool input and original hash stay intact, and a mixed inspection rejects allow_once", async () => {
@@ -97,6 +124,24 @@ test("approval display is redacted while the tool input and original hash stay i
     assert.deepEqual(after.input, before.input);
     mixed.abort();
     assert.equal(await mixedWork, false);
+
+    if(process.platform!=="win32"){
+      const reportInput={command:reportWorkflow};
+      const report=approvals.ask({roomId:"room",botId:"bot",jobId:"job-report",cwd:root},
+        "bash",reportInput,AbortSignal.timeout(5000),async()=>{});
+      const card=await listed(approvals,"job-report");
+      assert.equal(card.inspectionRequired,false);
+      assert.equal(card.highRisk,true);
+      assert.equal(card.canAlways,false);
+      const deleted=card.operationFacts.filter((fact:{kind:string})=>fact.kind==="delete").map((fact:{target:string})=>fact.target);
+      assert.deepEqual(deleted,["$f/.probe.txt","/tmp/review/probe.txt"]);
+      assert.deepEqual(store.operation(card.id).input,reportInput);
+      const approval={id:card.id,expectedHash:card.hash};
+      await assert.rejects(approvals.decide({...approval,decision:"allow_always"}),/tool_permission_once_required/);
+      assert.equal((await approvals.decide({...approval,decision:"allow_once"})).status,"allowed");
+      assert.equal(await report,true);
+      assert.deepEqual(approvals.permissions.list(),[]);
+    }
   } finally {
     controller.abort();
     approvals.close();
