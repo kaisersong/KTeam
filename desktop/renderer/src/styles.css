@@ -230,3 +230,8 @@ button.artifact-review-number:not(:disabled):hover{text-decoration:underline}
 .artifact-review-notes article p{white-space:pre-wrap}
 .artifact-review-notes textarea{box-sizing:border-box;width:100%;min-height:80px;resize:vertical;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 32%,transparent);border-radius:6px;padding:8px}
 @media(max-width:720px){.artifact-review-grid{grid-template-columns:minmax(0,1fr)}}
+
+.member-preset-options { display:grid; gap:8px; }
+.member-preset-option { margin:0; align-items:flex-start; }
+.member-preset-option span { display:grid; gap:4px; }
+.member-preset-option small { color:var(--text-secondary); }
