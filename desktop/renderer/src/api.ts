@@ -1,3 +1,4 @@
+import type {PluginCommandChoice,PluginManifest,PluginPreview,PluginRegistryView} from '../../../src/protocol/plugins';
 import type {SplashOpenInput,SplashOpenResult} from '../../splash-input';
 import type {PlanReviewSetup} from '../../../src/protocol/member-presets';
 import type {ArtifactReviewDecision,ArtifactReviewNote,ArtifactReviewView} from '../../../src/protocol/artifact-review';
@@ -44,6 +45,12 @@ export interface KTeamAPI {
  discoverModels(input:any):Promise<any>;removeModel(input:any):Promise<any>;importMcpServers(input:any):Promise<any>;
  integrationSettings():Promise<any>;saveIntegrationSettings(input:any):Promise<any>;testIntegration(input:any):Promise<any>;importProviderModels(input:any):Promise<any>;voiceOptions():Promise<any>;previewVoice():Promise<any>;transcribeAudio(input:any):Promise<any>;
  legacySharedNotice():Promise<{ok:true;show:boolean}>;dismissLegacySharedNotice():Promise<{ok:true;show:boolean}>;
+ plugins():Promise<PluginRegistryView>;
+ previewPlugin(input:{manifest:unknown}):Promise<PluginPreview>;
+ installPlugin(input:{manifest:PluginManifest;expectedRevision:number;expectedDigest:string}):Promise<PluginRegistryView>;
+ changePlugin(input:{id:string;action:'enable'|'disable'|'remove';expectedRevision:number}):Promise<PluginRegistryView>;
+ pluginCommands():Promise<{ok:true;commands:PluginCommandChoice[]}>;
+ pluginDraft(input:{pluginId:string;commandId:string;revision:number}):Promise<{ok:true;draft:string}>;
  appPreferences():Promise<any>;saveAppPreferences(input:any):Promise<any>;appResources():Promise<any>;openSettingsLocation(input:any):Promise<any>;updateStatus():Promise<any>;checkForUpdates():Promise<any>;downloadUpdate():Promise<any>;installUpdate():Promise<any>;openKTeamReleases():Promise<any>;
  reconnectServices():Promise<any>;modelSettings():Promise<any>;importXiaokModels(input:any):Promise<any>;saveModel(input:any):Promise<any>;setCredentialStorage(input:any):Promise<any>;saveDecisionModels(input:any):Promise<any>;
  pinConversation(input:{roomId:string;pinned:boolean}):Promise<{ok:boolean;pinnedAt:string|null}>;
@@ -92,6 +99,14 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ plugin_manifest_version:'此插件需要受支持的清单版本。',
+ plugin_preview_changed:'清单内容已变化，请重新预览。',
+ plugin_changed:'插件状态已变化，请刷新后重试。',
+ plugin_version_not_newer:'请使用高于已安装版本的插件版本号。',
+ plugin_command_duplicate:'插件清单中有重复的命令 ID。',
+ invalid_plugin_draft:'插件草稿必须是普通文本，且不能以斜杠开头。',
+ plugin_limit:'插件数量或本地清单总大小已达到上限。',
+ plugin_not_found:'这个插件或命令已移除。',
  splash_title_invalid:'请输入 1 至 100 字的空间名称。',
  splash_create_limited:'本机空间创建受限，请用 /space 打开工作台查看配额。',
  splash_create_rejected:'这次创建被本机工作台拒绝，请核对空间名称后重试。',
