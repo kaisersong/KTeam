@@ -8,7 +8,7 @@ export function currentModelFailure(roomId:string|undefined,jobs:any[]){
  const latest=relevant[0];if(!latest)return;
  const current=relevant.filter(job=>job.originId===latest.originId),seen=new Set<string>();
  for(const job of current){
-  const failure=executionFailure(job),key=job.trigger==='group-discussion'?'routing':failure?.botId??job.activeBotId??job.execution?.botId??job.id;
+  const failure=executionFailure(job),key=job.trigger==='group-discussion'?'routing':failure?.botId??job.activeBotId??job.groupResponse?.botId??job.execution?.botId??job.id;
   // A retry replaces only its own member/phase; another member's reply cannot hide this blocker.
   if(seen.has(key))continue;seen.add(key);
   if(failure&&codes.has(failure.code))return {job,failure};
