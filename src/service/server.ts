@@ -122,7 +122,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const conversationUpdates=new ConversationUpdates(upstream,teamStore,conversations,automation,coordinator,approvals,links,workRecovery,teamRoles,String(owner.epoch));
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const inboxState=new InboxState(teamStore);
-  const artifactReview=new ArtifactReview(teamStore,conversations,automation.inputs!);
+  const artifactReview=new ArtifactReview(upstream,teamStore,conversations,automation.inputs!);
   const inboxSource=()=>({ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),recentApprovals:approvals.recent().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.inboxJobs().filter(item=>!teamStore.state('deleted-conversation:'+item.roomId))});
   const sendHumanMessage=async(value:unknown,dispatch?:CodexDispatch)=>{
         const input=validateL0(value);
@@ -224,10 +224,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/app/resources'&&req.method==='GET')return send(res,200,{ok:true,...await appResources()});
         throw new KTeamError('app_settings_operation_forbidden',403);
       }
-      if(url.pathname==='/v1/routines'||url.pathname==='/v1/routines/remove'||url.pathname==='/v1/routines/pause'){
+      if(url.pathname==='/v1/routines'||url.pathname==='/v1/routines/remove'||url.pathname==='/v1/routines/pause'||url.pathname==='/v1/routines/trial'){
         if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);
         if(url.pathname==='/v1/routines'&&req.method==='GET')return send(res,200,await automation.routines.list(url.searchParams.get('roomId')??''));
         if(url.pathname==='/v1/routines'&&req.method==='POST')return send(res,200,await automation.routines.save(await body(req)));
+        if(url.pathname==='/v1/routines/trial'&&req.method==='POST'){const result=await automation.routines.trial(await body(req));void automation.tick();return send(res,200,result);}
         if(url.pathname==='/v1/routines/pause'&&req.method==='POST')return send(res,200,await automation.routines.pause(await body(req)));
         if(url.pathname==='/v1/routines/remove'&&req.method==='POST')return send(res,200,await automation.routines.remove(await body(req)));
         throw new KTeamError('route_not_found',404);
@@ -336,7 +337,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
       const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
       if(rolesRoute){const roomId=decodeURIComponent(rolesRoute[1]!);if(req.method==='GET')return send(res,200,await teamRoles.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);const input=record(await body(req));if(input.action==='ensure'){fields(input,['action','force']);if(input.force!==undefined&&typeof input.force!=='boolean')throw new KTeamError('invalid_input');return send(res,202,await teamRoles.start(roomId,input.force===true));}if(input.action==='assign'){delete input.action;return send(res,200,await teamRoles.assign(roomId,input));}throw new KTeamError('invalid_input');}}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|members|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-preview|generated-file-review|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|members|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-preview|generated-file-review|generated-file-peer-review|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         if(action==='members'){if(client.id!=='kteam-main')throw new KTeamError('room_actor_forbidden',403);if(req.method==='GET')return send(res,200,await groupMembers.view(roomId));if(req.method==='POST'){const result=await groupMembers.control(roomId,await body(req),{requestSource:'user'});directoryMembers.delete(roomId);return send(res,200,result);}throw new KTeamError('route_not_found',404);}
@@ -351,6 +352,10 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='library-import')return send(res,201,await conversations.importFile(roomId,await body(req,8*1024*1024)));
         if(req.method==='GET'&&action==='library-file')return send(res,200,await conversations.preview(roomId,url.searchParams.get('fileId')??''));
         if(req.method==='GET'&&action==='generated-files'){await conversations.scope(roomId);const botId=url.searchParams.get('botId')??undefined;if(botId)await new BotCapabilities(upstream,teamStore).scope(botId,roomId);const value=generatedFileRecords(teamStore,roomId,url.searchParams.get('cursor')??undefined,botId);await conversations.scope(roomId);if(botId)await new BotCapabilities(upstream,teamStore).scope(botId,roomId);return send(res,200,value);}
+        if(action==='generated-file-peer-review'&&req.method==='POST'){
+          if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);
+          const result=await artifactReview.requestPeer(roomId,await body(req));void automation.tick();return send(res,200,result);
+        }
         if(action==='generated-file-review'){
           if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);
           if(req.method==='GET')return send(res,200,await artifactReview.view(roomId,url.searchParams.get('toolCallId')??''));

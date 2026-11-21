@@ -128,7 +128,9 @@ export function createEditTool(options: WorkspaceToolOptions = {}): Tool {
       // Generate unified diff before writing
       const diff = generateUnifiedDiff(content, updated, resolvedPath)
 
-      await context?.compoundPhase?.beforeFileMutation?.({ filePath: resolvedPath, beforeHash: createHash('sha256').update(content, 'utf8').digest('hex'), afterHash:createHash('sha256').update(updated,'utf8').digest('hex') })
+      const beforeHash = createHash('sha256').update(content, 'utf8').digest('hex')
+      const afterHash = createHash('sha256').update(updated, 'utf8').digest('hex')
+      await context?.compoundPhase?.beforeFileMutation?.({ filePath: resolvedPath, beforeHash, afterHash })
       if (context?.compoundPhase && readFileSync(resolvedPath, 'utf8') !== content) throw Error('compound_file_changed_before_mutation')
       context?.signal?.throwIfAborted(); context?.assertPermissionApproval?.()
       assertCompoundFileEffectCurrent(context?.compoundPhase);
@@ -138,7 +140,7 @@ export function createEditTool(options: WorkspaceToolOptions = {}): Tool {
         writeFileSync(tmp, updated, 'utf-8')
         renameSync(tmp, resolvedPath)
       }
-      await context?.compoundPhase?.fileMutationCommitted?.({ filePath: resolvedPath, afterHash: createHash('sha256').update(updated, 'utf8').digest('hex') })
+      await context?.compoundPhase?.fileMutationCommitted?.({ filePath: resolvedPath, afterHash })
 
       if (context?.toolInvocationId) {
         context.runtimeFactSink?.emit({
@@ -146,6 +148,8 @@ export function createEditTool(options: WorkspaceToolOptions = {}): Tool {
           toolName: 'edit',
           factKind: 'file_mutation',
           normalizedFilePaths: [resolvedPath],
+          beforeSha256: beforeHash,
+          afterSha256: afterHash,
         })
       }
 
