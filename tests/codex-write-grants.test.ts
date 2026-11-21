@@ -7,7 +7,7 @@ import {test} from 'node:test';
 import {privateTempDir} from './helpers/private-temp.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {codexWriteGrant,currentCodexWriteRoot,saveCodexWriteGrant} from '../src/service/codex-write-grants.js';
-import {codexPolicy,codexWriteDenied} from '../src/runtime/codex-task-policy.js';
+import {codexConnection,codexPolicy,codexWriteDenied} from '../src/runtime/codex-task-policy.js';
 
 test('directory grants follow the selected member and directory identity, with revision fencing after revoke',()=>{
  const fixture=realpathSync(privateTempDir(join(tmpdir(),'kteam-codex-grants-'))), root=join(fixture,'data'),projects=join(fixture,'projects');
@@ -29,6 +29,27 @@ test('directory grants follow the selected member and directory identity, with r
   renameSync(projects,projects+'-previous');mkdirSync(projects);
   assert.throws(()=>currentCodexWriteRoot(store,{...task,grantRevision:replacement.revision}),/codex_write_grant_changed/);
  }finally{store.close();rmSync(fixture,{recursive:true,force:true});}
+});
+
+test('Codex passes exact WebSocket booleans and rejects invalid types and unknown provider keys',()=>{
+ const root=privateTempDir(join(tmpdir(),'kteam-codex-provider-'));
+ const file=join(root,'config.toml');
+ const provider='model_provider = "example"\n[model_providers.example]\nname = "Example"\n';
+ const args=(field='')=>{
+  writeFileSync(file,provider+field);
+  return codexConnection({CODEX_HOME:root});
+ };
+ try{
+  assert.equal(args().some(arg=>arg.includes('supports_websockets')),false);
+  for(const value of [true,false]){
+   const actual=args('supports_websockets = '+value+'\n');
+   assert.equal(actual[actual.indexOf('model_providers.example.supports_websockets='+value)-1],'-c');
+  }
+  for(const value of ['"false"','0','[false]']){
+   assert.throws(()=>args('supports_websockets = '+value+'\n'),/native_codex_provider_unsupported/);
+  }
+  assert.throws(()=>args('unsupported = false\n'),/native_codex_provider_unsupported/);
+ }finally{rmSync(root,{recursive:true,force:true});}
 });
 
 const realCodex=process.env.KTEAM_REAL_CODEX_GRANT_TEST;
