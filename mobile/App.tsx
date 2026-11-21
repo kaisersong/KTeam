@@ -227,7 +227,7 @@ const MessageRow = memo(function MessageRow({
               const found = receipts.filter(
                 (f: any) => (f.file?.name ?? f.name) === filename,
               );
-              if (found.length === 1) void viewFile(found[0]);
+              if (found.length === 1) void viewFile(found[0], receipts);
               else if (/^https?:\/\//i.test(url)) void Linking.openURL(url);
               return false;
             }}
@@ -249,7 +249,7 @@ const MessageRow = memo(function MessageRow({
       {receipts.map((f: any) => (
         <Pressable
           key={f.id}
-          onPress={() => void viewFile(f)}
+          onPress={() => void viewFile(f, receipts)}
           style={[
             s.artifactCard,
             {
@@ -1042,7 +1042,7 @@ function AppBody() {
     }
   };
   const viewFile = useCallback(
-    async (file: any) => {
+    async (file: any, siblings?:any[]) => {
       const request = ++previewRequest.current;
       closeDiff();
       const roomId = file.roomId ?? roomRef.current?.roomId;
@@ -1055,13 +1055,14 @@ function AppBody() {
           toolCallId,
         });
         if (request === previewRequest.current)
-          setPreview({ ...v, name: v.name ?? name, roomId, toolCallId });
+          setPreview({ ...v, name: v.name ?? name, roomId, toolCallId, siblings });
       } catch (e) {
         if (request === previewRequest.current)
           setPreview({
             name,
             error: names[errorText(e)] ?? errorText(e),
             retry: file,
+            siblings,
           });
       }
     },
@@ -1372,7 +1373,8 @@ function AppBody() {
       .then((snapshot) => { if (snapshot && connection.current === transport) updateInbox(snapshot); })
       .catch(() => {});
   };
-  const previewFiles = preview?.roomId ? files.filter((file) => file.roomId === preview.roomId) : [];
+  const previewFiles: any[] = preview?.siblings ??
+    (preview?.roomId ? files.filter(file => file.roomId === preview.roomId) : []);
   const previewIndex = previewFiles.findIndex((file) => (file.toolCallId ?? file.id) === preview?.toolCallId);
   const diffKey = diff?.view && preview?.roomId && JSON.stringify([computer?.credentialId,preview.roomId,preview.toolCallId,diff.view.sha256]);
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
@@ -2651,9 +2653,9 @@ function AppBody() {
             {diff ? button("返回预览",closeDiff) : button("关闭", closePreview, <X size={18} color={colors.text} />)}
           </View>
           {preview?.roomId && <View style={[s.actions,{paddingHorizontal:16}]}>
-            {previewIndex > 0 && button("上一个产物",() => void viewFile(previewFiles[previewIndex-1]),undefined,offline)}
+            {previewIndex > 0 && button("上一个产物",() => void viewFile(previewFiles[previewIndex-1],preview.siblings),undefined,offline)}
             {previewIndex >= 0 && previewIndex + 1 < previewFiles.length &&
-              button("下一个产物",() => void viewFile(previewFiles[previewIndex+1]),undefined,offline)}
+              button("下一个产物",() => void viewFile(previewFiles[previewIndex+1],preview.siblings),undefined,offline)}
             {!diff && ["text","markdown"].includes(preview.kind) &&
               button("查看版本差异",() => void openDiff(),undefined,offline)}
           </View>}
@@ -2746,7 +2748,7 @@ function AppBody() {
               <Text style={{ color: colors.text }}>
                 暂时无法打开：{preview.error}
               </Text>
-              {button("重试", () => void viewFile(preview.retry))}
+              {button("重试", () => void viewFile(preview.retry,preview.siblings))}
             </View>
           )}
           {!diff && preview?.content &&
