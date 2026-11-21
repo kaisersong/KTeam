@@ -26,6 +26,15 @@ export interface KTeamAPI {
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
  botToolScope(input:{botId:string;roomId?:string}):Promise<any>;saveBotToolScope(input:any):Promise<any>;
  testDesktopNotification():Promise<any>;notificationSettings():Promise<any>;saveNotificationSettings(input:any):Promise<any>;notificationDeliveryState():Promise<any>;takeNotificationNavigation():Promise<any>;onNotificationOpen?:(listener:()=>void)=>()=>void;
+ dailyWorkPlan():Promise<any>;
+ dailyWorkToday():Promise<any>;
+ dailyWorkSources(includeYzj:boolean):Promise<any>;
+ confirmDailyWork(input:unknown):Promise<any>;
+ refreshDailyWork():Promise<any>;
+ dailyWorkNews(input:{topic:string}):Promise<any>;
+ snoozeDailyWork(input:{id:string}):Promise<any>;
+ dailyWorkReplyDraft(input:{id:string;allowModel:true}):Promise<{text:string}>;
+ dailyWorkOriginal(input:{id:string}):Promise<any>;
  assistantWorkbench():Promise<any>;locateAttention(input:{id:string;expectedRevision:number;expectedHash?:string}):Promise<any>;
  trialRoutine(input:{roomId:string;id:string;expectedRevision:number;requestId:string}):Promise<{jobId:string;reused:boolean}>;
  pauseRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;routines(roomId:string):Promise<any>;saveRoutine(input:any):Promise<any>;removeRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;
@@ -174,4 +183,14 @@ const reasons:Record<string,string>={
  origin_message_missing:'原消息不可用',aimp_session_required:'团队协作契约尚未建立',stop_protocol_result_unknown:'已暂停派工，部分任务的停止结果仍需核对',fleet_stop_pending:'正在停止当前工作，请等待停止结果后再恢复',
  upstream_operation_unknown:'发送结果待核对，请先核对结果。重复发送会沿用同一编号。',team_scope_changed:'团队设置已变化，本次工作已停止',team_paused:'团队已暂停，未开工的消息会在继续后处理',host_restarted_result_unknown:'后台重启中断了本轮工作，已有结果已保留',
 };
+Object.assign(reasons,{
+ daily_invalid_input:'请核对每日工作方案中的来源和时间。',
+ daily_plan_changed:'每日工作方案已更新，请重新核对当前方案。',
+ daily_source_changed:'来源或账户授权已变化，请重新选择来源。',
+ daily_source_unavailable:'这个事项的原始来源暂不可用。',
+ daily_reply_context_unavailable:'原消息内容不足，请先在原会话核对。',
+ daily_reply_model_unavailable:'生成回复草稿需要小 K 绑定一个可用模型。',
+ daily_no_previous_plan:'还没有可恢复的上一份方案。',
+ assistant_scope_required:'请先完成小 K 助理设置。',
+});
 export const explain=(error:unknown)=>{const code=error instanceof Error?error.message:String(error);return reasons[code]??code;};

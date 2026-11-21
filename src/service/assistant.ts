@@ -53,6 +53,11 @@ export class TeamAssistant {
   if(source.get(id)?.revision!==input.expectedRevision)throw new KTeamError('attention_changed',409);return {ok:true,roomId,message};
  }
  setEnabled(enabled:boolean){this.store.setState('assistant-proactivity',{enabled});if(enabled)void this.scan();return this.state();}
+ async verifyDailyScope(){
+  const identity=this.identity();
+  if(!identity)throw new KTeamError('assistant_scope_required',403);
+  await this.authorize(identity.botId,identity.roomId);
+ }
  private async authorize(botId:string,roomId:string){if(this.identity()?.botId!==botId||this.store.settings(roomId)?.kind!=='assistant')throw new KTeamError('assistant_scope_required',403);const m=await this.upstream.membership(roomId);if(!(m.members as any[]).some(v=>v.status==='active'&&v.subject?.kind==='user'&&v.subject.userId==='user.local')||!(m.members as any[]).some(v=>v.status==='active'&&v.subject?.logicalAgentId===botId))throw new KTeamError('assistant_scope_required',403);}
  private async groupScope(roomId:string){
   if(this.store.settings(roomId)&&this.store.settings(roomId)?.kind!=='group'&&this.store.settings(roomId)?.kind!==undefined)throw new KTeamError('assistant_team_forbidden',403);

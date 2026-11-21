@@ -1,3 +1,5 @@
+import {AssistantDaily} from './assistant-daily.js';
+import {AssistantDailySources} from './assistant-daily-sources.js';
 import {Plugins} from './plugins.js';
 import {assertCodexBinding,codexWriteGrant,saveCodexWriteGrant,type CodexDispatch} from './codex-write-grants.js';
 import {TeamWorkspace} from './team-workspace.js';
@@ -114,6 +116,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const groupMembers=new GroupMembers(upstream,teamStore);
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
+  const dailyWork=new AssistantDaily(teamStore,new AssistantDailySources(mailConnectors,enterpriseConnectors),()=>automation.assistant.identity()?.roomId,Date.now,()=>automation.assistant.verifyDailyScope());
+  automation.dailyWork=dailyWork;
   const composerAttachments=new ComposerAttachments(options.root,upstream,teamStore,conversations,roomId=>automation.reconcileSubmissions(roomId),(roomId,id,messageId)=>automation.automatic!.accept(roomId,id,messageId));
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);
   let ensuringServices: Promise<void> | undefined;
@@ -276,6 +280,25 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/assistant/workbench'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('assistant_workbench_forbidden',403);return send(res,200,await automation.assistant.workbench());}
       if(url.pathname==='/v1/assistant/workbench/locate'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('assistant_workbench_forbidden',403);return send(res,200,await automation.assistant.locateAttention(await body(req)));}
       if(url.pathname==='/v1/assistant/state'&&req.method==='GET')return send(res,200,{ok:true,...automation.assistant.state()});
+      if(url.pathname.startsWith('/v1/assistant/daily')){
+        if(client.id!=='kteam-main')throw new KTeamError('assistant_scope_required',403);
+        await automation.assistant.verifyDailyScope();
+        const action=url.pathname.slice('/v1/assistant/daily'.length);
+        if(req.method==='GET'){
+          if(action==='/plan')return send(res,200,dailyWork.planView());
+          if(action==='/today')return send(res,200,await dailyWork.view());
+          if(action==='/sources')return send(res,200,await dailyWork.catalog(url.searchParams.get('yzj')==='1'));
+        }
+        if(req.method==='POST'){
+          if(action==='/confirm')return send(res,200,await dailyWork.confirm(await body(req)));
+          if(action==='/refresh')return send(res,200,await dailyWork.refresh());
+          if(action==='/news')return send(res,200,await dailyWork.news(await body(req)));
+          if(action==='/snooze')return send(res,200,await dailyWork.snooze(await body(req)));
+          if(action==='/reply-draft')return send(res,200,await dailyWork.replyDraft(await body(req),automation.assistant.identity()!.botId));
+          if(action==='/original')return send(res,200,await dailyWork.original(await body(req)));
+        }
+        throw new KTeamError('route_not_found',404);
+      }
       if(url.pathname==='/v1/assistant/proactivity'&&req.method==='POST'){const input=record(await body(req));if(Object.keys(input).some(k=>k!=='enabled')||typeof input.enabled!=='boolean')throw new KTeamError('invalid_input');return send(res,200,{ok:true,...automation.assistant.setEnabled(input.enabled)});}
       if(url.pathname.startsWith('/v1/team-recipes/')){if(client.id!=='kteam-main')throw new KTeamError('recipe_client_forbidden',403);const recipes=new TeamRecipes(upstream,teamStore,coordinator,teamRoles);if(req.method==='GET'&&url.pathname==='/v1/team-recipes/imports')return send(res,200,recipes.imports());if(req.method==='GET'&&url.pathname==='/v1/team-recipes/export')return send(res,200,await recipes.export(url.searchParams.get('roomId')??''));if(req.method==='POST'&&url.pathname==='/v1/team-recipes/preview')return send(res,200,await recipes.preview(await body(req,80*1024)));if(req.method==='POST'&&url.pathname==='/v1/team-recipes/import')return send(res,200,await recipes.import(await body(req)));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/bot-questions/answer'&&req.method==='POST')return send(res,200,await automation.privateChats!.answer(await body(req)));
@@ -432,12 +455,14 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     else chmodSync(path, 0o600);
     await mobileGateway.start();
     automation.start();
+    dailyWork.start();
   } catch (error) { await mobileGateway.close();server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
   const host={ epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
         await mobileGateway.close();
+        await dailyWork.close();
         links.close();approvals.close();await enterpriseConnectors.close();await mailConnectors.close();await integrationSettings.close();
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

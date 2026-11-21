@@ -12,6 +12,7 @@ import { BotCapabilities } from "../service/bot-capabilities.js";
 import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
 import { projectInbox } from "../service/inbox.js";
 
+const dailyWorkWrites=new Set(["dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
 const scopedWorkWrites=new Set(["artifacts.peerReview","artifacts.reviewDecision","routines.save","routines.trial","routines.pause","routines.remove"]);
 
 export class MobileFacade {
@@ -56,6 +57,7 @@ export class MobileFacade {
         throw new KTeamError("mobile_operation_conflict", 409);
       if (prior.status === "completed") {
         if(scopedWorkWrites.has(prior.method))await this.deps.conversations.owner(text(prior.roomId,"room_id"));
+        if(dailyWorkWrites.has(prior.method))return this.dailyReceipt(p,prior);
         this.assert(p);
         return prior.result;
       }
@@ -79,7 +81,8 @@ export class MobileFacade {
         digest,
         ...(["messages.send", "attachments.send"].includes(method)
           ? { roomId: payload.roomId, messageId: payload.id }
-          : scopedWorkWrites.has(method)?{roomId:payload.roomId}:{}),
+          : scopedWorkWrites.has(method)||dailyWorkWrites.has(method)?{roomId:payload.roomId}:{}),
+        ...(method==="dailyWork.replyDraft"?{sourceItemId:payload.id}:{}),
         ...(method === "approvals.decide"
           ? {
               approvalId: payload.id,
@@ -96,8 +99,10 @@ export class MobileFacade {
       const requestId=createHash("sha256").update(id).digest("hex");
       const result = await this.write(p, method, payload, requestId),
         current = this.store.operation(id);
+      const receipt=method==="dailyWork.confirm"?{appliedRevision:result.appliedRevision}
+        :method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
       this.store.saveOperation(
-        { ...current, status: "completed", result },
+        { ...current, status: "completed", result:receipt },
         current.revision,
       );
       return result;
@@ -121,6 +126,26 @@ export class MobileFacade {
       throw error;
     }
   }
+  private async dailyScope(p:MobilePrincipal,room:unknown){
+    const d=this.deps;
+    const daily=d.automation.dailyWork as import("../service/assistant-daily.js").AssistantDaily|undefined;
+    if(!daily||d.automation.assistant.identity()?.roomId!==text(room,"room_id"))throw new KTeamError("assistant_scope_required",403);
+    await d.automation.assistant.verifyDailyScope();
+    this.assert(p);
+    return daily;
+  }
+  private async dailyReceipt(p:MobilePrincipal,op:any){
+    const daily=await this.dailyScope(p,op.roomId);
+    if(op.method==="dailyWork.confirm")return {...daily.planView(),appliedRevision:op.result.appliedRevision};
+    if(op.method==="dailyWork.replyDraft"){
+      await daily.assertItemVisible({id:op.sourceItemId});
+      this.assert(p);
+      return op.result;
+    }
+    const result=await daily.view();
+    this.assert(p);
+    return result;
+  }
   private async read(p: MobilePrincipal, method: string, i: any) {
     const d = this.deps;
     switch (method) {
@@ -141,6 +166,7 @@ export class MobileFacade {
             "conversation_work_details",
             "artifact_review_write",
             "routine_management",
+            ...(d.automation.dailyWork?["assistant_daily_work"]:[]),
             "declarative_plugins",
             "member_creation",
             "inbox",
@@ -165,6 +191,23 @@ export class MobileFacade {
             })),
           ),
         };
+      }
+      case "dailyWork.plan":
+      case "dailyWork.today":
+      case "dailyWork.sources":
+      case "dailyWork.news":
+      case "dailyWork.original": {
+        const {roomId,...input}=i;
+        const daily=await this.dailyScope(p,roomId);
+        if(method==="dailyWork.sources"){
+          fields(input,["yzj"]);
+          if(typeof input.yzj!=="boolean")throw new KTeamError("daily_invalid_input");
+          return daily.catalog(input.yzj);
+        }
+        if(method==="dailyWork.news")return daily.news(input);
+        if(method==="dailyWork.original")return daily.original(input);
+        fields(input,[]);
+        return method==="dailyWork.plan"?daily.planView():daily.view();
       }
       case "bots.list": {
         fields(i, []);
@@ -324,11 +367,12 @@ export class MobileFacade {
           }
         }
         if(op?.status==="completed"&&scopedWorkWrites.has(op.method))await d.conversations.owner(text(op.roomId,"room_id"));
+        const result=op?.status==="completed"?(dailyWorkWrites.has(op.method)?await this.dailyReceipt(p,op):op.result):undefined;
         return op
           ? {
               ok: true,
               status: op.status,
-              result: op.status === "completed" ? op.result : undefined,
+              result,
               code: op.code,
             }
           : { ok: true, status: "not_received" };
@@ -429,6 +473,21 @@ export class MobileFacade {
           ?await d.artifactReview.requestPeer(roomId,{...input,requestId},assertCurrent)
           :await d.artifactReview.submit(roomId,input,assertCurrent);
         void d.automation.tick();
+        return result;
+      }
+      case "dailyWork.confirm":
+      case "dailyWork.refresh":
+      case "dailyWork.snooze":
+      case "dailyWork.replyDraft": {
+        const {roomId,...input}=i;
+        const daily=await this.dailyScope(p,roomId);
+        const guard=()=>this.assert(p);
+        if(method==="dailyWork.confirm")return daily.confirm(input,guard);
+        if(method==="dailyWork.snooze")return daily.snooze(input,guard);
+        if(method==="dailyWork.replyDraft")return daily.replyDraft(input,d.automation.assistant.identity().botId,guard);
+        fields(input,[]);
+        const result=await daily.refresh();
+        guard();
         return result;
       }
       case "routines.save":

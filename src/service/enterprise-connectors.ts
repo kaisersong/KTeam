@@ -30,5 +30,13 @@ export class EnterpriseConnectors{
   }
   if(!['login','check'].includes(action))throw new KTeamError('connector_action_invalid');await this.cloud.control(action as 'login'|'check','user');return this.view();
  }
+ async dailyYzj(args:readonly string[],signal?:AbortSignal){
+  const binary=this.seed();
+  const result=await connectorCommand(binary,[...args],signal);
+  if(result.code!==0)throw new KTeamError('daily_source_unavailable',503);
+  const envelope=JSON.parse(result.stdout);
+  if(envelope?.success!==true||typeof envelope.data!=='object'||envelope.data===null)throw new KTeamError('daily_source_unavailable',503);
+  return envelope.data as unknown;
+ }
  async close(){this.closed=true;if(this.update){this.update.controller.abort();await this.update.done;}await Promise.all([this.cloud.dispose(),...[...this.enterprise.values()].map(service=>service.dispose())]);}
 }

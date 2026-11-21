@@ -1,3 +1,4 @@
+import {AssistantDailyPanel} from "./src/assistant-daily";
 import {ArtifactReviewActions,MemberPanel,PluginCommandsPanel,PluginsPanel,RoutinesPanel,WorkDetailPanel,WorkListPanel} from "./src/conversation-tools";
 import {planReviewPreset} from "../src/protocol/member-presets";
 import {isPluginCommand} from "../src/protocol/plugins";
@@ -351,9 +352,9 @@ function AppBody() {
   const inboxScroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const inboxOffset = useRef(0);
   const restoreInbox = useRef(false);
-  type ToolPanel={kind:"work"|"routines"|"commands";roomId:string;jobId?:string}|{kind:"plugins"|"member"};
+  type ToolPanel={kind:"work"|"routines"|"commands"|"daily";roomId:string;jobId?:string}|{kind:"plugins"|"member"};
   const [toolPanel,setToolPanel]=useState<ToolPanel>();
-  const initialDraft=useRef<{roomId:string;text:string}|undefined>(undefined);
+  const initialDraft=useRef<{roomId:string;text:string;append?:boolean}|undefined>(undefined);
   const pendingTools=useRef(new Map<string,Promise<any>>());
   useEffect(()=>{setToolPanel(undefined);pendingTools.current.clear();initialDraft.current=undefined;},[computer?.credentialId]);
   const openWork=useCallback((roomId:string,jobId:string)=>setToolPanel({kind:"work",roomId,jobId}),[]);
@@ -838,7 +839,7 @@ function AppBody() {
             return;
           const seeded=initialDraft.current?.roomId===r.roomId?initialDraft.current:undefined;
           if(seeded)initialDraft.current=undefined;
-          setText(v?.text ?? seeded?.text ?? "");
+          setText(seeded?.append&&v?.text?[v.text,seeded.text].join("\n\n"):v?.text??seeded?.text??"");
           setTokens(v?.tokens ?? []);
           setUploads(v?.uploads ?? []);
           if (v?.replyToMessageId)
@@ -1519,6 +1520,7 @@ function AppBody() {
         ) : (
           <View style={{ flex: 1 }} />
         )}
+        {room?.kind==="assistant"&&button("今日",()=>setToolPanel({kind:"daily",roomId:room.roomId}),undefined,offline||writesLocked)}
         {room&&button("工作",()=>Alert.alert(room.title,"",[
           {text:"工作记录",onPress:()=>setToolPanel({kind:"work",roomId:room.roomId})},
           {text:"例行任务",onPress:()=>setToolPanel({kind:"routines",roomId:room.roomId})},
@@ -2711,7 +2713,7 @@ function AppBody() {
         <SafeAreaView style={[s.safe,{backgroundColor:colors.bg}]}>
           <View style={[s.header,{borderBottomColor:colors.line}]}>
             <Text accessibilityRole="header" style={[s.title,{color:colors.text,flex:1}]}>
-              {toolPanel?({work:"工作记录",routines:"例行任务",plugins:"插件",commands:"插件命令",member:"创建成员"})[toolPanel.kind]:""}
+              {toolPanel?({work:"工作记录",routines:"例行任务",daily:"今日",plugins:"插件",commands:"插件命令",member:"创建成员"})[toolPanel.kind]:""}
             </Text>
             {toolPanel?.kind==="work"&&toolPanel.jobId&&button("全部工作",()=>setToolPanel({kind:"work",roomId:toolPanel.roomId}))}
             {button("关闭",()=>setToolPanel(undefined))}
@@ -2725,6 +2727,22 @@ function AppBody() {
             setToolPanel(undefined);
             setPreview({kind:"markdown",name:"例行任务答复",content:messageDisplayText(result.message)});
           })().catch(tell)}/>}
+          {toolPanel?.kind==="daily"&&<AssistantDailyPanel key={toolPanel.roomId} roomId={toolPanel.roomId} {...toolProps}
+            rooms={rooms.filter(value=>value.kind==="group"||value.kind==="direct")}
+            onAttention={()=>{setToolPanel(undefined);setRoom(undefined);setTab("收件箱");}}
+            onDraft={(target,draft)=>{
+              if(roomRef.current?.roomId!==toolPanel.roomId)return;
+              if(target===toolPanel.roomId){
+                setText(value=>value.trim()?value+"\n\n"+draft:draft);
+                setToolPanel(undefined);
+                return;
+              }
+              const next=rooms.find(value=>value.roomId===target);
+              if(!next)return;
+              initialDraft.current={roomId:target,text:draft,append:true};
+              setToolPanel(undefined);
+              openRoom(next);
+            }}/>}
           {toolPanel?.kind==="plugins"&&<PluginsPanel {...toolProps}/>}
           {toolPanel?.kind==="commands"&&<PluginCommandsPanel {...toolProps} onDraft={draft=>{
             if(roomRef.current?.roomId!==toolPanel.roomId)return;

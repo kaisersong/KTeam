@@ -96,6 +96,7 @@ The reviewed [combined optimization roadmap](https://github.com/kaisersong/mydoc
 ## What's in 0.5
 
 - **A ready-to-use xiaoK assistant.** Connecting or selecting a default model completes assistant setup automatically. Existing models no longer trigger another setup prompt. The assistant can prepare Bot and group creation proposals for your confirmation.
+- **Daily work in the assistant chat.** Confirm the sources and briefing times in chat, then open Today from the assistant on desktop or a paired phone. You can adjust the plan in a later message or ask for one check.
 - **Natural follow-up messages.** Send normally; the assistant decides how your message continues ongoing work. The composer no longer asks you to choose new work, append or queue. Approvals and unknown-result checks remain separate.
 - **Files, images and Skills.** Select, drop or paste files and images. Use `/` to choose a Skill in a Bot direct chat; groups direct you to that chat. Successful file receipts survive interruptions, and the file shortcut appears only when a file was actually generated.
 - **Durable work and permissions.** Questions and approvals can resume the original task after a host restart. Revocable directory grants cover ordinary file access; sensitive files still need separate confirmation. Review member Skills, memory and tool scopes.
