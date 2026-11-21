@@ -202,3 +202,52 @@ test('a linked child approval keeps private review alive beyond the shorter hand
   assert.equal(f.store.job(parent.id).state,'delivered');
  }finally{hold.release();await automation?.close();await f.end();}
 });
+
+test('pausing a conversation wins while a running handoff is about to park',async()=>{
+ const f=await setup(),readHold=gate(),stopHold=gate(),timeout=AbortSignal.timeout(15000);
+ let automation:TeamAutomation|undefined,running:Promise<void>|undefined,stopping:Promise<unknown>|undefined;
+ let parkRead=false,stopRead=false,escalations=0;
+ try{
+  const aimp=f.upstream.aimp.bind(f.upstream);
+  f.upstream.aimp=async(roomId,command,input:any)=>{
+   if(roomId===f.roomId&&command==='agent-event'&&input?.act==='escalate')escalations++;
+   if(roomId!==f.roomId||command!=='tasks')return aimp(roomId,command,input);
+   const job=f.store.job('handoff-root');
+   if(!parkRead&&job?.currentHandoffId&&job.state==='running'){
+    const result=await aimp(roomId,command,input);
+    parkRead=true;
+    await readHold.wait(timeout);
+    return result;
+   }
+   if(!stopRead&&job?.state==='stopping'){
+    stopRead=true;
+    await stopHold.wait(timeout);
+   }
+   return aimp(roomId,command,input);
+  };
+  automation=new TeamAutomation(f.upstream,f.store,1,async input=>{
+   await input.onRequest?.();
+   await input.tools!.find(tool=>tool.definition.name==='delegate_work')!.execute({
+    requests:[{botId:f.bots[1]!.id,message:'核对资料。'}],doneWhen:'返回结果。'
+   },{});
+   await input.onRequest?.();
+   throw Error('must yield the original work');
+  },f.coordinator);
+  running=automation.tick();
+  await until(()=>parkRead);
+  stopping=automation.pause(f.roomId);
+  await until(()=>stopRead);
+  readHold.release();
+  await running;
+  stopHold.release();
+  await stopping;
+  assert.equal(escalations,0);
+  assert.equal(f.store.operation(f.store.job('handoff-root').currentHandoffId).status,'cancelled');
+ }finally{
+  readHold.release();
+  stopHold.release();
+  await Promise.allSettled([running,stopping]);
+  await automation?.close();
+  await f.end();
+ }
+});

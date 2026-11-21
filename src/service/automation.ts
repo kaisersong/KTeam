@@ -209,7 +209,7 @@ export class TeamAutomation {
   for(const job of waiting)await this.stopWaiting(job,'manual');
   const roots=new Set(this.store.jobs(roomId).map(j=>j.peer?.rootJobId??j.id));for(const contact of this.store.operationsWithPrefix('bot-contact:'))if(contact.sourceRoomId===roomId)roots.add(contact.rootJobId);
   const affected=[...this.active.values()].filter(item=>item.job.roomId===roomId||((item.job.peer??item.job.masterRelay)&&((item.job.peer??item.job.masterRelay).sourceRoomId===roomId||roots.has((item.job.peer??item.job.masterRelay).rootJobId))));let failed=waiting.some(job=>job.stopResultUnknown);
-  for(const active of affected){active.job.stopCause??='manual';active.job.state='stopping';this.store.save(active.job);try{if(active.job.task)await this.stopTask(active.job.roomId,active.job.task,'用户暂停原会话，停止关联工作');}catch{failed=true;}finally{active.controller.abort(new Error('team_paused'));}}
+  for(const active of affected){active.job.stopCause??='manual';if(this.handoffs?.wantsPause(active.job))this.handoffs.cancel(active.job);active.job.state='stopping';this.store.save(active.job);try{if(active.job.task)await this.stopTask(active.job.roomId,active.job.task,'用户暂停原会话，停止关联工作');}catch{failed=true;}finally{active.controller.abort(new Error('team_paused'));}}
   await Promise.all(affected.map(item=>item.completion));
   if(failed||affected.some(item=>item.job.stopResultUnknown))throw new KTeamError('stop_protocol_result_unknown',503);
   return {ok:true,settings,stopped:affected.every(item=>!this.active.has(item.job.id))};
