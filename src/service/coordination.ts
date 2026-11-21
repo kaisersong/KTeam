@@ -192,7 +192,7 @@ export class TeamCoordinator{
   });
  }
  async direct(botId:string,ctx:{requestSource:string}){this.user(ctx);return this.single('direct:'+botId,async()=>{const canonical=this.store.state<any>('direct-room:'+botId);if(canonical){if(this.store.state('deleted-conversation:'+canonical.roomId)){const frozen=this.store.state<any>('conversation:'+canonical.roomId),priorMember=frozen?.members?.find((m:Member)=>m.botId===botId),member={...priorMember,existing:true,bindingRevision:priorMember?.bindingRevision??this.store.binding(botId)?.revision};if(!member.botId)throw new KTeamError('conversation_identity_changed');let op=this.claim('new-chat:after-delete:'+canonical.roomId,{botId});if(op.status!=='complete'){const validate=()=>this.frozen(member),roomId=await this.room(op,frozen.title,'与 '+frozen.title+' 的新对话。',[member],'direct',validate);op.status='complete';op.receipt={ok:true,botId,roomId};this.save(op);}this.store.setState('direct-room:'+botId,op.receipt);return op.receipt;}await this.guardConversation(canonical.roomId);return canonical;}const binding=this.store.binding(botId),agent=((await this.upstream.listBots()).agents as any[]).find(a=>a.id===botId);if(!binding||!agent||agent.archivedAt)throw new KTeamError('agent_not_found',404);let op=this.claim('direct:'+botId,{});if(op.status==='complete'){await this.guardConversation(op.receipt.roomId);return op.receipt;}const member:Member={...binding,name:agent.name,bindingRevision:binding.revision,existing:true};const validate=()=>this.frozen(member);const roomId=await this.room(op,agent.name,'与 '+agent.name+' 直接交流。',[member],'direct',validate);op.status='complete';op.receipt={roomId};this.save(op);return op.receipt;});}
- async createMember(value:unknown,ctx:{requestSource:string}){
+ async createMember(value:unknown,ctx:{requestSource:string;assertCurrent?:()=>void}){
   this.user(ctx);
   const input=record(value);
   fields(input,['name','modelId','requestId','expectedFingerprint','setup']);
@@ -206,6 +206,7 @@ export class TeamCoordinator{
     throw new KTeamError('model_binding_changed',409);
   };
   const result=await this.single(operationId,async()=>{
+   ctx.assertCurrent?.();
    let op=this.store.operation(operationId);
    checkRequest(op);
    if(op?.status==='complete'){
@@ -214,6 +215,7 @@ export class TeamCoordinator{
    }
    if(!op){
     const identity=await this.models.identity(modelId);
+    ctx.assertCurrent?.();
     if(expectedFingerprint&&identity.fingerprint!==expectedFingerprint)throw new KTeamError('model_binding_changed',409);
     const member:Member={
      botId:'kteam-'+createHash('sha256').update(requestId).digest('hex').slice(0,24),
@@ -222,9 +224,10 @@ export class TeamCoordinator{
     op=this.claim(operationId,{requestHash,member,title:name});
    }else op=this.claim(operationId,op.data);
    const member:Member=op.data.member;
-   const validate=()=>this.frozen(member);
+   const validate=async()=>{ctx.assertCurrent?.();await this.frozen(member);ctx.assertCurrent?.();};
    await this.ensureMember(op,member,0,validate);
    const roomId=await this.room(op,member.name,'与 '+member.name+' 直接交流。',[member],'direct',validate);
+   ctx.assertCurrent?.();
    op.status='complete';
    op.receipt={ok:true,bot:{id:member.botId,name:member.name,binding:this.store.binding(member.botId)},roomId,
     ...(member.setup?{presetId:member.setup.presetId}:{})};

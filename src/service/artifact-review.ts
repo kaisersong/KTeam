@@ -109,7 +109,7 @@ export class ArtifactReview {
     };
   }
 
-  async requestPeer(roomId:string,value:unknown) {
+  async requestPeer(roomId:string,value:unknown,assertCurrent=()=>{}) {
     const input=record(value);
     fields(input,['toolCallId','expectedSha256','botId','requestId']);
     const toolCallId=text(input.toolCallId,'tool_call_id'),botId=text(input.botId,'bot_id');
@@ -120,7 +120,7 @@ export class ArtifactReview {
       assertReviewer(snapshot,botId);
       if(botId===source.botId||this.store.binding(botId)?.kind!=='xiaok-hosted')throw new KTeamError('artifact_peer_unavailable',409);
     };
-    assertSnapshot(membership);
+    assertSnapshot(membership);assertCurrent();
     if(source.sha256!==input.expectedSha256)throw new KTeamError('artifact_review_changed',409);
     const peer={toolCallId,sha256:source.sha256};
     const requestId=text(input.requestId,'request_id',128);
@@ -128,11 +128,11 @@ export class ArtifactReview {
     const result=await this.inputs.submit({
       roomId,jobId:source.job.id,id,mode:'queue',replyToMessageId:source.resultMessageId,
       text:'请独立复核「'+source.name+'」的指定版本（SHA-256 '+source.sha256+'），在原会话回复发现、原文位置和未覆盖范围。',
-    },{botId,peer,beforeSend:()=>{this.version(source);},assertSnapshot});
+    },{botId,peer,beforeSend:()=>{assertCurrent();this.version(source);},assertSnapshot});
     return {ok:true as const,messageId:result.messageId,jobId:result.receipt.queuedJobId};
   }
 
-  async submit(roomId: string, value: unknown) {
+  async submit(roomId: string, value: unknown, assertCurrent=()=>{}) {
     const input = record(value);
     fields(input,['toolCallId','expectedSha256','action','notes']);
     const toolCallId = text(input.toolCallId,'tool_call_id');
@@ -153,7 +153,7 @@ export class ArtifactReview {
     const membership = await this.conversations.scope(roomId);
     const source = this.source(roomId,toolCallId);
     if (input.expectedSha256!==source.sha256) throw new KTeamError('artifact_review_changed',409);
-    assertReviewer(membership,source.botId);
+    assertReviewer(membership,source.botId);assertCurrent();
     const intent = digest(JSON.stringify([source.sha256,action,notes]));
     let saved = this.store.operation(source.id) as ReviewRecord | null;
     if (saved) {
@@ -180,7 +180,7 @@ export class ArtifactReview {
       ].join('\n\n');
       await this.inputs.submit({
         roomId,jobId:source.job.id,id:saved.inputId,text:body,mode:'queue',replyToMessageId:source.resultMessageId,
-      },{botId:source.botId,beforeSend:()=>{this.version(source);},assertSnapshot:snapshot=>assertReviewer(snapshot,source.botId)});
+      },{botId:source.botId,beforeSend:()=>{assertCurrent();this.version(source);},assertSnapshot:snapshot=>assertReviewer(snapshot,source.botId)});
     }
     return {ok:true,decision:this.decision(saved)};
   }
