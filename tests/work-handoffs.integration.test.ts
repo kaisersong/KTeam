@@ -209,7 +209,7 @@ test('pausing a conversation wins while a running handoff is about to park',asyn
  let parkRead=false,stopRead=false,escalations=0;
  try{
   const aimp=f.upstream.aimp.bind(f.upstream);
-  f.upstream.aimp=async(roomId,command,input:any)=>{
+  f.upstream.aimp=async(roomId:string,command:string,input?:any)=>{
    if(roomId===f.roomId&&command==='agent-event'&&input?.act==='escalate')escalations++;
    if(roomId!==f.roomId||command!=='tasks')return aimp(roomId,command,input);
    const job=f.store.job('handoff-root');
