@@ -250,3 +250,15 @@ button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:under
 .member-preset-option { margin:0; align-items:flex-start; }
 .member-preset-option span { display:grid; gap:4px; }
 .member-preset-option small { color:var(--text-secondary); }
+
+.assistant-daily-card fieldset{display:grid;gap:.6rem;border:0;padding:0;margin:1rem 0}
+.assistant-daily-card legend{font-weight:600;margin-bottom:.55rem}
+.assistant-daily-card label{display:flex;align-items:center;gap:.55rem}
+.assistant-daily-actions,.assistant-daily-plan-receipt{display:flex;align-items:center;flex-wrap:wrap;gap:.65rem;margin:.65rem 0}
+.assistant-daily-actions input{flex:1;min-width:11rem}
+.assistant-daily-today{display:grid;gap:.85rem}
+.assistant-daily-today pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.assistant-daily-items{list-style:none;margin:0;padding:0;display:grid;gap:.65rem}
+.assistant-daily-items li{display:flex;align-items:flex-start;justify-content:space-between;gap:.7rem}
+.assistant-daily-items li small{display:block;opacity:.8}
+.assistant-daily-items li p{margin:.2rem 0;overflow-wrap:anywhere}
