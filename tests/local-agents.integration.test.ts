@@ -6,7 +6,7 @@ function isFixtureProcessAlive(pid:number){
  if(process.platform==='win32'){try{process.kill(pid,0);return true;}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}}
  try{const state=execFileSync('/bin/ps',['-p',String(pid),'-o','stat='],{encoding:'utf8'}).trim();return !!state&&!state.startsWith('Z');}catch(error){const value=error as any;if(value.status===1&&!String(value.stdout??'').trim()&&!String(value.stderr??'').trim())return false;throw error;}
 }
-async function setup(){const f=await realUpstreams(),store=new TeamStore(f.root),calls:any[]=[];let mode='normal',fingerprint='installed-fixture',version='codex-cli 1.0.0',path=resolve('tests/fixtures/local-native-fixture.mjs');const local=new LocalAgents(f.root,store,f.upstream,async id=>({id,label:id,path,fingerprint,version,machine:'fixture'}),async(command,args,input)=>{calls.push({command,args,cwd:input.cwd,mode});return runLocal(command,args,{...input,env:{...input.env,KTEAM_FIXTURE_MODE:mode,KTEAM_FIXTURE_DRIVER:args.includes('exec')?'codex':args.includes('--output-format')?'kimi':'xiaok-cli'}});});const c=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:id=>id.startsWith('local-agent:')?local.identity(id):Promise.resolve({model:'fixture',fingerprint:'fixture'}),boundIdentity:b=>b.modelId.startsWith('local-agent:')?local.boundIdentity(b):Promise.resolve({model:'fixture',fingerprint:'fixture'})});return {...f,store,local,c,calls,setMode:(value:string)=>{mode=value;},changeInstallation:()=>{fingerprint='changed-fixture';},upgrade:()=>{fingerprint='upgraded-fixture';version='codex-cli 1.1.0';},changeLauncher:()=>{path=resolve('synthetic-different-launcher');fingerprint='changed-fixture';},async close(){await local.close();store.close();await f.close();}};}
+async function setup(launcher?:{path:string;target:string}){const f=await realUpstreams(),store=new TeamStore(f.root),calls:any[]=[];let mode='normal',fingerprint='installed-fixture',version='codex-cli 1.0.0',path=launcher?.path??resolve('tests/fixtures/local-native-fixture.mjs');const local=new LocalAgents(f.root,store,f.upstream,async id=>({id,label:id,path,target:launcher?.target,fingerprint,version,machine:'fixture'}),async(command,args,input)=>{calls.push({command,args,cwd:input.cwd,mode});return runLocal(command,args,{...input,env:{...input.env,KTEAM_FIXTURE_MODE:mode,KTEAM_FIXTURE_DRIVER:args.includes('exec')?'codex':args.includes('--output-format')?'kimi':'xiaok-cli'}});});const c=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:id=>id.startsWith('local-agent:')?local.identity(id):Promise.resolve({model:'fixture',fingerprint:'fixture'}),boundIdentity:b=>b.modelId.startsWith('local-agent:')?local.boundIdentity(b):Promise.resolve({model:'fixture',fingerprint:'fixture'})});return {...f,store,local,c,calls,setMode:(value:string)=>{mode=value;},changeInstallation:()=>{fingerprint='changed-fixture';},upgrade:()=>{fingerprint='upgraded-fixture';version='codex-cli 1.1.0';},changeLauncher:()=>{path=resolve('synthetic-different-launcher');fingerprint='changed-fixture';},async close(){await local.close();store.close();await f.close();}};}
 async function ready(f:Awaited<ReturnType<typeof setup>>,driver='codex'){await f.local.startProbe({driver});for(let n=0;n<(process.platform==='win32'?2000:200);n++){const value=f.local.probeView(driver as any);if(value.state!=='running'){assert.equal(value.state,'ready',JSON.stringify(value));return value;}await new Promise(r=>setTimeout(r,5));}throw Error('probe did not finish');}
 async function say(f:any,roomId:string,text='请处理当前合成材料'){return new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'thread-'+roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:text});}
 test('a Codex upgrade probes once and delivers queued work without switching the Bot binding or resuming the old CLI session',async()=>{
@@ -68,6 +68,35 @@ test('a different launcher cannot inherit a local Agent binding',async()=>{
   await assert.rejects(f.local.turn({binding,botId:bot.bot.id,roomId:bot.roomId,profileRevision:1,system:'fixture',prompt:'fixture',signal:new AbortController().signal,onRequest:()=>assert.fail('must not request a model'),assertCurrent:()=>{}}),/native_installation_changed/);
   assert.equal(f.calls.length,1);
  }finally{await f.close();}
+});
+test('macOS launches the identified Codex target for the probe and subsequent scoped turns', {skip:process.platform!=='darwin'},async()=>{
+ const {rmSync}=await import('node:fs');
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-codex-launcher-')));
+ const original=realpathSync(resolve('tests/fixtures/local-native-fixture.mjs'));
+ const launcher={path:join(root,'codex'),target:original};
+ symlinkSync(original,launcher.path);
+ const f=await setup(launcher);
+ try{
+  await ready(f);
+  const bot=await f.local.create({name:'软链接测试',driver:'codex',requestId:'symlink-launcher'},f.c);
+  const binding=f.store.binding(bot.bot.id)!;
+  const turn=()=>f.local.turn({binding,botId:bot.bot.id,roomId:bot.roomId,profileRevision:1,system:'fixture',prompt:'fixture',
+   signal:new AbortController().signal,onRequest:()=>{},assertCurrent:()=>{}});
+  await turn();
+  await turn();
+  assert.deepEqual(f.calls.map(call=>call.command),[original,original,original]);
+  assert.deepEqual(f.store.binding(bot.bot.id),binding);
+  const replacement=join(root,'replacement.mjs');
+  writeFileSync(replacement,readFileSync(original));
+  unlinkSync(launcher.path);
+  symlinkSync(replacement,launcher.path);
+  // Reject a changed link even when the caller still holds the old inspection.
+  await assert.rejects(turn(),/native_installation_changed/);
+  launcher.target=replacement;f.changeInstallation();
+  // A fresh inspection detects the new target and refuses the original binding.
+  await assert.rejects(turn(),/native_installation_changed/);
+  assert.equal(f.calls.length,3);
+ }finally{await f.close();rmSync(root,{recursive:true,force:true});}
 });
 test('known Agent discovery is distinct from generation readiness; concurrent probes share one real process',async()=>{const f=await setup();try{const catalog=await f.local.catalog();assert.ok(catalog.agents.every(a=>a.known));await assert.rejects(f.local.identity('local-agent:codex'),/native_probe_required/);await Promise.all([f.local.startProbe({driver:'codex'}),f.local.startProbe({driver:'codex'})]);await ready(f);assert.equal(f.calls.length,1);const b=await f.local.create({name:'原生开发',driver:'codex',requestId:'native-create'},f.c);assert.equal(f.store.binding(b.bot.id)?.kind,'local-native');assert.equal((await f.upstream.listTeams()).rooms.length,1);f.changeInstallation();await assert.rejects(f.local.bind({botId:b.bot.id,driver:'codex',expectedFingerprint:'installed-fixture'},{} as any),/native_probe_required|native_installation_changed/);assert.equal(f.store.binding(b.bot.id)?.fingerprint,'installed-fixture');}finally{await f.close();}});
 test('failed readiness never binds or silently offers a manual connection for a known Agent',async()=>{const f=await setup();try{f.setMode('bad-probe');await f.local.startProbe({driver:'codex'});for(let n=0;n<100&&f.local.probeView('codex').state==='running';n++)await new Promise(r=>setTimeout(r,5));assert.equal(f.local.probeView('codex').reason,'native_probe_response_invalid');await assert.rejects(f.local.create({name:'不能创建',driver:'codex',requestId:'bad-create'},f.c),/native_probe_response_invalid/);assert.equal((await f.upstream.listTeams()).rooms.length,0);assert.throws(()=>f.local.probeView('untrusted-driver' as any),/native_unknown_agent/);}finally{await f.close();}});

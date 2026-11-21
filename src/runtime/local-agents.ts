@@ -8,7 +8,7 @@ export const LOCAL_AGENTS=[{id:'xiaok-cli',label:'xiaok CLI',bins:['xiaok','xiao
 export type LocalAgentId=typeof LOCAL_AGENTS[number]['id'];
 export const isLocalAgent=(value:unknown):value is LocalAgentId=>LOCAL_AGENTS.some(a=>a.id===value);
 export const isNativeModel=(id:string)=>id.startsWith('local-agent:');
-export interface LocalInstallation{id:LocalAgentId;label:string;path:string;version:string;fingerprint:string;machine:string}
+export interface LocalInstallation{id:LocalAgentId;label:string;path:string;target?:string;version:string;fingerprint:string;machine:string}
 const binaryHashes=new Map<string,{stamp:string;hash:string}>();
 async function binaryHash(path:string){const s=statSync(path),stamp=[s.dev,s.ino,s.size,s.mtimeMs,s.ctimeMs].join(':');const cached=binaryHashes.get(path);if(cached?.stamp===stamp)return cached.hash;const hash=createHash('sha256');for await(const chunk of createReadStream(path))hash.update(chunk);const value=hash.digest('hex');binaryHashes.set(path,{stamp,hash:value});return value;}
 const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -23,7 +23,16 @@ export const WINDOWS_SYSTEM_ENV=['windir','SystemDrive','ComSpec','PATHEXT','PSM
 export function nativeEnvironment(){const env:NodeJS.ProcessEnv=buildHarnessChildEnv({parentEnv:process.env});env.PATH=directories().join(delimiter);for(const name of ['USER','LOGNAME','SHELL','TZ','LANGUAGE','TEMP','TMP','SystemRoot','APPDATA','LOCALAPPDATA','USERPROFILE','CODEX_HOME','KIMI_HOME','KIMI_CODE_HOME','ZCODE_HOME','XIAOK_HOME',...(process.platform==='win32'?WINDOWS_SYSTEM_ENV:[])])if(process.env[name])env[name]=process.env[name];return env;}
 const configPaths=(id:LocalAgentId)=>{const home=homedir();return id==='codex'?[join(process.env.CODEX_HOME??join(home,'.codex'),'config.toml')]:id==='kimi'?[join(home,'.kimi-code/config.toml'),join(home,'.kimi/config.toml')]:id==='zcode'?[join(home,'.zcode/settings.json'),join(home,'.zcode/config.json')]:[];};// xiaok-cli: detected by its command only; KTeam never reads xiaok's files.
 
-export async function inspectLocalAgent(id:LocalAgentId,signal=AbortSignal.timeout(15000)):Promise<LocalInstallation>{if(!isLocalAgent(id))throw new KTeamError('native_unknown_agent');const spec=LOCAL_AGENTS.find(a=>a.id===id)!,found=findLocalAgent(id);const result=await runLocal(found.path,['--version'],{cwd:homedir(),env:nativeEnvironment(),signal,timeoutMs:10000});if(result.code!==0)throw new KTeamError('native_version_failed',503);const version=(result.stdout||result.stderr).trim().split('\n')[0]!.replace(/\x1b\[[0-9;]*m/g,'').slice(0,160);if(!version)throw new KTeamError('native_version_failed',503);const stat=statSync(found.target),entryHash=await binaryHash(found.target),configs=configPaths(id).map(path=>{try{return {path,hash:createHash('sha256').update(readFileSync(path)).digest('hex')};}catch{return {path,hash:null};}});return {id,label:spec.label,path:found.path,version,fingerprint:digest({id,path:found.path,target:found.target,size:stat.size,entryHash,version,configs}),machine:hostname()};}
+/** Keep the discovered launcher for binding identity while using its verified Codex executable on macOS. */
+export function localAgentExecutable(installation:Pick<LocalInstallation,'id'|'path'|'target'>){
+ if(process.platform!=='darwin'||installation.id!=='codex'||!installation.target)return installation.path;
+ try{
+  if(realpathSync(installation.path)===installation.target&&realpathSync(installation.target)===installation.target)return installation.target;
+ }catch{/* Missing or replaced launcher. */}
+ throw new KTeamError('native_installation_changed',409);
+}
+
+export async function inspectLocalAgent(id:LocalAgentId,signal=AbortSignal.timeout(15000)):Promise<LocalInstallation>{if(!isLocalAgent(id))throw new KTeamError('native_unknown_agent');const spec=LOCAL_AGENTS.find(a=>a.id===id)!,found=findLocalAgent(id);const result=await runLocal(localAgentExecutable({id,...found}),['--version'],{cwd:homedir(),env:nativeEnvironment(),signal,timeoutMs:10000});if(result.code!==0)throw new KTeamError('native_version_failed',503);const version=(result.stdout||result.stderr).trim().split('\n')[0]!.replace(/\x1b\[[0-9;]*m/g,'').slice(0,160);if(!version)throw new KTeamError('native_version_failed',503);const stat=statSync(found.target),entryHash=await binaryHash(found.target),configs=configPaths(id).map(path=>{try{return {path,hash:createHash('sha256').update(readFileSync(path)).digest('hex')};}catch{return {path,hash:null};}});localAgentExecutable({id,...found});return {id,label:spec.label,...found,version,fingerprint:digest({id,path:found.path,target:found.target,size:stat.size,entryHash,version,configs}),machine:hostname()};}
 export function localArgs(id:LocalAgentId,prompt:string,options:{sessionId?:string;readonly?:boolean;probe?:boolean}={}){
  const {sessionId,readonly,probe}=options;
  if(id==='codex'){

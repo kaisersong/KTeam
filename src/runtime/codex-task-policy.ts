@@ -39,12 +39,12 @@ export function codexConnection(env: NodeJS.ProcessEnv) {
  const provider = config.model_provider;
  if (provider && provider !== 'openai') {
   const model = config.model_providers?.[provider];
-  if (!/^[A-Za-z0-9_-]+$/.test(provider) || !model || Object.keys(model).some(key => !['name','base_url','wire_api','env_key','requires_openai_auth','request_max_retries','stream_max_retries','stream_idle_timeout_ms'].includes(key))) {
+  if (!/^[A-Za-z0-9_-]+$/.test(provider) || !model || Object.keys(model).some(key => !['name','base_url','wire_api','env_key','requires_openai_auth','supports_websockets','request_max_retries','stream_max_retries','stream_idle_timeout_ms'].includes(key))) {
    throw new KTeamError('native_codex_provider_unsupported', 409);
   }
   args.push(...override('model_provider', literal(provider)));
   for (const [key,value] of Object.entries(model)) {
-   if (typeof value !== 'string' && typeof value !== 'boolean' && typeof value !== 'number') throw new KTeamError('native_codex_provider_unsupported', 409);
+   if (key === 'supports_websockets' ? typeof value !== 'boolean' : !['string','boolean','number'].includes(typeof value)) throw new KTeamError('native_codex_provider_unsupported', 409);
    if (key === 'base_url') {
     let url: URL;
     try {url=new URL(String(value));} catch {throw new KTeamError('native_codex_provider_unsupported',409);}
