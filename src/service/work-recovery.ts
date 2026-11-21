@@ -20,6 +20,83 @@ const interrupted = (job: any) => job && !job.codexDispatch && !job.groupRespons
 const active = (job: any) => !dependent(job)&&['queued','held','routing','running','stopping'].includes(job.state);
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
+interface RecoveryReply {
+ botId:string;
+ messageId:string;
+ taskRef:string;
+}
+
+const validRef=(value:unknown):value is string=>typeof value==='string'&&/^[a-zA-Z0-9:_-]{1,160}$/.test(value);
+
+function replyReference(value:any):RecoveryReply|undefined{
+ if(validRef(value?.botId)&&validRef(value.messageId)&&validRef(value.taskRef)){
+  return {botId:value.botId,messageId:value.messageId,taskRef:value.taskRef};
+ }
+}
+
+/** Rebuild the model input from the linked work and current Room receipts. */
+export async function readRecoveryContext(upstream:Upstreams,store:TeamStore,job:any){
+ const prior=validRef(job.recoveryOf)?store.job(job.recoveryOf):undefined;
+ if(!prior||prior.roomId!==job.roomId||prior.originId!==job.originId||
+    !['blocked','unknown','stopped','delivered'].includes(prior.state)){
+  return {sourceState:'unavailable',limited:true};
+ }
+
+ const failure=executionFailure(prior);
+ const results:unknown[]=Array.isArray(prior.results)?prior.results:[];
+ const marker=replyReference(job.recoveryContext?.unexecutedReply);
+ const candidates=new Map<string,RecoveryReply>();
+ // The explicit repair marker stays within the same verification budget.
+ const recent=results.slice(-8);
+ if(marker&&!recent.some(value=>replyReference(value)?.messageId===marker.messageId)){
+  const original=results.find(value=>replyReference(value)?.messageId===marker.messageId);
+  if(original)recent.unshift(original);
+ }
+ for(const result of recent.slice(0,8)){
+  const reference=replyReference(result);
+  if(reference)candidates.set(reference.messageId,reference);
+ }
+
+ const snapshot=candidates.size?await upstream.aimp(job.roomId,'tasks').catch(()=>undefined):undefined;
+ const tasks=Array.isArray(snapshot?.tasks)?snapshot.tasks:[];
+ const checks=await Promise.all([...candidates.values()].map(async reference=>{
+  const task=tasks.find(value=>value?.taskRef===reference.taskRef);
+  const run=prior.id+':'+reference.botId;
+  const handoffPrefix=run+':handoff:';
+  const runId=task?.runId;
+  const resumedRun=typeof runId==='string'&&runId.startsWith(handoffPrefix)&&/^\d+$/.test(runId.slice(handoffPrefix.length));
+  if(!task||task.roomId!==job.roomId||!['delivered','accepted'].includes(task.state)||
+     task.artifactVerification?.verified!==true||!Array.isArray(task.artifacts)||(runId!==run&&!resumedRun))return;
+  const response=await upstream.conversationMessage(job.roomId,reference.messageId).catch(()=>undefined);
+  const actual=response?.message as any;
+  if(actual?.roomId!==job.roomId||actual.messageId!==reference.messageId||
+     actual.sender?.kind!=='agent'||actual.sender.logicalAgentId!==reference.botId||
+     actual.sourceRef?.kind!=='aimp_reply'||actual.sourceRef.taskRef!==reference.taskRef||
+     typeof actual.text!=='string'||!task.artifacts.some((artifact:any)=>
+      artifact?.ref===`message://${job.roomId}/${reference.messageId}`&&artifact.sha256===digest(actual.text)))return;
+  return {reference,unexecuted:unexecutedModelToolOutput(actual.text)};
+ }));
+ const completedReplies:RecoveryReply[]=[];
+ let unexecutedReply:RecoveryReply|undefined;
+ for(const check of checks){
+  if(!check)continue;
+  const {reference,unexecuted}=check;
+  if(unexecuted){
+   if(marker?.messageId===reference.messageId&&marker.botId===reference.botId&&marker.taskRef===reference.taskRef)unexecutedReply=reference;
+  }else completedReplies.push(reference);
+ }
+ return {
+  sourceJobId:prior.id,sourceState:prior.state,draftAvailable:!!(prior.answerDraft||prior.partialText),
+  reviewGroupStages:job.recoveryContext?.reviewGroupStages===true,
+  failure:failure&&{
+   code:typeof failure.code==='string'&&/^[a-z0-9_]{1,80}$/.test(failure.code)?failure.code:'execution_failed',
+   phase:['routing','preparing','model','tool','delivery'].includes(failure.phase)?failure.phase:'unknown',
+  },
+  completedReplies,unexecutedReply,
+  limited:results.length>completedReplies.length+Number(!!unexecutedReply)||!!marker&&!unexecutedReply,
+ };
+}
+
 /** Link a user-requested continuation to preserved evidence. Old runs stay immutable. */
 export class WorkRecovery {
  constructor(private upstream: Upstreams, private store: TeamStore, private coordinator: TeamCoordinator) {}
@@ -248,8 +325,7 @@ export class WorkRecovery {
    if(autoId)this.store.saveOperation({id:autoId,sourceJobId:jobId,status:'queued'},0);
    this.store.saveOperation({id: operationId, jobId: nextId, sourceJobId: jobId, requestId, status: 'queued'}, 0);
    this.store.enqueueFollowup({id: nextId, roomId, originId: prior.originId, trigger: 'recovery', ...(prior.groupPlanPending||prior.routingRepair?.fallback==='discussion'?{groupPlanPending:true}:{}), ...(prior.groupPlan&&prior.routingRepair?.fallback!=='discussion'?{groupPlan:structuredClone(prior.groupPlan)}:{}), ...(prior.groupResponse?{groupResponse:structuredClone(prior.groupResponse)}:{}), ...(routine?{routine}:{}), recoveryOf: jobId, recoveryAutomatic:!!autoId, recoveryBotIds: botIds,
-    recoveryContext: {sourceJobId: jobId,unexecutedReply, reviewGroupStages:prior.groupPlan?.mode==='work'&&!!(prior.recoveryContext?.reviewGroupStages||prior.task||prior.currentHandoffId||prior.groupPlan.stageOperations?.some(Boolean)||this.store.operationsWithPrefix('work-handoff:').some(op=>op.jobId===prior.id)), failure: executionFailure(prior), draft: String(prior.answerDraft ?? prior.partialText ?? '').slice(-16000),
-     completedReplies: prior.results ?? [], recentTools: (prior.toolTrace ?? []).slice(-12)},
+    recoveryContext: {sourceJobId: jobId,unexecutedReply, reviewGroupStages:prior.groupPlan?.mode==='work'&&!!(prior.recoveryContext?.reviewGroupStages||prior.task||prior.currentHandoffId||prior.groupPlan.stageOperations?.some(Boolean)||this.store.operationsWithPrefix('work-handoff:').some(op=>op.jobId===prior.id))},
     recoveryBindings: Object.fromEntries(botIds.map(id => [id, this.store.binding(id)]))});
    for(const queued of this.store.jobs(roomId).filter(job=>dependent(job)&&job.afterJobId===prior.id)){queued.afterJobId=nextId;this.store.save(queued);}
    return {ok: true, jobId: nextId, reused: false};

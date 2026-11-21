@@ -4,7 +4,8 @@ import {randomBytes} from 'node:crypto';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {CollaborationService,LOCAL_HUMAN} from '../src/service/collaboration.js';
-import {WorkRecovery} from '../src/service/work-recovery.js';
+import {readRecoveryContext,WorkRecovery} from '../src/service/work-recovery.js';
+import {TeamAutomation} from '../src/service/automation.js';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {mkdirSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -60,11 +61,60 @@ test('real team reconnect preserves a stopped write; explicit continuation is li
   const results=await Promise.all(Array.from({length:8},(_,n)=>recovery.continue(roomId,{jobId:old.id,requestId:'click-'+n})));
   assert.equal(new Set(results.map(r=>r.jobId)).size,1);assert.equal(store.jobs(roomId).length,2);
   assert.equal(JSON.stringify(store.job(old.id)),original);
-  const next=store.job(results[0]!.jobId);assert.equal(next.trigger,'recovery');assert.equal(next.recoveryOf,old.id);assert.equal(next.originId,old.originId);assert.equal(next.recoveryContext.draft,old.partialText);assert.equal(next.calls,0);assert.equal(next.toolTrace,undefined);assert.equal(next.task,undefined);assert.deepEqual(next.recoveryBotIds,[bot.bot.id]);
+  const next=store.job(results[0]!.jobId);assert.equal(next.trigger,'recovery');assert.equal(next.recoveryOf,old.id);assert.equal(next.originId,old.originId);assert.equal(next.recoveryContext.draft,undefined);assert.equal(next.recoveryContext.recentTools,undefined);assert.equal(next.calls,0);assert.equal(next.toolTrace,undefined);assert.equal(next.task,undefined);assert.deepEqual(next.recoveryBotIds,[bot.bot.id]);
   assert.equal((await f.upstream.messages(roomId,0,100)).messages.length,1);
   store.close();store=new TeamStore(f.root);coordinator=new TeamCoordinator(f.upstream,store,2,models);recovery=new WorkRecovery(f.upstream,store,coordinator);
   assert.equal((await recovery.continue(roomId,{jobId:old.id,requestId:'after-restart'})).jobId,next.id);assert.equal(store.jobs(roomId).length,2);
  } finally {store.close();await f.close();}
+});
+
+test('recovery brief verifies completed replies against their canonical source run',async()=>{
+ const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
+ const automation=new TeamAutomation(f.upstream,store,1,async input=>{
+  await input.onRequest?.();
+  return {text:'合成交付已核对。',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};
+ },coordinator);
+ try{
+  const {bot,roomId}=await coordinator.createMember({name:'交付验证',modelId:'fixture',requestId:'recovery-evidence'},user);
+  const complete=async(jobId:string)=>{
+   const origin=await new CollaborationService(f.upstream).send({
+    aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:roomId,thread_id:'evidence',from:LOCAL_HUMAN,
+    to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'核对合成证据 '+jobId,
+   });
+   store.enqueue(jobId,roomId,String(origin.messageId));
+   await automation.tick();
+   const job=store.job(jobId);
+   assert.equal(job.state,'delivered',JSON.stringify(job.failure));
+   return job;
+  };
+  const unrelated=await complete('other-work'),prior=await complete('work-with-receipt');
+  const receipt=prior.results[0],{messageId,taskRef}=receipt;
+  prior.state='stopped';
+  prior.partialText='RAW_LEGACY_DRAFT';
+  prior.failure={code:'team_stopped',phase:'tool',message:'RAW_FAILURE_DETAIL'};
+  prior.toolTrace=[{type:'tool_started',name:'write',input:'RAW_TOOL_PARAMETER'}];
+  prior.results=[receipt,unrelated.results[0],{...receipt,messageId:'invalid-source-id'}];
+  store.save(prior);
+
+  const recovery=new WorkRecovery(f.upstream,store,coordinator);
+  const next=store.job((await recovery.continue(roomId,{jobId:prior.id,requestId:'read-evidence'})).jobId);
+  assert.deepEqual(Object.keys(next.recoveryContext).sort(),['reviewGroupStages','sourceJobId']);
+  // Jobs already queued on older builds can carry arbitrary snapshot fields.
+  next.recoveryContext.draft=prior.partialText;
+  next.recoveryContext.recentTools=prior.toolTrace;
+  next.recoveryContext.completedReplies=[unrelated.results[0]];
+  const context=await readRecoveryContext(f.upstream,store,next);
+  assert.deepEqual(context,{
+   sourceJobId:prior.id,sourceState:'stopped',draftAvailable:true,reviewGroupStages:false,
+   failure:{code:'team_stopped',phase:'tool'},completedReplies:[{botId:bot.id,messageId,taskRef}],
+   unexecutedReply:undefined,limited:true,
+  });
+  assert.doesNotMatch(JSON.stringify(context),/RAW_|invalid-source-id/);
+  assert.deepEqual(await readRecoveryContext(f.upstream,store,{...next,originId:unrelated.originId}),{sourceState:'unavailable',limited:true});
+  assert.deepEqual(await readRecoveryContext(f.upstream,store,{...next,roomId:'another-room'}),{sourceState:'unavailable',limited:true});
+  assert.equal(store.job(prior.id).partialText,'RAW_LEGACY_DRAFT');
+ }finally{await automation.close();store.close();await f.close();}
 });
 
 test('recovery does not continue a revoked member, unknown live execution, newer work or unconfirmed process',async()=>{
@@ -190,6 +240,6 @@ test('expired model admission recovers once after terminal old execution; unknow
   await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'approval alone is not an execution result');
   session.appendUserToolResults([{type:'tool_result',tool_use_id:'approved-call',content:'actual checkpoint result'}]);await sessions.save(session.exportSnapshot());
   const release=acquireHarnessStorage(directory);try{await recovery.wakeSafe();assert.equal(store.jobs(roomId).length,1,'live runtime storage owner prevents recovery');}finally{release();}
-  await recovery.wakeSafe();await recovery.wakeSafe();const next=store.jobs(roomId)[0];assert.equal(store.jobs(roomId).length,2);assert.equal(next.recoveryOf,job.id);assert.equal(next.recoveryAutomatic,true);assert.equal(next.recoveryContext.draft,'保留的草稿');assert.equal(next.task,undefined);assert.equal(next.toolTrace,undefined);
+  await recovery.wakeSafe();await recovery.wakeSafe();const next=store.jobs(roomId)[0];assert.equal(store.jobs(roomId).length,2);assert.equal(next.recoveryOf,job.id);assert.equal(next.recoveryAutomatic,true);assert.equal(next.recoveryContext.draft,undefined);assert.equal((await readRecoveryContext(f.upstream,store,next)).draftAvailable,true);assert.equal(next.task,undefined);assert.equal(next.toolTrace,undefined);
  }finally{store.close();await f.close();}
 });
