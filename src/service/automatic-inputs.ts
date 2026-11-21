@@ -14,7 +14,7 @@ export type InputDecision=(input:{facts:any;choices:{id:string;description:strin
 /** Read-only semantic decisions over existing message receipts, runtime boundaries and the original queue. */
 export class AutomaticInputs {
  private repairing?:Promise<void>;
- private roots(roomId:string,exclude?:string){return this.store.jobs(roomId).filter(job=>job.originId!==exclude&&!job.peer&&!job.groupResponse&&!job.groupInput&&!backgroundOrigin(job)&&!(['queued','held'].includes(job.state)&&job.afterJobId));}
+ private roots(roomId:string,exclude?:string){return this.store.jobs(roomId).filter(job=>job.originId!==exclude&&!job.peer&&!job.codexDispatch&&!job.groupResponse&&!job.groupInput&&!backgroundOrigin(job)&&!(['queued','held'].includes(job.state)&&job.afterJobId));}
  private running=new Map<string,Promise<void>>();private controllers=new Set<AbortController>();private closed=false;
  constructor(private upstream:Upstreams,private store:TeamStore,private coordinator:TeamCoordinator,private inputs:WorkInputs,private decide:InputDecision,private wake:()=>void=()=>{}){}
  private save(op:any,changes:any){const current=this.store.operation(op.id);return this.store.saveOperation({...current,...changes},current.revision);}
@@ -37,6 +37,7 @@ export class AutomaticInputs {
   if(!(members.some(member=>member.status==='active'&&member.subject?.kind==='user'&&member.subject.userId==='user.local')))throw new KTeamError('room_actor_forbidden',403);
   const hosted=members.some(member=>member.status==='active'&&member.subject?.kind==='agent'&&this.store.binding(member.subject.logicalAgentId));
   if(!settings||!hosted||settings.delivery==='external-agent'){this.store.completeSubmission(id,messageId,false);return;}
+  if(this.store.operation('codex-dispatch:'+id)){this.store.completeSubmission(id,messageId,true);return;}
   const jobs=this.roots(roomId,messageId),active=jobs.filter(job=>['routing','running','waiting','stopping','queued'].includes(job.state));const targets=(active.length?active:jobs.slice(0,1).filter(job=>['unknown','blocked','held'].includes(job.state))).slice(0,3).map(job=>({jobId:job.id,originId:job.originId,botId:job.activeBotId,state:job.state}));
   if(!targets.length&&!this.busyRooms().includes(roomId)){this.store.completeSubmission(id,messageId,true);this.markGroupPlanning(roomId,messageId);return;}
   const bindings=members.filter(member=>member.status==='active'&&member.subject?.kind==='agent').flatMap(member=>{const binding=this.store.binding(member.subject.logicalAgentId);return binding?[{botId:binding.botId,revision:binding.revision,fingerprint:binding.fingerprint}]:[];});

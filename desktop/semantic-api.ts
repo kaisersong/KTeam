@@ -4,6 +4,7 @@ type Call=(route:string,value?:unknown)=>Promise<any>;
 const text=(value:unknown)=>{if(typeof value!=='string'||!value||value.length>32768)throw Error('invalid_input');return value;};
 const room=(value:unknown)=>encodeURIComponent(text(value));
 const quote=(value:string)=>"'"+value.replaceAll("'","'\\''")+"'";
+const messageEnvelope=(input:any)=>({aimp:'1.0',id:input.id??'msg_'+randomBytes(16).toString('hex'),room_id:text(input.roomId),thread_id:'thread-'+text(input.roomId),from:'human://kteam.local/user.local',to:[],mentions:input.mentions??[],ts:new Date().toISOString(),act:'chat',source_level:'principal',classification:'internal',...(input.replyToMessageId?{reply_to:text(input.replyToMessageId)}:{}),body:text(input.text)});
 export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nativeActions?:Record<string,(input?:any)=>Promise<any>>}={}){
  const invitation=async(result:any)=>{const command=[...(options.agentLauncher??['kteam']),'agent','connect','--root',result.dataRoot,'--invite',result.connection.id].map(quote).join(' ');return {...result,command,instruction:'请将当前Agent会话接入KTeam，保留当前模型、工作区和权限。先执行下面的命令：\n\n'+command+'\n\n将返回的确认码告诉我；我会在KTeam确认接入。然后阅读命令返回的Skill，用listen/reply在当前会话持续收发KTeam消息。不要新建替身模型或更改原有工具批准策略。'};};
  return {
@@ -60,7 +61,10 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  pinConversation:(input:any)=>call(`/v1/teams/${room(input.roomId)}/sidebar`,{pinned:input.pinned}),
  peerExchanges:(input:any)=>call(`/v1/teams/${room(input.roomId)}/peer-exchanges`,{originIds:input.originIds}),peerExchangeMessages:(input:any)=>call(`/v1/teams/${room(input.roomId)}/peer-exchanges/${room(input.exchangeId)}`),status:()=>call('/v1/status'),bots:()=>call('/v1/bots'),teams:()=>call('/v1/teams'),models:()=>call('/v1/models'),runtimes:()=>call('/v1/runtimes'),
  createBot:(input:unknown)=>call('/v1/bot-create',input),createTeam:(input:unknown)=>call('/v1/teams',input),
- send:(input:any)=>call('/v1/messages',{aimp:'1.0',id:input.id??'msg_'+randomBytes(16).toString('hex'),room_id:text(input.roomId),thread_id:'thread-'+text(input.roomId),from:'human://kteam.local/user.local',to:[],mentions:input.mentions??[],ts:new Date().toISOString(),act:'chat',source_level:'principal',classification:'internal',...(input.replyToMessageId?{reply_to:text(input.replyToMessageId)}:{}),body:text(input.text)}),
+ send:(input:any)=>call('/v1/messages',messageEnvelope(input)),
+ codexWriteGrant:(botId:string)=>call('/v1/codex/write-grant?botId='+room(botId)),
+ saveCodexWriteGrant:(input:unknown)=>call('/v1/codex/write-grant',input),
+ dispatchCodex:(input:any)=>call('/v1/codex/dispatch',{envelope:messageEnvelope({...input,mentions:['agent://kteam.local/'+room(input.botId)]}),botId:input.botId,allowWrite:input.allowWrite,expectedGrantRevision:input.expectedGrantRevision}),
  messages:(input:any)=>{const after=input.after??0,limit=input.limit??100,before=input.before;if(!Number.isSafeInteger(after)||after<0||!Number.isInteger(limit)||limit<1||limit>100||(before!==undefined&&(!Number.isSafeInteger(before)||before<1)))throw Error('invalid_pagination');return call(`/v1/teams/${room(input.roomId)}/messages?after=${after}&limit=${limit}${before!==undefined?'&before='+before:''}${input.tail===true?'&tail=true':''}`);},
  settings:(id:unknown)=>call(`/v1/teams/${room(id)}/settings`),work:(id:unknown)=>call(`/v1/teams/${room(id)}/work`),
  reconcile:(id:unknown)=>call(`/v1/teams/${room(id)}/reconcile`,{}),

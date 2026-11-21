@@ -16,7 +16,7 @@ import type {Upstreams} from '../adapters/upstream.js';
 import type {TeamCoordinator} from './coordination.js';
 import type {TeamStore} from './team-store.js';
 
-const interrupted = (job: any) => job && !job.groupResponse&&!job.groupInput&& ['stopped','unknown','blocked'].includes(job.state) && !['peer','followup','assistant-notice','regenerate'].includes(job.trigger);
+const interrupted = (job: any) => job && !job.codexDispatch && !job.groupResponse&&!job.groupInput&& ['stopped','unknown','blocked'].includes(job.state) && !['peer','followup','assistant-notice','regenerate'].includes(job.trigger);
 const active = (job: any) => !dependent(job)&&['queued','held','routing','running','stopping'].includes(job.state);
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 

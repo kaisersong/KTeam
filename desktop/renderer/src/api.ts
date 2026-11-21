@@ -1,4 +1,5 @@
 export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
+export interface CodexGrantView {supported:boolean;grant:{path:string|null;revision:number}}
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
 export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
 export interface KTeamAPI {
@@ -60,6 +61,9 @@ export interface KTeamAPI {
  stopSpeech(input?:any):Promise<any>;
  speechStatus(input?:any):Promise<any>;
  exportConversation(input?:any):Promise<any>;
+ codexWriteGrant(botId:string):Promise<CodexGrantView>;
+ saveCodexWriteGrant(input:{botId:string;path:string|null;expectedRevision:number}):Promise<CodexGrantView>;
+ dispatchCodex(input:{roomId:string;botId:string;text:string;id:string;allowWrite:boolean;expectedGrantRevision?:number;replyToMessageId?:string}):Promise<{messageId:string}>;
  chooseWorkspace(input?:any):Promise<any>;
 
  builtinAgent(modelId?:string):Promise<any>;probeBuiltinAgent(input:{modelId:string}):Promise<any>;
@@ -81,6 +85,20 @@ async function dev(method:string,args:unknown[]){
 }
 export const api:KTeamAPI=window.kteam??new Proxy({} as KTeamAPI,{get:(_target,key:string)=>(...args:unknown[])=>dev(key,args)});
 const reasons:Record<string,string>={
+ codex_write_grant_required:'该成员尚未获得目录写入授权',
+ codex_task_write_required:'本任务尚未获准修改文件',
+ codex_write_grant_changed:'成员目录授权已变更，请核对后重新派工',
+ codex_write_directory_invalid:'无法使用这个目录，请选择有效的项目父目录',
+ codex_write_target_outside:'成员工作目录超出了已授权范围',
+ codex_write_sandbox_denied:'Codex 报告文件操作受限，请核对实际目标是否超出授权范围',
+ codex_dispatch_member_unavailable:'执行成员已变更或不在当前群组',
+ codex_dispatch_conflict:'派工提交已变化，请先核对原任务',
+ codex_member_required:'请选择已绑定本机 Codex 的成员',
+ native_codex_write_sandbox_unavailable:'这台电脑尚不支持受限的 Codex 写入任务',
+ native_codex_login_unavailable:'无法安全使用本机 Codex 登录，请检查 Codex 的登录状态',
+ native_codex_config_unavailable:'无法读取本机 Codex 配置',
+ native_codex_provider_unsupported:'本机 Codex 的模型配置无法用于受限任务',
+
  tool_command_changed:'命令或本地脚本内容已有变化，请重新确认',attachment_image_invalid:'这张图片暂时无法解码，请检查原文件',web_link_invalid:'此链接无法作为网页打开',inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
  agent_link_windows_unsupported:'当前服务暂不能链接这个本机 Agent，请检查服务版本与检测结果',
  host_operation_unknown:'请求结果待核对，请先核对原记录',
