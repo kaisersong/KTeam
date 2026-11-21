@@ -147,6 +147,8 @@ export class WorkHandoffs {
  async park(job:any){
   const op=this.store.operation(job.currentHandoffId);if(!op||!this.wantsPause(job))throw new KTeamError('handoff_result_unknown',409);
   await this.guard(job);const task=((await this.upstream.aimp(job.roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===job.task?.taskRef);
+  const latest=this.store.job(job.id);
+  if(latest?.state!=='running'||latest.currentHandoffId!==op.id||this.store.settings(job.roomId)?.paused||this.store.workPaused())throw new KTeamError('team_paused',409);
   if(!task||task.state!=='working'||task.assignee.split('/').at(-1)!==op.botId)throw new KTeamError('handoff_scope_changed',409);
   const reason=(op.questionId||op.approvalId?'waiting_user:':'waiting_members:')+op.id,parkId=eventId(op.id+':park');let current=this.store.saveOperation({...op,status:'parking',taskRef:task.taskRef,reason,parkId},op.revision);
   job.state='waiting';delete job.handoffResume;this.store.save(job);
