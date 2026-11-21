@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.9.7。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.9.8。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -144,8 +144,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.9.7.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.9.7.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.9.8.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.9.8.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -202,6 +202,13 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.9.8
+
+- macOS 上绑定 Codex CLI 的成员可设置父目录写入授权。群里给明确指定的成员派工时可单独允许本任务修改文件，普通消息继续使用只读会话。
+- 小 K 主动提醒记录投递决策，并在发出前重新校验来源时效。
+- 接续工作时引用已核验的交付结果，帮助成员保留已完成的部分。
+- 桌面可审阅指定版本的交付文件，移动端待办合并重复提醒。
 
 ### v0.9.7
 

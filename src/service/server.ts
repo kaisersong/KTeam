@@ -1,3 +1,4 @@
+import {assertCodexBinding,codexWriteGrant,saveCodexWriteGrant,type CodexDispatch} from './codex-write-grants.js';
 import {TeamWorkspace} from './team-workspace.js';
 import {groupDirectoryApproval} from './group-directory-approval.js';
 import {MobileDevices} from '../mobile/devices.js';
@@ -18,6 +19,7 @@ import {MemberWorkspace} from './member-workspace.js';
 import {BotMemory} from './bot-memory.js';
 import {ComposerAttachments} from './composer-attachments.js';
 import {generatedFileRecords} from '../runtime/generated-file-receipts.js';
+import {ArtifactReview} from './artifact-review.js';
 import {generatedFilePath,generatedFilePreview} from '../runtime/generated-files.js';
 import {TeamRecipes} from './team-recipes.js';
 import {BotToolScopes} from './bot-tool-scopes.js';
@@ -40,7 +42,7 @@ import {ToolApprovals} from './tool-approvals.js';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { chmodSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
-import { KTeamError, record,fields } from '../errors.js';
+import { KTeamError, record,fields,text } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { AIMP_SPEC, AIMP_WIRE,validateL0,intentHash } from '../protocol/aimp.js';
 import { Upstreams, type UpstreamOptions } from '../adapters/upstream.js';
@@ -120,14 +122,25 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const conversationUpdates=new ConversationUpdates(upstream,teamStore,conversations,automation,coordinator,approvals,links,workRecovery,teamRoles,String(owner.epoch));
   const onboarding=new OnboardingService(teamStore,coordinator,upstream);
   const inboxState=new InboxState(teamStore);
+  const artifactReview=new ArtifactReview(teamStore,conversations,automation.inputs!);
   const inboxSource=()=>({ok:true,workingBotIds:teamStore.workingBotIds(),approvals:approvals.list().map(item=>attentionSource(item,id=>teamStore.job(id))),recentApprovals:approvals.recent().map(item=>attentionSource(item,id=>teamStore.job(id))),questions:(automation.privateChats?.questions()??[]).map(item=>attentionSource(item,id=>teamStore.job(id))),creations:coordinator.pendingCreations(),proposals:coordinator.proposals().filter(p=>!p.operation&&p.expiresAt>Date.now()),jobs:teamStore.inboxJobs().filter(item=>!teamStore.state('deleted-conversation:'+item.roomId))});
-  const sendHumanMessage=async(value:unknown)=>{
+  const sendHumanMessage=async(value:unknown,dispatch?:CodexDispatch)=>{
         const input=validateL0(value);
+        const dispatchId='codex-dispatch:'+input.id;
+        if(!dispatch&&teamStore.operation(dispatchId))throw new KTeamError('codex_dispatch_conflict',409);
         await new BotCapabilities(upstream,teamStore).validateCommand(input.room_id,String(input.body??''));
         if(input.from!==LOCAL_HUMAN)throw new KTeamError('sender_identity_mismatch',403);if(teamStore.operation('composer-send:'+input.id))throw new KTeamError('attachment_id_conflict',409);if(teamStore.operation('work-input:'+input.id)&&!teamStore.operation('work-input:'+input.id).automatic)throw new KTeamError('work_input_id_conflict',409);
         await coordinator.guardConversation(input.room_id);
         const managed=!!teamStore.settings(input.room_id);
-        const result=await collaboration.send(input,envelope=>{if(managed)teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
+        const result=await collaboration.send(input,envelope=>{if(!managed)return;teamStore.transaction(()=>{
+          const previous=teamStore.operation(dispatchId),submission=teamStore.submission(envelope.id);
+          if(previous&&(!dispatch||previous.roomId!==envelope.room_id||previous.botId!==dispatch.botId||previous.allowWrite!==dispatch.allowWrite||dispatch.allowWrite&&previous.grantRevision!==dispatch.grantRevision)||dispatch&&submission&&!previous)throw new KTeamError('codex_dispatch_conflict',409);
+          if(dispatch&&!previous){
+            if(dispatch.allowWrite&&codexWriteGrant(teamStore,dispatch.botId).revision!==dispatch.grantRevision)throw new KTeamError('codex_write_grant_changed',409);
+            teamStore.saveOperation({id:dispatchId,roomId:envelope.room_id,...dispatch},0);
+          }
+          teamStore.prepareSubmission(envelope.id,envelope.room_id,intentHash(envelope),envelope);
+        });},snapshot=>coordinator.guardConversation(input.room_id,snapshot));
         if(managed) {const settings=teamStore.settings(input.room_id)!;const membership=await upstream.membership(input.room_id);const hasHosted=(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.kind==='agent'&&teamStore.binding(m.subject.logicalAgentId));if(hasHosted&&settings.delivery!=='external-agent')await automation.automatic!.accept(input.room_id,input.id,String(result.messageId));else teamStore.completeSubmission(input.id,String(result.messageId),false);void automation.tick();}
         return result;
   };
@@ -291,12 +304,39 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       }
       if(url.pathname.startsWith('/v1/composer-attachments')){if(client.id!=='kteam-main')throw new KTeamError('attachment_client_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/composer-attachments')return send(res,200,await composerAttachments.view(url.searchParams.get('roomId')??''));if(req.method==='GET'&&url.pathname==='/v1/composer-attachments/content')return send(res,200,await composerAttachments.content({roomId:url.searchParams.get('roomId')??'',id:url.searchParams.get('id')??''}));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/upload')return send(res,201,await composerAttachments.stage(await body(req,8*1024*1024)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel')return send(res,200,await composerAttachments.cancel(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/send'){const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));const result=await composerAttachments.send(input);void automation.tick();return send(res,201,result);}if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/cancel-send')return send(res,200,await composerAttachments.cancelSend(await body(req)));if(req.method==='POST'&&url.pathname==='/v1/composer-attachments/preview')return send(res,200,await composerAttachments.preview(await body(req)));throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/work-inputs'||url.pathname==='/v1/work-inputs/release'){if(client.id!=='kteam-main')throw new KTeamError('work_input_forbidden',403);if(req.method==='GET'&&url.pathname==='/v1/work-inputs')return send(res,200,await automation.inputs!.view(url.searchParams.get('roomId')??''));if(req.method==='POST'){const result=url.pathname.endsWith('/release')?await automation.inputs!.release(await body(req)):await (async()=>{const input=record(await body(req));await new BotCapabilities(upstream,teamStore).validateCommand(String(input.roomId??''),String(input.text??''));return automation.inputs!.submit(input);})();void automation.tick();return send(res,201,result);}throw new KTeamError('route_not_found',404);}
+      if(url.pathname==='/v1/codex/write-grant'){
+        if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);
+        if(req.method==='GET'){
+          const botId=text(url.searchParams.get('botId'),'bot_id');assertCodexBinding(teamStore,botId);
+          return send(res,200,{ok:true,supported:process.platform==='darwin',grant:codexWriteGrant(teamStore,botId)});
+        }
+        if(req.method==='POST'){
+          const input=record(await body(req)),botId=text(input.botId,'bot_id');fields(input,['botId','path','expectedRevision']);assertCodexBinding(teamStore,botId);
+          if(codexWriteGrant(teamStore,botId).revision!==input.expectedRevision)throw new KTeamError('codex_write_grant_changed',409);
+          if(input.path!==null&&process.platform!=='darwin')throw new KTeamError('native_codex_write_sandbox_unavailable',409);
+          const grant=await localAgents.changeCodexGrant(botId,()=>saveCodexWriteGrant(teamStore,input));
+          return send(res,200,{ok:true,supported:process.platform==='darwin',grant});
+        }
+      }
+      if(url.pathname==='/v1/codex/dispatch'&&req.method==='POST'){
+        if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);
+        const input=record(await body(req));fields(input,['envelope','botId','allowWrite','expectedGrantRevision']);
+        const envelope=validateL0(input.envelope),botId=text(input.botId,'bot_id');
+        if(typeof input.allowWrite!=='boolean')throw new KTeamError('invalid_input');
+        const settings=teamStore.settings(envelope.room_id),membership=await upstream.membership(envelope.room_id);
+        await coordinator.guardConversation(envelope.room_id,membership);
+        if(settings?.kind!=='group'||settings.delivery==='external-agent'||!(membership.members as any[]).some(member=>member.status==='active'&&member.subject?.kind==='agent'&&member.subject.logicalAgentId===botId))throw new KTeamError('codex_dispatch_member_unavailable',403);
+        const binding=assertCodexBinding(teamStore,botId),grant=codexWriteGrant(teamStore,botId);
+        if(input.allowWrite&&(!Number.isSafeInteger(input.expectedGrantRevision)||Number(input.expectedGrantRevision)<0))throw new KTeamError('invalid_input');
+        if(input.allowWrite&&!teamStore.operation('codex-dispatch:'+envelope.id)&&input.expectedGrantRevision!==grant.revision)throw new KTeamError('codex_write_grant_changed',409);
+        return send(res,201,await sendHumanMessage(envelope,{botId,bindingRevision:binding.revision,allowWrite:input.allowWrite,grantRevision:input.allowWrite?Number(input.expectedGrantRevision):grant.revision,path:grant.path}));
+      }
       if (url.pathname === '/v1/messages' && req.method === 'POST')return send(res,201,await sendHumanMessage(await body(req)));
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);
       if(peerRoute){const sourceRoom=decodeURIComponent(peerRoute[1]!);if(!peerRoute[2]&&req.method==='POST')return send(res,200,await peerExchanges.list(sourceRoom,await body(req)));if(peerRoute[2]&&req.method==='GET')return send(res,200,await peerExchanges.messages(sourceRoom,peerRoute[2]));throw new KTeamError('route_not_found',404);}
       const rolesRoute=/^\/v1\/teams\/([^/]+)\/roles$/.exec(url.pathname);
       if(rolesRoute){const roomId=decodeURIComponent(rolesRoute[1]!);if(req.method==='GET')return send(res,200,await teamRoles.view(roomId));if(req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('user_action_required',403);const input=record(await body(req));if(input.action==='ensure'){fields(input,['action','force']);if(input.force!==undefined&&typeof input.force!=='boolean')throw new KTeamError('invalid_input');return send(res,202,await teamRoles.start(roomId,input.force===true));}if(input.action==='assign'){delete input.action;return send(res,200,await teamRoles.assign(roomId,input));}throw new KTeamError('invalid_input');}}
-      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|members|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-preview|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
+      const teamRoute=/^\/v1\/teams\/([^/]+)\/(settings|members|work|recover|pause|resume|seen|review|reconcile|proposals|edit|shared|message-state|message|search|library-import|library-file|library-open|generated-file-preview|generated-file-review|generated-file-open|generated-files|library-remove|computer|usage|regenerate|sidebar)$/.exec(url.pathname);
       if(teamRoute){
         const roomId=decodeURIComponent(teamRoute[1]!),action=teamRoute[2];
         if(action==='members'){if(client.id!=='kteam-main')throw new KTeamError('room_actor_forbidden',403);if(req.method==='GET')return send(res,200,await groupMembers.view(roomId));if(req.method==='POST'){const result=await groupMembers.control(roomId,await body(req),{requestSource:'user'});directoryMembers.delete(roomId);return send(res,200,result);}throw new KTeamError('route_not_found',404);}
@@ -311,6 +351,11 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(req.method==='POST'&&action==='library-import')return send(res,201,await conversations.importFile(roomId,await body(req,8*1024*1024)));
         if(req.method==='GET'&&action==='library-file')return send(res,200,await conversations.preview(roomId,url.searchParams.get('fileId')??''));
         if(req.method==='GET'&&action==='generated-files'){await conversations.scope(roomId);const botId=url.searchParams.get('botId')??undefined;if(botId)await new BotCapabilities(upstream,teamStore).scope(botId,roomId);const value=generatedFileRecords(teamStore,roomId,url.searchParams.get('cursor')??undefined,botId);await conversations.scope(roomId);if(botId)await new BotCapabilities(upstream,teamStore).scope(botId,roomId);return send(res,200,value);}
+        if(action==='generated-file-review'){
+          if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);
+          if(req.method==='GET')return send(res,200,await artifactReview.view(roomId,url.searchParams.get('toolCallId')??''));
+          if(req.method==='POST'){const result=await artifactReview.submit(roomId,await body(req));void automation.tick();return send(res,200,result);}
+        }
         if(req.method==='GET'&&action==='generated-file-preview'){if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);await conversations.scope(roomId);const result=generatedFilePreview(teamStore,roomId,url.searchParams.get('toolCallId')??'');await conversations.scope(roomId);return send(res,200,result);}
         if(req.method==='GET'&&action==='generated-file-open'){if(client.id!=='kteam-main')throw new KTeamError('generated_file_forbidden',403);await conversations.scope(roomId);const path=generatedFilePath(teamStore,roomId,url.searchParams.get('toolCallId')??'');await conversations.scope(roomId);return send(res,200,{ok:true,path});}
         if(req.method==='GET'&&action==='library-open'){const file=await conversations.file(roomId,url.searchParams.get('fileId')??'');return send(res,200,{ok:true,path:file.path});}

@@ -19,13 +19,13 @@ const user={requestSource:'user'},models={catalog:async()=>({defaultModelId:'fix
 const id=()=>'msg_'+randomBytes(16).toString('hex');
 const sleep=()=>new Promise(r=>setTimeout(r,5));
 async function setup(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);const master=await coordinator.bootstrap(user),a=await coordinator.createMember({name:'开发',modelId:'fixture',requestId:id()},user),b=await coordinator.createMember({name:'CTO',modelId:'fixture',requestId:id()},user),group=await coordinator.createGroup({title:'产品团队',memberAgentIds:[a.bot.id,b.bot.id],requestId:id()},user);return {...f,store,coordinator,master,a,b,roomId:group.room.roomId,async close(){store.close();await f.close();}};}
-async function admission(f:any,botId:string,jobId='source-job'){
+async function admission(f:any,botId:string,jobId='source-job',excludedRooms:string[]=[]){
  const roomId=f.roomId,origin=(await f.upstream.sendMessage(roomId,{text:'查看KTeam源码并与团队协作',kind:'text',threadId:'source',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()})).message;
  let task=(await f.upstream.aimp(roomId,'event',{id:id(),threadId:'source',act:'request',body:'查看源码',payload:{kind:'task.request@1',must_understand:true,description:'查看KTeam源码',deadline:new Date(Date.now()+3600000).toISOString(),expires:new Date(Date.now()+300000).toISOString(),budget:'none',acceptance:{predicates:['artifact_hash']},assignee:agentAddress(botId),reviewer:LOCAL_HUMAN}})).task;
  task=(await f.upstream.aimp(roomId,'agent-event',{logicalAgentId:botId,id:id(),threadId:task.threadId,taskRef:task.taskRef,act:'accept',body:'accept',targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.accept@1',must_understand:true,terms_hash:task.termsHash,caveats:[]}})).task;
  task=(await f.upstream.aimp(roomId,'begin-execution',{logicalAgentId:botId,taskRef:task.taskRef,requestId:'source-run-'+jobId,expectedRevision:task.revision,bindingRevision:1,hostFence:1})).task;
  const grant={logicalAgentId:botId,taskRef:task.taskRef,epoch:task.epoch,bindingRevision:1,hostFence:1};
- f.store.enqueue(jobId,roomId,origin.messageId);const job=f.store.claim();job.state='running';f.store.save(job);
+ f.store.enqueue(jobId,roomId,origin.messageId);const job=f.store.claim(excludedRooms);job.state='running';f.store.save(job);
  return {roomId,botId,originId:origin.messageId,jobId,admission:grant,signal:AbortSignal.timeout(15000),assertCurrent:async()=>{await f.upstream.aimp(roomId,'execution-check',grant);}};
 }
 test('master sees actual group work beyond its own chat, including accessible groups not locally created',async()=>{const f=await setup(),assistant=new TeamAssistant(f.upstream,f.store);try{await f.upstream.sendMessage(f.master.roomId,{text:'方案卡片已生成，点击开始',kind:'text',threadId:'assistant',responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:id()});const scope=await admission(f,f.a.bot.id);await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'正在核对KTeam源码，尚未完成开发'});const other=(await f.upstream.createTeam({title:'另一项目组',memberAgentIds:[],clientRequestKey:'not-kteam-created'})).room.roomId;const snapshot=await assistant.snapshot(f.master.botId,f.master.roomId);assert.ok(snapshot.groups.some(g=>g.title==='产品团队'));assert.ok(snapshot.groups.some(g=>g.roomId===other));assert.match(JSON.stringify(snapshot),/核对KTeam源码/);assert.equal(snapshot.groups.find(g=>g.roomId===f.roomId)?.execution,'running');await assert.rejects(assistant.snapshot(f.a.bot.id,f.a.roomId),/assistant_scope_required/);}finally{await assistant.close();await f.close();}});
@@ -63,6 +63,96 @@ test('pausing the source group cancels an executing peer consultation and stops 
 });
 
 test('original runtime-core triage runs with the real background budget and creates one assistant message job per source change',async()=>{const f=await setup();let calls=0;const assistant=new TeamAssistant(f.upstream,f.store,async input=>{calls++;await input.onRequest?.();return {text:JSON.stringify(JSON.parse(input.prompt).map((r:any)=>({sourceKey:r.key,priority:'now',reason:'团队遇到需要决策的事项',nextStep:'请确认验收范围'}))),model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};});try{const scope=await admission(f,f.a.bot.id);await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'验收范围需要用户确认'});await assistant.scan();assert.equal(calls,1,JSON.stringify(f.store.state('assistant-scan-health')));assert.equal(f.store.jobs(f.master.roomId).filter(j=>j.trigger==='assistant-notice').length,1);await assistant.scan();assert.equal(calls,1);assert.equal(f.store.jobs(f.master.roomId).length,1);}finally{await assistant.close();await f.close();}});
+
+test('assistant scan distinguishes failed triage from a durable silent decision',async()=>{
+ const f=await setup();
+ let calls=0;
+ const assistant=new TeamAssistant(f.upstream,f.store,async input=>{
+  await input.onRequest?.();
+  calls++;
+  const text=calls===1?'invalid response':JSON.stringify(JSON.parse(input.prompt).map((record:{key:string})=>({
+   sourceKey:record.key,priority:'later',reason:'普通讨论',nextStep:'等待实际进展',
+  })));
+  return {text,model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};
+ });
+ let restarted:TeamAssistant|undefined,restartCalls=0;
+ try{
+  const scope=await admission(f,f.a.bot.id);
+  const {message}=await f.upstream.aimp(f.roomId,'chat',{...scope.admission,text:'合成测试，仅讨论格式。'});
+  await assistant.scan();
+  const [failed]=f.store.operationsWithPrefix('assistant-decision:');
+  assert.equal(failed.status,'triage_unavailable');
+  assert.equal(failed.sourceMessageId,message.messageId);
+  assert.equal(failed.sourceRoomId,f.roomId);
+  assert.equal(f.store.jobs(f.master.roomId).length,0);
+  await assistant.scan();
+  const silent=f.store.operation(failed.id);
+  assert.equal(silent.status,'stay_silent');
+  assert.equal(silent.revision,failed.revision+1);
+  await assistant.close();
+  restarted=new TeamAssistant(f.upstream,f.store,async()=>{restartCalls++;throw new Error('unexpected decision');});
+  await restarted.scan();
+  assert.equal(f.store.operation(failed.id).revision,silent.revision);
+  assert.equal(f.store.jobs(f.master.roomId).length,0);
+  assert.equal(calls,2);
+  assert.equal(restartCalls,0);
+ }finally{await (restarted??assistant).close();await f.close();}
+});
+
+test('assistant notice only publishes if the source is still current',async()=>{
+ for(const mode of ['current','superseded','changed_during_turn','revoked','disabled']){
+  const f=await setup();
+  let noticeCalls=0;
+  const assistant=new TeamAssistant(f.upstream,f.store,async input=>{
+   await input.onRequest?.();
+   return {text:JSON.stringify(JSON.parse(input.prompt).map((record:{key:string})=>({
+    sourceKey:record.key,priority:'now',reason:'需要确认验收范围',nextStep:'确认验收范围',
+   }))),model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};
+  });
+  let automation:TeamAutomation|undefined;
+  try{
+   const send=async(text:string)=>{
+    const scope=await admission(f,f.a.bot.id,id(),[f.master.roomId]);
+    const sourceJob=f.store.job(scope.jobId);
+    sourceJob.state='delivered';
+    f.store.save(sourceJob);
+    return f.upstream.aimp(f.roomId,'chat',{...scope.admission,text});
+   };
+   await send('合成验收范围需要用户确认');
+   await assistant.scan();
+   const [decision]=f.store.operationsWithPrefix('assistant-decision:');
+   assert.equal(decision.status,'notify');
+   const receipt=f.store.operation(decision.noticeId);
+   assert.ok(receipt);
+   if(mode==='superseded')await send('合成验收范围已解决');
+   if(mode==='revoked'){
+    const removed=f.broker.room.updateRoomMembers({roomId:f.roomId,removeAgentIds:[f.a.bot.id]},{
+     sessionId:'notice-revocation',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString(),
+    });
+    assert.equal(removed.ok,true);
+   }
+   automation=new TeamAutomation(f.upstream,f.store,1,async input=>{
+    noticeCalls++;
+    await input.onRequest?.();
+    assert.ok(input.tools?.every(tool=>tool.definition.name==='get_team_work'));
+    input.onText?.('合成提醒草稿');
+    assert.equal(f.store.job(receipt.jobId).partialText,undefined);
+    if(mode==='changed_during_turn')await send('合成验收范围已在推理期间解决');
+    if(mode==='disabled')assistant.setEnabled(false);
+    return {text:'合成提醒，请确认验收范围。',model:'fixture-model',fingerprint:'frozen',usage:{inputTokens:1,outputTokens:1}};
+   },f.coordinator);
+   await automation.tick();
+   const job=f.store.job(receipt.jobId);
+   assert.equal(job.state,mode==='current'?'delivered':'noop',mode+': '+JSON.stringify(job));
+   assert.equal(job.answerDraft,undefined,mode);
+   assert.equal(noticeCalls,['superseded','revoked'].includes(mode)?0:1,mode);
+   const transcript=await f.upstream.messages(f.master.roomId,0,100);
+   assert.equal(transcript.messages.filter((message:any)=>message.text==='合成提醒，请确认验收范围。').length,mode==='current'?1:0,mode);
+   await automation.tick();
+   assert.equal(f.store.jobs(f.master.roomId).length,1);
+  }finally{await automation?.close();await assistant.close();await f.close();}
+ }
+});
 
 test('peer consultation receives the original group request but never another private conversation',async()=>{
  const f=await setup(),chats=new PrivateConversations(f.upstream,f.store,f.coordinator,()=>{});try{

@@ -59,6 +59,17 @@ export class TeamStore {
  hasGeneratedFiles(roomId:string,jobId:string){return !!this.db.prepare("SELECT 1 FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.facts.jobId')=? LIMIT 1").get(roomId,jobId);}
  generatedFileRecords(roomId:string,before?:{at:number;id:string},botId?:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=?"+(botId?" AND json_extract(value_json,'$.botId')=?":"")+(before?" AND (json_extract(value_json,'$.createdAt')<? OR json_extract(value_json,'$.createdAt')=? AND id<?)":"")+" ORDER BY json_extract(value_json,'$.createdAt') DESC,id DESC LIMIT 21").all(roomId,...(botId?[botId]:[]),...(before?[before.at,before.at,before.id]:[])).map(r=>JSON.parse(String(r.value_json)));}
  generatedFileCount(roomId:string,botId:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.botId')=?").get(roomId,botId)?.n??0);}
+ artifactReviewBaseline(roomId:string,pathKey:string,jobIds:string[],sha256:string):{content:string;sha256:string}|undefined{
+  const row=this.db.prepare(`SELECT o.value_json FROM product_operations o WHERE o.id GLOB 'artifact-review:*'
+   AND json_extract(o.value_json,'$.roomId')=? AND json_extract(o.value_json,'$.pathKey')=?
+   AND json_extract(o.value_json,'$.sha256')<>?
+   AND json_extract(o.value_json,'$.jobId') IN (SELECT value FROM json_each(?))
+   AND (json_extract(o.value_json,'$.action')='accept' OR EXISTS (
+    SELECT 1 FROM product_operations w WHERE w.id='work-input:'||json_extract(o.value_json,'$.inputId')
+    AND json_extract(w.value_json,'$.status') IN ('queued','completed')))
+   ORDER BY o.rowid DESC LIMIT 1`).get(roomId,pathKey,sha256,JSON.stringify(jobIds));
+  return row ? JSON.parse(String(row.value_json)) : undefined;
+ }
  generatedFilesForTool(roomId:string,toolCallId:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.toolCallId')=? LIMIT 2").all(roomId,toolCallId).map(r=>JSON.parse(String(r.value_json)));}
  operations():any[]{return this.db.prepare('SELECT value_json FROM product_operations ORDER BY rowid DESC LIMIT 100').all().map(row=>JSON.parse(String(row.value_json)));}
  operation(id:string):any{const row=this.db.prepare('SELECT value_json FROM product_operations WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
@@ -92,7 +103,7 @@ export class TeamStore {
  settings(roomId:string):TeamSettings|null{const row=this.db.prepare('SELECT value_json FROM team_settings WHERE room_id=?').get(roomId);return row?JSON.parse(String(row.value_json)):null;}
  configure(value:TeamSettings,expectedRevision:number){const previous=this.settings(value.roomId);if((previous?.revision??0)!==expectedRevision)throw new KTeamError('team_revision_conflict',409);const next={...value,revision:expectedRevision+1};this.db.prepare('INSERT INTO team_settings VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET value_json=excluded.value_json').run(value.roomId,JSON.stringify(next));return next;}
  enqueueFollowup(value:any){const job={scopeRevision:this.settings(value.roomId)?.revision,...value,state:this.settings(value.roomId)?.paused?'held':'queued',calls:0,createdAt:new Date().toISOString()};this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(job.id,job.roomId,job.originId,job.state,JSON.stringify(job));}
- enqueue(id:string,roomId:string,originId:string){const state=this.settings(roomId)?.paused?'held':'queued';this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(id,roomId,originId,state,JSON.stringify({id,roomId,originId,state,scopeRevision:this.settings(roomId)?.revision,...(state==='held'?{reason:'team_paused'}:{}),calls:0,createdAt:new Date().toISOString()}));}
+ enqueue(id:string,roomId:string,originId:string,dispatch?:unknown){const state=this.settings(roomId)?.paused?'held':'queued';this.db.prepare('INSERT OR IGNORE INTO team_jobs VALUES(?,?,?,?,?)').run(id,roomId,originId,state,JSON.stringify({id,roomId,originId,state,...(dispatch?{trigger:'codex-dispatch',codexDispatch:dispatch}:{}),scopeRevision:this.settings(roomId)?.revision,...(state==='held'?{reason:'team_paused'}:{}),calls:0,createdAt:new Date().toISOString()}));}
  private changePausedQueue(previous:TeamSettings,next:TeamSettings){
   const from=next.paused?'queued':'held',to=next.paused?'held':'queued';
   // An untouched job may follow a pause toggle, but never inherit an intervening configuration change.
@@ -157,7 +168,7 @@ export class TeamStore {
   this.db.exec('BEGIN IMMEDIATE');try{
    const row=this.db.prepare('SELECT room_id FROM team_outbox WHERE id=?').get(id);if(!row)throw new KTeamError('submission_not_found');
    if(handling){if(handling.id!=='message-handling:'+id||handling.roomId!==row.room_id||handling.messageId!==originId)throw new KTeamError('work_input_id_conflict',409);const previous=this.operation(handling.id);if(previous){if(previous.bodyHash!==handling.bodyHash||previous.messageId!==originId||previous.roomId!==handling.roomId)throw new KTeamError('work_input_id_conflict',409);}else this.saveOperation(handling,0);}
-   if(enqueue&&!this.operation('work-input:'+id))this.enqueue('job-'+originId,String(row.room_id),originId);
+   if(enqueue&&!this.operation('work-input:'+id))this.enqueue('job-'+originId,String(row.room_id),originId,this.operation('codex-dispatch:'+id));
    this.db.prepare("UPDATE team_outbox SET state='sent',origin_id=?,envelope_json=NULL WHERE id=?").run(originId,id);
    this.db.exec('COMMIT');
   }catch(error){this.db.exec('ROLLBACK');throw error;}

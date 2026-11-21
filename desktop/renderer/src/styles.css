@@ -210,3 +210,23 @@
 .approval-trigger{display:grid;gap:4px}.approval-trigger>span{font-size:12px;color:var(--text-secondary)}.approval-trigger>code{white-space:pre-wrap;overflow-wrap:anywhere}
 
 .peer-message-target{border-inline-start:2px solid var(--green);padding-inline-start:8px}
+
+.artifact-review{padding:16px;min-width:0}
+.artifact-review-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,300px);gap:16px}
+.artifact-review-diff,.artifact-review-notes{min-width:0}
+.artifact-review-version{margin:0 0 8px}
+.artifact-review-lines{max-height:58vh;overflow:auto;border:1px solid currentColor;border-color:color-mix(in srgb,currentColor 18%,transparent);border-radius:6px}
+.artifact-review-line{display:grid;grid-template-columns:3em 3em 1.4em minmax(max-content,1fr);min-width:100%;width:max-content;font:12px/1.6 ui-monospace,monospace}
+.artifact-review-line code{white-space:pre;padding-right:12px}
+.artifact-review-line.added{background:color-mix(in srgb,#328456 19%,transparent)}
+.artifact-review-line.removed{background:color-mix(in srgb,#bc4b43 18%,transparent)}
+.artifact-review-line.selected{outline:1px solid currentColor;outline-offset:-1px}
+.artifact-review-number{font:inherit;color:inherit;text-align:right;padding:0 .5em;background:none;border:0}
+button.artifact-review-number:not(:disabled){cursor:pointer}
+button.artifact-review-number:not(:disabled):hover{text-decoration:underline}
+.artifact-review-notes{display:flex;flex-direction:column;align-items:flex-start;gap:8px;overflow-wrap:anywhere}
+.artifact-review-notes h3,.artifact-review-notes p{margin:0}
+.artifact-review-notes article{width:100%;border-bottom:1px solid color-mix(in srgb,currentColor 18%,transparent);padding-bottom:6px}
+.artifact-review-notes article p{white-space:pre-wrap}
+.artifact-review-notes textarea{box-sizing:border-box;width:100%;min-height:80px;resize:vertical;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 32%,transparent);border-radius:6px;padding:8px}
+@media(max-width:720px){.artifact-review-grid{grid-template-columns:minmax(0,1fr)}}

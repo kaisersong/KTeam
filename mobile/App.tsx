@@ -107,6 +107,7 @@ import {
   mergeMessages,
   visibleRooms,
 } from "../src/protocol/mobile-message-cache";
+import { latestMobileInbox } from "../src/protocol/mobile-inbox";
 import { mobileApprovalCard } from "../src/protocol/mobile-approval-card";
 import { mobileRecoveryNotice } from "../src/protocol/work-recovery-view";
 import { acceptPairing } from "../src/protocol/mobile-pairing";
@@ -492,6 +493,9 @@ function AppBody() {
     },
     [computer?.credentialId],
   );
+  const updateInbox = useCallback((snapshot: any) => {
+    setInbox((current: any) => latestMobileInbox(current, snapshot));
+  }, []);
   const tell = (e: unknown) => setError(names[errorText(e)] ?? errorText(e));
   const persist = async (c: Computer, k: string, v: any) => {
     try {
@@ -530,17 +534,21 @@ function AppBody() {
         setBots((old) =>
           JSON.stringify(old) === JSON.stringify(b.bots) ? old : b.bots,
         );
-        setInbox(c);
+        updateInbox(c);
         await persist(computer, "rooms", a.rooms);
         await persist(computer, "bots", b.bots);
       } else {
-        const v = await call("conversations.updates", {
-          roomId: r.roomId,
-          ...(cursor.current ? { cursor: cursor.current } : {}),
-          messageIds: messagesRef.current.slice(-250).map((m) => m.messageId),
-        });
+        const [v, attention] = await Promise.all([
+          call("conversations.updates", {
+            roomId: r.roomId,
+            ...(cursor.current ? { cursor: cursor.current } : {}),
+            messageIds: messagesRef.current.slice(-250).map((m) => m.messageId),
+          }),
+          call("inbox.read").catch(() => undefined),
+        ]);
         if (g !== generation.current || roomRef.current?.roomId !== r.roomId)
           return;
+        if (attention) updateInbox(attention);
         cursor.current = v.cursor;
         const incoming = v.messages?.messages ?? [];
         const all = mergeMessages(messagesRef.current, incoming);
@@ -601,7 +609,7 @@ function AppBody() {
     } finally {
       if (refreshing.current === transport) refreshing.current = undefined;
     }
-  }, [computer, call, bots]);
+  }, [computer, call, updateInbox, bots]);
   useEffect(() => {
     void computers().then((v) => {
       setSaved(v);
@@ -935,6 +943,13 @@ function AppBody() {
     setRoom(r);
     setTab("会话");
   };
+  const openInboxRoom = async (roomId: string) => {
+    try {
+      const target = (await call("rooms.list")).rooms.find((room: any) => room.roomId === roomId);
+      if (!target) throw Error("当前无法打开原会话");
+      openRoom(target);
+    } catch (error) { tell(error); }
+  };
   const loadOlder = async () => {
     const r = roomRef.current,
       c = computer;
@@ -1213,7 +1228,7 @@ function AppBody() {
       await call("approvals.decide", { ...item.input, operationId });
       await clearPending(computer, operationId);
       const next = await call("inbox.read");
-      setInbox(next);
+      updateInbox(next);
     } catch (e) {
       if (e instanceof MobileWriteRefused && !e.sent && operationId)
         await clearPending(computer, operationId).catch(() => {});
@@ -1261,6 +1276,9 @@ function AppBody() {
   const assistantRoom = rooms.find((r) => r.kind === "assistant"),
     needsYou =
       (inbox?.approvals?.length ?? 0) + (inbox?.questions?.length ?? 0);
+  const newAttention = [...(inbox?.approvals ?? []), ...(inbox?.questions ?? [])].filter(
+    (item) => item.inbox?.read !== true,
+  ).length;
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const filtered = visibleRooms(rooms).filter((r) =>
       (r.title ?? "").toLowerCase().includes(queryText.toLowerCase()),
@@ -1367,6 +1385,15 @@ function AppBody() {
           </Pressable>
         </GlassSurface>
       </GlassGroup>
+      {room && !preview && !offline && newAttention > 0 && (
+        <Pressable accessibilityRole="button"
+          style={[s.attentionCard, { borderColor: colors.line, marginHorizontal: 16 }]}
+          onPress={() => { setRoom(undefined); setTab("收件箱"); }}>
+          <Inbox size={18} color={colors.green} />
+          <Text style={{ color: colors.text, flex: 1 }}>有 {newAttention} 件事需要你处理</Text>
+          <ChevronRight size={16} color={colors.muted} />
+        </Pressable>
+      )}
       {(error || (computer && offline)) && !connecting && !pairing && (
         <View
           style={[
@@ -2025,6 +2052,7 @@ function AppBody() {
                 </Text>
               ) : null}
               <View style={s.actions}>
+                {(a.sourceRoomId || a.roomId) && button("原会话", () => void openInboxRoom(a.sourceRoomId ?? a.roomId), undefined, offline)}
                 {card.decisions.includes("deny") && button(
                   "拒绝",
                   () => void decide({ ...a, hash: card.hash }, "deny"),
@@ -2046,13 +2074,14 @@ function AppBody() {
               key={q.id}
               q={q}
               colors={colors}
+              onOpen={(q.sourceRoomId || q.roomId) && !offline ? () => void openInboxRoom(q.sourceRoomId ?? q.roomId) : undefined}
               onAnswer={async (answer: string) => {
                 await call("questions.answer", {
                   operationId: uid(),
                   id: q.id,
                   answer,
                 });
-                setInbox(await call("inbox.read"));
+                updateInbox(await call("inbox.read"));
               }}
             />
           ))}
@@ -2308,7 +2337,7 @@ function AppBody() {
                 setTab(value);
                 if (value === "产物") void requestFiles();
                 if (value === "收件箱")
-                  void call("inbox.read").then(setInbox).catch(tell);
+                  void call("inbox.read").then(updateInbox).catch(tell);
               }}
               style={[s.tab, tab === value && { backgroundColor: colors.user }]}
             >
@@ -2327,10 +2356,7 @@ function AppBody() {
                 {label}
               </Text>
               {value === "收件箱" &&
-                !!(
-                  (inbox?.approvals?.length ?? 0) +
-                  (inbox?.questions?.length ?? 0)
-                ) && (
+                newAttention > 0 && (
                   <View style={[s.dot, { backgroundColor: colors.green }]} />
                 )}
             </Pressable>
@@ -2649,7 +2675,7 @@ function Attachment({ message, file, call, onOpen, colors }: any) {
     </Pressable>
   );
 }
-function Question({ q, colors, onAnswer }: any) {
+function Question({ q, colors, onOpen, onAnswer }: any) {
   const [answer, setAnswer] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -2661,6 +2687,9 @@ function Question({ q, colors, onAnswer }: any) {
       ]}
     >
       <Text style={[s.title, { color: colors.text }]}>{q.question}</Text>
+      {onOpen && <Pressable onPress={onOpen} accessibilityRole="button">
+        <Text style={{color: colors.green}}>原会话</Text>
+      </Pressable>}
       <TextInput
         accessibilityLabel="回答问题"
         multiline

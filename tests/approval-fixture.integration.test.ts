@@ -12,6 +12,10 @@ import {initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI} from '../desktop/semantic-api.js';
 import {mobileApprovalCard} from '../src/protocol/mobile-approval-card.js';
+import {latestMobileInbox} from '../src/protocol/mobile-inbox.js';
+import {mobilePairFingerprint} from '../src/mobile/devices.js';
+import {mobileB64} from '../src/protocol/mobile-wire.js';
+import {mobileClient} from './helpers/mobile-client.js';
 
 const {FIXTURE_TEXT,startApprovalFixture}=await import(new URL('../../scripts/manual-approval-fixture.mjs',import.meta.url).href) as {FIXTURE_TEXT:string;startApprovalFixture:(directory:string)=>Promise<{file:string;baseUrl:string;requests:()=>number;close:()=>Promise<void>}>};
 
@@ -31,6 +35,7 @@ test('loopback fixture creates a real read-only approval, allow once leaves the 
   for(const path of [root,configRoot,workspace])mkdirSync(path,{mode:0o700});
   const previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=configRoot;
   const fixture=await startApprovalFixture(workspace);let host:Awaited<ReturnType<typeof startHost>>|undefined;
+  let phone:Awaited<ReturnType<typeof mobileClient>>|undefined,pair:Awaited<ReturnType<typeof mobileClient>>|undefined;
   try{
     const core=await sharedRuntime(),config=await core.loadConfig();
     config.providers.fixture={protocol:'openai_legacy',baseUrl:fixture.baseUrl,apiKey:'fixture-not-a-secret'};
@@ -44,6 +49,16 @@ test('loopback fixture creates a real read-only approval, allow once leaves the 
     store.setState('assistant-proactivity',{enabled:false});store.close();
     host=await startHost(root,configRoot);
     const api=createDesktopAPI((route,value)=>hostRequest(root,'kteam-main',route,value));
+    const configure=(input:unknown)=>hostRequest(root,'kteam-main','/v1/mobile/settings',input);
+    const settings=await configure({action:'enable'});
+    const invitation=await configure({action:'invite'});
+    const payload=invitation.payload as any, url='ws://127.0.0.1:'+settings.port+'/mobile/connect';
+    pair=await mobileClient(url,{credentialId:payload.inviteId,secret:payload.secret,publicKey:payload.publicKey});
+    await pair.call('pair',{name:'待办验收手机'});
+    await configure({action:'approve',id:payload.inviteId,fingerprint:mobilePairFingerprint(mobileB64(pair.key.publicKey)),allowApprovals:true});
+    const credential=await pair.call('pair',{name:'待办验收手机'});
+    await pair.call('pair',{action:'finish'});pair.close();
+    phone=await mobileClient(url,{credentialId:credential.deviceId,secret:credential.secret,publicKey:credential.publicKey},pair.key);
     const pending=async()=>{const row=(await api.toolApprovals()).approvals[0];if(row)return row;const job=(await api.work(member.roomId)).jobs.at(-1);if(job&&['blocked','unknown','delivered','stopped'].includes(job.state)&&fixture.requests()===1)throw Error('approval_fixture_ended:'+JSON.stringify({state:job.state,reason:job.reason,failure:job.failure}));return undefined;};
     await api.send({roomId:member.roomId,text:'请读取夹具文件。',id:'msg_'+'a'.repeat(32)});
     const first=await until(pending);
@@ -51,11 +66,17 @@ test('loopback fixture creates a real read-only approval, allow once leaves the 
     const inbox=await hostRequest(root,'kteam-main','/v1/inbox') as {approvals?:Array<{id?:string;hash?:string}>};
     const visible=(inbox.approvals??[]).find(item=>item.id===first.id);
     assert.ok(visible,'the phone inbox reads this same approval list');
+    const beforePhone=await phone.call('inbox.read');
+    assert.ok(beforePhone.approvals.some((row:any)=>row.id===first.id));
     const card=mobileApprovalCard(visible);
     assert.equal(card.hash,first.hash);
     assert.deepEqual(card.decisions,['deny','allow_once']);
     assert.equal(readFileSync(fixture.file,'utf8'),FIXTURE_TEXT);
     await api.decideToolApproval({id:first.id,expectedHash:first.hash,decision:'allow_once'});
+    const afterPhone=await phone.call('inbox.read');
+    assert.ok(afterPhone.attentionCursor.sequence>beforePhone.attentionCursor.sequence);
+    assert.ok(!afterPhone.approvals.some((row:any)=>row.id===first.id));
+    assert.equal(latestMobileInbox(afterPhone,beforePhone),afterPhone);
     await until(async()=>fixture.requests()>=2||undefined);
     assert.equal(readFileSync(fixture.file,'utf8'),FIXTURE_TEXT);
     await until(async()=>{const job=(await api.work(member.roomId)).jobs.find((item:any)=>item.id===first.jobId);return job&&['delivered','stopped','blocked'].includes(job.state)?job:undefined;});
@@ -63,10 +84,14 @@ test('loopback fixture creates a real read-only approval, allow once leaves the 
     await api.send({roomId:member.roomId,text:'请再读取一次夹具文件。',id:'msg_'+'b'.repeat(32)});
     const second=await until(pending);
     assert.notEqual(second.id,first.id);
+    const newPhone=await phone.call('inbox.read');
+    assert.ok(latestMobileInbox(afterPhone,newPhone).approvals.some((row:any)=>row.id===second.id));
+    await configure({action:'revoke',id:credential.deviceId});
+    await assert.rejects(phone.call('inbox.read'));
     await api.pause(member.roomId);
     assert.equal((await api.toolApprovals()).approvals.length,0);
     await assert.rejects(api.decideToolApproval({id:second.id,expectedHash:second.hash,decision:'allow_once'}));
     assert.equal(readFileSync(fixture.file,'utf8'),FIXTURE_TEXT);
     assert.equal(fixture.requests(),afterAllow+1);
-  }finally{await host?.close();await fixture.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}
+  }finally{phone?.close();pair?.close();await host?.close();await fixture.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}
 });

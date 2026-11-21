@@ -1,5 +1,5 @@
 import {backfillGeneratedFiles} from './generated-file-receipts.js';
-import {generatedFileExtension} from './generated-file-policy.js';
+import {artifactReviewExtension,generatedFileExtension} from './generated-file-policy.js';
 export {generatedFileExtension} from './generated-file-policy.js';
 import {createHash} from 'node:crypto';
 import {generatedFileHost,localGeneratedFileHost} from './generated-file-host.js';
@@ -31,7 +31,7 @@ export function generatedFilePreview(store:TeamStore,roomId:string,toolCallId:st
  let actual:ReturnType<typeof inspect>;try{actual=inspect(path,store.root);}catch{throw new KTeamError('generated_file_changed',409);}
  if(actual.sha256!==file.sha256||actual.bytes!==file.bytes)throw new KTeamError('generated_file_changed',409);
  const extension=extname(path).toLowerCase();
- const kind=extension==='.html'?'html':extension==='.md'?'markdown':['.txt','.csv','.json','.log'].includes(extension)?'text':['.png','.jpg','.jpeg','.gif','.webp'].includes(extension)?'image':'unsupported';
+ const kind=extension==='.html'?'html':extension==='.md'?'markdown':artifactReviewExtension(path)?'text':['.png','.jpg','.jpeg','.gif','.webp'].includes(extension)?'image':'unsupported';
  const mime:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp'};
  const result={ok:true,name:basename(path),bytes:actual.bytes,kind,mediaType:mime[extension],content:kind==='unsupported'?'':kind==='image'?actual.content.toString('base64'):actual.content.toString('utf8')};
  // Leave room for the authenticated host response envelope (2 MiB limit).
