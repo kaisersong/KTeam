@@ -2,14 +2,12 @@ import {useEffect,useRef,useState} from "react";
 import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
-import type {DailyChange,DailyConfiguration,DailyCoverage,DailyItem,DailySource} from "../../src/protocol/assistant-daily";
+import {dailySlots,dailySlotLabels as labels,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
 
-type Slot="morning"|"midday"|"evening";
 type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange};
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
 type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean}[]};
 type RoomTarget={roomId:string;title:string;kind?:string};
-const labels:Record<Slot,string>={morning:"早报",midday:"午报",evening:"晚报"};
 const sourceLabel:Record<DailySource["kind"],string>={mail:"邮件","yzj-message":"云之家消息","yzj-calendar":"云之家日程","yzj-doc":"云之家知识库",news:"公开资讯"};
 const states:Record<DailyCoverage["state"],string>={ok:"已核对",partial:"覆盖不完整",unavailable:"暂不可用"};
 const errors:Record<string,string>={
@@ -24,7 +22,7 @@ const errors:Record<string,string>={
 const errorText=(value:unknown)=>value instanceof Error?errors[value.message]??value.message:String(value);
 const sourceKey=(source:DailySource)=>JSON.stringify([source.kind,source.account,source.id]);
 const clock=(at:number,timeZone?:string)=>new Intl.DateTimeFormat("zh-CN",{timeZone,dateStyle:"short",timeStyle:"short"}).format(at);
-const schedule=(config:DailyConfiguration)=>config.paused?"每日工作已暂停":(Object.keys(labels) as Slot[]).flatMap(slot=>config.schedule[slot]?[labels[slot]+" "+config.schedule[slot]]:[]).join(" · ")||"未设置简报时段";
+const schedule=(config:DailyConfiguration)=>config.paused?"每日工作已暂停":dailySlots.flatMap(slot=>config.schedule[slot]?[labels[slot]+" "+config.schedule[slot]]:[]).join(" · ")||"未设置简报时段";
 
 function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved}:ToolProps&{
  draft:Draft;previous:DailyConfiguration|null;roomId:string;onSaved:()=>Promise<void>;
