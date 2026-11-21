@@ -59,6 +59,17 @@ export class TeamStore {
  hasGeneratedFiles(roomId:string,jobId:string){return !!this.db.prepare("SELECT 1 FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.facts.jobId')=? LIMIT 1").get(roomId,jobId);}
  generatedFileRecords(roomId:string,before?:{at:number;id:string},botId?:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=?"+(botId?" AND json_extract(value_json,'$.botId')=?":"")+(before?" AND (json_extract(value_json,'$.createdAt')<? OR json_extract(value_json,'$.createdAt')=? AND id<?)":"")+" ORDER BY json_extract(value_json,'$.createdAt') DESC,id DESC LIMIT 21").all(roomId,...(botId?[botId]:[]),...(before?[before.at,before.at,before.id]:[])).map(r=>JSON.parse(String(r.value_json)));}
  generatedFileCount(roomId:string,botId:string){return Number(this.db.prepare("SELECT count(*) AS n FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.botId')=?").get(roomId,botId)?.n??0);}
+ artifactReviewBaseline(roomId:string,pathKey:string,jobIds:string[],sha256:string):{content:string;sha256:string}|undefined{
+  const row=this.db.prepare(`SELECT o.value_json FROM product_operations o WHERE o.id GLOB 'artifact-review:*'
+   AND json_extract(o.value_json,'$.roomId')=? AND json_extract(o.value_json,'$.pathKey')=?
+   AND json_extract(o.value_json,'$.sha256')<>?
+   AND json_extract(o.value_json,'$.jobId') IN (SELECT value FROM json_each(?))
+   AND (json_extract(o.value_json,'$.action')='accept' OR EXISTS (
+    SELECT 1 FROM product_operations w WHERE w.id='work-input:'||json_extract(o.value_json,'$.inputId')
+    AND json_extract(w.value_json,'$.status') IN ('queued','completed')))
+   ORDER BY o.rowid DESC LIMIT 1`).get(roomId,pathKey,sha256,JSON.stringify(jobIds));
+  return row ? JSON.parse(String(row.value_json)) : undefined;
+ }
  generatedFilesForTool(roomId:string,toolCallId:string):any[]{return this.db.prepare("SELECT value_json FROM product_operations WHERE id GLOB 'generated-file:*' AND json_extract(value_json,'$.roomId')=? AND json_extract(value_json,'$.toolCallId')=? LIMIT 2").all(roomId,toolCallId).map(r=>JSON.parse(String(r.value_json)));}
  operations():any[]{return this.db.prepare('SELECT value_json FROM product_operations ORDER BY rowid DESC LIMIT 100').all().map(row=>JSON.parse(String(row.value_json)));}
  operation(id:string):any{const row=this.db.prepare('SELECT value_json FROM product_operations WHERE id=?').get(id);return row?JSON.parse(String(row.value_json)):null;}
