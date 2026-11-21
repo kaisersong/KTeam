@@ -21,7 +21,10 @@ export function SkillCommands({roomId,botId,kind,value,onSelect}:{roomId:string;
  const skills=(data?.skills??[]).filter((skill:any)=>skill.enabled&&!skill.sourceError&&!skill.versionChanged&&
   (!query||['skill','skills','help'].includes(query)||skill.name.toLowerCase().includes(query.toLowerCase())));
  return <section className="slash-commands" aria-label="输入命令">
-  {showSpace&&<button type="button" className="secondary" onClick={()=>onSelect('/space')}><strong>/space</strong><span>打开本机空间工作台</span></button>}
+  {showSpace&&<>
+   <button type="button" className="secondary" onClick={()=>onSelect('/space')}><strong>/space</strong><span>打开本机空间工作台</span></button>
+   <button type="button" className="secondary" onClick={()=>onSelect('/space create ')}><strong>/space create</strong><span>按名称创建本机空间</span></button>
+  </>}
   {showSkills&&<>
    <p className="form-note">输入 /技能名 要求，或选择技能。沿用当前 Bot 的目录和工具批准。</p>
    {error?<p role="alert">{error}</p>:!data?<p role="status">正在读取可用技能…</p>:data.supported===false?<p role="status">{data.reason}</p>:skills.length?

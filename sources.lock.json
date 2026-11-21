@@ -120,11 +120,11 @@
     },
     {
       "file": "vendor/splash/manifest.json",
-      "sha256": "ea64957d8db4c5bd2af82ac721e819b0207ab83abe91ca5e234a76a7c0f7db77"
+      "sha256": "4147697445aa5b7aebe713e5472d8ca25fa86ad62c7e76984cdde1b8dc9a2c86"
     },
     {
       "file": "vendor/splash/splash-runtime.cjs",
-      "sha256": "3384fb32f07780da8d4fd5e3b71a6edc2352d1ee59a4fe8f9f90f9a02baec360"
+      "sha256": "634e4d60cdf85f9e8a15cf7de5ffff992265c42e0338a18ec7347ae36bb1388f"
     },
     {
       "file": "vendor/splash/src/blobs.mjs",
@@ -156,11 +156,11 @@
     },
     {
       "file": "vendor/splash/src/workspace.mjs",
-      "sha256": "28ff1359c5e571bf7c2aa0accec8fe77edd0153ecee87ab2b9a5156519885c74"
+      "sha256": "a87cce354f9d8229274e3c47c3727afc26997e11dcfde4cb36d28bfd5af5fb4f"
     },
     {
       "file": "desktop/splash-runtime-identity.ts",
-      "sha256": "9e0260a921d9cb88c0907109051d35b307c5c6414f3fb60a89c81fa3ce9d5859"
+      "sha256": "d6b40e49ce92d94484673fc8865f568d40e7dc59e384eb2a975b7982403b2d12"
     },
     {
       "file": "spec/aimp/example-policy.json",

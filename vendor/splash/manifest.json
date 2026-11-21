@@ -4,7 +4,7 @@
   "revision": "0689d4ad59aa59529d434e526d1d04231dd7d10e",
   "entry": "src/splash-runtime.mjs",
   "builder": "esbuild 0.28.2; bundle:true platform:node target:node22 format:cjs",
-  "sha256": "3384fb32f07780da8d4fd5e3b71a6edc2352d1ee59a4fe8f9f90f9a02baec360",
+  "sha256": "634e4d60cdf85f9e8a15cf7de5ffff992265c42e0338a18ec7347ae36bb1388f",
   "sources": {
     "src/blobs.mjs": "a0cc8975c484e489ab649666256ef80c7026976249f7591718e4df1be345a311",
     "src/errors.mjs": "55e2e19d3fa538ba43ef3c02048a170d8e6329fe1e30b4aa8d089ab093e30b2c",
@@ -13,7 +13,8 @@
     "src/service.mjs": "3e948bcb946b465e8b7dc14a5f273ba94af0944c0c6025c3be9d8edb13f9a322",
     "src/splash-runtime.mjs": "a3655580cc079167e3f7b04d66e4ed471e149573e919ea0135a52a5399e9de7b",
     "src/state.mjs": "673c7dcafa6d346958705bc2b86c8d9032cef63c429ce9d22dc62208db0fff71",
-    "src/workspace.mjs": "28ff1359c5e571bf7c2aa0accec8fe77edd0153ecee87ab2b9a5156519885c74"
+    "src/workspace.mjs": "a87cce354f9d8229274e3c47c3727afc26997e11dcfde4cb36d28bfd5af5fb4f"
   },
-  "scope": "local-only validation; no cloud credentials or deployment"
+  "scope": "local-only validation; no cloud credentials or deployment",
+  "localAdaptation": "The local workbench opens the workspace selected by KTeam."
 }
