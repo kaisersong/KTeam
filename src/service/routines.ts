@@ -45,7 +45,7 @@ export class Routines {
   await this.scope(roomId);
   return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=this.runJob(run);return job&&(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=this.runJob(run);return {id:run.id,scheduledAt:run.scheduledAt,trial:run.trial===true,observedAt:run.observedAt??null,jobId:job?.id??null,state:job?.needsReview?'needs_review':job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
  }
- async save(value:unknown){
+ async save(value:unknown,assertCurrent=()=>{}){
   const input=record(value);fields(input,['id','roomId','botId','expectedRevision','requestId','name','prompt','schedule','timeZone','maxRuns','endAt','enabled','overlap']);
   const roomId=text(input.roomId,'room_id'),botId=text(input.botId,'bot_id'),requestId=text(input.requestId,'request_id',128),name=text(input.name,'routine_name',80).trim(),prompt=text(input.prompt,'routine_prompt',8192).trim(),schedule=routineSchedule(input.schedule),timeZone=routineTimeZone(input.timeZone),now=this.now();
   if(typeof input.enabled!=='boolean'||input.overlap!=='skip'||!Number.isSafeInteger(input.maxRuns)||Number(input.maxRuns)<1||Number(input.maxRuns)>365||!Number.isSafeInteger(input.expectedRevision)||Number(input.expectedRevision)<0)throw new KTeamError('routine_input_invalid');
@@ -55,6 +55,7 @@ export class Routines {
   const captured=await this.scope(roomId,botId);if(input.enabled&&(captured.settings.paused||captured.settings.quiet))throw new KTeamError('routine_room_paused',409);
   const intent=hash({roomId,botId,name,prompt,schedule,timeZone,maxRuns:input.maxRuns,endAt: endAt??null,enabled:input.enabled,overlap:'skip'});
   let reused=false;
+  assertCurrent();
   const saved=this.store.transaction(()=>{
    const current=this.store.operation(id);
    if(current?.roomId&&current.roomId!==roomId)throw new KTeamError('routine_scope_denied',403);
@@ -68,18 +69,18 @@ export class Routines {
   });
   if(!reused)this.changed(saved.id);return {ok:true,reused,routine:this.projection(saved)};
  }
- async remove(value:unknown){
-  const input=record(value);fields(input,['roomId','id','expectedRevision']);const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id');await this.scope(roomId);
+ async remove(value:unknown,assertCurrent=()=>{}){
+  const input=record(value);fields(input,['roomId','id','expectedRevision']);const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id');await this.scope(roomId);assertCurrent();
   const saved=this.store.transaction(()=>{const current=this.store.operation(id);if(!id.startsWith('routine:')||!current||current.roomId!==roomId)throw new KTeamError('routine_not_found',404);if(current.deletedAt)return current;if(current.revision!==input.expectedRevision)throw new KTeamError('routine_changed',409);return this.store.saveOperation({...current,enabled:false,nextAt:null,deletedAt:this.now(),reason:'user_removed',configVersion:current.configVersion+1},current.revision);});this.changed(id);return {ok:true,routine:this.projection(saved)};
  }
- async trial(value:unknown){
+ async trial(value:unknown,assertCurrent=()=>{}){
   const input=record(value);
   fields(input,['roomId','id','expectedRevision','requestId']);
   const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id'),requestId=text(input.requestId,'request_id',128);
   if(!/^routine:[a-f0-9]{32}$/.test(id))throw new KTeamError('routine_not_found',404);
   const snapshot=this.store.operation(id);
   if(!snapshot||snapshot.roomId!==roomId||snapshot.deletedAt)throw new KTeamError('routine_not_found',404);
-  const current=await this.scope(roomId,snapshot.botId);
+  const current=await this.scope(roomId,snapshot.botId);assertCurrent();
   const runId='routine-run:'+id+':trial:'+hash(requestId).slice(0,32);
   return this.store.transaction(()=>{
    const row=this.store.operation(id),prior=this.store.operation(runId);
@@ -102,8 +103,8 @@ export class Routines {
    return {ok:true,jobId,reused:false};
   });
  }
- async pause(value:unknown){
-  const input=record(value);fields(input,['roomId','id','expectedRevision']);const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id');await this.scope(roomId);
+ async pause(value:unknown,assertCurrent=()=>{}){
+  const input=record(value);fields(input,['roomId','id','expectedRevision']);const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id');await this.scope(roomId);assertCurrent();
   let reused=false;const saved=this.store.transaction(()=>{const current=this.store.operation(id);if(!id.startsWith('routine:')||!current||current.roomId!==roomId||current.deletedAt)throw new KTeamError('routine_not_found',404);if(!current.enabled){reused=true;return current;}if(current.revision!==input.expectedRevision)throw new KTeamError('routine_changed',409);return this.store.saveOperation({...current,enabled:false,nextAt:null,reason:'user_paused',configVersion:current.configVersion+1},current.revision);});if(!reused)this.changed(id);return {ok:true,reused,routine:this.projection(saved)};
  }
  assertJob(job:any,bot?:any){

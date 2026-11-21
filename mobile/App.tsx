@@ -1,3 +1,6 @@
+import {ArtifactReviewActions,MemberPanel,PluginCommandsPanel,PluginsPanel,RoutinesPanel,WorkDetailPanel,WorkListPanel} from "./src/conversation-tools";
+import {planReviewPreset} from "../src/protocol/member-presets";
+import {isPluginCommand} from "../src/protocol/plugins";
 import { ArtifactDiff } from "./src/artifact-diff";
 import { attentionDeadline } from "../src/protocol/attention-order";
 import type { ArtifactReviewView } from "../src/protocol/artifact-review";
@@ -93,6 +96,7 @@ import {
   pending,
   clearPending,
   clearReadCache,
+  clearCacheEntry,
 } from "./src/storage";
 import {
   attachmentMessageView,
@@ -152,9 +156,11 @@ const MessageRow = memo(function MessageRow({
   onOpen: setPreview,
   onReply: setReply,
   onFile: viewFile,
+  onWork,
 }: any) {
   const job = work?.jobs?.find((j: any) =>
-      j.results?.some((r: any) => r.messageId === m.messageId),
+      j.results?.some((r: any) => r.messageId === m.messageId) ||
+      m.sender.kind==="user"&&j.groupPlanAvailable&&j.originId===m.messageId,
     ),
     receipts = (job?.generatedFiles ?? []).filter(
       (f: any) => f.botId === m.sender.logicalAgentId,
@@ -246,6 +252,12 @@ const MessageRow = memo(function MessageRow({
           colors={colors}
         />
       ))}
+      {(job?.groupPlanAvailable||job?.workEvidenceAvailable||job?.peerReviewVersion)&&(
+        <Pressable accessibilityRole="button" style={[s.button,{borderColor:colors.line,alignSelf:"flex-start",marginTop:8}]}
+          onPress={()=>onWork(m.roomId,job.id)}>
+          <Text style={{color:colors.green}}>{job.groupPlanAvailable?"群计划":job.peerReviewVersion?"复核记录":"本轮变更与检查"}</Text>
+        </Pressable>
+      )}
       {receipts.map((f: any) => (
         <Pressable
           key={f.id}
@@ -339,6 +351,12 @@ function AppBody() {
   const inboxScroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const inboxOffset = useRef(0);
   const restoreInbox = useRef(false);
+  type ToolPanel={kind:"work"|"routines"|"commands";roomId:string;jobId?:string}|{kind:"plugins"|"member"};
+  const [toolPanel,setToolPanel]=useState<ToolPanel>();
+  const initialDraft=useRef<{roomId:string;text:string}|undefined>(undefined);
+  const pendingTools=useRef(new Map<string,Promise<any>>());
+  useEffect(()=>{setToolPanel(undefined);pendingTools.current.clear();initialDraft.current=undefined;},[computer?.credentialId]);
+  const openWork=useCallback((roomId:string,jobId:string)=>setToolPanel({kind:"work",roomId,jobId}),[]);
   const [diff, setDiff] = useState<{view?:ArtifactReviewView; error?:string}>();
   const diffPositions = useRef(new Map<string,{offset:number;expanded:string[]}>());
   const diffRequest = useRef(0);
@@ -509,6 +527,7 @@ function AppBody() {
           setWork(undefined);
           previewRequest.current++;
           setPreview(undefined);
+          setToolPanel(undefined);
           closeDiff();
           diffPositions.current.clear();
           setAttentionSelection(undefined);
@@ -531,6 +550,45 @@ function AppBody() {
     const receivedAt = Date.now();
     setInbox((current: any) => latestMobileInbox(current, { ...snapshot, receivedAt }));
   }, []);
+  const mutateTool=useCallback(async(method:string,input:Record<string,unknown>={})=>{
+    const current=computerRef.current;
+    if(!current)throw Error("请先连接电脑");
+    const stamp=writeGate.current.stamp();
+    const digest=await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,JSON.stringify([method,input]));
+    const key="tool-intent:"+digest;
+    const identity=()=>computerRef.current?.credentialId===current.credentialId;
+    if(!identity())throw Error("电脑已切换，请重试");
+    writeGate.current.ensure(stamp,false);
+    const running=pendingTools.current.get(key);
+    if(running)return running;
+    const work=(async()=>{
+      const prior=await readCache(current,key);
+      const operationId=typeof prior?.operationId==="string"?prior.operationId:uid();
+      if(!prior?.operationId)await writeCache(current,key,{operationId});
+      if(!identity())throw Error("电脑已切换，请重试");
+      writeGate.current.ensure(stamp,false);
+      try{
+        const result=await call(method,{...input,operationId});
+        await clearCacheEntry(current,key).catch(()=>{});
+        return result;
+      }catch(error){
+        if(!identity())throw error;
+        const receipt=await call("operations.get",{operationId}).catch(()=>undefined);
+        if(receipt?.status==="completed"){
+          await clearCacheEntry(current,key).catch(()=>{});
+          return receipt.result;
+        }
+        if(receipt?.status==="rejected"){
+          await clearCacheEntry(current,key).catch(()=>{});
+          throw Error(receipt.code??errorText(error));
+        }
+        if(receipt?.status==="unknown"||receipt?.status==="executing")throw Error("mobile_operation_unknown");
+        throw error;
+      }
+    })();
+    pendingTools.current.set(key,work);
+    try{return await work;}finally{if(pendingTools.current.get(key)===work)pendingTools.current.delete(key);}
+  },[call]);
   const tell = (e: unknown) => setError(names[errorText(e)] ?? errorText(e));
   const persist = async (c: Computer, k: string, v: any) => {
     try {
@@ -778,7 +836,9 @@ function AppBody() {
         .then((v) => {
           if (g !== generation.current || roomRef.current?.roomId !== r.roomId)
             return;
-          setText(v?.text ?? "");
+          const seeded=initialDraft.current?.roomId===r.roomId?initialDraft.current:undefined;
+          if(seeded)initialDraft.current=undefined;
+          setText(v?.text ?? seeded?.text ?? "");
           setTokens(v?.tokens ?? []);
           setUploads(v?.uploads ?? []);
           if (v?.replyToMessageId)
@@ -1146,6 +1206,7 @@ function AppBody() {
   };
   const send = async () => {
     if (!room || !computer || (!text.trim() && !uploads.length)) return;
+    if(isPluginCommand(text)){setToolPanel({kind:"commands",roomId:room.roomId});return;}
     setBusy(true);
     const operationId = uid(),
       id = "msg_" + uid(),
@@ -1422,6 +1483,7 @@ function AppBody() {
         ],
       );
   };
+  const toolProps={colors,call,mutate:mutateTool,disabled:offline||writesLocked};
   const pendingRoom = uncertain.filter((v) => v.input?.roomId === room?.roomId);
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
@@ -1457,6 +1519,11 @@ function AppBody() {
         ) : (
           <View style={{ flex: 1 }} />
         )}
+        {room&&button("工作",()=>Alert.alert(room.title,"",[
+          {text:"工作记录",onPress:()=>setToolPanel({kind:"work",roomId:room.roomId})},
+          {text:"例行任务",onPress:()=>setToolPanel({kind:"routines",roomId:room.roomId})},
+          {text:"取消",style:"cancel"},
+        ]),undefined,offline||writesLocked)}
         <GlassSurface interactive style={s.computerPill}>
           <Pressable
             accessibilityLabel="电脑与连接"
@@ -1548,6 +1615,7 @@ function AppBody() {
               <Text style={[s.caption, { color: colors.muted, marginTop: 10 }]}>
                 {connecting ? "正在连接电脑…" : offline ? "电脑暂时离线 · 可查看已同步内容" : status}
               </Text>
+              {button("创建成员",()=>setToolPanel({kind:"member"}),<Plus size={16} color={colors.green}/>,offline||writesLocked)}
               <View style={[s.searchBar, { backgroundColor: colors.panel }]}>
                 <Search size={18} color={colors.muted} />
                 <TextInput
@@ -1852,6 +1920,7 @@ function AppBody() {
                   onOpen={setPreview}
                   onReply={setReply}
                   onFile={viewFile}
+                  onWork={openWork}
                 />
               )}
             />
@@ -1968,6 +2037,8 @@ function AppBody() {
               })}
             </View>
           ))}
+          {text.startsWith("/")&&("plugin".startsWith(text.slice(1).trim().toLowerCase())||isPluginCommand(text))&&
+            <View style={s.pending}>{button("/plugin · 插件命令",()=>setToolPanel({kind:"commands",roomId:room.roomId}),undefined,offline||writesLocked)}</View>}
           {text.startsWith("/") && !text.includes(" ") && skills.length > 0 && (
             <View
               style={[
@@ -2450,6 +2521,7 @@ function AppBody() {
             手机不保存模型密钥。电脑离线时可查看已同步内容并编辑草稿。
           </Text>
           <View style={{ marginTop: 24 }}>
+            {computer&&button("插件",()=>setToolPanel({kind:"plugins"}),undefined,offline||writesLocked)}
             {button("开源许可", () =>
               setPreview({ kind: "licenses", name: "开源许可" }),
             )}
@@ -2635,6 +2707,38 @@ function AppBody() {
           </SafeAreaView>
         </View>
       </Modal>
+      <Modal visible={!!toolPanel&&!writesLocked} animationType="slide" presentationStyle="pageSheet" onRequestClose={()=>setToolPanel(undefined)}>
+        <SafeAreaView style={[s.safe,{backgroundColor:colors.bg}]}>
+          <View style={[s.header,{borderBottomColor:colors.line}]}>
+            <Text accessibilityRole="header" style={[s.title,{color:colors.text,flex:1}]}>
+              {toolPanel?({work:"工作记录",routines:"例行任务",plugins:"插件",commands:"插件命令",member:"创建成员"})[toolPanel.kind]:""}
+            </Text>
+            {toolPanel?.kind==="work"&&toolPanel.jobId&&button("全部工作",()=>setToolPanel({kind:"work",roomId:toolPanel.roomId}))}
+            {button("关闭",()=>setToolPanel(undefined))}
+          </View>
+          {toolPanel?.kind==="work"&&(toolPanel.jobId
+            ?<WorkDetailPanel key={toolPanel.jobId} roomId={toolPanel.roomId} jobId={toolPanel.jobId} bots={bots} {...toolProps}/>
+            :<WorkListPanel key={toolPanel.roomId} roomId={toolPanel.roomId} onOpen={id=>openWork(toolPanel.roomId,id)} {...toolProps}/>)}
+          {toolPanel?.kind==="routines"&&<RoutinesPanel key={toolPanel.roomId} roomId={toolPanel.roomId} {...toolProps} onResult={id=>void (async()=>{
+            const result=await call("messages.get",{roomId:toolPanel.roomId,messageId:id});
+            if(roomRef.current?.roomId!==toolPanel.roomId)return;
+            setToolPanel(undefined);
+            setPreview({kind:"markdown",name:"例行任务答复",content:messageDisplayText(result.message)});
+          })().catch(tell)}/>}
+          {toolPanel?.kind==="plugins"&&<PluginsPanel {...toolProps}/>}
+          {toolPanel?.kind==="commands"&&<PluginCommandsPanel {...toolProps} onDraft={draft=>{
+            if(roomRef.current?.roomId!==toolPanel.roomId)return;
+            if(isPluginCommand(text))setTokens([]);
+            setText(value=>!value.trim()||isPluginCommand(value)?draft:value+"\n\n"+draft);
+            setToolPanel(undefined);
+          }}/>}
+          {toolPanel?.kind==="member"&&<MemberPanel {...toolProps} onCreated={result=>{
+            if(result.presetId===planReviewPreset.id)initialDraft.current={roomId:result.roomId,text:planReviewPreset.firstTask};
+            setToolPanel(undefined);
+            openRoom({roomId:result.roomId,title:result.bot.name,kind:"direct",botId:result.bot.id});
+          }}/>}
+        </SafeAreaView>
+      </Modal>
       <Modal
         visible={!!preview}
         animationType="slide"
@@ -2659,6 +2763,9 @@ function AppBody() {
             {!diff && ["text","markdown"].includes(preview.kind) &&
               button("查看版本差异",() => void openDiff(),undefined,offline)}
           </View>}
+          {diff?.view&&diffKey&&<ScrollView style={{flexGrow:0,maxHeight:280,paddingHorizontal:16}} keyboardShouldPersistTaps="handled">
+            <ArtifactReviewActions key={diffKey} {...toolProps} roomId={preview.roomId} toolCallId={preview.toolCallId} view={diff.view} onRefresh={()=>void openDiff()}/>
+          </ScrollView>}
           {diff ? (diff.view && diffKey ? <ArtifactDiff key={diffKey} view={diff.view} colors={colors}
             position={diffPositions.current.get(diffKey)}
             onPosition={position => {

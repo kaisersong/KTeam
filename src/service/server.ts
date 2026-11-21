@@ -146,7 +146,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         return result;
   };
   const mobileDevices=new MobileDevices(teamStore);
-  const mobileFacade=new MobileFacade({collaboration,sidebar,upstream,conversations,conversationUpdates,automation,approvals,composerAttachments,artifactReview,inboxSource,inboxState,sendHumanMessage,epoch:owner.epoch},teamStore,mobileDevices);
+  const mobileFacade=new MobileFacade({coordinator,collaboration,sidebar,upstream,conversations,conversationUpdates,automation,approvals,composerAttachments,artifactReview,inboxSource,inboxState,sendHumanMessage,epoch:owner.epoch},teamStore,mobileDevices);
   const mobileGateway=new MobileGateway(mobileDevices,(p,method,input)=>mobileFacade.call(p,method,input));
   const instanceId = randomUUID();
   const directoryMembers=new Map<string,{revision:number;at:number;ids:string[]}>();

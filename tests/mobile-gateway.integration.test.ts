@@ -116,6 +116,7 @@ test("original host mobile facade reads real rooms and receipts without main cre
       job.activeBotId = actor.bot.id;
       job.state = "delivered";
       job.results = [{botId:actor.bot.id,messageId:"synthetic-delivery"}];
+      job.workEvidence = [{id:"mobile-proof",kind:"file",path:"mobile-report.md",operation:"write",afterSha256:"a".repeat(64)}];
       store.save(job);
       recordGeneratedFile(store, job, {
         id: "mobile-file-call",
@@ -213,6 +214,43 @@ test("original host mobile facade reads real rooms and receipts without main cre
     assert.equal(diff.sha256,files.items[0].sha256);
     assert.deepEqual(diff.lines[0],{kind:"context",after:1,text:"# 合成手机产物"});
     assert.equal(diff.decision,undefined);
+    const evidenceId="mobile-file-job:"+deliveryMember.roomId;
+    const detail=await phone.call("work.detail",{roomId:deliveryMember.roomId,jobId:evidenceId});
+    assert.equal(detail.work.workEvidence[0].path,"mobile-report.md");
+    assert.equal((await phone.call("work.list",{roomId:deliveryMember.roomId})).jobs[0].id,evidenceId);
+    await assert.rejects(phone.call("work.detail",{roomId:member.roomId,jobId:evidenceId}),/work_record_not_found/);
+    await assert.rejects(phone.call("artifacts.peerReview",{
+      ...reviewTarget,operationId:randomUUID(),expectedSha256:diff.sha256,botId:deliveryMember.bot.id,
+    }),/artifact_peer_unavailable/);
+    const acceptance={...reviewTarget,operationId:randomUUID(),expectedSha256:diff.sha256,action:"accept",notes:[]};
+    const accepted=await phone.call("artifacts.reviewDecision",acceptance);
+    assert.equal(accepted.decision.status,"accepted");
+    assert.deepEqual(await phone.call("artifacts.reviewDecision",acceptance),accepted);
+    assert.equal((await phone.call("artifacts.review",reviewTarget)).decision.status,"accepted");
+
+    const plugin={manifestVersion:1,id:"mobile-review",name:"手机评审",version:"1.0.0",
+      contributes:{commands:[{id:"review",title:"评审草稿",draft:"请列出风险和待决定事项。"}]}};
+    const preview=await phone.call("plugins.preview",{manifest:plugin});
+    const installed=await phone.call("plugins.install",{operationId:randomUUID(),manifest:plugin,expectedDigest:preview.digest,expectedRevision:preview.revision});
+    assert.equal((await phone.call("plugins.commands")).commands.length,0);
+    await phone.call("plugins.change",{operationId:randomUUID(),id:plugin.id,action:"enable",expectedRevision:installed.revision});
+    const [command]=(await phone.call("plugins.commands")).commands;
+    assert.equal((await phone.call("plugins.draft",{pluginId:command.pluginId,commandId:command.commandId,revision:command.revision})).draft,"请列出风险和待决定事项。");
+
+    const routineRoom=deliveryMember.roomId;
+    assert.deepEqual((await phone.call("routines.list",{roomId:routineRoom})).candidates.map((candidate:any)=>candidate.id),[deliveryMember.bot.id]);
+    const routineRequest={operationId:randomUUID(),roomId:routineRoom,botId:deliveryMember.bot.id,expectedRevision:0,
+      name:"手机周报",prompt:"核对后生成周报",schedule:{kind:"interval",startAt:Date.now()+3600000,minutes:60},
+      timeZone:"Asia/Shanghai",maxRuns:5,endAt:null,enabled:true,overlap:"skip"};
+    const {routine}=await phone.call("routines.save",routineRequest);
+    assert.equal((await phone.call("routines.save",routineRequest)).routine.id,routine.id);
+    await assert.rejects(phone.call("routines.pause",{operationId:randomUUID(),roomId:member.roomId,id:routine.id,expectedRevision:routine.revision}),/routine_not_found/);
+    const paused=(await phone.call("routines.pause",{operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:routine.revision})).routine;
+    assert.equal(paused.enabled,false);
+    await assert.rejects(phone.call("routines.trial",{operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:routine.revision}),/routine_changed/);
+    await phone.call("routines.remove",{operationId:randomUUID(),roomId:routineRoom,id:routine.id,expectedRevision:paused.revision});
+    assert.equal((await phone.call("routines.list",{roomId:routineRoom})).items.length,0);
+
     await assert.rejects(
       phone.call("artifacts.review",{...reviewTarget,action:"accept"}),
       /input|field/,
@@ -316,6 +354,8 @@ test("original host mobile facade reads real rooms and receipts without main cre
       },
     );
     await assert.rejects(phone.call("artifacts.review",reviewTarget),/team_scope_changed/);
+    await assert.rejects(phone.call("artifacts.reviewDecision",acceptance),/team_scope_changed/);
+    await assert.rejects(phone.call("operations.get",{operationId:acceptance.operationId}),/team_scope_changed/);
   } finally {
     pair?.close();
     phone?.close();

@@ -111,6 +111,9 @@ export async function writeCache(c: Computer, k: string, v: any) {
     Date.now(),
   );
 }
+export async function clearCacheEntry(c:Computer,key:string){
+  await (await cache(c)).runAsync("DELETE FROM cache WHERE k=?",key);
+}
 export async function savePending(c: Computer, id: string, value: any) {
   const d = await cache(c);
   await d.runAsync(

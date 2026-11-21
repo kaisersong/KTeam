@@ -5,9 +5,14 @@ import type { TeamStore } from "../service/team-store.js";
 import type { MobileDevices, MobilePrincipal } from "./devices.js";
 import { generatedFilePreview } from "../runtime/generated-files.js";
 import { generatedFileRecords } from "../runtime/generated-file-receipts.js";
+import { isMobileWrite } from "../protocol/mobile-write-entry.js";
+import { Plugins } from "../service/plugins.js";
+import { modelCatalog } from "../runtime/native.js";
 import { BotCapabilities } from "../service/bot-capabilities.js";
 import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
 import { projectInbox } from "../service/inbox.js";
+
+const scopedWorkWrites=new Set(["artifacts.peerReview","artifacts.reviewDecision","routines.save","routines.trial","routines.pause","routines.remove"]);
 
 export class MobileFacade {
   private inboxSequence = 0;
@@ -23,17 +28,7 @@ export class MobileFacade {
   async call(p: MobilePrincipal, method: string, value: unknown) {
     this.assert(p, method === "approvals.decide");
     const input = record(value ?? {});
-    const write = [
-      "messages.send",
-      "attachments.stage",
-      "attachments.cancel",
-      "attachments.send",
-      "questions.answer",
-      "approvals.decide",
-      "inbox.change",
-      "work.stop",
-      "messages.seen",
-    ].includes(method);
+    const write=isMobileWrite(method)||method==="messages.seen";
     if (!write) {
       const result = await this.read(p, method, input);
       this.assert(p);
@@ -59,7 +54,11 @@ export class MobileFacade {
     if (prior) {
       if (prior.digest !== digest)
         throw new KTeamError("mobile_operation_conflict", 409);
-      if (prior.status === "completed") return prior.result;
+      if (prior.status === "completed") {
+        if(scopedWorkWrites.has(prior.method))await this.deps.conversations.owner(text(prior.roomId,"room_id"));
+        this.assert(p);
+        return prior.result;
+      }
       if (prior.status === "rejected") throw new KTeamError(prior.code, 409);
       throw new KTeamError("mobile_operation_unknown", 409);
     }
@@ -80,7 +79,7 @@ export class MobileFacade {
         digest,
         ...(["messages.send", "attachments.send"].includes(method)
           ? { roomId: payload.roomId, messageId: payload.id }
-          : {}),
+          : scopedWorkWrites.has(method)?{roomId:payload.roomId}:{}),
         ...(method === "approvals.decide"
           ? {
               approvalId: payload.id,
@@ -94,7 +93,8 @@ export class MobileFacade {
       0,
     );
     try {
-      const result = await this.write(p, method, payload),
+      const requestId=createHash("sha256").update(id).digest("hex");
+      const result = await this.write(p, method, payload, requestId),
         current = this.store.operation(id);
       this.store.saveOperation(
         { ...current, status: "completed", result },
@@ -138,6 +138,11 @@ export class MobileFacade {
             "mentions",
             "artifacts",
             "artifact_review_read",
+            "conversation_work_details",
+            "artifact_review_write",
+            "routine_management",
+            "declarative_plugins",
+            "member_creation",
             "inbox",
             "approval_once",
             "single_chat_skills",
@@ -204,13 +209,59 @@ export class MobileFacade {
         await d.conversations.scope(i.roomId);
         return r;
       }
+      case "work.list": {
+        fields(i, ["roomId","before"]);
+        const result=await d.conversationUpdates.records(i);
+        return {ok:true,nextBefore:result.nextBefore,jobs:result.jobs.filter((job:any)=>job.groupPlanAvailable||job.workEvidenceAvailable||job.peerReviewVersion)
+          .map(({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}:any)=>({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}))};
+      }
+      case "work.detail": {
+        fields(i, ["roomId","jobId"]);
+        const roomId=text(i.roomId,"room_id");
+        const {job,viewRevision}=await d.conversationUpdates.detail({roomId,jobId:text(i.jobId,"job_id"),part:"summary"});
+        return {ok:true,viewRevision,work:{
+          groupPlan:job.groupPlan,workEvidence:job.workEvidence,workEvidenceLimited:job.workEvidenceLimited,
+          peerReviewVersion:job.peerReviewVersion,peerReviewStale:job.peerReviewStale,
+        }};
+      }
+      case "routines.list": {
+        fields(i, ["roomId"]);
+        const roomId=text(i.roomId,"room_id");
+        const [routines,catalog,scope]=await Promise.all([
+          d.automation.routines.list(roomId),d.collaboration.bots(),d.conversations.scope(roomId),
+        ]);
+        const ids=new Set(scope.members.filter((member:any)=>member.status==="active"&&member.subject.kind==="agent").map((member:any)=>member.subject.logicalAgentId));
+        const candidates=catalog.bots.filter((bot:any)=>ids.has(bot.id)&&this.store.binding(bot.id)?.kind==="xiaok-hosted")
+          .map(({id,name}:any)=>({id,name}));
+        await d.conversations.scope(roomId);
+        return {...routines,candidates};
+      }
+      case "messages.get": {
+        fields(i, ["roomId","messageId"]);
+        return d.conversations.message(text(i.roomId,"room_id"),text(i.messageId,"message_id"));
+      }
+      case "plugins.list":
+        fields(i, []);
+        return new Plugins(this.store).list();
+      case "plugins.commands":
+        fields(i, []);
+        return new Plugins(this.store).commands();
+      case "plugins.draft":
+        return new Plugins(this.store).draft(i);
+      case "plugins.preview":
+        return new Plugins(this.store).preview(i);
+      case "members.models": {
+        fields(i, []);
+        const {models,defaultModelId}=await modelCatalog();
+        return {ok:true,models:models.map(({id,label})=>({id,label})),defaultModelId};
+      }
       case "artifacts.review": {
         fields(i, ["roomId", "toolCallId"]);
         const roomId = text(i.roomId, "room_id");
         const toolCallId = text(i.toolCallId, "tool_call_id");
-        const { name, sha256, baselineSha256, historical, lines } =
+        const { name, sha256, baselineSha256, historical, lines, peerReviewers, decision } =
           await d.artifactReview.view(roomId, toolCallId, { reconcile: false });
-        return { ok: true, name, sha256, baselineSha256, historical, lines };
+        return { ok: true, name, sha256, baselineSha256, historical, lines, peerReviewers, decision };
       }
       case "artifacts.preview": {
         fields(i, ["roomId", "toolCallId"]);
@@ -272,6 +323,7 @@ export class MobileFacade {
             );
           }
         }
+        if(op?.status==="completed"&&scopedWorkWrites.has(op.method))await d.conversations.owner(text(op.roomId,"room_id"));
         return op
           ? {
               ok: true,
@@ -297,7 +349,7 @@ export class MobileFacade {
         .slice(0, 32)
     );
   }
-  private async write(p: MobilePrincipal, method: string, i: any) {
+  private async write(p: MobilePrincipal, method: string, i: any, requestId: string) {
     const d = this.deps;
     this.assert(p, method === "approvals.decide");
     switch (method) {
@@ -367,6 +419,38 @@ export class MobileFacade {
       }
       case "questions.answer":
         return d.automation.privateChats.answer(i);
+      case "artifacts.peerReview":
+      case "artifacts.reviewDecision": {
+        const {roomId,...input}=i;
+        await d.conversations.owner(text(roomId,"room_id"));
+        const assertCurrent=()=>this.assert(p);
+        assertCurrent();
+        const result=method==="artifacts.peerReview"
+          ?await d.artifactReview.requestPeer(roomId,{...input,requestId},assertCurrent)
+          :await d.artifactReview.submit(roomId,input,assertCurrent);
+        void d.automation.tick();
+        return result;
+      }
+      case "routines.save":
+      case "routines.trial":
+      case "routines.pause":
+      case "routines.remove": {
+        await d.conversations.owner(text(i.roomId,"room_id"));
+        const assertCurrent=()=>this.assert(p);
+        const routines=d.automation.routines;
+        const result=method==="routines.save"?await routines.save({...i,requestId},assertCurrent)
+          :method==="routines.trial"?await routines.trial({...i,requestId},assertCurrent)
+          :method==="routines.pause"?await routines.pause(i,assertCurrent)
+          :await routines.remove(i,assertCurrent);
+        if(method==="routines.trial")void d.automation.tick();
+        return result;
+      }
+      case "plugins.install":
+        return new Plugins(this.store).install(i);
+      case "plugins.change":
+        return new Plugins(this.store).change(i);
+      case "members.create":
+        return d.coordinator.createMember({...i,requestId},{requestSource:"user",assertCurrent:()=>this.assert(p)});
       case "work.stop":
         fields(i, ["roomId"]);
         await d.conversations.owner(text(i.roomId, "room_id"));
