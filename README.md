@@ -38,6 +38,12 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 
 ---
 
+## What's in 0.10.0
+
+- Set up and revise Little K's daily work in chat. Confirm the plan, choose briefing times, or run a one-time check.
+- Open Today to see briefings, calendar conflicts, items that need attention, and what each connected source could read. Reply suggestions are editable drafts.
+- A paired phone can manage the same plan and see the same Today view as the desktop.
+
 ## What's in 0.9.6
 
 - Pause all work from the desktop. New work stays queued, and the pause survives a restart. Resuming keeps individual conversation pauses in place.
