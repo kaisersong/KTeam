@@ -27,6 +27,7 @@ export interface ArtifactReviewView {
   baselineSha256?: string;
   historical: boolean;
   lines: ReviewLine[];
+  source?: {jobId:string; messageId:string};
   decision?: ArtifactReviewDecision;
 }
 

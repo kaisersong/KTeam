@@ -69,12 +69,12 @@ export class ArtifactReview {
       followupJobId:receipt?.queuedJobId,workState:job?.state};
   }
 
-  async view(roomId: string, toolCallId: string): Promise<ArtifactReviewView> {
+  async view(roomId: string, toolCallId: string, {reconcile = true} = {}): Promise<ArtifactReviewView> {
     const membership = await this.conversations.scope(roomId);
     const source = this.source(roomId,toolCallId);
     assertReviewer(membership,source.botId);
     const decided = this.store.operation(source.id) as ReviewRecord | null;
-    if (decided && this.decision(decided).status==='preparing') {
+    if (reconcile && decided && this.decision(decided).status==='preparing') {
       await this.inputs.view(roomId);
       assertReviewer(await this.conversations.scope(roomId),source.botId);
     }
@@ -100,6 +100,7 @@ export class ArtifactReview {
     return {
       ok:true,name:source.name,sha256:source.sha256,baselineSha256:baseline?.sha256,historical,
       lines:compareArtifactLines(baseline ? artifactLines(baseline.content) : undefined,current),
+      source:{jobId:source.job.id,messageId:source.resultMessageId},
       decision,
     };
   }

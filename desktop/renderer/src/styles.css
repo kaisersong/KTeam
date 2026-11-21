@@ -222,11 +222,27 @@
 .artifact-review-line.removed{background:color-mix(in srgb,#bc4b43 18%,transparent)}
 .artifact-review-line.selected{outline:1px solid currentColor;outline-offset:-1px}
 .artifact-review-number{font:inherit;color:inherit;text-align:right;padding:0 .5em;background:none;border:0}
-button.artifact-review-number:not(:disabled){cursor:pointer}
-button.artifact-review-number:not(:disabled):hover{text-decoration:underline}
+button.artifact-review-number[aria-disabled="false"]{cursor:pointer}
+button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:underline}
 .artifact-review-notes{display:flex;flex-direction:column;align-items:flex-start;gap:8px;overflow-wrap:anywhere}
 .artifact-review-notes h3,.artifact-review-notes p{margin:0}
 .artifact-review-notes article{width:100%;border-bottom:1px solid color-mix(in srgb,currentColor 18%,transparent);padding-bottom:6px}
 .artifact-review-notes article p{white-space:pre-wrap}
 .artifact-review-notes textarea{box-sizing:border-box;width:100%;min-height:80px;resize:vertical;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 32%,transparent);border-radius:6px;padding:8px}
 @media(max-width:720px){.artifact-review-grid{grid-template-columns:minmax(0,1fr)}}
+
+.quick-jump { width: min(560px, calc(100vw - 32px)); }
+.jump-search { display:flex; align-items:center; gap:10px; }
+.jump-search input { flex:1; min-width:0; }
+.jump-results { max-height:min(55vh, 460px); overflow:auto; }
+.jump-results h3 { margin:14px 8px 5px; font-size:12px; }
+.jump-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+.jump-row[aria-selected="true"] { background:color-mix(in srgb,currentColor 11%,transparent); }
+.jump-row span { display:grid; gap:3px; min-width:0; }
+.jump-row strong, .jump-row small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.jump-row svg { flex:none; }
+.jump-shortcut { border:0; background:transparent; padding:2px; color:inherit; cursor:pointer; }
+
+.artifact-review-delivery { width:100%; max-height:16em; overflow:auto; padding:10px; border:1px solid var(--line); border-radius:6px; white-space:pre-wrap; }
+
+.artifact-review-notes .text-button { width:auto; min-width:0; justify-content:flex-start; text-align:left; padding:4px 0; }
