@@ -113,6 +113,8 @@ export interface ToolExecutionFact {
   invocationId: string;
   toolName: string;
   factKind: 'command_result' | 'file_mutation';
+  beforeSha256?: string | null;
+  afterSha256?: string;
   exitCode?: number | null;
   normalizedFilePaths?: string[];
 }

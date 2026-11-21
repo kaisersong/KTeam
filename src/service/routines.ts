@@ -37,12 +37,13 @@ export class Routines {
    source=parent;
   }
   const run=source?.trigger==='routine'?this.store.operation(source.originId):null;
-  if(!run||run.outcome!=='enqueued'||run.roomId!==job.roomId||run.jobId!==source.id||run.routineId!==source.routine?.id||run.scheduledAt!==source.routine.scheduledAt||source.originId!=='routine-run:'+source.routine.id+':'+source.routine.scheduledAt)throw new KTeamError('routine_scope_changed',409);
+  const expectedOrigin=source?.routine?.trial?run?.id:'routine-run:'+source?.routine?.id+':'+source?.routine?.scheduledAt;
+  if(!run||!!run.trial!==!!source.routine?.trial||run.outcome!=='enqueued'||run.roomId!==job.roomId||run.jobId!==source.id||run.routineId!==source.routine?.id||run.scheduledAt!==source.routine.scheduledAt||source.originId!==expectedOrigin)throw new KTeamError('routine_scope_changed',409);
   await this.guard(source);return structuredClone(source.routine);
  }
  async list(roomId:string){
   await this.scope(roomId);
-  return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=this.runJob(run);return job&&(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=this.runJob(run);return {id:run.id,scheduledAt:run.scheduledAt,jobId:job?.id??null,state:job?.needsReview?'needs_review':job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
+  return {ok:true,items:this.store.operationsWithPrefix('routine:').filter(row=>row.roomId===roomId&&!row.deletedAt).slice(0,100).map(row=>({...this.projection(row),needsReview:this.runs(row.id).some(run=>{const job=this.runJob(run);return job&&(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id);}),runs:this.runs(row.id).slice(0,20).map(run=>{const job=this.runJob(run);return {id:run.id,scheduledAt:run.scheduledAt,trial:run.trial===true,observedAt:run.observedAt??null,jobId:job?.id??null,state:job?.needsReview?'needs_review':job?.state??run.outcome,reason:job?.reason??run.reason??null,resultMessageIds:(job?.results??[]).map((result:any)=>result.messageId)};})}))};
  }
  async save(value:unknown){
   const input=record(value);fields(input,['id','roomId','botId','expectedRevision','requestId','name','prompt','schedule','timeZone','maxRuns','endAt','enabled','overlap']);
@@ -71,6 +72,36 @@ export class Routines {
   const input=record(value);fields(input,['roomId','id','expectedRevision']);const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id');await this.scope(roomId);
   const saved=this.store.transaction(()=>{const current=this.store.operation(id);if(!id.startsWith('routine:')||!current||current.roomId!==roomId)throw new KTeamError('routine_not_found',404);if(current.deletedAt)return current;if(current.revision!==input.expectedRevision)throw new KTeamError('routine_changed',409);return this.store.saveOperation({...current,enabled:false,nextAt:null,deletedAt:this.now(),reason:'user_removed',configVersion:current.configVersion+1},current.revision);});this.changed(id);return {ok:true,routine:this.projection(saved)};
  }
+ async trial(value:unknown){
+  const input=record(value);
+  fields(input,['roomId','id','expectedRevision','requestId']);
+  const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id'),requestId=text(input.requestId,'request_id',128);
+  if(!/^routine:[a-f0-9]{32}$/.test(id))throw new KTeamError('routine_not_found',404);
+  const snapshot=this.store.operation(id);
+  if(!snapshot||snapshot.roomId!==roomId||snapshot.deletedAt)throw new KTeamError('routine_not_found',404);
+  const current=await this.scope(roomId,snapshot.botId);
+  const runId='routine-run:'+id+':trial:'+hash(requestId).slice(0,32);
+  return this.store.transaction(()=>{
+   const row=this.store.operation(id),prior=this.store.operation(runId);
+   if(prior){
+    if(prior.routineRevision!==input.expectedRevision)throw new KTeamError('routine_request_conflict',409);
+    return {ok:true,jobId:prior.jobId,reused:true};
+   }
+   if(row?.revision!==input.expectedRevision||row.revision!==snapshot.revision)throw new KTeamError('routine_changed',409);
+   if(this.store.workPaused()||current.settings.paused||current.settings.quiet)throw new KTeamError('routine_room_paused',409);
+   if(hash(row.captured)!==hash(current.captured)||this.store.settings(roomId)?.revision!==current.settings.revision||this.store.binding(row.botId)?.revision!==current.binding?.revision||this.store.state('source-changing:'+row.botId))throw new KTeamError('routine_scope_changed',409);
+   for(const run of this.runs(id)){
+    const job=this.runJob(run);
+    if(!job)continue;
+    if(activeStates.includes(job.state))throw new KTeamError('routine_run_active',409);
+    if((reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id))throw new KTeamError('routine_result_needs_review',409);
+   }
+   const scheduledAt=this.now(),jobId='job-'+hash(runId).slice(0,32);
+   this.store.enqueueFollowup({id:jobId,roomId,originId:runId,trigger:'routine',routine:{id,botId:row.botId,name:row.name,prompt:row.prompt,scheduledAt,configVersion:row.configVersion,trial:true}});
+   this.store.saveOperation({id:runId,roomId,routineId:id,routineRevision:row.revision,scheduledAt,jobId,outcome:'enqueued',trial:true},0);
+   return {ok:true,jobId,reused:false};
+  });
+ }
  async pause(value:unknown){
   const input=record(value);fields(input,['roomId','id','expectedRevision']);const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id');await this.scope(roomId);
   let reused=false;const saved=this.store.transaction(()=>{const current=this.store.operation(id);if(!id.startsWith('routine:')||!current||current.roomId!==roomId||current.deletedAt)throw new KTeamError('routine_not_found',404);if(!current.enabled){reused=true;return current;}if(current.revision!==input.expectedRevision)throw new KTeamError('routine_changed',409);return this.store.saveOperation({...current,enabled:false,nextAt:null,reason:'user_paused',configVersion:current.configVersion+1},current.revision);});if(!reused)this.changed(id);return {ok:true,reused,routine:this.projection(saved)};
@@ -78,9 +109,9 @@ export class Routines {
  assertJob(job:any,bot?:any){
   if(!routineWork(job))return;
   const row=this.store.operation(job.routine?.id),binding=this.store.binding(row?.botId),settings=this.store.settings(job.roomId);
-  if(!row||!row.enabled||row.deletedAt||row.roomId!==job.roomId||row.botId!==job.routine.botId||row.configVersion!==job.routine.configVersion||!settings||settings.paused||settings.quiet||settings.revision!==row.captured.settingsRevision||binding?.revision!==row.captured.bindingRevision||binding?.modelId!==row.captured.bindingModelId||binding?.fingerprint!==row.captured.bindingFingerprint)throw new KTeamError('routine_scope_changed',409);
+  if(!row||!row.enabled&&!job.routine?.trial||row.deletedAt||row.roomId!==job.roomId||row.botId!==job.routine.botId||row.configVersion!==job.routine.configVersion||!settings||settings.paused||settings.quiet||settings.revision!==row.captured.settingsRevision||binding?.revision!==row.captured.bindingRevision||binding?.modelId!==row.captured.bindingModelId||binding?.fingerprint!==row.captured.bindingFingerprint)throw new KTeamError('routine_scope_changed',409);
   if(bot&&profile(bot).revision!==row.captured.profileRevision)throw new KTeamError('routine_scope_changed',409);
-  if(!job.routine.admittedAt&&(this.now()-job.routine.scheduledAt>300000||row.endAt&&this.now()>row.endAt))throw new KTeamError('routine_missed',409);
+  if(!job.routine.admittedAt&&(this.now()-job.routine.scheduledAt>300000||!job.routine.trial&&row.endAt&&this.now()>row.endAt))throw new KTeamError('routine_missed',409);
  }
  async guard(job:any){
   if(job.trigger==='recovery'&&job.routine){await this.recoverySource(job);return;}
@@ -109,15 +140,16 @@ export class Routines {
     const row=this.store.operation(snapshot.id);if(row?.revision!==snapshot.revision||!row.enabled||row.nextAt!==snapshot.nextAt)return;
     const matches=hash(current.captured)===hash(row.captured)&&!current.settings.paused&&!current.settings.quiet&&this.store.settings(row.roomId)?.revision===current.settings.revision&&this.store.binding(row.botId)?.revision===current.binding?.revision&&!this.store.state('source-changing:'+row.botId);
     if(!matches){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_scope_changed'},row.revision);return;}
-    const prior=this.runs(row.id).find(run=>run.jobId),priorJob=prior?this.runJob(prior):null;
-    if(priorJob&&(reviewStates.includes(priorJob.state)||priorJob.needsReview)&&!(row.reviewedJobIds??[]).includes(priorJob.id)){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_result_needs_review'},row.revision);return;}
+    const runs=this.runs(row.id);
+    const jobs=runs.map(run=>this.runJob(run)).filter(Boolean);
+    if(jobs.some(job=>(reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id))){this.store.saveOperation({...row,enabled:false,nextAt:null,reason:'routine_result_needs_review'},row.revision);return;}
     const scheduledAt=row.nextAt,runId='routine-run:'+row.id+':'+scheduledAt,next=nextRoutineAt(row.schedule as RoutineSchedule,row.timeZone,now,row.endAt);
-    const outcome=now-scheduledAt>300000||row.endAt&&now>row.endAt?'missed':priorJob&&activeStates.includes(priorJob.state)?'overlap':'enqueued';
+    const outcome=now-scheduledAt>300000||row.endAt&&now>row.endAt?'missed':jobs.some(job=>activeStates.includes(job.state))?'overlap':'enqueued';
     const runCount=row.runCount+(outcome==='enqueued'?1:0),enabled=row.schedule.kind!=='once'&&next!==null&&runCount<row.maxRuns;
     if(!this.store.operation(runId)){
      const jobId=outcome==='enqueued'?'job-'+hash(runId).slice(0,32):undefined;
      if(jobId)this.store.enqueueFollowup({id:jobId,roomId:row.roomId,originId:runId,trigger:'routine',routine:{id:row.id,botId:row.botId,name:row.name,prompt:row.prompt,scheduledAt,configVersion:row.configVersion}});
-     this.store.saveOperation({id:runId,roomId:row.roomId,routineId:row.id,scheduledAt,jobId,outcome},0);
+     this.store.saveOperation({id:runId,roomId:row.roomId,routineId:row.id,scheduledAt,observedAt:now,jobId,outcome},0);
     }
     // A final queued occurrence remains enabled until it is admitted/settled; nextAt ends recurrence.
     this.store.saveOperation({...row,nextAt:enabled?next:null,enabled:true,runCount,reason:enabled?null:'routine_schedule_ended',lastError:null,retryAt:null,readFailures:0},row.revision);

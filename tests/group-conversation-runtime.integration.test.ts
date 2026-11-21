@@ -1,3 +1,7 @@
+import {ArtifactReview} from '../src/service/artifact-review.js';
+import {captureGeneratedFile} from '../src/runtime/generated-files.js';
+import {recordGeneratedFile} from '../src/runtime/generated-file-receipts.js';
+import {projectGroupPlan} from '../src/service/work-projection.js';
 import {createHash} from 'node:crypto';
 import {WorkRecovery} from '../src/service/work-recovery.js';
 import {test} from 'node:test';
@@ -24,7 +28,12 @@ for(const legacyRecovery of [false,true])test(legacyRecovery?'legacy single-coor
  const stages=()=>['Scope and acceptance criteria','Implement using the actual PM result','Independently verify the actual developer artifact'].map((message,index)=>({requests:[{botId:ids[index+1],message}],doneWhen:'Return verified stage '+index}));
  const server=createServer(async(req,res)=>{try{let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw),last=body.messages?.filter((m:any)=>m.role==='user').at(-1)?.content;let p:any;try{p=JSON.parse(typeof last==='string'?last:'');}catch{}
   const role=p?.botProfile?.description,tools=body.tools?.map((t:any)=>t.function.name)??[],toolReply=body.messages?.some((m:any)=>m.role==='tool'&&m.name!=='delegate_work');let text='Synthetic bookkeeping response',call:any;
-  if(p?.researchSummary){assert.equal(tools.length,0);assert(JSON.parse(p.researchSummary.evidence).some((e:any)=>e.resultPreview.includes('FRESH_SOURCE_')));summaryCalls++;text='RESEARCH_FINALIZED: findings from preserved source observations, with remaining coverage stated.';}
+  if(p?.sha256&&p?.content==='REVIEW_FROZEN_FIXTURE'){
+   assert.equal(tools.length,0);
+   assert.deepEqual(Object.keys(p).sort(),['content','name','sha256']);
+   text='PEER_REVIEW: reviewed the exact frozen text; surrounding files were out of scope.';
+  }
+  else if(p?.researchSummary){assert.equal(tools.length,0);assert(JSON.parse(p.researchSummary.evidence).some((e:any)=>e.resultPreview.includes('FRESH_SOURCE_')));summaryCalls++;text='RESEARCH_FINALIZED: findings from preserved source observations, with remaining coverage stated.';}
   else if(p?.eligibleSpeakers&&p.message==='INVALID_PLAN_RECOVERY'){
    invalidPlannerCalls++;
    assert.deepEqual(p.eligibleSpeakers,[ids[2]]);
@@ -68,6 +77,11 @@ for(const legacyRecovery of [false,true])test(legacyRecovery?'legacy single-coor
   let restarted=false;const until=Date.now()+(90000*(process.platform==='win32'?3:1));while(store.job(workId).state!=='delivered'&&Date.now()<until){await automation.tick();for(const pending of approvals.list()){assert.equal(pending.botId,ids[2]);assert.equal(pending.toolName,'write');assert.equal(existsSync(artifact),false);await approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'allow_directory_routine'});}if(!restarted&&store.job(workId).state==='waiting'){const deadline=Date.now()+(15000*(process.platform==='win32'?3:1));while(store.jobs().some(j=>j.trigger==='peer'&&['queued','routing','running'].includes(j.state))&&Date.now()<deadline)await new Promise(r=>setTimeout(r,20));assert(store.jobs().some(j=>j.trigger==='peer'&&j.state==='delivered'),JSON.stringify(store.jobs().map(j=>({state:j.state,trigger:j.trigger,reason:j.reason,failure:j.failure}))));await automation.close();automation=make();restarted=true;}await new Promise(r=>setTimeout(r,20));}
   assert.equal(store.job(workId).state,'delivered',JSON.stringify(store.jobs().map(j=>({id:j.id,state:j.state,reason:j.reason}))));assert.equal(parallelStarts,4);assert.deepEqual([...publicRoles].sort(),['cto','pm','dev','qa'].sort());assert.deepEqual(workerRoles,['pm','dev','qa']);assert.equal(readFileSync(artifact,'utf8'),'VERIFIED_PREVIEW_ARTIFACT');assert.equal(devHistory.some((m:any)=>m.text.includes('PUBLIC_')),false,'independent turns use the pre-response history rather than waiting for a sibling');assert(restarted);assert.deepEqual(errors,[]);
   const messages=(await f.upstream.messages(roomId,0,100)).messages as any[];assert.equal(messages.filter(m=>m.sender.kind==='agent'&&(m.text.startsWith('PUBLIC_')||m.text.startsWith('FINAL_COORDINATOR'))).length,5,JSON.stringify(messages.map(m=>({text:m.text,sourceRef:m.sourceRef}))));assert.equal(new Set(messages.filter(m=>m.sender.kind==='agent').map(m=>m.sender.logicalAgentId)).size,4);assert.equal(messages.at(-1).sender.logicalAgentId,ids[0]);assert(messages.at(-1).text.includes('FINAL_COORDINATOR'));assert.equal(messages.filter(m=>m.sender.kind==='user').length,1);assert.equal(messages[0].messageId,origin);
+  const projected=projectGroupPlan(store,store.job(workId))!;
+  assert.equal(projected.ownerId,ids[0]);
+  assert.deepEqual(projected.stages.map(stage=>stage.dependsOn),[undefined,1,2]);
+  assert.deepEqual(projected.stages.map(stage=>stage.requests[0]?.state),['delivered','delivered','delivered']);
+  assert.ok(store.jobs().find(j=>j.trigger==='peer'&&j.peer.toBotId===ids[2])?.workEvidence?.some((entry:any)=>entry.kind==='file'&&entry.path==='preview-proof.txt'));
   await send('DISCUSSION_ONLY: what does each role think?','b');const end=Date.now()+(15000*(process.platform==='win32'?3:1));while((store.jobs(roomId).some(j=>['queued','routing','running'].includes(j.state)))&&Date.now()<end){await automation.tick();await new Promise(r=>setTimeout(r,20));}
   assert.equal(store.jobs(roomId).filter(j=>j.groupResponse?.sourceJobId==='job-b'&&j.state==='delivered').length,3);assert.equal(store.jobs(roomId).filter(j=>j.groupResponse?.sourceJobId==='job-b'&&j.reason==='no_new_contribution').length,1);assert.deepEqual(errors,[]);
   await send('BUSY_ORIGINAL','c');const originalWork=automation.tick();const startDeadline=Date.now()+(10000*(process.platform==='win32'?3:1));while(!busyStarted&&Date.now()<startDeadline)await new Promise(r=>setTimeout(r,10));assert(busyStarted);
@@ -145,6 +159,29 @@ for(const legacyRecovery of [false,true])test(legacyRecovery?'legacy single-coor
    assert.equal(invalidPlannerCalls,3);
    assert.equal(JSON.stringify(store.job(jobId)),snapshot);
    assert.equal(store.jobs(roomId).filter(j=>j.trigger==='peer').length,peersBefore);
+   assert.deepEqual(errors,[]);
+  }
+  if(!legacyRecovery){
+   const original=store.job(workId),reviewPath=join(workspace,'versioned-review.txt');
+   writeFileSync(reviewPath,'REVIEW_FROZEN_FIXTURE');
+   const file=captureGeneratedFile(reviewPath,hostRoot,roomId);
+   recordGeneratedFile(store,original,{id:'peer-review-fixture',state:'committed',name:'write',botId:ids[0],file});
+   const review=new ArtifactReview(f.upstream,store,new ConversationService(hostRoot,f.upstream,store),automation.inputs!);
+   const request={toolCallId:'peer-review-fixture',expectedSha256:file.sha256,botId:ids[3],requestId:'same-review'};
+   assert.ok((await review.view(roomId,request.toolCallId)).peerReviewers?.some(bot=>bot.id===ids[3]&&bot.name==='qa'));
+   await assert.rejects(review.requestPeer(roomId,{...request,botId:ids[0]}),/artifact_peer_unavailable/);
+   const created=await review.requestPeer(roomId,request);
+   assert.equal((await review.requestPeer(roomId,request)).jobId,created.jobId);
+   await automation.tick();
+   const completed=store.job(created.jobId);
+   assert.equal(completed.state,'delivered',JSON.stringify({state:completed.state,reason:completed.reason}));
+   assert.equal(completed.results[0].botId,ids[3]);
+   const response=await f.upstream.conversationMessage(roomId,completed.results[0].messageId);
+   assert.match(response.message.text,/PEER_REVIEW/);
+   const stale=await review.requestPeer(roomId,{...request,requestId:'stale-review'});
+   writeFileSync(reviewPath,'Changed before the model could review');
+   await automation.tick();
+   assert.equal(store.job(stale.jobId).reason,'generated_file_changed');
    assert.deepEqual(errors,[]);
   }
  }finally{releaseBusy();releaseSlow();approvals.close();await automation?.close();await roles?.close();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));store.close();if(priorConfig===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=priorConfig;if(priorPlugins===undefined)delete process.env.KTEAM_DISABLE_GLOBAL_PLUGINS;else process.env.KTEAM_DISABLE_GLOBAL_PLUGINS=priorPlugins;await f.close();}
