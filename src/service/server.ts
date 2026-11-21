@@ -1,3 +1,4 @@
+import {Plugins} from './plugins.js';
 import {assertCodexBinding,codexWriteGrant,saveCodexWriteGrant,type CodexDispatch} from './codex-write-grants.js';
 import {TeamWorkspace} from './team-workspace.js';
 import {groupDirectoryApproval} from './group-directory-approval.js';
@@ -208,6 +209,17 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(url.pathname==='/v1/app/enterprise-connectors'&&req.method==='GET')return send(res,200,await enterpriseConnectors.view());
         if(url.pathname==='/v1/app/enterprise-connectors'&&req.method==='POST')return send(res,200,await enterpriseConnectors.control(await body(req)));
         if(url.pathname==='/v1/app/integrations/cua'&&req.method==='POST')return send(res,200,await integrationSettings.controlCua(await body(req)));
+        if(url.pathname==='/v1/app/plugins'&&req.method==='GET')return send(res,200,new Plugins(teamStore).list());
+        if(url.pathname==='/v1/app/plugins/commands'&&req.method==='GET')return send(res,200,new Plugins(teamStore).commands());
+        if(req.method==='POST'&&url.pathname.startsWith('/v1/app/plugins/')){
+          const plugins=new Plugins(teamStore);
+          switch(url.pathname){
+            case '/v1/app/plugins/preview': return send(res,200,plugins.preview(await body(req,512*1024)));
+            case '/v1/app/plugins/install': return send(res,200,plugins.install(await body(req,512*1024)));
+            case '/v1/app/plugins/change': return send(res,200,plugins.change(await body(req)));
+            case '/v1/app/plugins/draft': return send(res,200,plugins.draft(await body(req)));
+          }
+        }
         if(url.pathname==='/v1/app/preferences'){
           if(req.method==='GET')return send(res,200,{ok:true,preferences:appPreferences(teamStore)});
           if(req.method==='POST')return send(res,200,{ok:true,preferences:saveAppPreferences(teamStore,await body(req))});

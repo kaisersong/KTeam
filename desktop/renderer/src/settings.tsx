@@ -1,3 +1,4 @@
+import {PluginSettings} from './plugin-settings';
 import {buildDetails} from './build-info';
 import {MobileSettings} from './mobile-settings';
 import {MailConnectorSettings} from './mail-connectors';
@@ -8,7 +9,7 @@ import {EnterpriseConnectorSettings} from './enterprise-connectors';
 import {NotificationSettings} from './notification-settings';
 import {settingsAutosave} from './autosave-api';
 import React,{useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Palette,RefreshCw,Search,Server,Settings,Shield,SlidersHorizontal,Smartphone,Sparkles,Users} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Check,ChevronDown,Cpu,FolderOpen,Info,LoaderCircle,Palette,Puzzle,RefreshCw,Search,Server,Settings,Shield,SlidersHorizontal,Smartphone,Sparkles,Users} from 'lucide-react';
 import {api,explain,type Bot} from './api';
 import type {AppPreferences} from '../../../src/service/app-preferences';
 import {ensureBuiltinAgent,ensureLocalAgent} from './local-agents';
@@ -26,7 +27,7 @@ function useResource<T=any>(method:'appPreferences'|'status'|'modelSettings'|'ap
 function Loading(){return <p className="settings-loading" role="status"><LoaderCircle size={17} className="spinner"/>正在读取…</p>;}
 function Failure({error,retry}:{error:string;retry:()=>void}){return <div className="settings-error" role="alert"><p>{error}</p><button className="secondary" onClick={retry}><RefreshCw size={14}/>重新读取</button></div>;}
 function Section({title,description,children}:{title:string;description?:string;children:React.ReactNode}){return <section className="settings-block"><h2>{title}</h2>{description&&<p className="settings-description">{description}</p>}{children}</section>;}
-const sections=[['general','通用设置',SlidersHorizontal],['mobile','手机连接',Smartphone],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['tools','工具管理',Search],['mcp','MCP 服务器',Shield],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
+const sections=[['general','通用设置',SlidersHorizontal],['mobile','手机连接',Smartphone],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['plugins','插件',Puzzle],['tools','工具管理',Search],['mcp','MCP 服务器',Shield],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
 type Page=typeof sections[number][0];
 
 export function SettingsWorkspace({initialPage='general',preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
@@ -40,6 +41,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='decision'&&<DecisionPanel/>}
  {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailConnectorSettings/><MailSettings/><EnterpriseConnectorSettings/></>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
+ {page==='plugins'&&<PluginSettings/>}
  {page==='tools'&&<ToolsSettings/>}
  {page==='mcp'&&<MCPSettings/>}{page==='memory'&&<MemorySettings/>}{page==='voice'&&<VoiceSettings/>}
  {page==='appearance'&&<PreferencesPanel kind="appearance" preferences={preferences} onSaved={onPreferences}/>}
