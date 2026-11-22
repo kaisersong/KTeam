@@ -4,28 +4,33 @@ import {WorkDraft,SharedHistory} from './work-record-preview';
 import {messageDisplayText,attachmentMessageView} from '../../../src/protocol/message-attachments';
 import {GeneratedFiles} from './generated-files';
 import {RoomRoutines} from './room-routines';
+import {UpcomingWork} from './upcoming-work';
 import {ConversationActivity} from './conversation-activity';
 import {WorkRecoveryNotice} from './work-recovery';
 import {TeamRolesPanel} from './team-roles';
 import {ExecutionFailureDetails} from './execution-failure';
 import {useUserProfile} from './user-profile';
 import React,{useEffect,useRef,useState} from 'react';
-import {X,Share,Search,Pin,FilePlus,FileText,ExternalLink,Trash2,MessageSquarePlus,Monitor,ArrowRight,RefreshCw,Activity,Bug,CalendarClock} from 'lucide-react';
+import {X,Share,Search,Pin,FilePlus,FileText,ExternalLink,Trash2,MessageSquarePlus,Monitor,ArrowRight,RefreshCw,Activity} from 'lucide-react';
 import {api,explain,type Bot,type Message,type Room} from './api';
-import {Avatar,Inspector} from './components';
+import {ConversationMembers} from './components';
 import {Markdown} from './Markdown';
 export type WorkspaceTab='details'|'shared'|'library'|'computer'|'search'|'activity'|'inspector'|'routines';
 const tabs:[WorkspaceTab,string][]=[['details','详情'],['shared','共享'],['library','资料库'],['computer','电脑']];
-const cleanName=(bot:Bot)=>bot.name.replace(/ · KTeam .+$/,'');
-type Props={workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
+type Props={fleetPaused?:boolean;workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;onToday:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
 export function ConversationWorkspace(p:Props){
  const user=useUserProfile();
  const [memberAction,setMemberAction]=useState<"add"|Bot>();
  const {room,bots,settings,jobs,tasks,data,tab,setTab,workControl}=p;
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[notes,setNotes]=useState(''),[editing,setEditing]=useState(false),[revision,setRevision]=useState(0),[computer,setComputer]=useState<any>(),[usage,setUsage]=useState<any>(),[search,setSearch]=useState(''),[results,setResults]=useState<any>(),[preview,setPreview]=useState<any>(),[pins,setPins]=useState<Message[]>([]);
  const alive=useRef(true),searchGeneration=useRef(0),saveIntent=useRef<{body:string;id:string}|undefined>(undefined);
- useEffect(()=>()=>{alive.current=false;},[]);
- useEffect(()=>{let live=true;void Promise.allSettled([api.computer(room.roomId).then(v=>{if(live)setComputer(v);}),api.usage(room.roomId).then(v=>{if(live)setUsage(v);})]).then(r=>{const failed=r.find(x=>x.status==='rejected');if(live&&failed?.status==='rejected')setError(explain(failed.reason));});return()=>{live=false;};},[room.roomId,tab,jobs[0]?.state]);
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+ useEffect(()=>{
+  if(tab!=='computer')return;
+  let live=true;
+  void api.computer(room.roomId).then(value=>{if(live)setComputer(value);}).catch(error=>{if(live)setError(explain(error));});
+  return()=>{live=false;};
+ },[room.roomId,tab,jobs[0]?.state]);
  useEffect(()=>{if(!editing){setNotes(data?.shared?.text??'');setRevision(data?.shared?.revision??0);}},[data?.shared?.revision,editing]);
  const pinKey=(data?.messageState??[]).filter((v:any)=>v.pinned).map((v:any)=>v.messageId).sort().join(',');
  useEffect(()=>{let live=true;const ids=[...new Set<string>(pinKey.split(',').filter(Boolean))];void Promise.all(ids.slice(0,50).map(messageId=>api.conversationMessage({roomId:room.roomId,messageId}).then(v=>v.message))).then(v=>{if(live)setPins(v);}).catch(e=>{if(live)setError(explain(e));});return()=>{live=false;};},[room.roomId,pinKey]);
@@ -34,26 +39,48 @@ export function ConversationWorkspace(p:Props){
  useEffect(()=>{if(p.sourceMessage){setNotes(data?.shared?.text??'');setRevision(data?.shared?.revision??0);setEditing(true);}},[p.sourceMessage?.messageId]);
  const save=()=>run(async()=>{const sourceMessageIds=p.sourceMessage?[p.sourceMessage.messageId]:(data?.shared?.sourceMessageIds??[]);const body=JSON.stringify({text:notes,expectedRevision:revision,sourceMessageIds});if(saveIntent.current?.body!==body)saveIntent.current={body,id:crypto.randomUUID()};const result=await api.saveShared({roomId:room.roomId,text:notes,expectedRevision:revision,sourceMessageIds,requestId:saveIntent.current.id});saveIntent.current=undefined;p.onClearSource?.();setEditing(false);await p.onData();setNotice(result.sourceWarnings?.length?'共享纪要已保存；部分来源无法核验，未作为来源记录。':'共享纪要已保存');});
  const importFile=async(file:File)=>{if(file.size>4*1024*1024)throw Error('library_file_too_large');const value=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]??'');reader.onerror=reject;reader.readAsDataURL(file);});await api.importLibrary({roomId:room.roomId,name:file.name,data:value});await p.onData();setNotice('已加入会话资料库');};
+ const locate=(messageId:string)=>void run(async()=>{
+  const value=await api.conversationMessage({roomId:room.roomId,messageId});
+  if(alive.current)p.onMessage(value.message);
+ });
  const suggestions=room.kind==='group'?['我们先讨论一下这个团队要解决什么问题','整理一下目前的共识和待确认事项','有哪些资料缺口需要我补充？']:room.kind==='assistant'?['我的团队现在在忙什么？','帮我组一个产品团队','把目前的共识整理到共享纪要']:['你可以帮我做些什么？','根据我们聊的内容，下一步有什么建议？','整理一下当前的共识和待办'];
  return <>{memberAction&&<GroupMemberManager key={room.roomId+':'+(typeof memberAction==='string'?memberAction:memberAction.id)} roomId={room.roomId} remove={typeof memberAction==='string'?undefined:memberAction} onClose={()=>setMemberAction(undefined)} onChanged={p.onMembersChanged??p.onData} onCreate={p.onCreateMember}/>}<aside className="conversation-workspace" aria-label="会话侧栏"><header className="workspace-heading"><h2>{room.title}</h2><button className="icon-button" aria-label="导出会话" title="导出 Markdown" disabled={busy} onClick={()=>void run(async()=>{const v=await api.exportConversation({roomId:room.roomId});if(!v.cancelled)setNotice('会话已导出');})}><Share size={18}/></button><button className="icon-button" aria-label="关闭会话侧栏" onClick={p.onClose}><X size={19}/></button></header>
  <nav className="workspace-tabs" aria-label="会话资料页签">{tabs.map(([key,label])=><button key={key} aria-current={(tab===key||(key==='details'&&(tab==='activity'||tab==='inspector'||tab==='routines')))?'page':undefined} onClick={()=>setTab(key)}>{label}</button>)}</nav>
  <div className="workspace-body">{error&&<p className="flow-error" role="alert">{error}<button className="text-button" onClick={()=>void run(p.onData)}>重新读取</button></p>}{notice&&<p className="workspace-notice" role="status">{notice}</p>}
- {tab==='details'&&<><WorkRecoveryNotice recovery={p.recovery} job={jobs[0]} bots={bots} busy={busy} reconnecting={p.reconnecting} onContinue={p.onContinue}/><ExecutionFailureDetails job={jobs[0]} bots={bots}/><div className="workspace-actions">{room.kind==='group'?<button onClick={p.onRename}>修改群名<ArrowRight size={15}/></button>:bots[0]&&<button disabled={busy} onClick={()=>void run(()=>p.onNew(bots[0]))}><MessageSquarePlus size={17}/>新对话</button>}<button onClick={()=>setTab('search')}><Search size={17}/>在对话中查找<kbd>⌘ F</kbd></button><button onClick={()=>setTab('activity')}><Activity size={17}/>活动<ArrowRight size={15}/></button><button onClick={()=>setTab('inspector')}><Bug size={17}/>检查器<ArrowRight size={15}/></button><button onClick={()=>setTab('routines')}><CalendarClock size={17}/>例行任务<ArrowRight size={15}/></button></div>
- {room.kind==='group'&&<button className="secondary full" onClick={p.onRecipe}>导出团队配方</button>}
- {room.kind==='group'&&<TeamRolesPanel roomId={room.roomId} bots={bots} roles={p.roles} onChanged={p.onRolesChanged}/>}
- <section className="workspace-section"><h3>试着这样问</h3><div className="suggested-prompts">{suggestions.map(text=><button key={text} onClick={()=>p.onDraft(text)}>{text}<ArrowRight size={14}/></button>)}</div></section>
+ {tab==='details'&&<>
+  <UpcomingWork room={room} botIds={bots.map(bot=>bot.id)} roomPaused={Boolean(settings?.paused||settings?.quiet||p.fleetPaused)}
+   onManage={()=>setTab('routines')} onToday={p.onToday} onLocate={locate}/>
+  <ConversationMembers onAddMember={()=>setMemberAction('add')} onRemoveMember={setMemberAction} room={room} bots={bots} jobs={jobs} onBot={p.onBot}/>
  {pins.length>0&&<section className="workspace-section"><h3><Pin size={15}/>置顶消息</h3>{pins.map(m=><button className="pin-preview" key={m.messageId} onClick={()=>p.onMessage(m)}>{messageDisplayText(m).slice(0,160)||(attachmentMessageView(m)?'附件消息':'')}</button>)}{pinKey.split(',').length>50&&<p className="muted">显示最近 50 条置顶消息。</p>}</section>}
- <Inspector onAddMember={()=>setMemberAction('add')} onRemoveMember={setMemberAction} room={room} bots={bots} settings={settings} jobs={jobs} tasks={tasks} onPause={()=>{}} onBot={p.onBot} onReview={p.onReview}/>
- <button className="secondary full" disabled={busy} onClick={()=>void run(p.onPause)}>{settings?.paused?'继续回复':'暂停回复'}</button>
+
+  <div className="workspace-actions workspace-quick-actions">
+   <button onClick={()=>setTab('activity')}><Activity size={17}/>活动<ArrowRight size={15}/></button>
+   <button onClick={()=>setTab('search')}><Search size={17}/>在对话中查找</button>
+  </div>
+  <details className="workspace-section workspace-more">
+   <summary>更多</summary>
+   <div className="workspace-actions">
+    {room.kind==='group'?<button onClick={p.onRename}>修改群名<ArrowRight size={15}/></button>:bots[0]&&<button disabled={busy} onClick={()=>void run(()=>p.onNew(bots[0]))}><MessageSquarePlus size={17}/>新对话</button>}
+    <button disabled={busy} onClick={()=>void run(p.onPause)}>{settings?.paused?'继续回复':'暂停回复'}</button>
+    {room.kind==='group'&&<button onClick={p.onRecipe}>导出团队配方</button>}
+   </div>
+   {room.kind==='group'&&<TeamRolesPanel roomId={room.roomId} bots={bots} roles={p.roles} onChanged={p.onRolesChanged}/>}
+   <section className="workspace-section"><h3>试着这样问</h3><div className="suggested-prompts">{suggestions.map(text=><button key={text} onClick={()=>p.onDraft(text)}>{text}<ArrowRight size={14}/></button>)}</div></section>
  {workControl&&<section className="workspace-section">
   <h3>本机工作</h3>
   <p className="muted">适用于本机的所有会话。</p>
   <button className="secondary" disabled={busy||workControl.disabled} onClick={()=>void run(workControl.toggle)}>{workControl.paused?'继续全部工作':'暂停全部工作'}</button>
  </section>}
- {jobs.filter(job=>(job.answerDraftAvailable||job.answerDraft||job.partialText)&&['unknown','blocked','stopped'].includes(job.state)).map(job=><WorkDraft key={job.id} roomId={room.roomId} job={job}/>)}
- <details className="workspace-section usage-details"><summary>用量<ArrowRight size={15}/></summary>{usage?<><p className="muted">{usage.scope}</p><dl><dt>模型调用</dt><dd>{usage.calls} 次</dd><dt>已报告输入</dt><dd>{usage.inputTokens.toLocaleString()} tokens</dd><dt>已报告输出</dt><dd>{usage.outputTokens.toLocaleString()} tokens</dd><dt>费用</dt><dd>模型未提供</dd></dl>{usage.latest&&<p className="muted">最近一次：{usage.latest.model}<br/>{usage.latest.contextLimit?`输入 ${usage.latest.inputTokens.toLocaleString()} / 上下文上限 ${usage.latest.contextLimit.toLocaleString()} tokens`:'上下文上限未提供'}<br/>统计不包含原 Agent 未报告的内部调用和缓存明细。</p>}</>:<p className="muted">正在读取实际用量…</p>}</details></>}
- {tab==='routines'&&<RoomRoutines roomId={room.roomId} bots={bots} onBack={()=>setTab('details')} onLocate={messageId=>void run(async()=>{const value=await api.conversationMessage({roomId:room.roomId,messageId});if(alive.current)p.onMessage(value.message);})}/>}
- {(tab==='activity'||tab==='inspector')&&<ConversationActivity focusJobId={p.focusJobId} roomId={room.roomId} jobs={jobs} bots={bots} mode={tab} onBack={()=>setTab('details')} onInspect={()=>setTab('inspector')} onLocate={messageId=>void run(async()=>{const value=await api.conversationMessage({roomId:room.roomId,messageId});if(alive.current)p.onMessage(value.message);})}/>}
+ <details className="workspace-section usage-details" onToggle={event=>{if(event.currentTarget.open&&!usage)void run(async()=>{const value=await api.usage(room.roomId);if(alive.current)setUsage(value);});}}><summary>用量<ArrowRight size={15}/></summary>{usage?<><p className="muted">{usage.scope}</p><dl><dt>模型调用</dt><dd>{usage.calls} 次</dd><dt>已报告输入</dt><dd>{usage.inputTokens.toLocaleString()} tokens</dd><dt>已报告输出</dt><dd>{usage.outputTokens.toLocaleString()} tokens</dd><dt>费用</dt><dd>模型未提供</dd></dl>{usage.latest&&<p className="muted">最近一次：{usage.latest.model}<br/>{usage.latest.contextLimit?`输入 ${usage.latest.inputTokens.toLocaleString()} / 上下文上限 ${usage.latest.contextLimit.toLocaleString()} tokens`:'上下文上限未提供'}<br/>统计不包含原 Agent 未报告的内部调用和缓存明细。</p>}</>:<p className="muted">正在读取实际用量…</p>}</details>
+  </details>
+ </>}
+ {tab==='routines'&&<RoomRoutines roomId={room.roomId} bots={bots} onBack={()=>setTab('details')} onLocate={locate}/>}
+ {(tab==='activity'||tab==='inspector')&&<>
+  {tab==='inspector'&&<><WorkRecoveryNotice recovery={p.recovery} job={jobs[0]} bots={bots} busy={busy} reconnecting={p.reconnecting} onContinue={p.onContinue}/><ExecutionFailureDetails job={jobs[0]} bots={bots}/></>}
+  <ConversationActivity focusJobId={p.focusJobId} roomId={room.roomId} jobs={jobs} tasks={tasks} bots={bots} mode={tab}
+   onBack={()=>setTab('details')} onInspect={()=>setTab('inspector')} onLocate={locate} onReview={p.onReview}/>
+  {tab==='inspector'&&jobs.filter(job=>(job.answerDraftAvailable||job.answerDraft||job.partialText)&&['unknown','blocked','stopped'].includes(job.state)).map(job=><WorkDraft key={job.id} roomId={room.roomId} job={job}/>)}
+ </>}
  {tab==='shared'&&<><div className="workspace-section"><h3>共享纪要 <small>v{data?.shared?.revision??0}</small></h3><p className="muted">当前方向、共识、待办和未定事项。随讨论更新，成员会在后续交流中读取。</p></div>{!data?<p>正在读取…</p>:editing?<><>{p.sourceMessage&&<p className="muted">来源：{messageDisplayText(p.sourceMessage).slice(0,100)}<button className="text-button" onClick={p.onClearSource}>移除来源</button></p>}</><textarea className="shared-editor" aria-label="共享纪要" rows={15} maxLength={8192} value={notes} onChange={e=>setNotes(e.target.value)}/>{data.shared.revision!==revision&&<p className="flow-error">已有新版本。请先保留草稿并读取最新内容，再合并保存。</p>}<div className="workspace-inline"><button className="secondary" disabled={busy} onClick={()=>{setEditing(false);p.onClearSource?.();}}>取消</button><button className="primary" disabled={busy||data.shared.revision!==revision} onClick={()=>void save()}>保存纪要</button></div></>:<><div className="shared-content">{data.shared.text?<Markdown text={data.shared.text}/>:<p className="muted">还没有共享纪要。直接在群里交流，形成共识后由成员整理，也可以手动补充。</p>}</div><button className="secondary" onClick={()=>{setNotes(data.shared.text);setRevision(data.shared.revision);setEditing(true);}}>编辑纪要</button></>}
  {data?.shared?.sourceKind==='manual'&&<p className="muted">来源：手动编辑</p>}{data?.shared?.sourceRef&&<button className="source-link" onClick={()=>void run(async()=>p.onMessage((await api.conversationMessage(data.shared.sourceRef)).message))}>查看建群方案的来源消息</button>}
  {data?.shared?.updatedAt&&<p className="muted">更新于 {new Date(data.shared.updatedAt).toLocaleString('zh-CN')} · {data.shared.updatedBy?.kind==='agent'?bots.find(b=>b.id===data.shared.updatedBy.logicalAgentId)?.name.replace(/ · KTeam .+$/,'')??'成员':user.displayName}</p>}
