@@ -1,4 +1,5 @@
 import {isLiteralAwkFilter} from '../protocol/awk-filter.js';
+import {isLiteralEcho,maskSedPrintScripts,sedPrintOperands} from '../protocol/terminal-literals.js';
 import {localGitWorkflow} from './git-local-workflow.js';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -117,6 +118,14 @@ export function terminalWorkingPaths(core:any,command:string,cwd:string):string[
   // A dynamic directory change cannot inherit an unrelated directory's grant.
   if(/(?:^|[;&|]\s*)(?:cd|pushd|popd)\b/.test(raw))return;
   paths.add(directory);
+  if(isLiteralEcho(raw))continue;
+  const sedOperands=sedPrintOperands(raw);
+  if(sedOperands!==undefined){
+   const args=words(sedOperands);
+   if(!args||args.some(arg=>arg!=='-'&&arg.startsWith('-')||arg==='<<'))return;
+   for(const arg of args)if(!['-','>','>>','<','/dev/null'].includes(arg))paths.add(expand(arg));
+   continue;
+  }
   // Remote command paths belong to the remote host, not this machine. Local
   // redirects still go through normal path coverage; quoted remote redirects do not.
   if(/^(?:\/[^\s]+\/)?(?:ssh|sftp)(?:\s|$)/.test(raw)){
@@ -128,7 +137,7 @@ export function terminalWorkingPaths(core:any,command:string,cwd:string):string[
   // Drive-rooted and UNC paths are absolute on Windows, including local
   // output redirections; they cannot inherit an unrelated working directory.
   const awk=/^awk\s+('[^'\r\n]*')(?=\s|$)/.exec(raw);
-  const operands=awk&&isLiteralAwkFilter(awk[1]!)?raw.slice(awk[0].length):raw;
+  const operands=awk&&isLiteralAwkFilter(awk[1]!)?raw.slice(awk[0].length):maskSedPrintScripts(raw);
   for(const match of operands.matchAll(/(?:^|[\s=<>])(?:"((?:\/|~\/|\.\.?\/)[^"$`]+)"|'((?:\/|~\/|\.\.?\/)[^']+)'|((?:\/|~\/|\.\.?\/)[^\s;|&<>"'$`]+))/g)){
    const path=match[1]??match[2]??match[3]!;if(path!=='/dev/null')paths.add(expand(path));
   }

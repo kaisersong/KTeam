@@ -1,12 +1,13 @@
 import {resolve,posix,win32} from 'node:path';
 import {isLiteralAwkFilter} from './awk-filter.js';
+import {maskSedPrintScripts} from './terminal-literals.js';
 /** Display facts only. Never a shell parser, authorization decision, or proof a path is empty. */
 export interface OperationFact {kind:'delete'|'overwrite'|'copy'|'process'|'path'|'unknown';target:string;reason:string}
 export function inspectOperation(toolName:string,input:Record<string,unknown>,cwd:string){
  const paths=/^(?:[A-Za-z]:[\\/]|\\\\)/.test(cwd)?win32:cwd.startsWith('/')?posix:{resolve};
  const facts:OperationFact[]=[],add=(kind:OperationFact['kind'],target:string,reason:string)=>{if(target&&!facts.some(f=>f.kind===kind&&f.target===target))facts.push({kind,target,reason});};
  if(toolName!=='bash'){if(typeof input.file_path==='string')add(toolName==='write'||toolName==='edit'?'overwrite':'path',paths.resolve(cwd,input.file_path),toolName==='read'?'读取文件':'写入或修改文件');return {facts,destructive:false,mixedInspection:false};}
- const command=String(input.command??''),tokens=command.match(/"[^"\n]*"|'[^'\n]*'|[^\s;|&]+|[;|&]+/g)??[];
+ const command=String(input.command??''),inspected=paths===win32?command:maskSedPrintScripts(command),tokens=inspected.match(/"[^"\n]*"|'[^'\n]*'|[^\s;|&]+|[;|&]+/g)??[];
  let directory=cwd;const literal=(v:string)=>v.replace(/^(['"])(.*)\1$/,'$2'),path=(v:string)=>/[`$*?{}]/.test(v)?v:paths.resolve(directory,v);
  for(let i=0;i<tokens.length;i++){
   const word=literal(tokens[i]!);
