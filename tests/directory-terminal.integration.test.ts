@@ -10,8 +10,9 @@ import {TeamStore} from '../src/service/team-store.js';
 import {ToolApprovals} from '../src/service/tool-approvals.js';
 import {createHarness} from '../src/runtime/harness.js';
 import {sharedRuntime} from '../src/runtime/native.js';
-import {directoryAccess} from '../src/service/directory-access.js';
+import {directoryAccess,directoryGrantAccess} from '../src/service/directory-access.js';
 import {commandAccess} from '../src/service/terminal-access.js';
+import type {OperationFact} from '../src/protocol/operation-inspection.js';
 import {analystQuery} from './helpers/analyst-query.js';
 const pause=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function fixture(){
@@ -131,6 +132,40 @@ test('one trusted directory covers new programs, multiline scripts and changed s
  }finally{f.close();}
 });
 
+
+test('report print ranges and changed echo labels reuse directory grants, including child directories and process substitution',{skip:process.platform==='win32'},async()=>{
+ const f=await fixture();try{
+  const report=join(f.workspace,'reports','2026-11-21'),backup=join(f.root,'backups'),name='备赛方案.md';
+  mkdirSync(report,{recursive:true});mkdirSync(backup);
+  const content='标题\n### 1.5\n〔待核实〕\n### 1.6\n## 第 3 章\n正文\n';
+  writeFileSync(join(report,name),content);writeFileSync(join(backup,'baseline.md'),content);
+  const first=`cd "${report}" && sed -n '5p' ${name} && echo "=== /phase/one ===" && sed -n '/^### 1.5/,/^### 1.6/p' ${name} | grep -c "〔待核实〕"`;
+  const second=`cd "${report}" && echo "=== /phase/two ===" && diff <(sed -n '/^## 第 3 章/,$p' "${join(backup,'baseline.md')}") <(sed -n '/^## 第 3 章/,$p' ${name}) && echo DIFF_OK`;
+  const scope={botId:'member',bindingRevision:1,cwd:f.root};
+  const remember=(directory:string)=>f.approvals.permissions.rememberDirectory(scope,directoryGrantAccess(f.core,directory)!,'routine');
+  remember(f.workspace);
+  let current=await f.make(f.root);const pm=current.h.registryOptions.permissionManager;
+  assert.equal(await pm.check('bash',{command:first,workdir:f.root}),'allow');
+  assert.match(await current.registry.executeTool('bash',{command:first,workdir:f.root}),/第 3 章[\s\S]*\b1\b/);
+  const comparison=current.registry.executeTool('bash',{command:second,workdir:f.root}),pending=await f.pending();
+  assert.equal(pending.commandScoped,false);
+  assert.deepEqual([...pending.directories].sort(),[realpathSync(backup),realpathSync(report)].sort());
+  assert.ok(pending.operationFacts?.some((fact:OperationFact)=>fact.target===join(backup,'baseline.md')));
+  assert.ok(!pending.operationFacts?.some((fact:OperationFact)=>fact.target.startsWith('/^')));
+  await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'deny'});await comparison;
+  remember(backup);
+  f.restart();current=await f.make(f.root);
+  assert.match(await current.registry.executeTool('bash',{command:second.replace('/phase/two','/other/status'),workdir:f.root}),/DIFF_OK/);
+  assert.equal(f.approvals.list().length,0);
+  const outside=join(f.root,'outside');mkdirSync(outside);writeFileSync(join(outside,'read.txt'),content);
+  for(const command of [
+   `cd "${report}" && sed -n '/^正文/p' ../../../outside/read.txt`,
+   `cd "${report}" && sed -n '/^正文/p' ${name} > "../../../outside/write.txt"`,
+   `cd "${report}" && diff <(sed -n '/^正文/p' "${join(outside,'read.txt')}") <(sed -n '/^正文/p' ${name})`,
+   `cd "${report}" && sed -n '/^正文/p' ${name} && rm ${name}`,
+  ])assert.equal(await current.h.registryOptions.permissionManager.check('bash',{command,workdir:f.root}),'prompt',command);
+ }finally{f.close();}
+});
 test('ls-remote with redirected tag results is ordinary and reuses its directory grant after restart',{skip:process.platform==='win32'},async()=>{
  const f=await fixture();try{
   const {terminalRequiresConfirmation}=await import('../src/service/terminal-permissions.js'),{directoryGrantAccess}=await import('../src/service/directory-access.js');
