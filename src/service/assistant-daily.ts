@@ -181,7 +181,7 @@ export class AssistantDaily {
  }
  planView(){
   const draft=this.draft();
-  return {ok:true,...this.summary(),draft:draft?.committedRevision?undefined:draft};
+  return {ok:true,...this.summary(),effectivePaused:this.blocked()||this.plan()?.config.paused===true,draft:draft?.committedRevision?undefined:draft};
  }
  async view() {
   const plan=this.plan();

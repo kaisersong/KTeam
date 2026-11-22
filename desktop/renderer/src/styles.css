@@ -309,3 +309,27 @@ button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:under
 .assistant-daily-card details {
  margin: 12px 0;
 }
+
+.upcoming-work > header {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 8px;
+ margin-bottom: 10px;
+}
+.upcoming-work > header h3 {flex: none;margin: 0;white-space: nowrap}
+.upcoming-work > header button {display: inline-flex;flex: none;width: auto;align-items: center;gap: 4px;white-space: nowrap}
+.upcoming-list {list-style: none;margin: 0;padding: 0;border: 1px solid var(--line);border-radius: 12px}
+.upcoming-list li {display: flex;align-items: center;gap: 9px;padding: 8px 10px}
+.upcoming-list li + li {border-top: 1px solid var(--line)}
+.upcoming-list li > svg {flex: none;color: var(--text-secondary)}
+.upcoming-list .settings-switch {flex: none}
+.upcoming-row-link {flex: 1;min-width: 0;display: grid;gap: 3px;text-align: left}
+.upcoming-row-link strong, .upcoming-row-link small {overflow: hidden;text-overflow: ellipsis;white-space: nowrap}
+.upcoming-row-link strong {font-size: 13px}
+.upcoming-row-link small {font-size: 11px;color: var(--text-secondary)}
+.workspace-more > summary {cursor: pointer;color: var(--text-secondary)}
+.workspace-more > .workspace-actions {margin-top: 10px}
+.activity-review .task-row {align-items: center;justify-content: space-between}
+.activity-review .task-row p {overflow-wrap: anywhere}
+.activity-review .task-row button {flex: none}

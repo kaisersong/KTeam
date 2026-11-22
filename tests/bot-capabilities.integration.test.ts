@@ -52,6 +52,8 @@ test('cancelled followups cannot be enqueued from a stale scheduler snapshot; ca
   const sent=await new CollaborationService(f.upstream).send({aimp:'1.0',id:'msg_'+randomBytes(16).toString('hex'),room_id:a.roomId,thread_id:'thread-'+a.roomId,from:LOCAL_HUMAN,to:[],mentions:[],ts:new Date().toISOString(),act:'chat',source_level:'principal',body:'虚构的后续核对任务'});
   const binding=f.store.binding(a.bot.id)!,operation=f.store.saveOperation({id:'followup:race-proof',status:'pending',botId:a.bot.id,roomId:a.roomId,originId:sent.messageId,settingsRevision:f.store.settings(a.roomId)!.revision,profileRevision:1,bindingRevision:binding.revision,bindingModelId:binding.modelId,bindingFingerprint:binding.fingerprint,dueAt:Date.now()-1000,reason:'核对示例结果'},0);
   const follows=new Followups(f.upstream,f.store);assert.equal((await follows.list(a.bot.id)).items[0]!.canCancel,true);
+  assert.equal((await follows.list(a.bot.id,a.roomId)).items[0]?.id,operation.id);
+  assert.deepEqual((await follows.list(a.bot.id,b.roomId)).items,[]);
   await assert.rejects(follows.cancel({botId:b.bot.id,id:operation.id,expectedRevision:1}),/followup_not_found/);await assert.rejects(follows.cancel({botId:a.bot.id,id:operation.id,expectedRevision:99}),/followup_changed/);
   let entered!:()=>void,release!:()=>void;const held=new Promise<void>(resolve=>{entered=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});let once=true,calls=0;
   const membership=f.upstream.membership.bind(f.upstream);f.upstream.membership=async(roomId:string)=>{const value=await membership(roomId);if(once){once=false;entered();await resume;}return value;};
