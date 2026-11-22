@@ -38,6 +38,12 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 
 ---
 
+## What's in 0.10.1
+
+- Pick a briefing schedule directly in Little K. Review the schedule and choose which sources it can read before applying it.
+- See upcoming routines, follow-ups, and the next briefing at the top of desktop conversation details. Pause or resume routines from the list.
+- Read compact reply quotes and open the original message. Follow active work, stage evidence, and message references from the conversation.
+
 ## What's in 0.10.0
 
 - Set up and revise Little K's daily work in chat. Confirm the plan, choose briefing times, or run a one-time check.
