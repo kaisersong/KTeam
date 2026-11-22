@@ -1,3 +1,4 @@
+import {previewMessageReference} from './message-references.js';
 import {AssistantDaily} from './assistant-daily.js';
 import {AssistantDailySources} from './assistant-daily-sources.js';
 import {Plugins} from './plugins.js';
@@ -290,6 +291,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(action==='/sources')return send(res,200,await dailyWork.catalog(url.searchParams.get('yzj')==='1'));
         }
         if(req.method==='POST'){
+          if(action==='/preset')return send(res,200,await dailyWork.choosePreset(await body(req)));
           if(action==='/confirm')return send(res,200,await dailyWork.confirm(await body(req)));
           if(action==='/refresh')return send(res,200,await dailyWork.refresh());
           if(action==='/news')return send(res,200,await dailyWork.news(await body(req)));
@@ -310,7 +312,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
       if(url.pathname==='/v1/bot-capabilities'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new BotCapabilities(upstream,teamStore).view(url.searchParams.get('botId')??'',url.searchParams.get('roomId')??undefined));}
       if(['/v1/bot-skill-preview','/v1/bot-skill-pin'].includes(url.pathname)&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);const skills=new BotCapabilities(upstream,teamStore);return send(res,200,await (url.pathname.endsWith('preview')?skills.preview(await body(req)):skills.pin(await body(req))));}
       if(url.pathname==='/v1/bot-skills'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new BotCapabilities(upstream,teamStore).save(await body(req)));}
-      if(url.pathname==='/v1/bot-followups'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).list(url.searchParams.get('botId')??''));}
+      if(url.pathname==='/v1/bot-followups'&&req.method==='GET'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).list(url.searchParams.get('botId')??'',url.searchParams.get('roomId')??undefined));}
       if(url.pathname==='/v1/bot-followups/cancel'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('app_settings_forbidden',403);return send(res,200,await new Followups(upstream,teamStore).cancel(await body(req)));}
       if(url.pathname==='/v1/bot-questions'&&req.method==='GET')return send(res,200,{ok:true,workingBotIds:teamStore.workingBotIds(),questions:automation.privateChats?.questions()??[]});
       if(url.pathname==='/v1/inbox'&&req.method==='GET')return send(res,200,projectInbox(inboxState,inboxSource()));
@@ -366,6 +368,21 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         if(input.allowWrite&&(!Number.isSafeInteger(input.expectedGrantRevision)||Number(input.expectedGrantRevision)<0))throw new KTeamError('invalid_input');
         if(input.allowWrite&&!teamStore.operation('codex-dispatch:'+envelope.id)&&input.expectedGrantRevision!==grant.revision)throw new KTeamError('codex_write_grant_changed',409);
         return send(res,201,await sendHumanMessage(envelope,{botId,bindingRevision:binding.revision,allowWrite:input.allowWrite,grantRevision:input.allowWrite?Number(input.expectedGrantRevision):grant.revision,path:grant.path}));
+      }
+      if (['/v1/work/stage-review','/v1/work/stage-evidence'].includes(url.pathname) && req.method === 'POST'){
+        if(client.id!=='kteam-main')throw new KTeamError('work_review_forbidden',403);
+        const input=await body(req);
+        return send(res,200,await (url.pathname.endsWith('review')?conversationUpdates.reviewStage(input):conversationUpdates.stageEvidence(input)));
+      }
+      if (url.pathname === '/v1/work/stop' && req.method === 'POST'){
+        if(client.id!=='kteam-main')throw new KTeamError('work_stop_forbidden',403);
+        const input=record(await body(req));fields(input,['roomId','jobId']);
+        const roomId=text(input.roomId,'room_id');await conversations.owner(roomId);
+        return send(res,200,await automation.stopWork(roomId,text(input.jobId,'job_id')));
+      }
+      if (url.pathname === '/v1/message-reference' && req.method === 'POST'){
+        if(client.id!=='kteam-main')throw new KTeamError('message_reference_forbidden',403);
+        return send(res,200,await previewMessageReference(upstream,await body(req)));
       }
       if (url.pathname === '/v1/messages' && req.method === 'POST')return send(res,201,await sendHumanMessage(await body(req)));
       const peerRoute=/^\/v1\/teams\/([^/]+)\/peer-exchanges(?:\/(exchange-[a-f0-9]{32}))?$/.exec(url.pathname);

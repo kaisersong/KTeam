@@ -1,3 +1,4 @@
+import type {DailyPresetSelection} from '../../../src/protocol/assistant-daily-types';
 import type {PluginCommandChoice,PluginManifest,PluginPreview,PluginRegistryView} from '../../../src/protocol/plugins';
 import type {SplashOpenInput,SplashOpenResult} from '../../splash-input';
 import type {PlanReviewSetup} from '../../../src/protocol/member-presets';
@@ -23,12 +24,16 @@ export interface KTeamAPI {
  cancelAttachmentSend(input:any):Promise<any>;composerAttachments(roomId:string):Promise<any>;stageAttachment(input:any):Promise<any>;cancelAttachment(input:any):Promise<any>;sendAttachments(input:any):Promise<any>;previewMessageAttachment(input:{roomId:string;messageId:string;fileId:string;variant?:'thumbnail'|'full'}):Promise<any>;attachmentContent(input:{roomId:string;id:string}):Promise<any>;
  generatedFiles(input:{roomId:string;cursor?:string;botId?:string}):Promise<any>;
  teamRecipeImports():Promise<any>;exportTeamRecipe(roomId:string):Promise<any>;previewTeamRecipe(input:any):Promise<any>;importTeamRecipe(input:any):Promise<any>;
+ stageEvidence(input:unknown):Promise<{text:string}>;
+ reviewStage(input:unknown):Promise<any>;
+ stopWork(input:{roomId:string;jobId:string}):Promise<any>;
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
  botToolScope(input:{botId:string;roomId?:string}):Promise<any>;saveBotToolScope(input:any):Promise<any>;
  testDesktopNotification():Promise<any>;notificationSettings():Promise<any>;saveNotificationSettings(input:any):Promise<any>;notificationDeliveryState():Promise<any>;takeNotificationNavigation():Promise<any>;onNotificationOpen?:(listener:()=>void)=>()=>void;
  dailyWorkPlan():Promise<any>;
  dailyWorkToday():Promise<any>;
  dailyWorkSources(includeYzj:boolean):Promise<any>;
+ chooseDailyWorkPreset(input:DailyPresetSelection):Promise<any>;
  confirmDailyWork(input:unknown):Promise<any>;
  refreshDailyWork():Promise<any>;
  dailyWorkNews(input:{topic:string}):Promise<any>;
@@ -40,7 +45,7 @@ export interface KTeamAPI {
  pauseRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;routines(roomId:string):Promise<any>;saveRoutine(input:any):Promise<any>;removeRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;
  teamRoles(roomId:string):Promise<any>;ensureTeamRoles(input:{roomId:string;force?:boolean}):Promise<any>;assignTeamCoordinator(input:{roomId:string;coordinatorBotId:string;expectedRevision:number;requestId:string}):Promise<any>;
  skillLearning(input:{botId:string;roomId?:string}):Promise<any>;saveLearnedSkill(input:any):Promise<any>;undoLearnedSkill(input:any):Promise<any>;dismissLearnedSkill(input:any):Promise<any>;
- botCapabilities(input:string|{botId:string;roomId:string}):Promise<any>;previewBotSkill(input:any):Promise<any>;pinBotSkill(input:any):Promise<any>;saveBotSkills(input:{botId:string;expectedRevision:number;disabledSkills:string[]}):Promise<any>;botFollowups(botId:string):Promise<any>;cancelBotFollowup(input:{botId:string;id:string;expectedRevision:number}):Promise<any>;
+ botCapabilities(input:string|{botId:string;roomId:string}):Promise<any>;previewBotSkill(input:any):Promise<any>;pinBotSkill(input:any):Promise<any>;saveBotSkills(input:{botId:string;expectedRevision:number;disabledSkills:string[]}):Promise<any>;botFollowups(input:string|{botId:string;roomId:string}):Promise<any>;cancelBotFollowup(input:{botId:string;id:string;expectedRevision:number}):Promise<any>;
  recoverWork(input:{roomId:string;jobId:string;requestId:string}):Promise<any>;
  requestPeerReview(input:{roomId:string;toolCallId:string;expectedSha256:string;botId:string;requestId:string}):Promise<{messageId:string;jobId?:string}>;
  artifactReview(input:{roomId:string;toolCallId:string}):Promise<ArtifactReviewView>;
@@ -95,6 +100,7 @@ export interface KTeamAPI {
  status():Promise<any>;bots():Promise<{bots:Bot[]}>;teams():Promise<{rooms:Room[]}>;models():Promise<any>;runtimes():Promise<any>;
  createBot(input:{name:string;modelId:string;requestId:string;expectedFingerprint?:string;setup?:PlanReviewSetup}):Promise<any>;
  createTeam(input:{title:string;goal?:string;memberAgentIds:string[];requestId:string}):Promise<any>;
+ messageReference(input:{roomId:string;sourceRoomId:string;messageId:string}):Promise<{reference:import('../../../src/protocol/message-reference').MessageReference}>;
  send(input:{roomId:string;text:string;id:string;replyToMessageId?:string;mentions?:string[]}):Promise<any>;
  messages(input:{roomId:string;after?:number;before?:number;tail?:boolean;limit?:number}):Promise<{messages:Message[];hasMoreBefore?:boolean;nextSequence?:number;previousSequence?:number}>;
  settings(roomId:string):Promise<any>;work(roomId:string):Promise<any>;pauseAll():Promise<any>;resumeAll():Promise<any>;pause(roomId:string):Promise<any>;resume(roomId:string):Promise<any>;

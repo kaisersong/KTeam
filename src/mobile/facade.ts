@@ -1,3 +1,4 @@
+import {previewMessageReference} from '../service/message-references.js';
 import { randomUUID, createHash } from "node:crypto";
 import { hostname } from "node:os";
 import { KTeamError, record, fields, text } from "../errors.js";
@@ -12,7 +13,7 @@ import { BotCapabilities } from "../service/bot-capabilities.js";
 import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
 import { projectInbox } from "../service/inbox.js";
 
-const dailyWorkWrites=new Set(["dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
+const dailyWorkWrites=new Set(["dailyWork.preset","dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
 const scopedWorkWrites=new Set(["artifacts.peerReview","artifacts.reviewDecision","routines.save","routines.trial","routines.pause","routines.remove"]);
 
 export class MobileFacade {
@@ -100,7 +101,7 @@ export class MobileFacade {
       const result = await this.write(p, method, payload, requestId),
         current = this.store.operation(id);
       const receipt=method==="dailyWork.confirm"?{appliedRevision:result.appliedRevision}
-        :method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
+        :method==="dailyWork.preset"||method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
       this.store.saveOperation(
         { ...current, status: "completed", result:receipt },
         current.revision,
@@ -136,6 +137,7 @@ export class MobileFacade {
   }
   private async dailyReceipt(p:MobilePrincipal,op:any){
     const daily=await this.dailyScope(p,op.roomId);
+    if(op.method==="dailyWork.preset")return daily.planView();
     if(op.method==="dailyWork.confirm")return {...daily.planView(),appliedRevision:op.result.appliedRevision};
     if(op.method==="dailyWork.replyDraft"){
       await daily.assertItemVisible({id:op.sourceItemId});
@@ -221,6 +223,8 @@ export class MobileFacade {
           })),
         };
       }
+      case "messages.reference":
+        return previewMessageReference(d.upstream,i);
       case "messages.page":
         return d.conversationUpdates.history(i);
       case "conversations.updates":
@@ -258,6 +262,8 @@ export class MobileFacade {
         return {ok:true,nextBefore:result.nextBefore,jobs:result.jobs.filter((job:any)=>job.groupPlanAvailable||job.workEvidenceAvailable||job.peerReviewVersion)
           .map(({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}:any)=>({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}))};
       }
+      case "work.stageEvidence":
+        return d.conversationUpdates.stageEvidence(i);
       case "work.detail": {
         fields(i, ["roomId","jobId"]);
         const roomId=text(i.roomId,"room_id");
@@ -475,6 +481,7 @@ export class MobileFacade {
         void d.automation.tick();
         return result;
       }
+      case "dailyWork.preset":
       case "dailyWork.confirm":
       case "dailyWork.refresh":
       case "dailyWork.snooze":
@@ -482,6 +489,7 @@ export class MobileFacade {
         const {roomId,...input}=i;
         const daily=await this.dailyScope(p,roomId);
         const guard=()=>this.assert(p);
+        if(method==="dailyWork.preset")return daily.choosePreset(input,guard);
         if(method==="dailyWork.confirm")return daily.confirm(input,guard);
         if(method==="dailyWork.snooze")return daily.snooze(input,guard);
         if(method==="dailyWork.replyDraft")return daily.replyDraft(input,d.automation.assistant.identity().botId,guard);
@@ -510,6 +518,17 @@ export class MobileFacade {
         return new Plugins(this.store).change(i);
       case "members.create":
         return d.coordinator.createMember({...i,requestId},{requestSource:"user",assertCurrent:()=>this.assert(p)});
+      case "work.stageReview":
+        return d.conversationUpdates.reviewStage(i,()=>this.assert(p));
+      case "work.append": {
+        await d.conversations.owner(text(i.roomId,"room_id"));this.assert(p);
+        const result=await d.automation.inputs!.submit({...i,id:"msg_"+createHash("sha256").update(requestId).digest("hex").slice(0,32)});void d.automation.tick();return result;
+      }
+      case "work.stopJob": {
+        fields(i,["roomId","jobId"]);
+        await d.conversations.owner(text(i.roomId,"room_id"));this.assert(p);
+        return d.automation.stopWork(i.roomId,text(i.jobId,"job_id"));
+      }
       case "work.stop":
         fields(i, ["roomId"]);
         await d.conversations.owner(text(i.roomId, "room_id"));

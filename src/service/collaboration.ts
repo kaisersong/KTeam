@@ -1,6 +1,8 @@
+import {parseAttachmentMessage} from '../protocol/message-attachments.js';
 import {findOwnerMessage,originalMessage,ownerPage} from './room-reads.js';
 import { Upstreams } from '../adapters/upstream.js';
 import { intentHash, validateL0 } from '../protocol/aimp.js';
+import {verifyMessageReferences} from './message-references.js';
 import { KTeamError, fields, record, text } from '../errors.js';
 
 export const LOCAL_HUMAN = 'human://kteam.local/user.local';
@@ -47,6 +49,8 @@ export class CollaborationService {
     const envelope = validateL0(value);
     if (envelope.from !== LOCAL_HUMAN) throw new KTeamError('sender_identity_mismatch', 403);
     await this.upstream.requireReady();
+    const body=String(envelope.body??'');
+    await verifyMessageReferences(this.upstream,envelope.room_id,parseAttachmentMessage(body)?.text??body);
     const team = await this.upstream.membership(envelope.room_id);
     await assertSnapshot?.(team);
     const allowed = new Set([LOCAL_HUMAN, ...rows(team.members).filter(m => m.status === 'active').flatMap(member => {

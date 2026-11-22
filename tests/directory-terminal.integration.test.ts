@@ -155,7 +155,10 @@ test('report print ranges and changed echo labels reuse directory grants, includ
   await f.approvals.decide({id:pending.id,expectedHash:pending.hash,decision:'deny'});await comparison;
   remember(backup);
   f.restart();current=await f.make(f.root);
-  assert.match(await current.registry.executeTool('bash',{command:second.replace('/phase/two','/other/status'),workdir:f.root}),/DIFF_OK/);
+  const comparisonInput={command:second.replace('/phase/two','/other/status'),workdir:f.root};
+  assert.equal(await current.h.registryOptions.permissionManager.check('bash',comparisonInput),'allow');
+  // The Linux harness uses /bin/sh, whose grammar can lack process substitution.
+  if(process.platform==='darwin')assert.match(await current.registry.executeTool('bash',comparisonInput),/DIFF_OK/);
   assert.equal(f.approvals.list().length,0);
   const outside=join(f.root,'outside');mkdirSync(outside);writeFileSync(join(outside,'read.txt'),content);
   for(const command of [

@@ -13,7 +13,7 @@ import {ConversationService} from './conversation.js';
 import {conversationPage} from './conversation-pages.js';
 import {sharedRuntime} from '../runtime/native.js';
 import {generatedFilePath} from '../runtime/generated-files.js';
-import {projectGroupPlan,projectWork,projectWorkEvent} from './work-projection.js';
+import {projectGroupPlan,stageReviewId,projectWork,projectWorkEvent} from './work-projection.js';
 
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function sequence(value:unknown):number {
@@ -135,6 +135,44 @@ export class ConversationUpdates {
   const roomId=text(input.roomId,'room_id'),scope=await this.conversations.scope(roomId);
   const page=this.store.workPage(roomId,input.before===undefined?undefined:sequence(input.before));
   await this.sameScope(roomId,scope);return {ok:true,...page};
+ }
+ async reviewStage(value:unknown,assertCurrent=()=>{}){
+  const input=record(value);fields(input,['roomId','jobId','index','witness','expectedRevision','decision','note']);
+  const roomId=text(input.roomId,'room_id'),jobId=text(input.jobId,'job_id'),index=Number(input.index);
+  if(!Number.isSafeInteger(index)||input.index!==index||index<0||!['pass','rework'].includes(String(input.decision)))throw new KTeamError('stage_review_invalid');
+  const note=input.note===undefined?'':text(input.note,'stage_review_note',1200).trim();
+  if(input.decision==='rework'&&!note)throw new KTeamError('stage_review_note_required');
+  await this.conversations.owner(roomId);assertCurrent();
+  return this.store.transaction(()=>{
+   const job=this.store.job(jobId),stage=job?.roomId===roomId?projectGroupPlan(this.store,job)?.stages[index]:undefined;
+   if(!stage?.witness||stage.witness!==input.witness)throw new KTeamError('stage_evidence_changed',409);
+   const id=stageReviewId(jobId,index),prior=this.store.operation(id);
+   if(prior?.witness===stage.witness&&prior.decision===input.decision&&prior.note===note)return {ok:true,reused:true};
+   if((stage.review?.revision??0)!==input.expectedRevision)throw new KTeamError('stage_review_changed',409);
+   this.store.saveOperation({id,roomId,jobId,index,witness:stage.witness,decision:input.decision,note,actor:'human://kteam.local/user.local',reviewedAt:new Date().toISOString()},prior?.revision??0);
+   this.store.save(job);
+   return {ok:true};
+  });
+ }
+ async stageEvidence(value:unknown){
+  const input=record(value);fields(input,['roomId','jobId','index','botId']);
+  const roomId=text(input.roomId,'room_id'),jobId=text(input.jobId,'job_id'),botId=text(input.botId,'bot_id'),index=Number(input.index);
+  if(!Number.isSafeInteger(index)||input.index!==index||index<0)throw new KTeamError('stage_review_invalid');
+  const scope=await this.conversations.scope(roomId);
+  const evidence=()=>{
+   const job=this.store.job(jobId);
+   return job?.roomId===roomId?projectGroupPlan(this.store,job)?.stages[index]?.requests.find(item=>item.botId===botId)?.evidence:undefined;
+  };
+  const expected=evidence();
+  if(!expected)throw new KTeamError('stage_evidence_unavailable',404);
+  await this.conversations.owner(expected.roomId);
+  const {message}=await this.upstream.conversationMessage(expected.roomId,expected.messageId);
+  const actual=message as any;
+  await this.conversations.owner(expected.roomId);
+  await this.sameScope(roomId,scope);
+  const current=evidence();
+  if(current?.messageId!==expected.messageId||current?.roomId!==expected.roomId||actual?.sender?.logicalAgentId!==botId||actual?.sourceRef?.kind!=='aimp_reply')throw new KTeamError('stage_evidence_changed',409);
+  return {ok:true,text:String(actual.text??'').slice(0,16000)};
  }
  async detail(value:unknown){
   const input=record(value);fields(input,['roomId','jobId','messageId','eventId','part']);if(input.part!==undefined&&!['summary','draft','cards'].includes(String(input.part)))throw new KTeamError('conversation_cursor_invalid');

@@ -3,7 +3,8 @@ import {z} from 'zod';
 import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
-import {dailyChange,dailyCommit,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
+import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
+import {dailyPresets,type DailyPreset} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import type {AssistantDailySources} from './assistant-daily-sources.js';
 
@@ -25,7 +26,7 @@ interface Plan {
 }
 interface Draft {
  id:string; previousRevision:number; originId:string; change:DailyChange;
- config:DailyConfiguration; skips:string[]; createdAt:number; committedRevision?:number;
+ config:DailyConfiguration; skips:string[]; createdAt:number; committedRevision?:number; preset?:DailyPreset;
 }
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[];
@@ -56,7 +57,7 @@ export class AssistantDaily {
   if(!parsed.success)throw new KTeamError('daily_invalid_input',400);
   return parsed.data;
  }
- propose(value:unknown,originId:string) {
+ propose(value:unknown,originId:string,preset?:DailyPreset) {
   const change=this.parse(dailyChange,value);
   const current=this.plan(),base=current?.config??this.initial();
   const prior=this.draft();
@@ -73,9 +74,22 @@ export class AssistantDaily {
   const day=this.briefDate(config,this.now());
   const skips=[...(restored?.skips??current?.skips??[])].filter(key=>key.startsWith(day+':'));
   if(change.skipToday)skips.push(day+':'+change.skipToday);
-  const draft={id:randomUUID(),previousRevision:current?.revision??0,originId,change,config,skips:[...new Set(skips)],createdAt:this.now()};
+  const draft={id:randomUUID(),previousRevision:current?.revision??0,originId,change,config,...(preset?{preset}:{}),skips:[...new Set(skips)],createdAt:this.now()};
   this.store.setState('assistant-daily-draft',draft);
   return draft;
+ }
+ async choosePreset(raw:unknown,assertCurrent?:()=>void) {
+  const input=this.parse(dailyPresetSelection,raw);
+  await this.verifyScope?.();
+  assertCurrent?.();
+  const plan=this.plan(),candidate=this.draft();
+  const draft=candidate?.committedRevision?undefined:candidate;
+  if((plan?.revision??0)!==input.expectedRevision)throw new KTeamError('daily_plan_changed',409);
+  if(draft?.preset===input.preset&&draft.previousRevision===input.expectedRevision)return this.planView();
+  if((draft?.id??null)!==input.expectedDraftId)throw new KTeamError('daily_plan_changed',409);
+  const {schedule,middayUrgentOnly}=dailyPresets[input.preset];
+  this.propose({schedule,middayUrgentOnly,paused:false},'daily-preset:'+input.preset,input.preset);
+  return this.planView();
  }
  tools(roomId:string,originId:string,guard:()=>Promise<void>) {
   if(this.assistantRoom()!==roomId)return [];
@@ -167,7 +181,7 @@ export class AssistantDaily {
  }
  planView(){
   const draft=this.draft();
-  return {ok:true,...this.summary(),draft:draft?.committedRevision?undefined:draft};
+  return {ok:true,...this.summary(),effectivePaused:this.blocked()||this.plan()?.config.paused===true,draft:draft?.committedRevision?undefined:draft};
  }
  async view() {
   const plan=this.plan();

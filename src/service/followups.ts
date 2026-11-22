@@ -13,11 +13,11 @@ export class Followups {
   return membership;
  }
 
- async list(botId:string){
+ async list(botId:string,scopeRoomId?:string){
   if(!this.store.binding(botId)&&!this.store.state('external-bot:'+botId))throw new KTeamError('bot_not_managed',403);
   const bot=((await this.upstream.listBots()).agents as any[]).find(bot=>bot.id===botId&&!bot.archivedAt);
   if(!bot)throw new KTeamError('agent_not_found',404);
-  const rows=this.store.operationsWithPrefix('followup:').filter(row=>row.botId===botId).sort((a,b)=>b.dueAt-a.dueAt).slice(0,100);
+  const rows=this.store.operationsWithPrefix('followup:').filter(row=>row.botId===botId&&(scopeRoomId===undefined||row.roomId===scopeRoomId)).sort((a,b)=>b.dueAt-a.dueAt).slice(0,100);
   const rooms=new Map<string,any>();
   for(const roomId of new Set<string>(rows.map(row=>row.roomId))){
    try{rooms.set(roomId,await this.scope(roomId));}catch(error){if(error instanceof KTeamError&&[403,404].includes(error.status))continue;throw error;}

@@ -2,7 +2,7 @@
   "expo": {
     "name": "KTeam",
     "slug": "kteam-mobile",
-    "version": "0.10.0",
+    "version": "0.10.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -20,7 +20,7 @@
           "NSAllowsLocalNetworking": true
         }
       },
-      "buildNumber": "17"
+      "buildNumber": "18"
     },
     "android": {
       "adaptiveIcon": {
@@ -34,7 +34,7 @@
         "android.permission.CAMERA"
       ],
       "usesCleartextTraffic": true,
-      "versionCode": 17
+      "versionCode": 18
     },
     "web": {
       "favicon": "./assets/favicon.png"
