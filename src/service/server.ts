@@ -290,6 +290,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(action==='/sources')return send(res,200,await dailyWork.catalog(url.searchParams.get('yzj')==='1'));
         }
         if(req.method==='POST'){
+          if(action==='/preset')return send(res,200,await dailyWork.choosePreset(await body(req)));
           if(action==='/confirm')return send(res,200,await dailyWork.confirm(await body(req)));
           if(action==='/refresh')return send(res,200,await dailyWork.refresh());
           if(action==='/news')return send(res,200,await dailyWork.news(await body(req)));

@@ -71,6 +71,25 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.ok((await phone.call('hello')).capabilities.includes('assistant_daily_work'));
   await assert.rejects(phone.call('dailyWork.today',{roomId:'foreign-room'}),/assistant_scope_required/);
   await assert.rejects(phone.call('dailyWork.confirm',{roomId:'foreign-room',operationId:'foreign-daily-plan'}),/assistant_scope_required/);
+  const presetInput={preset:'morning',expectedRevision:0,expectedDraftId:null};
+  await assert.rejects(hostRequest(root,'kteam-companion','/v1/assistant/daily/preset',presetInput),/assistant_scope_required/);
+  const firstChoice=await dispatchDesktop(api,'chooseDailyWorkPreset',[presetInput]) as Awaited<ReturnType<import('../src/service/assistant-daily.js').AssistantDaily['choosePreset']>>;
+  assert.ok(firstChoice.draft);
+  assert.equal(firstChoice.config,null);
+  assert.equal(firstChoice.draft.preset,'morning');
+  assert.deepEqual(firstChoice.draft.config.schedule,{morning:'08:30',midday:null,evening:null});
+  assert.equal((await api.chooseDailyWorkPreset(presetInput)).draft.id,firstChoice.draft.id);
+  const phoneChoice={roomId:assistant.roomId,preset:'twice',expectedRevision:0,expectedDraftId:firstChoice.draft.id,operationId:'mobile-daily-preset'};
+  await assert.rejects(phone.call('dailyWork.preset',{...phoneChoice,roomId:'foreign-room',operationId:'foreign-daily-preset'}),/assistant_scope_required/);
+  const secondChoice=await phone.call('dailyWork.preset',phoneChoice);
+  assert.equal(secondChoice.config,null);
+  assert.equal(secondChoice.draft.preset,'twice');
+  assert.notEqual(secondChoice.draft.id,firstChoice.draft.id);
+  assert.equal((await phone.call('dailyWork.preset',phoneChoice)).draft.id,secondChoice.draft.id);
+  assert.equal((await phone.call('operations.get',{operationId:phoneChoice.operationId})).result.draft.id,secondChoice.draft.id);
+  await assert.rejects(api.chooseDailyWorkPreset({...presetInput,preset:'three',expectedDraftId:firstChoice.draft.id}),/daily_plan_changed/);
+  await assert.rejects(api.confirmDailyWork({id:firstChoice.draft.id,expectedRevision:0,sources:[]}),/daily_plan_changed/);
+  assert.equal(calls.length,0);
   async function draft(text:string,previousRevision:number) {
    const id='msg_'+String(previousRevision+1).repeat(32);
    if(previousRevision===0)await api.send({roomId:assistant.roomId,text,id});

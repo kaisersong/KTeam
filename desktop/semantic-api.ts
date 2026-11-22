@@ -32,6 +32,7 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  dailyWorkPlan:()=>call('/v1/assistant/daily/plan'),
  dailyWorkToday:()=>call('/v1/assistant/daily/today'),
  dailyWorkSources:(includeYzj:boolean)=>call('/v1/assistant/daily/sources?yzj='+(includeYzj?'1':'0')),
+ chooseDailyWorkPreset:(input:unknown)=>call('/v1/assistant/daily/preset',input),
  confirmDailyWork:(input:unknown)=>call('/v1/assistant/daily/confirm',input),
  refreshDailyWork:()=>call('/v1/assistant/daily/refresh',{}),
  dailyWorkNews:(input:unknown)=>call('/v1/assistant/daily/news',input),

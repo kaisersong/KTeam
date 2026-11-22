@@ -53,6 +53,13 @@ test('planning does not read content before confirmation and duplicate receipts 
   assert.equal((await service.view()).items.length,0);
   assert.equal((await service.view()).briefs[0]?.items.length,0);
   await assert.rejects(service.original({id:'m1'}),/daily_source_unavailable/);
+  const beforePreset=reads;
+  const preset=await service.choosePreset({preset:'three',expectedRevision:1,expectedDraftId:null});
+  assert.equal(preset.revision,1);
+  assert.equal(preset.config?.middayUrgentOnly,false);
+  assert.equal(preset.draft?.config.middayUrgentOnly,true);
+  assert.deepEqual(preset.draft?.config.sources,[mail]);
+  assert.equal(reads,beforePreset);
   const stale=service.propose({skipToday:'evening'},'older');
   const paused=service.propose({paused:true,removeSourceKinds:['mail']},'pause');
   assert.deepEqual(paused.config.sources,[]);
