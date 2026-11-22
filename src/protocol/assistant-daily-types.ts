@@ -32,6 +32,29 @@ export interface DailyChange {
  removeSourceKinds?:DailySourceKind[];
 }
 
+export const dailyPresets = {
+ morning: {
+  label:'只看早报', detail:'08:30 汇总关注事项',
+  schedule:{morning:'08:30',midday:null,evening:null}, middayUrgentOnly:false,
+ },
+ twice: {
+  label:'早晚各一份', detail:'08:30 看今日安排，18:00 看收尾事项',
+  schedule:{morning:'08:30',midday:null,evening:'18:00'}, middayUrgentOnly:false,
+ },
+ three: {
+  label:'早、中、晚各一份', detail:'08:30、12:00、18:00，午报只看紧急事项',
+  schedule:{morning:'08:30',midday:'12:00',evening:'18:00'}, middayUrgentOnly:true,
+ },
+} as const satisfies Record<string,{label:string;detail:string;schedule:DailyConfiguration['schedule'];middayUrgentOnly:boolean}>;
+
+export type DailyPreset = keyof typeof dailyPresets;
+export const dailyPresetIds = ['morning','twice','three'] as const satisfies readonly DailyPreset[];
+export interface DailyPresetSelection {
+ preset:DailyPreset;
+ expectedRevision:number;
+ expectedDraftId:string|null;
+}
+
 export interface DailyItem {
  id:string;
  title:string;

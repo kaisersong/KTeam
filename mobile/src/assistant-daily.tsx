@@ -2,9 +2,9 @@ import {useEffect,useRef,useState} from "react";
 import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
-import {dailySlots,dailySlotLabels as labels,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
+import {dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
 
-type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange};
+type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange;preset?:DailyPreset};
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
 type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean}[]};
 type RoomTarget={roomId:string;title:string;kind?:string};
@@ -24,11 +24,12 @@ const sourceKey=(source:DailySource)=>JSON.stringify([source.kind,source.account
 const clock=(at:number,timeZone?:string)=>new Intl.DateTimeFormat("zh-CN",{timeZone,dateStyle:"short",timeStyle:"short"}).format(at);
 const schedule=(config:DailyConfiguration)=>config.paused?"每日工作已暂停":dailySlots.flatMap(slot=>config.schedule[slot]?[labels[slot]+" "+config.schedule[slot]]:[]).join(" · ")||"未设置简报时段";
 
-function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved}:ToolProps&{
- draft:Draft;previous:DailyConfiguration|null;roomId:string;onSaved:()=>Promise<void>;
+function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved,onChoose}:ToolProps&{
+ draft:Draft;previous:DailyConfiguration|null;roomId:string;onSaved:()=>Promise<void>;onChoose:()=>void;
 }){
  const [selected,setSelected]=useState(draft.config.sources);
  const [available,setAvailable]=useState<DailySource[]>([]);
+ const [showSources,setShowSources]=useState(!draft.preset);
  const [topic,setTopic]=useState("");
  const [error,setError]=useState("");
  const [pending,setPending]=useState(false);
@@ -50,14 +51,17 @@ function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved}:To
  });
  const visible=[...new Map([...selected,...available].map(source=>[sourceKey(source),source])).values()];
  return <View style={[styles.card,{borderColor:colors.line,backgroundColor:colors.panel}]}>
-  <Text accessibilityRole="header" style={[styles.heading,{color:colors.text}]}>每日工作方案</Text>
+  <Text accessibilityRole="header" style={[styles.heading,{color:colors.text}]}>{draft.preset?dailyPresets[draft.preset].label:"每日工作方案"}</Text>
   {previous&&<Text style={{color:colors.muted}}>当前 · {schedule(previous)}</Text>}
   <Text style={{color:colors.text}}>确认后 · {schedule(draft.config)}</Text>
   <Text style={{color:colors.muted}}>{draft.config.timeZone} · 工作日 {draft.config.weekdays.join("、")}</Text>
   {draft.config.middayUrgentOnly&&<Text style={{color:colors.muted}}>午报只显示紧急事项</Text>}
   {!!draft.change.removeSourceKinds?.length&&<Text style={{color:colors.muted}}>停用后台读取 · {draft.change.removeSourceKinds.map(kind=>sourceLabel[kind]).join("、")}</Text>}
   {draft.change.skipToday&&<Text style={{color:colors.muted}}>今日跳过{labels[draft.change.skipToday]}</Text>}
-  <Text style={[styles.heading,{color:colors.text}]}>允许后台读取的来源</Text>
+  <Pressable accessibilityRole="button" accessibilityState={{expanded:showSources}} onPress={()=>setShowSources(open=>!open)} style={styles.check}>
+   <Text style={{color:colors.text}}>读取来源 · {selected.length?"已选 "+selected.length+" 项":"尚未选择"} {showSources?"⌃":"⌄"}</Text>
+  </Pressable>
+  {showSources&&<>
   {visible.map(source=>{
    const key=sourceKey(source);
    const checked=selected.some(item=>sourceKey(item)===key&&item.revision===source.revision);
@@ -76,6 +80,10 @@ function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved}:To
     setSelected(values=>[...values.filter(item=>sourceKey(item)!==sourceKey(source)),source]);
     setTopic("");
    })}>添加订阅</ToolButton>
+  </View>
+  </>}
+  <View style={styles.actions}>
+   <ToolButton colors={colors} disabled={pending||disabled} onPress={onChoose}>换个方案</ToolButton>
    <ToolButton colors={colors} disabled={pending||disabled} onPress={()=>void act(async()=>{
     await mutate("dailyWork.confirm",{roomId,id:draft.id,expectedRevision:draft.previousRevision,sources:selected});
     await onSaved();
@@ -90,6 +98,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
 }){
  const {colors,call,mutate,disabled}=props;
  const [plan,setPlan]=useState<Plan>();
+ const [showChoices,setShowChoices]=useState(false);
  const [view,setView]=useState<Today>();
  const [error,setError]=useState("");
  const [pending,setPending]=useState(false);
@@ -108,7 +117,12 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
   let active=true;
   if(disabled){setOpened(undefined);setReply(undefined);setTask(undefined);setView(undefined);setPlan(undefined);return;}
   void load().catch(cause=>{if(active)setError(errorText(cause));});
-  const timer=setInterval(()=>void call("dailyWork.plan",{roomId}).then(next=>{if(active)setPlan(current=>!current||next.revision>=current.revision?next:current);}).catch(()=>{}),3000);
+  const timer=setInterval(()=>{
+   const request=lastId.current;
+   void call("dailyWork.plan",{roomId}).then(next=>{
+    if(active&&request===lastId.current)setPlan(current=>!current||next.revision>=current.revision?next:current);
+   }).catch(()=>{});
+  },3000);
   const verifySources=setInterval(()=>void load().catch(()=>{
    if(active){setView(undefined);setOpened(undefined);setReply(undefined);setTask(undefined);}
   }),30000);
@@ -145,9 +159,33 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
  return <ScrollView style={{flex:1}} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
   {error&&<Text accessibilityRole="alert" style={{color:colors.text}}>{error}</Text>}
   {!plan&&!error&&<Text style={{color:colors.muted}}>正在读取每日工作…</Text>}
-  {plan?.draft&&<PlanCard key={plan.draft.id} {...props} roomId={roomId} draft={plan.draft} previous={plan.config} onSaved={load}/>}
-  {plan&&!plan.draft&&<View style={styles.actions}>
-   <ToolButton colors={colors} disabled={disabled} onPress={()=>onDraft(roomId,"我想和你一起设置或调整每日工作。请先读目前的计划，再问我想关注什么。")}>{plan.config?"在对话中调整":"和小 K 设定每日工作"}</ToolButton>
+  {plan&&(showChoices||!plan.config&&!plan.draft)&&<View style={[styles.card,{borderColor:colors.line,backgroundColor:colors.panel}]}>
+   <Text accessibilityRole="header" style={[styles.heading,{color:colors.text}]}>选一个简报安排</Text>
+   {!plan.config&&<Text style={{color:colors.muted}}>默认在周一到周五运行。选好后可以添加读取来源。</Text>}
+   {dailyPresetIds.map(preset=>{
+    const choice=dailyPresets[preset],selected=plan.draft?.preset===preset;
+    return <Pressable key={preset} accessibilityRole="button" accessibilityState={{selected,disabled:pending||disabled}} disabled={pending||disabled}
+     style={[styles.choice,{borderColor:selected?colors.muted:colors.line}]}
+     onPress={()=>void act(async()=>{
+      try {
+       const next=await mutate("dailyWork.preset",{roomId,preset,expectedRevision:plan.revision,expectedDraftId:plan.draft?.id??null});
+       lastId.current++;
+       setPlan(next);setShowChoices(false);
+      }catch(cause){void load().catch(()=>{});throw cause;}
+     })}>
+     <View style={{flex:1}}><Text style={{color:colors.text,fontWeight:"600"}}>{choice.label}</Text><Text style={{color:colors.muted,marginTop:3}}>{choice.detail}</Text></View>
+     <Text style={{color:colors.muted}}>{selected?"✓":"›"}</Text>
+    </Pressable>;
+   })}
+   <View style={styles.actions}>
+    {(plan.config||plan.draft)&&<ToolButton colors={colors} disabled={pending||disabled} onPress={()=>setShowChoices(false)}>{plan.draft?"返回待确认方案":"取消"}</ToolButton>}
+    <ToolButton colors={colors} disabled={pending||disabled} onPress={()=>onDraft(roomId,"我想自定义每日工作。")}>在对话中自定义</ToolButton>
+   </View>
+  </View>}
+  {!showChoices&&plan?.draft&&<PlanCard key={plan.draft.id} {...props} roomId={roomId} draft={plan.draft} previous={plan.config} onSaved={load} onChoose={()=>setShowChoices(true)}/>}
+  {!showChoices&&plan?.config&&!plan.draft&&<View style={styles.actions}>
+   <ToolButton colors={colors} disabled={disabled} onPress={()=>setShowChoices(true)}>更换简报安排</ToolButton>
+   <ToolButton colors={colors} disabled={disabled} onPress={()=>onDraft(roomId,"我想自定义每日工作。")}>在对话中调整</ToolButton>
   </View>}
   {plan?.config&&<View style={[styles.card,{borderColor:colors.line}]}>
    <Text style={[styles.heading,{color:colors.text}]}>{schedule(plan.config)}</Text>
@@ -208,6 +246,7 @@ const styles=StyleSheet.create({
  card:{borderWidth:1,borderRadius:16,padding:12,gap:8},
  heading:{fontSize:16,fontWeight:"600"},
  check:{minHeight:42,justifyContent:"center"},
+ choice:{minHeight:48,padding:10,borderWidth:1,borderRadius:10,flexDirection:"row",alignItems:"center",gap:12},
  input:{borderWidth:1,borderRadius:10,padding:10},
  actions:{flexDirection:"row",flexWrap:"wrap",gap:8},
 });
