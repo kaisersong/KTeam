@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from "react";
 import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
+import {AssistantWatches} from "./assistant-watch";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
 import {dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
@@ -104,6 +105,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
  const [pending,setPending]=useState(false);
  const [opened,setOpened]=useState<{subject:string;body:string}>();
  const [reply,setReply]=useState<{item:DailyItem;text?:string}>();
+ const [watchReference,setWatchReference]=useState<string>();
  const [task,setTask]=useState<DailyItem>();
  const [expanded,setExpanded]=useState<string>();
  const busy=useRef(false);
@@ -149,6 +151,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
     else setError("来源没有提供可打开的原文链接。");
    })}>看原文</ToolButton>}
    {["mail","yzj-message"].includes(item.source.kind)&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setReply({item});setOpened(undefined);setTask(undefined);}}>准备回复</ToolButton>}
+   {item.source.kind==="yzj-message"&&item.originalId&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>setWatchReference(item.id)}>请小 K 盯这件事</ToolButton>}
    {!!rooms.length&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setTask(item);setOpened(undefined);setReply(undefined);}}>转任务</ToolButton>}
    {today&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>void act(async()=>setView(await mutate("dailyWork.snooze",{roomId,id:item.id})))}>一小时后再看</ToolButton>}
   </View>
@@ -158,6 +161,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
  </Text>);
  return <ScrollView style={{flex:1}} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
   {error&&<Text accessibilityRole="alert" style={{color:colors.text}}>{error}</Text>}
+  <AssistantWatches {...props} roomId={roomId} reference={watchReference} onClearReference={()=>setWatchReference(undefined)}/>
   {!plan&&!error&&<Text style={{color:colors.muted}}>正在读取每日工作…</Text>}
   {plan&&(showChoices||!plan.config&&!plan.draft)&&<View style={[styles.card,{borderColor:colors.line,backgroundColor:colors.panel}]}>
    <Text accessibilityRole="header" style={[styles.heading,{color:colors.text}]}>选一个简报安排</Text>

@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
+import {AssistantWatches} from './assistant-watch';
 import {Check,ChevronRight} from 'lucide-react';
 import {dailyPresetIds,dailyPresets,type DailyPreset} from '../../../src/protocol/assistant-daily-types';
 import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../../../src/protocol/assistant-daily';
@@ -135,6 +136,7 @@ function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:Daily
 }
 
 export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:string;title:string}[];onTask:(roomId:string,text:string)=>void}){
+ const [watchReference,setWatchReference]=useState<string>();
  const [task,setTask]=useState<DailyItem>();
  const [reply,setReply]=useState<{item:DailyItem;text:string|null}>();
  const [destination,setDestination]=useState('');
@@ -157,12 +159,14 @@ export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:
    <div className="assistant-daily-actions">
     {(item.url||item.source.kind==='mail')&&<button className="secondary" disabled={busy} onClick={()=>loadOriginal(item.id)}>看原文</button>}
     {(item.source.kind==='mail'||item.source.kind==='yzj-message')&&<button className="secondary" disabled={busy} onClick={()=>setReply({item,text:null})}>准备回复</button>}
+    {item.source.kind==='yzj-message'&&item.originalId&&<button className="secondary" disabled={busy} onClick={()=>setWatchReference(item.id)}>请小 K 盯这件事</button>}
     {destinations.length>0&&<button className="secondary" disabled={busy} onClick={()=>prepareTask(item)}>转任务</button>}
     {view?.items.some(row=>row.id===item.id)&&<button className="secondary" disabled={busy} onClick={()=>void act(async()=>setView(await api.snoozeDailyWork({id:item.id})))}>一小时后再看</button>}
    </div>
   </li>)}</ul>;
  }
  return <div className="assistant-daily-today">
+  <AssistantWatches reference={watchReference} onClearReference={()=>setWatchReference(undefined)}/>
   <div className="assistant-daily-actions">
    <span>{view?.config?describePlan(view.config):'在小 K 私聊里确定每日工作。'}</span>
    {view?.config&&<button className="secondary" disabled={busy||view.config.paused} onClick={()=>void act(async()=>{setOriginal(undefined);setView(await api.refreshDailyWork());})}>运行一次</button>}

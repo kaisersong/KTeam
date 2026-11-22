@@ -287,10 +287,12 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         const action=url.pathname.slice('/v1/assistant/daily'.length);
         if(req.method==='GET'){
           if(action==='/plan')return send(res,200,dailyWork.planView());
+          if(action==='/watches')return send(res,200,await dailyWork.watches.view());
           if(action==='/today')return send(res,200,await dailyWork.view());
           if(action==='/sources')return send(res,200,await dailyWork.catalog(url.searchParams.get('yzj')==='1'));
         }
         if(req.method==='POST'){
+          if(action==='/watch')return send(res,200,await dailyWork.watches.change(await body(req)));
           if(action==='/preset')return send(res,200,await dailyWork.choosePreset(await body(req)));
           if(action==='/confirm')return send(res,200,await dailyWork.confirm(await body(req)));
           if(action==='/refresh')return send(res,200,await dailyWork.refresh());

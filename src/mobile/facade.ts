@@ -13,7 +13,7 @@ import { BotCapabilities } from "../service/bot-capabilities.js";
 import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
 import { projectInbox } from "../service/inbox.js";
 
-const dailyWorkWrites=new Set(["dailyWork.preset","dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
+const dailyWorkWrites=new Set(["dailyWork.watch","dailyWork.preset","dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
 const scopedWorkWrites=new Set(["artifacts.peerReview","artifacts.reviewDecision","routines.save","routines.trial","routines.pause","routines.remove"]);
 
 export class MobileFacade {
@@ -101,7 +101,7 @@ export class MobileFacade {
       const result = await this.write(p, method, payload, requestId),
         current = this.store.operation(id);
       const receipt=method==="dailyWork.confirm"?{appliedRevision:result.appliedRevision}
-        :method==="dailyWork.preset"||method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
+        :method==="dailyWork.watch"||method==="dailyWork.preset"||method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
       this.store.saveOperation(
         { ...current, status: "completed", result:receipt },
         current.revision,
@@ -137,6 +137,7 @@ export class MobileFacade {
   }
   private async dailyReceipt(p:MobilePrincipal,op:any){
     const daily=await this.dailyScope(p,op.roomId);
+    if(op.method==="dailyWork.watch")return daily.watches.view(()=>this.assert(p));
     if(op.method==="dailyWork.preset")return daily.planView();
     if(op.method==="dailyWork.confirm")return {...daily.planView(),appliedRevision:op.result.appliedRevision};
     if(op.method==="dailyWork.replyDraft"){
@@ -168,7 +169,7 @@ export class MobileFacade {
             "conversation_work_details",
             "artifact_review_write",
             "routine_management",
-            ...(d.automation.dailyWork?["assistant_daily_work"]:[]),
+            ...(d.automation.dailyWork?["assistant_daily_work","assistant_watch"]:[]),
             "declarative_plugins",
             "member_creation",
             "inbox",
@@ -195,6 +196,7 @@ export class MobileFacade {
         };
       }
       case "dailyWork.plan":
+      case "dailyWork.watches":
       case "dailyWork.today":
       case "dailyWork.sources":
       case "dailyWork.news":
@@ -209,6 +211,7 @@ export class MobileFacade {
         if(method==="dailyWork.news")return daily.news(input);
         if(method==="dailyWork.original")return daily.original(input);
         fields(input,[]);
+        if(method==="dailyWork.watches")return daily.watches.view(()=>this.assert(p));
         return method==="dailyWork.plan"?daily.planView():daily.view();
       }
       case "bots.list": {
@@ -481,6 +484,7 @@ export class MobileFacade {
         void d.automation.tick();
         return result;
       }
+      case "dailyWork.watch":
       case "dailyWork.preset":
       case "dailyWork.confirm":
       case "dailyWork.refresh":
@@ -489,6 +493,7 @@ export class MobileFacade {
         const {roomId,...input}=i;
         const daily=await this.dailyScope(p,roomId);
         const guard=()=>this.assert(p);
+        if(method==="dailyWork.watch")return daily.watches.change(input,guard);
         if(method==="dailyWork.preset")return daily.choosePreset(input,guard);
         if(method==="dailyWork.confirm")return daily.confirm(input,guard);
         if(method==="dailyWork.snooze")return daily.snooze(input,guard);

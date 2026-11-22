@@ -6,6 +6,7 @@ import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyPresets,type DailyPreset} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
+import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources} from './assistant-daily-sources.js';
 
 const planKey='assistant-daily-plan';
@@ -36,7 +37,33 @@ export class AssistantDaily {
  private timer?:NodeJS.Timeout;
  private active?:Promise<void>;
  private controller=new AbortController();
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>){}
+ readonly watches:AssistantWatch;
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>){
+  this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
+ }
+ private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
+  const plan=this.plan();
+  const item=plan&&[...this.retained(plan).flatMap(scan=>scan.items),...this.store.operationsWithPrefix(briefPrefix).slice(0,20).flatMap(brief=>brief.items as DailyItem[])].find(row=>
+   row.id===id&&row.source.kind==='yzj-message'&&plan.config.sources.some(source=>dailySourceKey(source)===dailySourceKey(row.source)&&source.revision===row.source.revision));
+  if(!plan||!item||this.blocked())throw new KTeamError('daily_source_unavailable',404);
+  const key=dailySourceKey(item.source);
+  let scan=scans.get(key);
+  if(!scan){
+   scan=(async()=>{
+    if(!await this.sources.current(item.source,signal))throw new KTeamError('daily_source_unavailable',404);
+    const now=this.now();
+    const {items}=await this.sources.scan(item.source,now-7*maxAge,now,plan.config.timeZone,signal);
+    if(!await this.sources.current(item.source,signal))throw new KTeamError('daily_source_unavailable',404);
+    return items;
+   })();
+   scans.set(key,scan);
+  }
+  const original=(await scan).find(row=>row.id===id);
+  signal.throwIfAborted();
+  await this.verifyScope?.();
+  if(!original||this.plan()?.revision!==plan.revision||this.blocked())throw new KTeamError('daily_source_unavailable',404);
+  return original;
+ }
  private blocked() {
   const room=this.assistantRoom();
   const settings=room?this.store.settings(room):undefined;

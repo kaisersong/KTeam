@@ -32,6 +32,8 @@ export function createDesktopAPI(call:Call,options:{agentLauncher?:string[];nati
  botToolScope:(input:any)=>call('/v1/bot-tool-scope?botId='+room(input.botId)+(input.roomId?'&roomId='+room(input.roomId):'')),saveBotToolScope:(input:unknown)=>call('/v1/bot-tool-scope',input),
  skillLearning:(input:any)=>call('/v1/skill-learning?botId='+room(input.botId)+(input.roomId?'&roomId='+room(input.roomId):'')),saveLearnedSkill:(input:unknown)=>call('/v1/skill-learning/save',input),undoLearnedSkill:(input:unknown)=>call('/v1/skill-learning/undo',input),dismissLearnedSkill:(input:unknown)=>call('/v1/skill-learning/dismiss',input),
  testDesktopNotification:()=>options.nativeActions?.testDesktopNotification?.()??Promise.reject(Error('notification_desktop_unavailable')),notificationSettings:()=>call('/v1/desktop-notifications/settings'),saveNotificationSettings:(input:unknown)=>call('/v1/desktop-notifications/settings',input),notificationDeliveryState:()=>options.nativeActions?.notificationDeliveryState?.()??Promise.resolve({ok:true,available:false,supported:false}),takeNotificationNavigation:()=>options.nativeActions?.takeNotificationNavigation?.()??Promise.resolve({ok:true,navigation:null}),
+ dailyWatches:()=>call('/v1/assistant/daily/watches'),
+ changeDailyWatch:(input:unknown)=>call('/v1/assistant/daily/watch',input),
  dailyWorkPlan:()=>call('/v1/assistant/daily/plan'),
  dailyWorkToday:()=>call('/v1/assistant/daily/today'),
  dailyWorkSources:(includeYzj:boolean)=>call('/v1/assistant/daily/sources?yzj='+(includeYzj?'1':'0')),
