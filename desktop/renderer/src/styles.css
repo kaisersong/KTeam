@@ -333,3 +333,14 @@ button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:under
 .activity-review .task-row {align-items: center;justify-content: space-between}
 .activity-review .task-row p {overflow-wrap: anywhere}
 .activity-review .task-row button {flex: none}
+
+.conversation-work-controls{margin:0 20px 6px;padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px}
+.conversation-work-controls summary{cursor:pointer}
+.conversation-work-controls ul,.reference-picker ul{list-style:none;margin:6px 0;padding:0;max-height:240px;overflow:auto}
+.conversation-work-controls li{padding:5px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.conversation-work-actions{display:flex;flex-wrap:wrap;gap:6px}
+.reference-picker select{max-width:100%}
+.reference-picker li button{text-align:left;width:100%;white-space:normal;margin:3px 0}
+.reference-picker blockquote{white-space:pre-wrap;max-height:230px;overflow:auto}
+.composer-reference{align-self:flex-start;font-size:12px}
+.reference-source{display:block;margin:4px 0 0 auto}

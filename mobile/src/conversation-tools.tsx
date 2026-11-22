@@ -1,3 +1,4 @@
+import {stageStatus} from '../../src/protocol/conversation-work';
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import {Alert,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
 import {activityStateLabels} from "../../src/protocol/activity-records";
@@ -77,7 +78,7 @@ function Feedback({colors,state}:{colors:Colors;state:Failure}){
 }
 
 type WorkDetail={work:{
- groupPlan?:{ownerId:string;stages:{dependsOn?:number;doneWhen:string;requests:{botId:string;state:string;deliverable:string}[]}[]};
+ groupPlan?:{ownerId:string;stages:{dependsOn?:number;doneWhen:string;witness?:string;review?:{decision:string;note?:string;revision:number};requests:{botId:string;state:string;deliverable:string;evidence?:{messageId:string}}[]}[]};
  workEvidence?:({id:string;kind:"file";path:string;operation:"write"|"edit";beforeSha256?:string|null;afterSha256?:string}|{id:string;kind:"command";exitCode:number|null})[];
  workEvidenceLimited?:boolean;peerReviewVersion?:string;peerReviewStale?:boolean;
 }};
@@ -103,23 +104,37 @@ export function WorkListPanel({colors,call,roomId,onOpen}:ToolProps&{roomId:stri
   {cursor!==undefined&&<ToolButton colors={colors} disabled={pending.busy} onPress={()=>void pending.run(()=>load(cursor))}>读取更早工作</ToolButton>}
  </ScrollView>;
 }
-export function WorkDetailPanel({colors,call,roomId,jobId,bots}:ToolProps&{roomId:string;jobId:string;bots:Person[]}){
+export function WorkDetailPanel({colors,call,mutate,disabled,roomId,jobId,bots}:ToolProps&{roomId:string;jobId:string;bots:Person[]}){
  const read=useRead<WorkDetail>(call,"work.detail",roomId,jobId);
  const work=read.data?.work;
+ const [detail,setDetail]=useState(''),[reviewError,setReviewError]=useState(''),[busy,setBusy]=useState(false),[notes,setNotes]=useState<Record<number,string>>({});
+ async function run(action:()=>Promise<void>){setReviewError('');setBusy(true);try{await action();}catch(error){setReviewError(message(error));}finally{setBusy(false);}}
+ function review(stage:NonNullable<WorkDetail["work"]["groupPlan"]>["stages"][number],index:number,decision:'pass'|'rework'){
+  return run(async()=>{await mutate('work.stageReview',{roomId,jobId,index,decision,witness:stage.witness,expectedRevision:stage.review?.revision??0,...(decision==='rework'?{note:notes[index]?.trim()}:{})});read.reload();});
+ }
  const name=(id:string)=>bots.find(person=>person.id===id)?.name??"原成员";
  return <ScrollView contentContainerStyle={styles.page}>
   <ToolButton colors={colors} onPress={read.reload}>刷新工作记录</ToolButton>
   <Feedback colors={colors} state={{message:read.error}}/>
   {!work&&!read.error&&<Body colors={colors}>正在读取原工作…</Body>}
+  {!!reviewError&&<Feedback colors={colors} state={{message:reviewError}}/>}
+  {!!detail&&<Card colors={colors}><ToolButton colors={colors} onPress={()=>setDetail('')}>关闭证据</ToolButton><Text selectable style={{color:colors.text}}>{detail}</Text></Card>}
   {work?.groupPlan&&<Card colors={colors}>
    <Text style={[styles.title,{color:colors.text}]}>群计划 · {name(work.groupPlan.ownerId)} 负责</Text>
    {work.groupPlan.stages.map((stage,index)=><View key={index} style={styles.section}>
-    <Body colors={colors}>阶段 {index+1} · {stage.dependsOn?`依赖阶段 ${stage.dependsOn}`:"可先开始"}{stage.requests.length>1?" · 可并行":""}</Body>
+    <Body colors={colors}>阶段 {index+1} · {stageStatus(stage)} · {stage.dependsOn?`依赖阶段 ${stage.dependsOn}`:"可先开始"}{stage.requests.length>1?" · 可并行":""}</Body>
     {stage.requests.map(item=><View key={item.botId}>
      <Text style={{color:colors.green,fontWeight:"600"}}>{name(item.botId)} · {label(item.state)}</Text>
      <Body colors={colors}>{item.deliverable}</Body>
+     {item.evidence&&<ToolButton colors={colors} disabled={busy} onPress={()=>void run(async()=>setDetail((await call('work.stageEvidence',{roomId,jobId,index,botId:item.botId})).text))}>查看交付证据</ToolButton>}
     </View>)}
     <Body colors={colors}>验收条件 · {stage.doneWhen}</Body>
+    {!!stage.review?.note&&<Body colors={colors}>{stage.review.note}</Body>}
+    {stage.witness&&<>
+     <ToolButton colors={colors} disabled={disabled||busy||stage.review?.decision==='pass'} onPress={()=>void review(stage,index,'pass')}>验收通过</ToolButton>
+     <TextInput accessibilityLabel="返工原因" placeholder="返工原因" placeholderTextColor={colors.muted} maxLength={1200} value={notes[index]??''} onChangeText={text=>setNotes(value=>({...value,[index]:text}))} style={{padding:8,color:colors.text,borderWidth:1,borderColor:colors.line}}/>
+     <ToolButton colors={colors} disabled={disabled||busy||!notes[index]?.trim()} onPress={()=>void review(stage,index,'rework')}>标记返工</ToolButton>
+    </>}
    </View>)}
   </Card>}
   {!!work?.workEvidence?.length&&<Card colors={colors}>

@@ -218,6 +218,30 @@ export class TeamAutomation {
   if(failed||affected.some(item=>item.job.stopResultUnknown))throw new KTeamError('stop_protocol_result_unknown',503);
   return {ok:true,settings,stopped:affected.every(item=>!this.active.has(item.job.id))};
  }
+ /** Stop the selected run and its own delegated work without pausing the conversation. */
+ async stopWork(roomId:string,jobId:string){
+  const root=this.store.job(jobId);
+  if(!root||root.roomId!==roomId)throw new KTeamError('work_record_not_found',404);
+  if(root.state==='stopped'&&!root.stopResultUnknown)return {ok:true};
+  if(!['routing','running','waiting','stopping'].includes(root.state))throw new KTeamError('work_not_active',409);
+  const owns=(job:any)=>job.id===jobId||job.peer?.rootJobId===jobId||job.masterRelay?.rootJobId===jobId||job.groupResponse?.sourceJobId===jobId;
+  const active=[...this.active.values()].filter(item=>owns(item.job));
+  const waiting=this.store.waitingJobs().filter(job=>owns(job)&&!active.some(item=>item.job.id===job.id));
+  if(!active.length&&!waiting.length)throw new KTeamError('stop_protocol_result_unknown',503);
+  for(const job of this.store.jobs(roomId)){
+   if(job.groupResponse?.sourceJobId===jobId&&['queued','held'].includes(job.state)){
+    job.state='cancelled';job.reason='team_stopped';job.finishedAt=new Date().toISOString();this.store.save(job);
+   }
+  }
+  for(const item of active){
+   if(item.job.currentHandoffId)this.handoffs?.cancel(item.job);
+   item.job.stopCause='manual';item.job.state='stopping';this.store.save(item.job);
+   item.controller.abort(new KTeamError('team_paused',409));
+  }
+  await Promise.all([...waiting.map(job=>this.stopWaiting(job,'manual')),...active.map(item=>item.completion)]);
+  if(waiting.some(job=>job.stopResultUnknown)||active.some(item=>item.job.stopResultUnknown))throw new KTeamError('stop_protocol_result_unknown',503);
+  return {ok:true};
+ }
  async quiesceBot(botId:string){await this.dispatching;for(const active of [...this.active.values()]){const membership=await this.upstream.membership(active.job.roomId);if(!(membership.members as any[]).some(m=>m.status==='active'&&m.subject?.logicalAgentId===botId))continue;const paused=this.store.settings(active.job.roomId)?.paused;await this.pause(active.job.roomId);if(!paused)this.store.resume(active.job.roomId);}}
  private async stopTask(roomId:string,task:any,message:string){
   const tasks=(await this.upstream.aimp(roomId,'tasks')).tasks as any[];
