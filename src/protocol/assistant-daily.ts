@@ -2,7 +2,7 @@ import {z} from 'zod';
 import {calendarWindow} from '../runtime/calendar.js';
 import {nextRoutineAt, routineTimeZone} from './routine-schedule.js';
 
-import {dailySlots,dailyKinds,type DailySource,type DailyConfiguration,type DailyChange} from './assistant-daily-types.js';
+import {dailySlots,dailyKinds,dailyPresetIds,type DailySource,type DailyConfiguration,type DailyChange} from './assistant-daily-types.js';
 export type {DailySource,DailyConfiguration,DailyChange,DailyItem,DailyCoverage} from './assistant-daily-types.js';
 
 const dailyKind = z.enum(dailyKinds);
@@ -27,6 +27,9 @@ export const dailyChange = z.object({
  sourceKinds:z.array(dailyKind).max(5).optional(),
  removeSourceKinds:z.array(dailyKind).max(5).optional(),
 }).strict() satisfies z.ZodType<DailyChange>;
+export const dailyPresetSelection = z.object({
+ preset:z.enum(dailyPresetIds), expectedRevision:revision, expectedDraftId:z.string().uuid().nullable(),
+}).strict();
 export const dailyCommit = z.object({id:z.string().uuid(),expectedRevision:revision,sources:z.array(dailySource).max(24)}).strict();
 export const dailySourceKey = (source:DailySource) => JSON.stringify([source.kind,source.account,source.id]);
 export function defaultDaily(timeZone:string):DailyConfiguration {

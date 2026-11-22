@@ -1,3 +1,4 @@
+import type {DailyPresetSelection} from '../../../src/protocol/assistant-daily-types';
 import type {PluginCommandChoice,PluginManifest,PluginPreview,PluginRegistryView} from '../../../src/protocol/plugins';
 import type {SplashOpenInput,SplashOpenResult} from '../../splash-input';
 import type {PlanReviewSetup} from '../../../src/protocol/member-presets';
@@ -29,6 +30,7 @@ export interface KTeamAPI {
  dailyWorkPlan():Promise<any>;
  dailyWorkToday():Promise<any>;
  dailyWorkSources(includeYzj:boolean):Promise<any>;
+ chooseDailyWorkPreset(input:DailyPresetSelection):Promise<any>;
  confirmDailyWork(input:unknown):Promise<any>;
  refreshDailyWork():Promise<any>;
  dailyWorkNews(input:{topic:string}):Promise<any>;

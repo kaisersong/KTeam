@@ -12,7 +12,7 @@ import { BotCapabilities } from "../service/bot-capabilities.js";
 import { mobileApprovalOperationId } from "../protocol/mobile-approval-operation.js";
 import { projectInbox } from "../service/inbox.js";
 
-const dailyWorkWrites=new Set(["dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
+const dailyWorkWrites=new Set(["dailyWork.preset","dailyWork.confirm","dailyWork.refresh","dailyWork.snooze","dailyWork.replyDraft"]);
 const scopedWorkWrites=new Set(["artifacts.peerReview","artifacts.reviewDecision","routines.save","routines.trial","routines.pause","routines.remove"]);
 
 export class MobileFacade {
@@ -100,7 +100,7 @@ export class MobileFacade {
       const result = await this.write(p, method, payload, requestId),
         current = this.store.operation(id);
       const receipt=method==="dailyWork.confirm"?{appliedRevision:result.appliedRevision}
-        :method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
+        :method==="dailyWork.preset"||method==="dailyWork.refresh"||method==="dailyWork.snooze"?{ok:true}:result;
       this.store.saveOperation(
         { ...current, status: "completed", result:receipt },
         current.revision,
@@ -136,6 +136,7 @@ export class MobileFacade {
   }
   private async dailyReceipt(p:MobilePrincipal,op:any){
     const daily=await this.dailyScope(p,op.roomId);
+    if(op.method==="dailyWork.preset")return daily.planView();
     if(op.method==="dailyWork.confirm")return {...daily.planView(),appliedRevision:op.result.appliedRevision};
     if(op.method==="dailyWork.replyDraft"){
       await daily.assertItemVisible({id:op.sourceItemId});
@@ -475,6 +476,7 @@ export class MobileFacade {
         void d.automation.tick();
         return result;
       }
+      case "dailyWork.preset":
       case "dailyWork.confirm":
       case "dailyWork.refresh":
       case "dailyWork.snooze":
@@ -482,6 +484,7 @@ export class MobileFacade {
         const {roomId,...input}=i;
         const daily=await this.dailyScope(p,roomId);
         const guard=()=>this.assert(p);
+        if(method==="dailyWork.preset")return daily.choosePreset(input,guard);
         if(method==="dailyWork.confirm")return daily.confirm(input,guard);
         if(method==="dailyWork.snooze")return daily.snooze(input,guard);
         if(method==="dailyWork.replyDraft")return daily.replyDraft(input,d.automation.assistant.identity().botId,guard);

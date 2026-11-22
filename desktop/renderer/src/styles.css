@@ -270,3 +270,42 @@ button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:under
 .message-reply-preview>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .message-reply-preview + .message-text{box-sizing:border-box;width:fit-content;max-width:100%}
 .from-user .message-reply-preview,.from-user .message-reply-preview + .message-text{margin-left:auto}
+
+.assistant-daily-choices {
+ margin: 12px 0;
+ max-width: 520px;
+}
+.assistant-daily-choice-list {
+ display: grid;
+ gap: 7px;
+ margin: 12px 0;
+}
+.assistant-daily-choice-list button {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
+ padding: 10px 12px;
+ text-align: left;
+ border: 1px solid var(--line);
+ border-radius: 10px;
+ color: var(--text-primary);
+ background: var(--surface-panel);
+}
+.assistant-daily-choice-list button:is(:hover,[aria-pressed=true]) {
+ border-color: var(--text-secondary);
+}
+.assistant-daily-choice-list strong,
+.assistant-daily-choice-list small {
+ display: block;
+}
+.assistant-daily-choice-list small {
+ margin-top: 3px;
+ color: var(--text-secondary);
+}
+.assistant-daily-choice-list svg {
+ flex-shrink: 0;
+}
+.assistant-daily-card details {
+ margin: 12px 0;
+}

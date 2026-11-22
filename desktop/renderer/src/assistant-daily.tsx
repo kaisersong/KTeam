@@ -1,5 +1,7 @@
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
+import {Check,ChevronRight} from 'lucide-react';
+import {dailyPresetIds,dailyPresets,type DailyPreset} from '../../../src/protocol/assistant-daily-types';
 import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../../../src/protocol/assistant-daily';
 
 const slots=['morning','midday','evening'] as const;
@@ -8,11 +10,12 @@ const kindLabel={mail:'邮件','yzj-message':'云之家消息','yzj-calendar':'�
 const key=(source:DailySource)=>JSON.stringify([source.kind,source.account,source.id]);
 const format=(at:number,timeZone?:string)=>new Intl.DateTimeFormat('zh-CN',{timeZone,dateStyle:'short',timeStyle:'short'}).format(at);
 interface Draft {
- id:string; previousRevision:number; config:DailyConfiguration; skips:string[];
+ id:string; previousRevision:number; config:DailyConfiguration; skips:string[]; preset?:DailyPreset;
  change:{sourceKinds?:DailySource['kind'][];removeSourceKinds?:DailySource['kind'][];skipToday?:keyof typeof slotLabel};
 }
 interface Plan {
  config:DailyConfiguration|null;
+ revision:number;
  draft?:Draft;
  next?:{slot:keyof typeof slotLabel;next:number}|null;
 }
@@ -29,18 +32,63 @@ function describePlan(config:DailyConfiguration) {
 
 export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
  const [data,setData]=useState<Plan>();
- const [error,setError]=useState('');
+ const [loadError,setLoadError]=useState('');
+ const [choiceError,setChoiceError]=useState('');
+ const [showChoices,setShowChoices]=useState(false);
+ const [choosing,setChoosing]=useState<DailyPreset>();
+ const request=useRef(0);
  const load=useCallback(async()=>{
-  try{setData(await api.dailyWorkPlan());setError('');}catch(e){setError(explain(e));}
+  const id=++request.current;
+  try{
+   const plan=await api.dailyWorkPlan();
+   if(id===request.current){setData(plan);setLoadError('');}
+  }catch(e){if(id===request.current)setLoadError(explain(e));}
  },[]);
- useEffect(()=>{void load();const timer=setInterval(()=>void load(),3000);return ()=>clearInterval(timer);},[load]);
- if(!data)return error?<p className="settings-error" role="alert">{error}</p>:null;
- if(data.draft)return <DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onSaved={()=>void load()}/>;
- if(!data.config)return <button className="secondary" onClick={onPlan}>和小 K 设定每日工作</button>;
- return <div className="assistant-daily-plan-receipt"><strong>{describePlan(data.config)}</strong>{data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}<button className="secondary" onClick={onPlan}>在对话中调整</button></div>;
+ useEffect(()=>{
+  void load();
+  const timer=setInterval(()=>void load(),3000);
+  return ()=>{clearInterval(timer);request.current++;};
+ },[load]);
+ if(!data)return loadError?<p className="settings-error" role="alert">{loadError}</p>:null;
+ const choose=async(preset:DailyPreset)=>{
+  if(choosing)return;
+  setChoosing(preset);setChoiceError('');
+  try{
+   const plan=await api.chooseDailyWorkPreset({preset,expectedRevision:data.revision,expectedDraftId:data.draft?.id??null});
+   request.current++;
+   setData(plan);
+   setShowChoices(false);
+  }catch(e){setChoiceError(explain(e));void load();}
+  finally{setChoosing(undefined);}
+ };
+ if(showChoices||!data.config&&!data.draft)return <section className="proposal-card assistant-daily-choices" aria-label="选择每日工作方案">
+  <h3>选一个简报安排</h3>
+  {!data.config&&<p>默认在周一到周五运行。选好后可以添加读取来源。</p>}
+  <div className="assistant-daily-choice-list">{dailyPresetIds.map(id=>{
+   const option=dailyPresets[id],selected=data.draft?.preset===id;
+   return <button type="button" key={id} disabled={Boolean(choosing)} aria-pressed={selected} onClick={()=>void choose(id)}>
+    <span><strong>{option.label}</strong><small>{option.detail}</small></span>
+    {selected?<Check size={17} aria-hidden="true"/>:<ChevronRight size={17} aria-hidden="true"/>}
+   </button>;
+  })}</div>
+  {choiceError&&<p className="settings-error" role="alert">{choiceError}</p>}
+  <div className="assistant-daily-actions">
+   {data.draft&&<button type="button" className="secondary" onClick={()=>setShowChoices(false)}>返回待确认方案</button>}
+   {data.config&&!data.draft&&<button type="button" className="secondary" onClick={()=>setShowChoices(false)}>取消</button>}
+   <button type="button" className="secondary" onClick={()=>{setShowChoices(false);onPlan();}}>在对话中自定义</button>
+  </div>
+ </section>;
+ if(data.draft)return <DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onChoose={()=>setShowChoices(true)} onSaved={()=>void load()}/>;
+ if(!data.config)return null;
+ return <div className="assistant-daily-plan-receipt">
+  <strong>{describePlan(data.config)}</strong>
+  {data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}
+  <button className="secondary" onClick={()=>setShowChoices(true)}>更换简报安排</button>
+  <button className="secondary" onClick={onPlan}>在对话中调整</button>
+ </div>;
 }
 
-function DraftCard({draft,previous,onSaved}:{draft:Draft;previous:DailyConfiguration|null;onSaved:()=>void}){
+function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:DailyConfiguration|null;onSaved:()=>void;onChoose:()=>void}){
  const [selected,setSelected]=useState<DailySource[]>(draft.config.sources);
  const [available,setAvailable]=useState<DailySource[]>([]);
  const [topic,setTopic]=useState('');
@@ -54,7 +102,7 @@ function DraftCard({draft,previous,onSaved}:{draft:Draft;previous:DailyConfigura
   setSelected(items=>items.some(item=>key(item)===key(source))?items.filter(item=>key(item)!==key(source)):[...items,source]);
  }
  return <section className="proposal-card assistant-daily-card" aria-label="每日工作方案">
-  <h3>每日工作方案</h3>
+  <h3>{draft.preset?dailyPresets[draft.preset].label:"每日工作方案"}</h3>
   {previous&&<p>当前 · {describePlan(previous)}</p>}
   <p>确认后 · {describePlan(draft.config)}</p>
   <p>{draft.config.timeZone} · 周{draft.config.weekdays.join('、')}</p>
@@ -62,6 +110,8 @@ function DraftCard({draft,previous,onSaved}:{draft:Draft;previous:DailyConfigura
   {draft.change.skipToday&&<p>今日跳过{slotLabel[draft.change.skipToday]}</p>}
   {draft.change.sourceKinds?.length!==undefined&&draft.change.sourceKinds.length>0&&<p>待选择来源 · {draft.change.sourceKinds.map(kind=>kindLabel[kind]).join('、')}</p>}
   {!!draft.change.removeSourceKinds?.length&&<p>停用后台读取 · {draft.change.removeSourceKinds.map(kind=>kindLabel[kind]).join('、')}</p>}
+  <details open={!draft.preset||undefined}>
+   <summary>读取来源{selected.length?' · 已选 '+selected.length+' 项':' · 尚未选择'}</summary>
   <fieldset disabled={busy}>
    <legend>允许后台读取的来源</legend>
    {visible.map(source=><label key={key(source)}><input type="checkbox" checked={selected.some(value=>key(value)===key(source))} onChange={()=>toggle(source)}/>{kindLabel[source.kind]} · {source.label}</label>)}
@@ -75,8 +125,12 @@ function DraftCard({draft,previous,onSaved}:{draft:Draft;previous:DailyConfigura
     <input aria-label="可用于公开搜索的关键词" placeholder="可公开搜索的资讯关键词" maxLength={160} value={topic} onChange={event=>setTopic(event.target.value)}/>
     <button className="secondary" disabled={busy||!topic.trim()} type="submit">添加订阅</button>
   </form>
+  </details>
   {error&&<p className="settings-error" role="alert">{error}</p>}
-  <button className="primary" disabled={busy} onClick={()=>void act(async()=>{await api.confirmDailyWork({id:draft.id,expectedRevision:draft.previousRevision,sources:selected});onSaved();})}>确认并应用</button>
+  <div className="assistant-daily-actions">
+   <button type="button" className="secondary" disabled={busy} onClick={onChoose}>换个方案</button>
+   <button type="button" className="primary" disabled={busy} onClick={()=>void act(async()=>{await api.confirmDailyWork({id:draft.id,expectedRevision:draft.previousRevision,sources:selected});onSaved();})}>确认并应用</button>
+  </div>
  </section>;
 }
 
