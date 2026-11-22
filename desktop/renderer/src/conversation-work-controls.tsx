@@ -1,3 +1,4 @@
+import {messageDisplayText} from '../../../src/protocol/message-attachments';
 import {useEffect,useState} from 'react';
 import {api,explain,type Bot,type Message,type Room} from './api';
 import {activeWorkLabels,conversationWork} from '../../../src/protocol/conversation-work';
@@ -31,7 +32,7 @@ export function ReferencePicker({room,rooms,onInsert}:{room:Room;rooms:Room[];on
  useEffect(()=>{
   if(!source)return;let current=true;
   void api.conversationHistory({roomId:source,tail:true}).then(value=>{
-   if(current)setMessages(value.messages.filter((message:Message)=>message.text?.trim()).reverse());
+   if(current)setMessages(value.messages.filter((message:Message)=>messageDisplayText(message).trim()).reverse());
   }).catch(error=>{if(current)setError(explain(error));});
   return()=>{current=false;};
  },[source]);
@@ -48,7 +49,7 @@ export function ReferencePicker({room,rooms,onInsert}:{room:Room;rooms:Room[];on
   {preview?<><p>将随消息发到「{room.title}」</p><blockquote>{preview.text}</blockquote>
    <button type="button" className="primary" onClick={()=>onInsert(preview)}>插入引用</button>
    <button type="button" onClick={()=>setPreview(undefined)}>重选消息</button></>:source&&<ul>{messages.map(message=><li key={message.messageId}>
-    <button disabled={busy} type="button" onClick={()=>void choose(message)}>{message.text?.slice(0,140)}</button>
+    <button disabled={busy} type="button" onClick={()=>void choose(message)}>{messageDisplayText(message).slice(0,140)}</button>
    </li>)}</ul>}
  </div>;
 }

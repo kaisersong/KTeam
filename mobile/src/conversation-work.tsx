@@ -1,3 +1,4 @@
+import {messageDisplayText} from '../../src/protocol/message-attachments';
 import {useEffect,useState} from 'react';
 import {Pressable,ScrollView,Text,TextInput,View} from 'react-native';
 import {activeWorkLabels,conversationWork} from '../../src/protocol/conversation-work';
@@ -38,7 +39,7 @@ export function MobileReferencePicker({room,rooms,call,button,colors,onInsert}:{
  useEffect(()=>{
   if(!source)return;let current=true;
   void call('messages.page',{roomId:source,tail:true}).then(value=>{
-   if(current)setMessages(value.messages.filter((message:any)=>message.text?.trim()).reverse());
+   if(current)setMessages(value.messages.map((message:any)=>({messageId:message.messageId,text:messageDisplayText(message)})).filter((message:{text:string})=>message.text.trim()).reverse());
   }).catch(error=>{if(current)setError(String(error.message??error));});
   return()=>{current=false;};
  },[source,call]);

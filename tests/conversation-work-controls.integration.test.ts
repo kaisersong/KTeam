@@ -1,3 +1,4 @@
+import {encodeAttachmentMessage} from '../src/protocol/message-attachments.js';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -42,6 +43,8 @@ test('an original message is checked across real rooms at preview and send, pres
   assert.equal(reference.text,'Original evidence');
   await assert.rejects(previewMessageReference(fixture.upstream,{...input,sourceRoomId:target}));
   await assert.rejects(collaboration.send(envelope(target,'b',reference.quote.replace('Original','Changed'))),/message_reference_changed/);
+  const encoded=encodeAttachmentMessage(reference.quote.replace('Original','Changed'),[{fileId:'1'.repeat(64),sha256:'2'.repeat(64),name:'proof.txt',hostId:'fixture',extension:'txt',bytes:3}]);
+  await assert.rejects(collaboration.send(envelope(target,'d',encoded)),/message_reference_changed/);
   const prepared=envelope(target,'c','Review this result\n\n'+reference.quote);
   const result=await collaboration.send(prepared);
   assert.equal((await collaboration.send(prepared)).messageId,result.messageId);

@@ -256,7 +256,7 @@ const MessageRow = memo(function MessageRow({
           colors={colors}
         />
       ))}
-      {m.sender.kind==="user"&&messageAnchors(m.text??"").map((anchor,index)=><Pressable key={index} accessibilityRole="button" onPress={()=>onReference(m.roomId,anchor)} style={{paddingVertical:6}}>
+      {m.sender.kind==="user"&&messageAnchors(messageDisplayText(m)).map((anchor,index)=><Pressable key={index} accessibilityRole="button" onPress={()=>onReference(m.roomId,anchor)} style={{paddingVertical:6}}>
         <Text style={{color:colors.green}}>打开引用原消息</Text>
       </Pressable>)}
       {(job?.groupPlanAvailable||job?.workEvidenceAvailable||job?.peerReviewVersion)&&(

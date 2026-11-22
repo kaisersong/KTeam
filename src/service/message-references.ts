@@ -1,3 +1,4 @@
+import {messageDisplayText} from '../protocol/message-attachments.js';
 import {KTeamError,fields,record,text} from '../errors.js';
 import type {Upstreams} from '../adapters/upstream.js';
 import {messageAnchors,messageReference,type MessageAnchor} from '../protocol/message-reference.js';
@@ -17,7 +18,9 @@ async function readSource(upstream:Upstreams,anchor:MessageAnchor) {
   ||typeof source.text!=='string'||!source.text.trim())
   throw new KTeamError('message_reference_unavailable',404);
  await ownedRoom(upstream,anchor.roomId);
- return messageReference(anchor,source.text);
+ const excerpt=messageDisplayText(source);
+ if(!excerpt.trim())throw new KTeamError('message_reference_unavailable',404);
+ return messageReference(anchor,excerpt);
 }
 export async function previewMessageReference(upstream:Upstreams,value:unknown) {
  const input=record(value);fields(input,['roomId','sourceRoomId','messageId']);
