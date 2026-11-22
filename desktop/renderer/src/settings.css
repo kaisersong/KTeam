@@ -47,7 +47,7 @@
 [data-app-theme=dark] .send-button:disabled{background:#35422d;color:#a8b49d}
 [data-app-theme=dark] :is(.secondary,.settings-content .secondary){background:var(--surface-panel);color:var(--text-primary);border-color:var(--line)}
 [data-app-theme=dark] :is(.settings-error,.flow-error,.error-banner,.voice-error){color:var(--danger);background:#3b2c21;border-color:#795540}
-[data-app-theme=dark] :is(.model-pill,.agent-pill,.quoted-message,.composer-reply,.private-wait-note,.workspace-notice,.conversation-toast){background:var(--panel);color:var(--text-secondary);border-color:var(--line)}
+[data-app-theme=dark] :is(.model-pill,.agent-pill,.composer-reply,.private-wait-note,.workspace-notice,.conversation-toast){background:var(--panel);color:var(--text-secondary);border-color:var(--line)}
 [data-app-theme=dark] :is(.welcome h2,.conversation-title,.wordmark){color:var(--text-primary)}
 [data-app-theme=dark] .runtime-card{--c-border:var(--line);--c-text-primary:var(--text-primary);--c-text-secondary:var(--text-secondary);--c-bg-card:var(--panel);--c-bg-sub:var(--rail)}
 /* One surface owns the composer; focus never paints an inner box. */
