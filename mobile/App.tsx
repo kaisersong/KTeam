@@ -1,3 +1,5 @@
+import {ActiveConversationWork,MobileReferencePicker,MobileWorkInput} from "./src/conversation-work";
+import {messageAnchors,type MessageAnchor} from "../src/protocol/message-reference";
 import {AssistantDailyPanel} from "./src/assistant-daily";
 import {ArtifactReviewActions,MemberPanel,PluginCommandsPanel,PluginsPanel,RoutinesPanel,WorkDetailPanel,WorkListPanel} from "./src/conversation-tools";
 import {planReviewPreset} from "../src/protocol/member-presets";
@@ -158,6 +160,7 @@ const MessageRow = memo(function MessageRow({
   onReply: setReply,
   onFile: viewFile,
   onWork,
+  onReference,
 }: any) {
   const job = work?.jobs?.find((j: any) =>
       j.results?.some((r: any) => r.messageId === m.messageId) ||
@@ -253,6 +256,9 @@ const MessageRow = memo(function MessageRow({
           colors={colors}
         />
       ))}
+      {m.sender.kind==="user"&&messageAnchors(m.text??"").map((anchor,index)=><Pressable key={index} accessibilityRole="button" onPress={()=>onReference(m.roomId,anchor)} style={{paddingVertical:6}}>
+        <Text style={{color:colors.green}}>打开引用原消息</Text>
+      </Pressable>)}
       {(job?.groupPlanAvailable||job?.workEvidenceAvailable||job?.peerReviewVersion)&&(
         <Pressable accessibilityRole="button" style={[s.button,{borderColor:colors.line,alignSelf:"flex-start",marginTop:8}]}
           onPress={()=>onWork(m.roomId,job.id)}>
@@ -352,7 +358,7 @@ function AppBody() {
   const inboxScroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const inboxOffset = useRef(0);
   const restoreInbox = useRef(false);
-  type ToolPanel={kind:"work"|"routines"|"commands"|"daily";roomId:string;jobId?:string}|{kind:"plugins"|"member"};
+  type ToolPanel={kind:"work"|"routines"|"commands"|"daily"|"reference"|"append";roomId:string;jobId?:string;independent?:boolean}|{kind:"plugins"|"member"};
   const [toolPanel,setToolPanel]=useState<ToolPanel>();
   const initialDraft=useRef<{roomId:string;text:string;append?:boolean}|undefined>(undefined);
   const pendingTools=useRef(new Map<string,Promise<any>>());
@@ -1048,6 +1054,14 @@ function AppBody() {
   pairAction.current = (link) => {
     void pair(link);
   };
+  const openReferencedMessage=useCallback(async(target:string,anchor:MessageAnchor)=>{
+    try{
+      await call("messages.reference",{roomId:target,sourceRoomId:anchor.roomId,messageId:anchor.messageId});
+      const value=await call("messages.get",anchor);
+      if(roomRef.current?.roomId!==target)return;
+      setPreview({kind:"markdown",name:"引用原消息",content:messageDisplayText(value.message)});
+    }catch(error){setError(errorText(error));}
+  },[call]);
   const openRoom = (r: any) => {
     setAttentionRoom(false);
     setRoom(r);
@@ -1865,6 +1879,12 @@ function AppBody() {
           )}
         </View>
       )}
+      {tab === "会话" && room && <ActiveConversationWork key={room.roomId} roomId={room.roomId}
+        jobs={work?.jobs??[]} attention={[...(work?.approvals??[]),...(work?.questions??[]),...(inbox?.approvals??[]),...(inbox?.questions??[])]} bots={bots} button={button} colors={colors}
+        disabled={offline||writesLocked||busy} onOpen={id=>openWork(room.roomId,id)}
+        onAttention={item=>{if(item.roomId!==room.roomId)openInboxRoom(item.roomId);else {setRoom(undefined);setTab("收件箱");}}}
+        onAppend={(jobId,independent)=>setToolPanel({kind:"append",roomId:room.roomId,jobId,independent})}
+        onStop={jobId=>void mutateTool("work.stopJob",{roomId:room.roomId,jobId}).then(()=>refresh()).catch(tell)}/>}
       {tab === "会话" && room && (
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -1923,6 +1943,7 @@ function AppBody() {
                   onReply={setReply}
                   onFile={viewFile}
                   onWork={openWork}
+                  onReference={openReferencedMessage}
                 />
               )}
             />
@@ -1967,40 +1988,9 @@ function AppBody() {
               </View>
             );
           })()}
-          {work?.jobs
-            ?.filter((j: any) => ["running", "routing"].includes(j.state))
-            .map((j: any) => (
-              <Text
-                key={j.id}
-                style={[
-                  s.caption,
-                  {
-                    color: colors.muted,
-                    paddingHorizontal: 18,
-                    paddingBottom: 8,
-                  },
-                ]}
-              >
-                {bots.find((b: any) => b.id === j.activeBotId)?.name ?? "成员"}{" "}
-                正在处理…
-              </Text>
-            ))}
-          {work?.jobs?.some((j: any) =>
-            ["running", "routing", "waiting"].includes(j.state),
-          ) &&
-            button(
-              "停止当前工作",
-              () => {
-                void call("work.stop", {
-                  operationId: uid(),
-                  roomId: room.roomId,
-                })
-                  .then(() => refresh())
-                  .catch(tell);
-              },
-              undefined,
-              mobileActionDisabled("stop", { locked: writesLocked, offline }),
-            )}
+          <View style={{alignItems:"flex-start",paddingHorizontal:16}}>
+            {button("引用其他会话",()=>setToolPanel({kind:"reference",roomId:room.roomId}),undefined,offline||writesLocked)}
+          </View>
           {pendingRoom.map((p) => (
             <View
               key={p.operationId}
@@ -2713,11 +2703,20 @@ function AppBody() {
         <SafeAreaView style={[s.safe,{backgroundColor:colors.bg}]}>
           <View style={[s.header,{borderBottomColor:colors.line}]}>
             <Text accessibilityRole="header" style={[s.title,{color:colors.text,flex:1}]}>
-              {toolPanel?({work:"工作记录",routines:"例行任务",daily:"今日",plugins:"插件",commands:"插件命令",member:"创建成员"})[toolPanel.kind]:""}
+              {toolPanel?.kind==="append"&&toolPanel.independent?"另提问题":toolPanel?({work:"工作记录",routines:"例行任务",daily:"今日",plugins:"插件",commands:"插件命令",member:"创建成员",reference:"引用其他会话的消息",append:"补充当前工作"})[toolPanel.kind]:""}
             </Text>
             {toolPanel?.kind==="work"&&toolPanel.jobId&&button("全部工作",()=>setToolPanel({kind:"work",roomId:toolPanel.roomId}))}
             {button("关闭",()=>setToolPanel(undefined))}
           </View>
+          {toolPanel?.kind==="reference"&&room?.roomId===toolPanel.roomId&&<MobileReferencePicker room={room} rooms={rooms} call={call} button={button} colors={colors}
+            onInsert={reference=>{setText(value=>[value,reference.quote].filter(Boolean).join("\n\n"));setToolPanel(undefined);}}/>}
+          {toolPanel?.kind==="append"&&room?.roomId===toolPanel.roomId&&<MobileWorkInput key={toolPanel.jobId} independent={toolPanel.independent}
+            cap={work?.inputCapabilities?.find((item:any)=>item?.jobId===toolPanel.jobId)} button={button} colors={colors}
+            onSubmit={async text=>{
+              const cap=work?.inputCapabilities?.find((item:any)=>item?.jobId===toolPanel.jobId);
+              await mutateTool("work.append",{roomId:toolPanel.roomId,jobId:toolPanel.jobId,text,mode:toolPanel.independent?"independent":cap?.supported?"append":"queue",...(!toolPanel.independent&&cap?.supported?{token:cap.token}:{})});
+              setToolPanel(undefined);await refresh();
+            }}/>}
           {toolPanel?.kind==="work"&&(toolPanel.jobId
             ?<WorkDetailPanel key={toolPanel.jobId} roomId={toolPanel.roomId} jobId={toolPanel.jobId} bots={bots} {...toolProps}/>
             :<WorkListPanel key={toolPanel.roomId} roomId={toolPanel.roomId} onOpen={id=>openWork(toolPanel.roomId,id)} {...toolProps}/>)}

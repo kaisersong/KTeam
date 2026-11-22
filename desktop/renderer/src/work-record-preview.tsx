@@ -1,3 +1,4 @@
+import {stageStatus} from '../../../src/protocol/conversation-work';
 import {FileText} from 'lucide-react';
 import {showGeneratedFile} from './artifact-viewer';
 import {Markdown} from './Markdown';
@@ -28,19 +29,33 @@ function ToolOutputPage({roomId,jobId,eventId}:{roomId:string;jobId:string;event
  return <>{loading&&<p className="muted" role="status">正在核验完整输出…</p>}{error&&<p className="flow-error" role="alert">{error}<button type="button" className="text-button" onClick={()=>setAttempt(value=>value+1)}>重新读取</button></p>}{data&&<><p className="muted">已保存输出 {data.originalBytes.toLocaleString()} 字节 · 当前第 {(trail.length+1).toLocaleString()} 段{data.redacted?' · 已脱敏':''}</p><pre>{data.text}</pre><p className="muted">此处为原运行器保存的返回正文；工具自身可能限制了输出范围。</p><div className="activity-pager"><button type="button" className="text-button" disabled={!trail.length} onClick={()=>{setOffset(trail.at(-1)!);setTrail(value=>value.slice(0,-1));}}>上一段</button><button type="button" className="text-button" disabled={!data.hasMore} onClick={()=>{setTrail(value=>[...value,offset]);setOffset(data.nextOffset);}}>下一段</button></div></>}</>;
 }
 function FileEffect({roomId,event}:{roomId:string;event:any}){const[error,setError]=useState('');return <div><button type="button" className="secondary" onClick={()=>{setError('');void showGeneratedFile({roomId,toolCallId:event.id}).catch(error=>setError(explain(error)));}}><FileText size={16} strokeWidth={1.6} aria-hidden="true"/>打开 {event.file.name}</button>{error&&<p className="flow-error" role="alert">{error}</p>}</div>;}
-export function GroupPlanRecord({plan,bots}:{plan:any;bots:Bot[]}){
+export function GroupPlanRecord({plan,bots,roomId,jobId,onReviewed}:{plan:any;bots:Bot[];roomId:string;jobId:string;onReviewed:()=>void}){
+ const [detail,setDetail]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notes,setNotes]=useState<Record<number,string>>({});
+ async function run(action:()=>Promise<void>){setError('');setBusy(true);try{await action();}catch(error){setError(explain(error));}finally{setBusy(false);}}
+ function review(stage:any,index:number,decision:'pass'|'rework'){
+  return run(async()=>{await api.reviewStage({roomId,jobId,index,decision,witness:stage.witness,expectedRevision:stage.review?.revision??0,...(decision==='rework'?{note:notes[index]?.trim()}: {})});onReviewed();});
+ }
  if(!plan)return null;
  const name=(id:string)=>bots.find(bot=>bot.id===id)?.name??'原成员';
  return <section className="workspace-section" aria-label="群计划">
   <p>负责人 · {name(plan.ownerId)}</p>
+  {error&&<p className="flow-error" role="alert">{error}</p>}
+  {detail&&<div className="workspace-section"><button type="button" onClick={()=>setDetail('')}>关闭证据</button><Markdown text={detail}/></div>}
   <ol>{plan.stages.map((stage:any,index:number)=><li key={index}>
-   <strong>阶段 {index+1}</strong>
+   <strong>阶段 {index+1} · {stageStatus(stage)}</strong>
    <p>{stage.dependsOn?('依赖阶段 '+stage.dependsOn):'可先开始'}{stage.requests.length>1?' · 本阶段可并行':''}</p>
    <ul>{stage.requests.map((request:any)=><li key={request.botId}>
     <strong>{name(request.botId)} · {request.state==='unassigned'?'待派发':activityStateLabels[request.state]??request.state}</strong>
     <p>{request.deliverable}</p>
+    {request.evidence&&<button type="button" disabled={busy} onClick={()=>void run(async()=>setDetail((await api.stageEvidence({roomId,jobId,index,botId:request.botId})).text))}>查看交付证据</button>}
    </li>)}</ul>
    <p className="muted">验收条件 · {stage.doneWhen}</p>
+   {stage.review?.note&&<p>{stage.review.note}</p>}
+   {stage.witness&&<div className="conversation-work-actions">
+    <button type="button" disabled={busy||stage.review?.decision==='pass'} onClick={()=>void review(stage,index,'pass')}>验收通过</button>
+    <input aria-label="返工原因" placeholder="返工原因" maxLength={1200} value={notes[index]??''} onChange={event=>setNotes(value=>({...value,[index]:event.target.value}))}/>
+    <button type="button" disabled={busy||!notes[index]?.trim()} onClick={()=>void review(stage,index,'rework')}>标记返工</button>
+   </div>}
   </li>)}</ol>
  </section>;
 }
@@ -65,7 +80,7 @@ export function ConversationMessage({job,onReading,...row}:ComponentProps<typeof
  useEffect(()=>()=>onReading?.(messageId,false),[messageId,onReading]);
  const cardRead=useRecord({roomId,messageId,part:'cards'},!!job?.cardsAvailable||open&&record?.cardsAvailable===true,job?.viewRevision),cards=cardRead.data?.previewTruncated?[]:(cardRead.data?.job?.cards??[]).filter((card:any)=>card.botId===row.message.sender.logicalAgentId);
  if(groupPlan)return <><MessageRow {...row}/><details className="tool-trace" onToggle={event=>setOpen(event.currentTarget.open)}>
-  <summary>群计划</summary><ReadState read={summary}/><GroupPlanRecord plan={record?.groupPlan} bots={row.bots}/>
+  <summary>群计划</summary><ReadState read={summary}/><GroupPlanRecord plan={record?.groupPlan} bots={row.bots} roomId={roomId} jobId={job.id} onReviewed={summary.retry}/>
  </details></>;
  const events=record?.toolTrace??job?.toolTrace??[],files=(record?.generatedFiles??job?.generatedFiles??events).filter((event:any)=>event.state==='completed'&&event.file&&event.botId===row.message.sender.logicalAgentId);
  return <><MessageRow {...row} cards={cards} files={files}/>{cardRead.data?.previewTruncated&&<p className="muted">交互内容超过预览范围，请查看原交付文件。</p>}{cardRead.error&&<ReadState read={cardRead}/>}{row.message.sender.kind==='agent'&&(job||row.message.workRef)&&<><div className="generated-files">{files.map((event:any)=><FileEffect key={event.id} roomId={roomId} event={event}/>)}</div><details className="tool-trace" onPointerDown={()=>{if(open)onReading?.(messageId,true);}} onFocusCapture={()=>{if(open)onReading?.(messageId,true);}} onToggle={event=>{setOpen(event.currentTarget.open);onReading?.(messageId,event.currentTarget.open);}}><summary>{job?.workEvidenceAvailable?'本轮变更与工具记录':'运行与工具记录'}</summary><ReadState read={summary}/>{job?.peerReviewVersion&&<p className="muted">{record?.peerReviewStale?'产物已更新，复核仅适用于旧版':'版本化只读复核'} · <code title={job.peerReviewVersion}>{job.peerReviewVersion.slice(0,12)}</code></p>}{record&&<><WorkEvidence record={record} botId={row.message.sender.logicalAgentId}/>{record.toolTrace.map((event:any)=><EventRecord key={event.id} roomId={roomId} jobId={record.id} event={event} revision={summary.data.viewRevision}/>)}{record.toolTraceLimited&&<p className="muted">原工作仅保留最近最多 100 条事件，更早步骤可能未保存。</p>}{record.toolTrace.length===0&&<p className="muted">原工作没有已保存的工具事件。</p>}</>}</details></>}</>;

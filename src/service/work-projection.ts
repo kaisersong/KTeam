@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {handoffChildJob,handoffChildReceipt} from './work-handoffs.js';
 import type {GroupConversationPlan} from './group-conversation.js';
 import type {TeamStore} from './team-store.js';
@@ -14,6 +15,8 @@ export function projectWork(job:any,revision=0){
 
 export function workPage(db:DatabaseSync,roomId:string,before?:number,activeOnly=false){const rows=db.prepare("SELECT j.rowid AS source_row,coalesce(v.revision,0) AS view_revision,json_object('id',j.id,'roomId',j.room_id,'originId',j.origin_id,'codexTargetDirectory',json_extract(j.value_json,'$.codexTargetDirectory'),'codexDispatch',json_extract(j.value_json,'$.codexDispatch'),'state',j.state,'reason',substr(json_extract(j.value_json,'$.reason'),1,512),'createdAt',json_extract(j.value_json,'$.createdAt'),'finishedAt',json_extract(j.value_json,'$.finishedAt'),'claimedAt',json_extract(j.value_json,'$.claimedAt'),'stopCause',json_extract(j.value_json,'$.stopCause'),'stopResultUnknown',json_extract(j.value_json,'$.stopResultUnknown'),'activeBotId',json_extract(j.value_json,'$.activeBotId'),'members',json_extract(j.value_json,'$.members'),'calls',json_extract(j.value_json,'$.calls'),'trigger',json_extract(j.value_json,'$.trigger'),'needsReview',json_extract(j.value_json,'$.needsReview'),'task',json_extract(j.value_json,'$.task'),'handoffWait',json_extract(j.value_json,'$.handoffWait'),'execution',json_extract(j.value_json,'$.execution'),'failure',json_extract(j.value_json,'$.failure'),'handoffPauseEventIds',json_extract(j.value_json,'$.handoffPauseEventIds'),'routine',json_extract(j.value_json,'$.routine'),'artifactPeerReview',json_extract(j.value_json,'$.artifactPeerReview'),'groupPlanAvailable',json_extract(j.value_json,'$.groupPlan.mode')='work','workEvidenceAvailable',json_type(j.value_json,'$.workEvidence')='array','cardsAvailable',coalesce(json_array_length(j.value_json,'$.cards'),0)>0,'answerDraftAvailable',json_type(j.value_json,'$.answerDraft')='text') AS compact_json,json_array_length(j.value_json,'$.toolTrace') AS trace_count,(SELECT coalesce(json_group_array(json_object('id',json_extract(e.value,'$.id'),'type',json_extract(e.value,'$.type'),'name',json_extract(e.value,'$.name'),'state',json_extract(e.value,'$.state'),'botId',json_extract(e.value,'$.botId'),'startedAt',json_extract(e.value,'$.startedAt'),'finishedAt',json_extract(e.value,'$.finishedAt'),'code',substr(json_extract(e.value,'$.code'),1,256),'file',json_extract(e.value,'$.file'),'outputAvailable',json_type(e.value,'$.output')='object')), '[]') FROM (SELECT value FROM json_each(j.value_json,'$.toolTrace') ORDER BY key DESC LIMIT 20) e) AS trace_json,(SELECT coalesce(json_group_array(json_object('botId',json_extract(r.value,'$.botId'),'messageId',json_extract(r.value,'$.messageId'),'taskRef',json_extract(r.value,'$.taskRef'),'model',json_extract(r.value,'$.model'))),'[]') FROM (SELECT value FROM json_each(j.value_json,'$.results') ORDER BY key DESC LIMIT 10) r) AS results_json,substr(json_extract(j.value_json,'$.partialText'),1,16000) AS partial_text FROM team_jobs j LEFT JOIN job_view_revisions v ON v.job_id=j.id WHERE j.room_id=?"+(activeOnly?" AND j.state IN ('routing','running','stopping','waiting')":'')+(before!==undefined?' AND j.rowid<?':'')+' ORDER BY j.rowid DESC LIMIT 21').all(roomId,...(before!==undefined?[before]:[]));const page=rows.slice(0,20);return {jobs:page.map(row=>projectWork({...JSON.parse(String(row.compact_json)),generatedFiles:projectGeneratedFiles(db,roomId,JSON.parse(String(row.compact_json)).id),toolTrace:JSON.parse(String(row.trace_json)).reverse(),results:JSON.parse(String(row.results_json)).reverse(),toolTraceTotal:Number(row.trace_count),toolTraceLimited:Number(row.trace_count)>20,partialText:row.partial_text},Number(row.view_revision))),nextBefore:rows.length>20?Number(page.at(-1)!.source_row):undefined};}
 
+export const stageReviewId=(jobId:string,index:number)=>'group-stage-review:'+jobId+':'+index;
+
 export function projectGroupPlan(store:TeamStore,job:any){
  const plan=job.groupPlan as GroupConversationPlan|undefined;
  if(plan?.mode!=='work'||!Array.isArray(plan.stages))return;
@@ -22,12 +25,20 @@ export function projectGroupPlan(store:TeamStore,job:any){
   stages:plan.stages.map((stage,index)=>{
    const operation=plan.stageOperations?.[index]?store.operation(plan.stageOperations[index]!):undefined;
    const owned=operation?.roomId===job.roomId&&operation.jobId===job.id&&operation.botId===plan.ownerId?operation:undefined;
-   return {dependsOn:index>0?index:undefined,doneWhen:stage.doneWhen,requests:stage.requests.map(request=>{
+   const requests=stage.requests.map(request=>{
     const child=owned?.children?.find((row:any)=>row.botId===request.botId);
     const childJob=child?handoffChildJob(store,job,child):undefined;
-    const state=childJob?.state==='delivered'&&!handoffChildReceipt(childJob,request.botId)?'unknown':childJob?.state;
-    return {botId:request.botId,deliverable:request.message,state:state??(child?'unknown':owned?.dispatchFailures?.some((row:any)=>row.botId===request.botId)?'blocked':'unassigned')};
-   })};
+    const receipt=handoffChildReceipt(childJob,request.botId);
+    const verified=owned?.status==='returned'&&receipt&&owned.results?.find((item:any)=>item.botId===request.botId&&item.state==='delivered'&&item.roomId===child.roomId&&item.messageId===receipt.messageId);
+    const state=childJob?.state==='delivered'&&!receipt?'unknown':childJob?.state;
+    return {botId:request.botId,deliverable:request.message,state:state??(child?'unknown':owned?.dispatchFailures?.some((row:any)=>row.botId===request.botId)?'blocked':'unassigned'),
+     ...(verified?{evidence:{roomId:child.roomId,messageId:receipt.messageId}}:{})};
+   });
+   const ready=requests.length>0&&requests.every(request=>request.evidence);
+   const witness=ready?createHash('sha256').update(JSON.stringify([owned.id,stage.doneWhen,requests])).digest('hex'):undefined;
+   const saved=witness?store.operation(stageReviewId(job.id,index)):undefined;
+   const review=saved?.witness===witness&&saved?{decision:saved.decision,note:saved.note,revision:saved.revision}:undefined;
+   return {dependsOn:index>0?index:undefined,doneWhen:stage.doneWhen,requests,witness,review};
   }),
  };
 }

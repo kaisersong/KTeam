@@ -89,3 +89,48 @@ test('the actual desktop update projection includes verified shared-note provena
  await f.conversations.shared(f.roomId,{text:'Synthetic manual note',expectedRevision:0,requestId:'manual-projection'});const manual=await f.updates.read({roomId:f.roomId,force:true});assert.equal(manual.shared.shared.sourceKind,'manual');
  const message=await f.send('Synthetic chosen source');await f.conversations.shared(f.roomId,{text:'Synthetic sourced note',expectedRevision:1,requestId:'sourced-projection',sourceMessageIds:[message.message.messageId]});const sourced=await f.updates.read({roomId:f.roomId,force:true});assert.equal(sourced.shared.shared.sourceKind,'messages');assert.deepEqual(sourced.shared.shared.sourceMessageIds,[message.message.messageId]);assert.equal(f.calls,0);
  }finally{await f.close();}});
+
+test('stage acceptance is bound to returned member receipts and never rewrites execution state',async()=>{
+ const f=await fixture();try{
+  const member=await f.coordinator.createMember({name:'Independent reviewer',modelId:'fixture',requestId:'stage-reviewer'},{requestSource:'user'});
+  const jobId='stage-parent',childId='stage-child',botId=member.bot.id,operationId='fixture-stage';
+  f.store.enqueue(jobId,f.roomId,'origin');
+  const job=f.store.job(jobId);
+  job.groupPlan={mode:'work',ownerId:f.member.bot.id,stages:[{doneWhen:'Result and check available',requests:[{botId,message:'Inspect synthetic evidence'}]}],stageOperations:[operationId]};
+  job.state='delivered';f.store.save(job);
+  f.store.enqueue(childId,member.roomId,'member-request');
+  const child=f.store.job(childId);
+  child.peer={sourceJobId:jobId,rootJobId:jobId,toBotId:botId,sourceRoomId:f.roomId};
+  child.state='delivered';child.results=[{botId,messageId:'member-result',taskRef:'task-1'}];f.store.save(child);
+  const op=f.store.saveOperation({id:operationId,roomId:f.roomId,jobId,botId:f.member.bot.id,status:'resuming',
+   children:[{botId,jobId:childId,roomId:member.roomId,requestMessageId:'member-request'}],
+   results:[{botId,state:'delivered',roomId:member.roomId,messageId:'member-result'}]},0);
+  const input={roomId:f.roomId,jobId,index:0,expectedRevision:0,decision:'pass',witness:'stale'};
+  await assert.rejects(f.updates.reviewStage(input),/stage_evidence_changed/);
+  f.store.saveOperation({...op,status:'returned'},op.revision);
+  const read=async()=>(await f.updates.detail({roomId:f.roomId,jobId,part:'summary'}) as any).job.groupPlan.stages[0];
+  const stage=await read();assert.equal(stage.requests[0].evidence.messageId,'member-result');
+  await assert.rejects(f.updates.reviewStage({...input,roomId:member.roomId,witness:stage.witness}),/stage_evidence_changed/);
+  const valid={...input,witness:stage.witness};
+  await f.updates.reviewStage(valid);
+  assert.equal((await f.updates.reviewStage(valid)).reused,true);
+  await assert.rejects(f.updates.reviewStage({...valid,decision:'rework',note:'Check again'}),/stage_review_changed/);
+  await f.updates.reviewStage({...valid,expectedRevision:1,decision:'rework',note:'Check again'});
+  assert.deepEqual((await read()).review,{decision:'rework',note:'Check again',revision:2});
+  assert.equal(f.store.job(jobId).state,'delivered');assert.deepEqual(f.store.job(childId).results,child.results);
+ }finally{await f.close();}
+});
+
+test('stopping an individual waiting job leaves its conversation and other jobs available',async()=>{
+ const f=await fixture();try{
+  f.store.resume(f.roomId);
+  f.store.enqueue('selected',f.roomId,'selected-source');
+  f.store.enqueue('unrelated',f.roomId,'unrelated-source');
+  const job=f.store.job('selected');job.state='waiting';f.store.save(job);
+  await assert.rejects(f.automation.stopWork('other-room',job.id),/work_record_not_found/);
+  await f.automation.stopWork(f.roomId,job.id);
+  await f.automation.stopWork(f.roomId,job.id);
+  assert.equal(f.store.job(job.id).state,'stopped');
+  assert.equal(f.store.job('unrelated').state,'queued');assert.equal(f.store.settings(f.roomId)?.paused,false);
+ }finally{await f.close();}
+});

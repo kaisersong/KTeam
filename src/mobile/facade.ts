@@ -1,3 +1,4 @@
+import {previewMessageReference} from '../service/message-references.js';
 import { randomUUID, createHash } from "node:crypto";
 import { hostname } from "node:os";
 import { KTeamError, record, fields, text } from "../errors.js";
@@ -221,6 +222,8 @@ export class MobileFacade {
           })),
         };
       }
+      case "messages.reference":
+        return previewMessageReference(d.upstream,i);
       case "messages.page":
         return d.conversationUpdates.history(i);
       case "conversations.updates":
@@ -258,6 +261,8 @@ export class MobileFacade {
         return {ok:true,nextBefore:result.nextBefore,jobs:result.jobs.filter((job:any)=>job.groupPlanAvailable||job.workEvidenceAvailable||job.peerReviewVersion)
           .map(({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}:any)=>({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}))};
       }
+      case "work.stageEvidence":
+        return d.conversationUpdates.stageEvidence(i);
       case "work.detail": {
         fields(i, ["roomId","jobId"]);
         const roomId=text(i.roomId,"room_id");
@@ -510,6 +515,17 @@ export class MobileFacade {
         return new Plugins(this.store).change(i);
       case "members.create":
         return d.coordinator.createMember({...i,requestId},{requestSource:"user",assertCurrent:()=>this.assert(p)});
+      case "work.stageReview":
+        return d.conversationUpdates.reviewStage(i,()=>this.assert(p));
+      case "work.append": {
+        await d.conversations.owner(text(i.roomId,"room_id"));this.assert(p);
+        const result=await d.automation.inputs!.submit({...i,id:"msg_"+createHash("sha256").update(requestId).digest("hex").slice(0,32)});void d.automation.tick();return result;
+      }
+      case "work.stopJob": {
+        fields(i,["roomId","jobId"]);
+        await d.conversations.owner(text(i.roomId,"room_id"));this.assert(p);
+        return d.automation.stopWork(i.roomId,text(i.jobId,"job_id"));
+      }
       case "work.stop":
         fields(i, ["roomId"]);
         await d.conversations.owner(text(i.roomId, "room_id"));
