@@ -30,6 +30,8 @@ export interface KTeamAPI {
  workInputs(roomId:string):Promise<any>;appendWorkInput(input:any):Promise<any>;releaseWorkInput(input:any):Promise<any>;
  botToolScope(input:{botId:string;roomId?:string}):Promise<any>;saveBotToolScope(input:any):Promise<any>;
  testDesktopNotification():Promise<any>;notificationSettings():Promise<any>;saveNotificationSettings(input:any):Promise<any>;notificationDeliveryState():Promise<any>;takeNotificationNavigation():Promise<any>;onNotificationOpen?:(listener:()=>void)=>()=>void;
+ dailyWatches():Promise<{items:import('../../../src/protocol/assistant-watch').WatchItem[]}>;
+ changeDailyWatch(input:import('../../../src/protocol/assistant-watch').WatchCommand):Promise<{items:import('../../../src/protocol/assistant-watch').WatchItem[]}>;
  dailyWorkPlan():Promise<any>;
  dailyWorkToday():Promise<any>;
  dailyWorkSources(includeYzj:boolean):Promise<any>;

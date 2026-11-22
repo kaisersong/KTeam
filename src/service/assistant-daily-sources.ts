@@ -135,10 +135,13 @@ export class AssistantDailySources {
   const tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10);
   const value=await this.enterprise.dailyYzj(['calendar','event','list','--start',today,'--end',tomorrow],signal);
   const entries=rows(value,'list','events','items');
+  let incomplete=false;
   const meetings=entries.flatMap(entry=>{
    const start=when(entry.startTime??entry.start),end=when(entry.endTime??entry.end);
    const id=field(entry,'id','eventId'),title=field(entry,'title','summary');
-   if(!id||!title||!Number.isFinite(start)||!Number.isFinite(end)||end<=start||end<now||entry.cancelled===true||['cancelled','canceled','declined'].includes(field(entry,'status','responseStatus')))return [];
+   if(entry.cancelled===true||['cancelled','canceled','declined'].includes(field(entry,'status','responseStatus')))return [];
+   if(!id||!title||!Number.isFinite(start)||!Number.isFinite(end)||end<=start){incomplete=true;return [];}
+   if(end<now)return [];
    return [{entry,start,end,id,title}];
   }).sort((a,b)=>a.start-b.start);
   return {items:meetings.map(meeting=>{
@@ -150,7 +153,7 @@ export class AssistantDailySources {
     urgent:conflicts.length>0&&meeting.start<=now+2*3600000,
     deadline:meeting.start, originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
    });
-  }),partial:meetings.length!==entries.length};
+  }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)};
  }
  async original(item:DailyItem) {
   if(item.source.kind==='mail'&&item.originalId)return {mail:await this.mail.dailyRead(item.source.id,item.originalId)};

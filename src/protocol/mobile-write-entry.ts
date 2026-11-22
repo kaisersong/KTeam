@@ -18,6 +18,7 @@ const WRITE_METHODS = new Set([
   "routines.trial",
   "routines.pause",
   "routines.remove",
+  "dailyWork.watch",
   "dailyWork.preset",
   "dailyWork.confirm",
   "dailyWork.refresh",

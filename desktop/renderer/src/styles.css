@@ -344,3 +344,6 @@ button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:under
 .reference-picker blockquote{white-space:pre-wrap;max-height:230px;overflow:auto}
 .composer-reference{align-self:flex-start;font-size:12px}
 .reference-source{display:block;margin:4px 0 0 auto}
+.assistant-watch-editor{display:grid;gap:.7rem}
+.assistant-watch-editor label{display:grid;gap:.3rem}
+.assistant-watch-editor input,.assistant-watch-editor select,.assistant-watch-editor textarea{width:100%;min-width:0}

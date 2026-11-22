@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
@@ -71,6 +72,20 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.ok((await phone.call('hello')).capabilities.includes('assistant_daily_work'));
   await assert.rejects(phone.call('dailyWork.today',{roomId:'foreign-room'}),/assistant_scope_required/);
   await assert.rejects(phone.call('dailyWork.confirm',{roomId:'foreign-room',operationId:'foreign-daily-plan'}),/assistant_scope_required/);
+  assert.ok((await phone.call('hello')).capabilities.includes('assistant_watch'));
+  const watchId=randomUUID(),watchClock=Date.now();
+  const watch={action:'create',id:watchId,draft:{title:'确认验收回信',condition:'核对原文的日期和责任人',kind:'waiting',checkAt:watchClock+60000,stopAt:watchClock+120000}};
+  const watchResult=await dispatchDesktop(api,'changeDailyWatch',[watch]) as {items:{id:string}[]};
+  assert.equal(watchResult.items[0]?.id,watchId);
+  await assert.rejects(hostRequest(root,'kteam-companion','/v1/assistant/daily/watches'),/assistant_scope_required/);
+  await assert.rejects(phone.call('dailyWork.watches',{roomId:'foreign-room'}),/assistant_scope_required/);
+  assert.equal((await phone.call('dailyWork.watches',{roomId:assistant.roomId})).items[0].id,watchId);
+  const pause={roomId:assistant.roomId,action:'pause',id:watchId,expectedRevision:1,operationId:'mobile-watch-pause'};
+  assert.equal((await phone.call('dailyWork.watch',pause)).items[0].state,'paused');
+  assert.equal((await phone.call('dailyWork.watch',pause)).items[0].revision,2);
+  const saved=await phone.call('operations.get',{operationId:pause.operationId});
+  assert.equal(saved.result.items[0].state,'paused');
+  assert.equal((await api.dailyWatches()).items[0].state,'paused');
   const presetInput={preset:'morning',expectedRevision:0,expectedDraftId:null};
   await assert.rejects(hostRequest(root,'kteam-companion','/v1/assistant/daily/preset',presetInput),/assistant_scope_required/);
   const firstChoice=await dispatchDesktop(api,'chooseDailyWorkPreset',[presetInput]) as Awaited<ReturnType<import('../src/service/assistant-daily.js').AssistantDaily['choosePreset']>>;
@@ -122,9 +137,10 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.equal((await phone.call('dailyWork.today',phoneScope)).config.schedule.evening,'17:30');
   assert.equal((await phone.call('dailyWork.refresh',{...phoneScope,operationId:'mobile-daily-refresh'})).revision,2);
   await api.changeMobileSettings({action:'revoke',id:device.deviceId});
-  await assert.rejects(phone.call('dailyWork.plan',phoneScope));
+  await assert.rejects(phone.call('dailyWork.watches',phoneScope));
   await host.close();
   host=await startHost({root,upstream:options});
+  assert.equal((await api.dailyWatches()).items[0].state,'paused');
   const today=await api.dailyWorkToday();
   assert.equal(today.revision,2);
   assert.equal(today.config.schedule.morning,'09:15');
