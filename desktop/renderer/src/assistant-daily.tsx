@@ -161,7 +161,7 @@ export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:
    <div><strong>{item.title}</strong><small>{item.source.label}{item.deadline?' · '+format(item.deadline,timeZone):''}</small><p>{item.detail}</p></div>
    <div className="assistant-daily-actions">
     {(item.url||item.source.kind==='mail')&&<button className="secondary" disabled={busy} onClick={()=>loadOriginal(item.id)}>看原文</button>}
-    {(item.source.kind==='mail'||item.source.kind==='yzj-message')&&<button className="secondary" disabled={busy} onClick={()=>setReply({item,text:null})}>准备回复</button>}
+    {(item.source.kind==='mail'||item.source.kind==='yzj-message'&&item.originalId)&&<button className="secondary" disabled={busy} onClick={()=>setReply({item,text:null})}>准备回复</button>}
     {item.source.kind==='yzj-message'&&item.originalId&&<button className="secondary" disabled={busy} onClick={()=>setWatchReference(item.id)}>请小 K 盯这件事</button>}
     {destinations.length>0&&<button className="secondary" disabled={busy} onClick={()=>prepareTask(item)}>转任务</button>}
     {view?.items.some(row=>row.id===item.id)&&<button className="secondary" disabled={busy} onClick={()=>void act(async()=>setView(await api.snoozeDailyWork({id:item.id})))}>一小时后再看</button>}

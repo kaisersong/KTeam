@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -8,7 +8,7 @@ import {AssistantDailySources} from '../src/service/assistant-daily-sources.js';
 import {AssistantWatch} from '../src/service/assistant-watch.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {watchDisplay} from '../src/protocol/assistant-watch.js';
-import type {DailyItem} from '../src/protocol/assistant-daily-types.js';
+import {yzjRecentGroupsId,type DailyItem} from '../src/protocol/assistant-daily-types.js';
 
 test('manual checks survive restart, distinguish missed and completed, and reject conflicting edits',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-watch-'));
@@ -97,7 +97,6 @@ test('calendar coverage ignores expected exclusions but reports malformed or exp
 
 test('cloud chat reads the selected conversation within the pinned CLI limit and surfaces direct replies without an @',async()=>{
  const now=Date.parse('2026-11-23T09:00:00Z'),calls:string[][]=[];
- const {createHash}=await import('node:crypto');
  const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
  const source=new AssistantDailySources({} as never,{
   view:async()=>({connectors:[]}),
@@ -114,4 +113,42 @@ test('cloud chat reads the selected conversation within the pinned CLI limit and
  assert.deepEqual(calls,[['whoami'],['im','message','list','--group-id','me-coworker','--type','newest','--limit','20']]);
  assert.deepEqual(result.items.map(item=>item.originalId),['other']);
  assert.equal(result.partial,true);
+});
+
+test('the recent-groups scope pages to 30 groups and only reopens groups that changed',async()=>{
+ const now=Date.parse('2026-11-23T09:00:00Z'),reads:string[]=[],pages:string[]=[];
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const groups=Array.from({length:36},(_,index)=>({groupType:index===0?1:2,groupId:'g'+index,groupName:'Protected name',lastMsgId:'latest-'+index,lastMsgSendTime:'2026-11-23 16:59:58.000'}));
+ let ownMessage=false;
+ const source=new AssistantDailySources({} as never,{
+  view:async()=>({connectors:[]}),
+  dailyYzj:async(args:string[])=>{
+   if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me',tokenStatus:'valid'};
+   if(args[1]==='group'){
+    assert.deepEqual(args.slice(0,6),['im','group','recent','--limit','20','--page']);
+    const page=Number(args[6]);pages.push(String(page));
+    return {list:groups.slice((page-1)*20,page*20),more:page===1};
+   }
+   const id=args[4]!;
+   assert.deepEqual(args.slice(0,10),['im','message','list','--group-id',id,'--type','newest','--limit','20','--jq']);
+   reads.push(id);
+   const latest={msgId:'other-'+id,fromOpenId:'coworker',sendTime:'2026-11-23 16:59:58.000',content:'Protected project text'};
+   return {list:ownMessage&&id==='g1'?[{...latest,msgId:'own-message',fromOpenId:'me',sendTime:now-1000},latest]:[latest]};
+  },
+ } as never);
+ const config={kind:'yzj-message' as const,id:yzjRecentGroupsId,label:'最近 30 个群',account:hash(['fixture-org','me']),revision:hash(['fixture-org','me',null])};
+ const scan=(recent?:{items:DailyItem[];cursors:NonNullable<Awaited<ReturnType<AssistantDailySources['scan']>>['recentCursors']>})=>
+  source.scan(config,now-60000,now,'UTC',new AbortController().signal,recent);
+ const first=await scan();
+ assert.deepEqual(pages,['1','2']);
+ assert.equal(reads.length,30);
+ assert.ok(!reads.includes('g0')&&!reads.includes('g31'));
+ assert.equal(first.items.length,30);
+ assert.doesNotMatch(JSON.stringify(first.items),/Protected name|Protected project text/);
+ assert.ok(first.partial);
+ groups[1]!.lastMsgId='own-message';
+ ownMessage=true;
+ const second=await scan({items:first.items,cursors:first.recentCursors!});
+ assert.deepEqual(reads.slice(30),['g1']);
+ assert.deepEqual(second.items.map(item=>item.id),first.items.map(item=>item.id));
 });

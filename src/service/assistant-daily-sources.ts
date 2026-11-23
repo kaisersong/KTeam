@@ -4,6 +4,7 @@ import {sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailySource, type DailyItem, type DailySource} from '../protocol/assistant-daily.js';
 import {readIntegrations, runtimeIntegrationRevision} from './integration-settings.js';
+import {isYzjRecentGroups,yzjRecentGroupsId,yzjRecentGroupsLimit} from '../protocol/assistant-daily-types.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
 import type {MailConnectors} from './mail-connectors.js';
 
@@ -41,6 +42,28 @@ function urlFor(value:string,domains?:string[]) {
 }
 const yzjDomains=['yunzhijia.com','yunzhijia.cn','kdweibo.com','kdweibo.cn'];
 
+type RecentCursor={lastId:string;itemId?:string};
+export type RecentGroupCursors=Record<string,RecentCursor>;
+type RecentSnapshot={items:DailyItem[];cursors:RecentGroupCursors};
+export type DailySourceScan={items:DailyItem[];partial:boolean;recentCursors?:RecentGroupCursors};
+const messageRows=(value:unknown)=>rows(value,'list','messages','items').map(row=>row.message&&typeof row.message==='object'?object(row.message):row);
+const recentGroupFields='{success:.success,data:{more:.data.more,list:[.data.list[]|{groupId,groupType,lastMsgId,lastMsgSendTime}]}}';
+const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:(if (.content|type)=="string" then .content[:300] else null end)}]}}';
+
+const mentionsUser=(entry:Record<string,unknown>,user:string)=>{
+ const mentions=entry.atOpenIds??entry.mentionOpenIds??entry.notifyToOpenIds;
+ return Array.isArray(mentions)&&mentions.includes(user);
+};
+const messageAuthor=(entry:Record<string,unknown>)=>field(entry,'senderOpenId','fromOpenId','openId');
+function yzjMessageTime(value:unknown){
+ // The CLI serializes local IM timestamps without an offset. The same response
+ // pairs forwarded local times with epoch timestamps at UTC+08:00.
+ if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?$/.test(value))
+  return Date.parse(value.replace(' ','T')+'+08:00');
+ return when(value);
+}
+const messageTime=(entry:Record<string,unknown>)=>yzjMessageTime(entry.sendTime??entry.createTime??entry.timestamp);
+
 export class AssistantDailySources {
  constructor(private mail:MailConnectors,private enterprise:EnterpriseConnectors){}
  private async yzjIdentity(signal?:AbortSignal) {
@@ -58,6 +81,7 @@ export class AssistantDailySources {
   if(!includeYzj)return {sources,yzjAvailable:false};
   try {
    const {account,revision}=await this.yzjIdentity(signal);
+   sources.push({kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群 · 每 15 分钟',account,revision});
    sources.push({kind:'yzj-calendar',id:'calendar',label:'云之家日程和会议',account,revision});
    const result=await Promise.allSettled([
     this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page','1'],signal),
@@ -88,7 +112,7 @@ export class AssistantDailySources {
  async newsSource(topic:string):Promise<DailySource> {
   return dailySource.parse({kind:'news',id:topic,label:topic,account:'public',revision:await runtimeIntegrationRevision()});
  }
- async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal):Promise<{items:DailyItem[];partial:boolean}> {
+ async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal,recent?:RecentSnapshot):Promise<DailySourceScan> {
   const item=(id:string,title:string,detail:string,observedAt:number,more:Partial<DailyItem>={}):DailyItem=>({
    id:digest([source.kind,source.account,source.id,id]),source,title,detail,observedAt,urgent:false,...more,
   });
@@ -119,16 +143,15 @@ export class AssistantDailySources {
   if(source.kind==='yzj-message') {
    const identity=await this.yzjIdentity(signal);
    if(identity.account!==source.account||identity.revision!==source.revision)throw new KTeamError('daily_source_changed',409);
-   const value=await this.enterprise.dailyYzj(['im','message','list','--group-id',source.id,'--type','newest','--limit','20'],signal);
+   if(isYzjRecentGroups(source))return this.recentGroups(source,identity.user,from,now,signal,recent);
+   const value=await this.messagePage(source.id,signal);
    const conversation=object(object(value).group);
    const directConversation=conversation.groupType===1||source.id.startsWith(identity.user+'-')||source.id.endsWith('-'+identity.user);
-   return {items:rows(value,'list','messages','items').flatMap(row=>{
-    const entry=row.message&&typeof row.message==='object'?object(row.message):row;
-    const id=field(entry,'msgId','messageId','id'),sender=field(entry,'senderOpenId','fromOpenId','openId');
-    const stamp=when(entry.sendTime??entry.createTime??entry.timestamp);
-    const mentions=entry.atOpenIds??entry.mentionOpenIds??entry.notifyToOpenIds;
+   return {items:messageRows(value).flatMap(entry=>{
+    const id=field(entry,'msgId','messageId','id'),sender=messageAuthor(entry);
+    const stamp=messageTime(entry);
     const direct=directConversation||entry.groupType===1||entry.groupType==='private'||entry.chatType==='private';
-    const addressed=Array.isArray(mentions)&&mentions.includes(identity.user);
+    const addressed=mentionsUser(entry,identity.user);
     if(!id||!sender||sender===identity.user||!Number.isFinite(stamp)||stamp<from||!direct&&!addressed)return [];
     const title=addressed?'有人在云之家 @了你':'收到云之家私聊消息';
     return [item(id,title,field(entry,'content','text')||'请在原会话核对内容',stamp,{originalId:id,url:urlFor(field(entry,'webUrl','url'),yzjDomains)})];
@@ -157,6 +180,59 @@ export class AssistantDailySources {
     deadline:meeting.start, originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
    });
   }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)||Number(object(value).count)>entries.length};
+ }
+ private messagePage(groupId:string,signal:AbortSignal,bounded=false){
+  return this.enterprise.dailyYzj(['im','message','list','--group-id',groupId,'--type','newest','--limit','20',...(bounded?['--jq',recentMessageFields]:[])],signal);
+ }
+ private async recentGroups(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
+  const groups=new Map<string,{lastId:string;lastAt:number}>();
+  for(let page=1;page<=5&&groups.size<yzjRecentGroupsLimit;page++){
+   signal.throwIfAborted();
+   const response=object(await this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page',String(page),'--jq',recentGroupFields],signal));
+   for(const group of rows(response,'list')){
+    const id=field(group,'groupId');
+    if(group.groupType!==2||!id||groups.has(id))continue;
+    const last=object(group.lastMsg);
+    groups.set(id,{lastId:field(group,'lastMsgId')||field(last,'msgId'),lastAt:yzjMessageTime(group.lastMsgSendTime??last.sendTime)});
+    if(groups.size===yzjRecentGroupsLimit)break;
+   }
+   if(response.more!==true)break;
+  }
+  const cut=Math.max(from,now-86400000);
+  const cursors:RecentGroupCursors={};
+  const items:DailyItem[]=[];
+  const known=new Map(previous?.items.map(item=>[item.id,item]));
+  const targets=[...groups];
+  for(let index=0;index<targets.length;index+=4){
+   signal.throwIfAborted();
+   const checked=await Promise.allSettled(targets.slice(index,index+4).map(async([groupId,{lastId,lastAt}])=>{
+    const key=digest([source.account,groupId]);
+    const cursor=previous?.cursors[key];
+    const prior=cursor?.itemId?known.get(cursor.itemId):undefined;
+    if(Number.isFinite(lastAt)&&lastAt<cut)return {key,lastId};
+    if(lastId&&cursor?.lastId===lastId)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
+    const messages=messageRows(await this.messagePage(groupId,signal,true)).filter(message=>{
+     const author=messageAuthor(message),stamp=messageTime(message);
+     return Boolean(author&&author!==user&&stamp>=cut&&stamp<=now);
+    });
+    const latest=messages.sort((a,b)=>messageTime(b)-messageTime(a))[0];
+    const latestId=latest&&field(latest,'msgId','messageId','id');
+    const attention=messages.filter(message=>mentionsUser(message,user)||/请.{0,12}(确认|审批|核对|处理)|需要.{0,8}(决定|确认)|截止/.test(field(message,'content','text'))).length;
+    const item:DailyItem|undefined=latestId?{
+     id:digest([key,latestId]),source,title:'一个近期群有消息待查看',detail:'本次可见 '+messages.length+' 条其他成员的消息。'+(attention?'其中 '+attention+' 条含待核对线索。':''),
+     observedAt:messageTime(latest),urgent:messages.some(message=>mentionsUser(message,user)),
+    }:undefined;
+    return {key,lastId,item};
+   }));
+   signal.throwIfAborted();
+   for(const result of checked)if(result.status==='fulfilled'){
+    const {key,lastId,item}=result.value;
+    if(lastId)cursors[key]={lastId,itemId:item?.id};
+    if(item)items.push(item);
+   }
+   if(checked.every(result=>result.status==='rejected'))break;
+  }
+  return {items,partial:true,recentCursors:cursors};
  }
  async original(item:DailyItem) {
   if(item.source.kind==='mail'&&item.originalId)return {mail:await this.mail.dailyRead(item.source.id,item.originalId)};

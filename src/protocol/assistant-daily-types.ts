@@ -1,5 +1,9 @@
 export const dailySlots = ['morning', 'midday', 'evening'] as const;
 export const dailySlotLabels = {morning:'早报', midday:'午报', evening:'晚报'} as const;
+export const yzjRecentGroupsId = 'recent-groups-30';
+export const yzjRecentGroupsLimit = 30;
+export const yzjRecentGroupsInterval = 15*60000;
+export const isYzjRecentGroups=(source:DailySource)=>source.kind==='yzj-message'&&source.id===yzjRecentGroupsId;
 export const dailyKinds = ['mail','yzj-message','yzj-calendar','yzj-doc','news'] as const;
 export type DailySlot = typeof dailySlots[number];
 export type DailySourceKind = typeof dailyKinds[number];

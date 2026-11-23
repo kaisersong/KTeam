@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {AssistantDaily} from '../src/service/assistant-daily.js';
+import {yzjRecentGroupsId} from '../src/protocol/assistant-daily-types.js';
 import {dailyTimes,defaultDaily,type DailyItem,type DailySource} from '../src/protocol/assistant-daily.js';
 import {TeamStore} from '../src/service/team-store.js';
 
@@ -128,5 +129,37 @@ test('scheduled briefs are queued once for fresh nonempty runs and never replay 
   const late=await daily.refresh();
   assert.equal(late.briefs[0]?.slot,'morning');
   assert.equal(sent.length,2);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('recent groups refresh every fifteen minutes and a scheduled brief uses the fresh observation',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-group-cadence-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room';
+ let now=Date.parse('2026-11-23T08:19:00Z'),scans=0,sends=0;
+ const source:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群',account:'fixture',revision:'1'};
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now,skips:[],config:{...defaultDaily('UTC'),sources:[source]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[source],yzjAvailable:true}),current:async()=>true,newsSource:async()=>assert.fail('not a news plan'),
+  original:async()=>({url:undefined}),scan:async(_source,_from,_now,_zone,_signal,previous)=>{
+   scans++;
+   if(scans===2)assert.equal(previous?.cursors['fixture']?.lastId,'msg-fixture');
+   return {items:[{id:'fixture-group',source,title:'待查看',detail:'两项',observedAt:now,urgent:true}],partial:true,recentCursors:{fixture:{lastId:'msg-fixture',itemId:'fixture-group'}}};
+  },
+ },()=>roomId,()=>now,async()=>{},async()=>{sends++;return 'brief-message';});
+ try{
+  await daily['run'](false);
+  now=Date.parse('2026-11-23T08:30:00Z');
+  await daily['run'](false);
+  assert.equal(scans,1);
+  assert.equal(sends,1);
+  now=Date.parse('2026-11-23T08:33:59Z');
+  await daily['run'](false);
+  assert.equal(scans,1);
+  now=Date.parse('2026-11-23T08:34:00Z');
+  await daily['run'](false);
+  assert.equal(scans,2);
+  assert.equal(sends,1);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });

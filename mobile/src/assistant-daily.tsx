@@ -150,7 +150,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
     else if(typeof original.url==="string"&&original.url.startsWith("https://"))await Linking.openURL(original.url);
     else setError("来源没有提供可打开的原文链接。");
    })}>看原文</ToolButton>}
-   {["mail","yzj-message"].includes(item.source.kind)&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setReply({item});setOpened(undefined);setTask(undefined);}}>准备回复</ToolButton>}
+   {(item.source.kind==="mail"||item.source.kind==="yzj-message"&&item.originalId)&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setReply({item});setOpened(undefined);setTask(undefined);}}>准备回复</ToolButton>}
    {item.source.kind==="yzj-message"&&item.originalId&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>setWatchReference(item.id)}>请小 K 盯这件事</ToolButton>}
    {!!rooms.length&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setTask(item);setOpened(undefined);setReply(undefined);}}>转任务</ToolButton>}
    {today&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>void act(async()=>setView(await mutate("dailyWork.snooze",{roomId,id:item.id})))}>一小时后再看</ToolButton>}
