@@ -8,16 +8,19 @@ import {findOwnerMessage} from './room-reads.js';
 import type {TeamStore} from './team-store.js';
 
 const kinds:Record<DailySourceKind,string>={
- mail:'待查看邮件','yzj-message':'待查看云之家消息','yzj-calendar':'日程','yzj-doc':'更新的知识库文档',news:'关注资讯',
+ mail:'待查看邮件','yzj-message':'待查看云之家消息','yzj-calendar':'日程和会议','yzj-doc':'更新的知识库文档',news:'关注资讯',
 };
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
 
 /** The transcript can be cached on paired devices. Keep source content in the revalidated brief view. */
-export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[]){
+export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],at:number,timeZone:string){
  if(!items.length)return undefined;
  const counts=new Map<DailySourceKind,number>();
  for(const item of items)counts.set(item.source.kind,(counts.get(item.source.kind)??0)+1);
  const lines=Array.from(counts,([kind,count])=>'- '+kinds[kind]+' '+count+' 项');
+ const next=items.filter(item=>item.source.kind==='yzj-calendar'&&(item.deadline??0)>at)
+  .map(item=>item.deadline!).sort((a,b)=>a-b)[0];
+ if(next!==undefined)lines.push('下一项日程 '+new Intl.DateTimeFormat('zh-CN',{timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(next)+'。');
  const urgent=items.filter(item=>item.urgent).length;
  return ['**'+day+' '+dailySlotLabels[slot]+'**',...lines,
   ...(urgent?['其中 '+urgent+' 项需要优先核对。']:[]),'打开会话顶部「简报」查看详情。'].join('\n');

@@ -58,7 +58,7 @@ export class AssistantDailySources {
   if(!includeYzj)return {sources,yzjAvailable:false};
   try {
    const {account,revision}=await this.yzjIdentity(signal);
-   sources.push({kind:'yzj-calendar',id:'calendar',label:'云之家日程',account,revision});
+   sources.push({kind:'yzj-calendar',id:'calendar',label:'云之家日程和会议',account,revision});
    const result=await Promise.allSettled([
     this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page','1'],signal),
     this.enterprise.dailyYzj(['doc','workspace','list'],signal),
@@ -119,12 +119,15 @@ export class AssistantDailySources {
   if(source.kind==='yzj-message') {
    const identity=await this.yzjIdentity(signal);
    if(identity.account!==source.account||identity.revision!==source.revision)throw new KTeamError('daily_source_changed',409);
-   const value=await this.enterprise.dailyYzj(['im','message','list','--group-id',source.id,'--type','newest','--limit','30'],signal);
-   return {items:rows(value,'list','messages','items').flatMap(entry=>{
+   const value=await this.enterprise.dailyYzj(['im','message','list','--group-id',source.id,'--type','newest','--limit','20'],signal);
+   const conversation=object(object(value).group);
+   const directConversation=conversation.groupType===1||source.id.startsWith(identity.user+'-')||source.id.endsWith('-'+identity.user);
+   return {items:rows(value,'list','messages','items').flatMap(row=>{
+    const entry=row.message&&typeof row.message==='object'?object(row.message):row;
     const id=field(entry,'msgId','messageId','id'),sender=field(entry,'senderOpenId','fromOpenId','openId');
     const stamp=when(entry.sendTime??entry.createTime??entry.timestamp);
-    const mentions=entry.atOpenIds??entry.mentionOpenIds;
-    const direct=entry.groupType==='private'||entry.chatType==='private';
+    const mentions=entry.atOpenIds??entry.mentionOpenIds??entry.notifyToOpenIds;
+    const direct=directConversation||entry.groupType===1||entry.groupType==='private'||entry.chatType==='private';
     const addressed=Array.isArray(mentions)&&mentions.includes(identity.user);
     if(!id||!sender||sender===identity.user||!Number.isFinite(stamp)||stamp<from||!direct&&!addressed)return [];
     const title=addressed?'有人在云之家 @了你':'收到云之家私聊消息';
@@ -132,14 +135,14 @@ export class AssistantDailySources {
    }),partial:true};
   }
   const today=calendarWindow(new Date(now),timeZone).today;
-  const tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10);
-  const value=await this.enterprise.dailyYzj(['calendar','event','list','--start',today,'--end',tomorrow],signal);
+  const value=await this.enterprise.dailyYzj(['calendar','event','list','--start',today,'--end',today],signal);
   const entries=rows(value,'list','events','items');
   let incomplete=false;
   const meetings=entries.flatMap(entry=>{
-   const start=when(entry.startTime??entry.start),end=when(entry.endTime??entry.end);
+   const start=when(entry.startTime??entry.startDate??entry.start),end=when(entry.endTime??entry.endDate??entry.end);
    const id=field(entry,'id','eventId'),title=field(entry,'title','summary');
-   if(entry.cancelled===true||['cancelled','canceled','declined'].includes(field(entry,'status','responseStatus')))return [];
+   if(entry.cancelled===true||when(entry.cancelDate)>0||
+    ['cancelled','canceled','declined'].some(status=>status===field(entry,'status')||status===field(entry,'responseStatus')))return [];
    if(!id||!title||!Number.isFinite(start)||!Number.isFinite(end)||end<=start){incomplete=true;return [];}
    if(end<now)return [];
    return [{entry,start,end,id,title}];
@@ -153,7 +156,7 @@ export class AssistantDailySources {
     urgent:conflicts.length>0&&meeting.start<=now+2*3600000,
     deadline:meeting.start, originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
    });
-  }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)};
+  }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)||Number(object(value).count)>entries.length};
  }
  async original(item:DailyItem) {
   if(item.source.kind==='mail'&&item.originalId)return {mail:await this.mail.dailyRead(item.source.id,item.originalId)};

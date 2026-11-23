@@ -123,6 +123,10 @@ export class AssistantDaily {
   if((plan?.revision??0)!==input.expectedRevision)throw new KTeamError('daily_plan_changed',409);
   if(draft?.preset===input.preset&&draft.previousRevision===input.expectedRevision)return this.planView();
   if((draft?.id??null)!==input.expectedDraftId)throw new KTeamError('daily_plan_changed',409);
+  if(input.preset==='sources'){
+   if(!draft)this.propose({},'daily-source-edit');
+   return this.planView();
+  }
   const {schedule,middayUrgentOnly}=dailyPresets[input.preset];
   this.propose({schedule,middayUrgentOnly,paused:false},'daily-preset:'+input.preset,input.preset);
   return this.planView();
@@ -368,7 +372,7 @@ export class AssistantDaily {
     guard();
     if(await this.current(item.source,allowed,signal))visible.push(item);
    }
-   const body=dailyBriefMessage(brief.day,brief.slot,visible);
+   const body=dailyBriefMessage(brief.day,brief.slot,visible,brief.at,plan.config.timeZone);
    const assertEligible=async()=>{
     await this.verifyScope?.();
     guard();

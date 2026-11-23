@@ -188,6 +188,10 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
   </View>}
   {!showChoices&&plan?.draft&&<PlanCard key={plan.draft.id} {...props} roomId={roomId} draft={plan.draft} previous={plan.config} onSaved={load} onChoose={()=>setShowChoices(true)}/>}
   {!showChoices&&plan?.config&&!plan.draft&&<View style={styles.actions}>
+   <ToolButton colors={colors} disabled={disabled||pending} onPress={()=>void act(async()=>{
+    const next=await mutate("dailyWork.preset",{roomId,preset:"sources",expectedRevision:plan.revision,expectedDraftId:null});
+    lastId.current++;setPlan(next);
+   })}>{plan.config.sources.length?"调整读取来源":"选择读取来源"}</ToolButton>
    <ToolButton colors={colors} disabled={disabled} onPress={()=>setShowChoices(true)}>更换简报安排</ToolButton>
    <ToolButton colors={colors} disabled={disabled} onPress={()=>onDraft(roomId,"我想自定义每日工作。")}>在对话中调整</ToolButton>
   </View>}

@@ -36,7 +36,7 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
  const [loadError,setLoadError]=useState('');
  const [choiceError,setChoiceError]=useState('');
  const [showChoices,setShowChoices]=useState(false);
- const [choosing,setChoosing]=useState<DailyPreset>();
+ const [choosing,setChoosing]=useState<DailyPreset|'sources'>();
  const request=useRef(0);
  const load=useCallback(async()=>{
   const id=++request.current;
@@ -51,7 +51,7 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
   return ()=>{clearInterval(timer);request.current++;};
  },[load]);
  if(!data)return loadError?<p className="settings-error" role="alert">{loadError}</p>:null;
- const choose=async(preset:DailyPreset)=>{
+ const choose=async(preset:DailyPreset|'sources')=>{
   if(choosing)return;
   setChoosing(preset);setChoiceError('');
   try{
@@ -83,6 +83,9 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
  if(!data.config)return null;
  return <div className="assistant-daily-plan-receipt">
   <strong>{describePlan(data.config)}</strong>
+  <button type="button" className="secondary" disabled={Boolean(choosing)} onClick={()=>void choose('sources')}>{data.config.sources.length?'调整读取来源':'选择读取来源'}</button>
+  {!data.config.sources.length&&<span>当前未设置读取来源。</span>}
+  {choiceError&&<p role="alert">{choiceError}</p>}
   {data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}
   <button className="secondary" onClick={()=>setShowChoices(true)}>更换简报安排</button>
   <button className="secondary" onClick={onPlan}>在对话中调整</button>

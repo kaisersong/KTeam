@@ -149,6 +149,12 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.equal(today.config.schedule.morning,'09:15');
   assert.equal(today.config.schedule.evening,'17:30');
   assert.equal(today.draft,undefined);
+  const sourceEdit=await api.chooseDailyWorkPreset({preset:'sources',expectedRevision:today.revision,expectedDraftId:null});
+  assert.deepEqual(sourceEdit.draft.config.schedule,today.config.schedule);
+  assert.deepEqual(sourceEdit.draft.config.weekdays,today.config.weekdays);
+  assert.deepEqual(sourceEdit.draft.config.sources,today.config.sources);
+  assert.equal(sourceEdit.revision,today.revision);
+
   const store=new TeamStore(root);
   try{
    const publish=dailyBriefPublisher(upstream.upstream,store,new TeamCoordinator(upstream.upstream,store,host.epoch),()=>({roomId:assistant.roomId,botId:assistant.botId}),host.epoch);

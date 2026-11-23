@@ -50,7 +50,7 @@ export const dailyPresets = {
 export type DailyPreset = keyof typeof dailyPresets;
 export const dailyPresetIds = ['morning','twice','three'] as const satisfies readonly DailyPreset[];
 export interface DailyPresetSelection {
- preset:DailyPreset;
+ preset:DailyPreset|'sources';
  expectedRevision:number;
  expectedDraftId:string|null;
 }

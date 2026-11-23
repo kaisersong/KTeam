@@ -78,11 +78,12 @@ test('a changed, missing or revoked source cannot disclose linked details or sil
 
 test('calendar coverage ignores expected exclusions but reports malformed or explicitly paginated results',async()=>{
  const now=Date.parse('2026-11-23T09:00:00Z');
- const future={id:'meeting',title:'决定接口',startTime:'2026-11-23T10:00:00Z',endTime:'2026-11-23T11:00:00Z'};
+ const future={id:'meeting',title:'决定接口',startDate:Date.parse('2026-11-23T10:00:00Z'),endDate:Date.parse('2026-11-23T11:00:00Z')};
+ const withdrawn={...future,id:'withdrawn',cancelDate:Date.parse('2026-11-23T08:10:00Z')};
  const past={id:'past',title:'过去的会议',startTime:'2026-11-23T07:00:00Z',endTime:'2026-11-23T08:00:00Z'};
- let data:unknown={events:[future,past,{id:'withdrawn',status:'cancelled'}]};
+ let data:unknown={list:[future,past,withdrawn,{id:'cancelled',status:'cancelled'}],count:4};
  const source=new AssistantDailySources({} as never,{dailyYzj:async(args:string[])=>{
-  assert.deepEqual(args,['calendar','event','list','--start','2026-11-23','--end','2026-11-24']);
+  assert.deepEqual(args,['calendar','event','list','--start','2026-11-23','--end','2026-11-23']);
   return data;
  }} as never);
  const scan=()=>source.scan({kind:'yzj-calendar',id:'calendar',label:'日程',account:'test',revision:'1'},now,now,'UTC',new AbortController().signal);
@@ -90,6 +91,27 @@ test('calendar coverage ignores expected exclusions but reports malformed or exp
  assert.equal((await scan()).partial,false);
  data={events:[future,{id:'malformed'}]};
  assert.equal((await scan()).partial,true);
- data={events:[future],hasMore:true};
+ data={list:[future],count:2};
  assert.equal((await scan()).partial,true);
+});
+
+test('cloud chat reads the selected conversation within the pinned CLI limit and surfaces direct replies without an @',async()=>{
+ const now=Date.parse('2026-11-23T09:00:00Z'),calls:string[][]=[];
+ const {createHash}=await import('node:crypto');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const source=new AssistantDailySources({} as never,{
+  view:async()=>({connectors:[]}),
+  dailyYzj:async(args:string[])=>{
+   calls.push(args);
+   if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me',tokenStatus:'valid'};
+   return {list:[
+    {message:{msgId:'other',fromOpenId:'coworker',sendTime:now-500,content:'已交付'}},
+    {msgId:'mine',fromOpenId:'me',sendTime:now-500,content:'我方发送'},
+   ]};
+  },
+ } as never);
+ const result=await source.scan({kind:'yzj-message',id:'me-coworker',label:'测试私聊',account:hash(['fixture-org','me']),revision:hash(['fixture-org','me',null])},now-60000,now,'UTC',new AbortController().signal);
+ assert.deepEqual(calls,[['whoami'],['im','message','list','--group-id','me-coworker','--type','newest','--limit','20']]);
+ assert.deepEqual(result.items.map(item=>item.originalId),['other']);
+ assert.equal(result.partial,true);
 });

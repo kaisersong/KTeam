@@ -28,7 +28,7 @@ export const dailyChange = z.object({
  removeSourceKinds:z.array(dailyKind).max(5).optional(),
 }).strict() satisfies z.ZodType<DailyChange>;
 export const dailyPresetSelection = z.object({
- preset:z.enum(dailyPresetIds), expectedRevision:revision, expectedDraftId:z.string().uuid().nullable(),
+ preset:z.enum([...dailyPresetIds,'sources']), expectedRevision:revision, expectedDraftId:z.string().uuid().nullable(),
 }).strict();
 export const dailyCommit = z.object({id:z.string().uuid(),expectedRevision:revision,sources:z.array(dailySource).max(24)}).strict();
 export const dailySourceKey = (source:DailySource) => JSON.stringify([source.kind,source.account,source.id]);
