@@ -167,12 +167,15 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.equal(message.text,body);
    assert.equal(message.responsePolicy,'none');
    const noticeBody=dailyMessageNotice([{id:'chat-notice',title:'private title',detail:'private content',observedAt:Date.now(),urgent:true,
-    source:{kind:'yzj-message',id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}}])!;
+    messageAttention:{kind:'schedule',group:'验收群',text:'今天的例会取消',at:Date.now()},
+    source:{kind:'yzj-message',id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}}],'Asia/Shanghai')!;
    const noticeId=await publish({...input,kind:'message-notice',id:'assistant-daily-message-fixture',body:noticeBody});
    const notice=(await upstream.upstream.conversationMessage(assistant.roomId,noticeId)).message;
    assert.equal(notice.sender.logicalAgentId,assistant.botId);
    assert.equal(notice.responsePolicy,'none');
-   assert.match(notice.text,/云之家有 1 个群出现新消息/);
+   assert.match(notice.text,/日程变更 · 验收群/);
+   assert.match(notice.text,/今天的例会取消/);
+   assert.match(notice.text,/核对你的日历/);
    assert.doesNotMatch(notice.text,/private (title|content)/);
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}

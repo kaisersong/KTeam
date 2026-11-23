@@ -45,7 +45,7 @@ interface Brief {
  revision:number;
 }
 type PublishBrief=(input:BriefDelivery)=>Promise<string>;
-type MessageNoticeState={seen:Record<string,number>;receipt:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
+type MessageNoticeState={version?:1;seen:Record<string,number>;receipt:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[]; recentCursors?:RecentGroupCursors;
 }
@@ -385,21 +385,22 @@ export class AssistantDaily {
   const now=this.now(),cutoff=now-messageNoticeWindow;
   const previous=this.store.state<MessageNoticeState>(messageNoticeKey);
   const seen=Object.fromEntries(Object.entries(previous?.seen??{}).filter(([,firstSeen])=>firstSeen>=cutoff));
-  const alreadyInBrief=new Set((this.store.operationsWithPrefix(briefPrefix).slice(0,3) as Brief[])
-   .filter(brief=>brief.at>=cutoff&&brief.delivery&&['attempted','sent','unconfirmed'].includes(brief.delivery))
-   .flatMap(brief=>brief.items.map(item=>item.id)));
+  const attentionCutoff=previous?.version===1?cutoff:now-60*60000;
   const items=new Map<string,DailyItem>();
   const checks=new Map<string,Promise<boolean>>();
   for(const scan of this.retained(plan)){
    const source=scan.coverage.source;
    if(!isDailyMessage(source)||scan.at<cutoff||scan.coverage.state==='unavailable'||
     !plan.config.sources.some(selected=>dailySourceKey(selected)===dailySourceKey(source)&&selected.revision===source.revision))continue;
-   const fresh=scan.items.filter(item=>item.observedAt>=cutoff&&item.observedAt<=now&&
-    !seen[item.id]&&!alreadyInBrief.has(item.id)&&!this.isSnoozed(item,now));
+   const fresh=scan.items.flatMap(item=>{
+    if(!item.messageAttention||item.messageAttention.at<attentionCutoff||item.messageAttention.at>now||this.isSnoozed(item,now))return [];
+    const key=sha(JSON.stringify([dailySourceKey(source),item.messageAttention]));
+    return seen[key]?[]:[{key,item}];
+   });
    if(!fresh.length||!await this.current(source,checks,signal))continue;
-   for(const item of fresh)items.set(item.id,item);
+   for(const {key,item} of fresh)items.set(key,item);
   }
-  const body=dailyMessageNotice([...items.values()]);
+  const body=dailyMessageNotice([...items.values()],plan.config.timeZone);
   if(!body)return;
   const deadline=now+briefDeliveryWindow;
   const assertEligible=async()=>{
@@ -412,15 +413,15 @@ export class AssistantDaily {
   };
   await assertEligible();
   const id='assistant-daily-message-'+sha(JSON.stringify([roomId,[...items.keys()].sort()]));
-  for(const item of items.values())seen[item.id]=now;
+  for(const key of items.keys())seen[key]=now;
   const receipt:MessageNoticeState['receipt']={id,status:'attempted'};
   // Once an attempt is reserved, a lost receipt or restart cannot send it twice.
-  this.store.setState(messageNoticeKey,{seen,receipt});
+  this.store.setState(messageNoticeKey,{version:1,seen,receipt});
   try{
    const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,deadline,guard:assertEligible});
-   this.store.setState(messageNoticeKey,{seen,receipt:{id,status:'sent',messageId}});
+   this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'sent',messageId}});
   }catch{
-   this.store.setState(messageNoticeKey,{seen,receipt:{id,status:'unconfirmed'}});
+   this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'unconfirmed'}});
   }
  }
  private async deliverBriefs(plan:Plan,guard:()=>void,signal:AbortSignal){

@@ -209,7 +209,7 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
  const roomId='assistant-room',start=Date.parse('2026-11-23T16:00:00Z');
  const source:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
  let now=start,current=true,attempts=0,unknown=false;
- let item:DailyItem={id:'fresh-first',source,title:'private title',detail:'private content',observedAt:start-60000,urgent:false,attentionCount:1};
+ let item:DailyItem={id:'fresh-first',source,title:'private title',detail:'private content',observedAt:start-60000,urgent:false,messageAttention:{kind:'decision',group:'验收群',text:'请确认验收事项',at:start-60000}};
  store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
  store.setState('assistant-daily-plan',{revision:1,changedAt:start,skips:[],config:{...defaultDaily('UTC'),sources:[source]}});
  const service=()=>new AssistantDaily(store,{
@@ -220,7 +220,9 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   await input.guard();
   assert.equal(input.kind,'message-notice');
   assert.equal(input.roomId,roomId);
-  assert.match(input.body,/云之家有 1 个群出现新消息/);
+  assert.match(input.body,/消息里需要关注的事项/);
+  assert.match(input.body,/验收群/);
+  assert.match(input.body,/请确认验收事项/);
   assert.doesNotMatch(input.body,/private (title|content)/);
   if(unknown)throw new Error('unknown delivery');
   return 'message-1';
@@ -232,7 +234,7 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   await daily.refresh();
   assert.equal(attempts,1);
   now+=15*60000;
-  item={...item,id:'fresh-second',observedAt:now};
+  item={...item,id:'fresh-second',observedAt:now,messageAttention:{...item.messageAttention!,at:now}};
   unknown=true;
   await daily['run'](false);
   assert.equal(attempts,2);
@@ -240,8 +242,11 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   daily=service();
   await daily.refresh();
   assert.equal(attempts,2);
+  item={...item,id:'noise',messageAttention:undefined};
+  await daily.refresh();
+  assert.equal(attempts,2);
   current=false;
-  item={...item,id:'revoked-item'};
+  item={...item,id:'revoked-item',messageAttention:{kind:'decision',group:'验收群',text:'请确认测试结果',at:now}};
   await daily.refresh();
   assert.equal(attempts,2);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}

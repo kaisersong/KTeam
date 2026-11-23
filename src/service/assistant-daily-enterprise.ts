@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto';
+import {sharedRuntime} from '../runtime/native.js';
+import {messageAttention} from './assistant-message-attention.js';
 import {KTeamError} from '../errors.js';
 import {dailySource,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyEnterpriseLabels,dailyEnterpriseProviders,recentGroupsLimit,type DailyEnterpriseProvider} from '../protocol/assistant-daily-types.js';
@@ -9,7 +11,7 @@ import type {DailySourceScan} from './assistant-daily-sources.js';
 type Row=Record<string,unknown>;
 type Identity={account:string;revision:string;user:string};
 type Event={id:string;title:string;start:number;end:number;busy:boolean};
-type Group={id:string;lastAt:number};
+type Group={id:string;lastAt:number;name:string};
 const day=86400000;
 const messageLimit=20;
 const midnights={kind:'daily',time:'00:00',weekdays:[1,2,3,4,5,6,7]} as const;
@@ -122,7 +124,7 @@ export class AssistantDailyEnterprise {
   for(const entry of entries){
    const id=string(entry.chat_id??entry.openConversationId??entry.group_id);
    if(!/^[A-Za-z0-9_+/=:@.-]{1,256}$/.test(id)||id.startsWith('-')||entry.chat_mode==='p2p'||entry.conversationType==='direct'||entry.chat_status==='dissolved'||entry.chat_status==='dissolved_save')continue;
-   groups.set(id,{id,lastAt:timestamp(entry.lastMsgCreateAt??entry.last_msg_time)});
+   groups.set(id,{id,name:string(entry.name??entry.chat_name??entry.group_name),lastAt:timestamp(entry.lastMsgCreateAt??entry.last_msg_time)});
   }
   const lastActivity=(group:Group)=>Number.isFinite(group.lastAt)?group.lastAt:0;
   return [...groups.values()].sort((a,b)=>lastActivity(b)-lastActivity(a)).slice(0,recentGroupsLimit);
@@ -138,6 +140,7 @@ export class AssistantDailyEnterprise {
   })],signal),'messages');
  }
  private async recentGroups(source:DailySource,provider:DailyEnterpriseProvider,user:string,from:number,now:number,signal:AbortSignal):Promise<DailySourceScan>{
+  const core=await sharedRuntime();
   const targets=await this.groups(provider,now,signal);
   const cut=Math.max(from,now-day);
   const items:DailyItem[]=[];
@@ -156,13 +159,17 @@ export class AssistantDailyEnterprise {
      if(!id)return [];
      const mentions=Array.isArray(entry.mentions)?entry.mentions:[];
      const urgent=mentions.some(mention=>string(row(row(mention).id).open_id??row(mention).id)===user);
-     return [{id,stamp,urgent}];
+     const content=provider==='feishu'?row(entry.body).content:entry.text??entry.content;
+     return [{id,stamp,urgent,content}];
     }).sort((a,b)=>b.stamp-a.stamp).slice(0,messageLimit);
     const latest=messages[0];
     if(!latest)return;
+    const actionable=messages.map(message=>messageAttention({content:message.content,group:group.name||dailyEnterpriseLabels[provider]+'群聊',
+     stamp:message.stamp,addressed:message.urgent},text=>core.redactSecrets(text).text)).find(Boolean);
     return {
-     id:hash([source.account,group.id,latest.id]),source,title:'一个近期群有消息待查看',
-     detail:'本次可见 '+messages.length+' 条群消息。',observedAt:latest.stamp,urgent:messages.some(message=>message.urgent),
+     id:hash([source.account,group.id,latest.id]),source,title:actionable?.group??'一个近期群有消息待查看',
+     detail:actionable?.text??'本次可见 '+messages.length+' 条群消息。',observedAt:latest.stamp,
+     messageAttention:actionable,urgent:messages.some(message=>message.urgent),
     };
    }));
    signal.throwIfAborted();

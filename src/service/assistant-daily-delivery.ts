@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyRecentGroups,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
+import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,type DailyMessageAttention,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
 import {findOwnerMessage} from './room-reads.js';
@@ -26,18 +26,26 @@ export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],at
   ...(urgent?['其中 '+urgent+' 项需要优先核对。']:[]),'打开会话顶部「简报」查看详情。'].join('\n');
 }
 
-export function dailyMessageNotice(items:DailyItem[]){
- if(!items.length)return undefined;
- const counts=new Map<string,number>();
- for(const item of items){
+const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;offer:string;priority:number}>={
+ schedule:{label:'日程变更',offer:'我可以核对你的日历，整理受影响的安排。',priority:0},
+ deadline:{label:'截止或到期',offer:'我可以整理提交要求和待办清单。',priority:1},
+ decision:{label:'需要确认',offer:'我可以整理待确认项、待补信息和回复草稿。',priority:2},
+ reply:{label:'需要看一眼',offer:'我可以先帮你拟一条回复，供你确认。',priority:3},
+};
+const plain=(text:string)=>text.replace(/[<&>]/g,value=>({'<':'＜','>':'＞','&':'＆'})[value]!).replace(/[\x5c`*_{}\[\]()#!|~]/g,value=>'\\'+value);
+export function dailyMessageNotice(items:DailyItem[],timeZone:string){
+ const actionable=items.flatMap(item=>item.messageAttention?[{source:item.source,...item.messageAttention}]:[])
+  .sort((a,b)=>attentionLabels[a.kind].priority-attentionLabels[b.kind].priority||b.at-a.at);
+ if(!actionable.length)return undefined;
+ const time=new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const entries=actionable.slice(0,3).map(item=>{
   const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
-  const template=provider+(isDailyRecentGroups(item.source)?'有 {count} 个群出现新消息。':'有 {count} 条消息待查看。');
-  counts.set(template,(counts.get(template)??0)+1);
- }
- const attention=items.filter(item=>item.urgent||(item.attentionCount??0)>0).length;
- return ['**新消息提醒**',...Array.from(counts,([template,count])=>template.replace('{count}',String(count))),
-  ...(attention?['其中 '+attention+' 项有 @ 提及或待核对线索。']:[]),
-  '打开会话顶部「简报」查看详情。'].join('\n');
+  const action=attentionLabels[item.kind];
+  return ['**'+action.label+' · '+plain(item.group)+'**',provider+' · '+time.format(item.at),
+   '消息要点「'+plain(item.text)+'」',action.offer].join('\n\n');
+ });
+ return ['**消息里需要关注的事项**',...entries,
+  ...(actionable.length>entries.length?['更多事项可从顶部「简报」查看。']:[])].join('\n\n');
 }
 
 export type BriefDelivery={kind?:'message-notice';id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>};

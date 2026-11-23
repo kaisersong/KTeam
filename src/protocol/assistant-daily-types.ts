@@ -68,13 +68,15 @@ export interface DailyPresetSelection {
  expectedDraftId:string|null;
 }
 
+export type DailyMessageAttention = {kind:'schedule'|'deadline'|'decision'|'reply';group:string;text:string;at:number};
+
 export interface DailyItem {
  id:string;
  title:string;
  detail:string;
  observedAt:number;
  urgent:boolean;
- attentionCount?:number;
+ messageAttention?:DailyMessageAttention;
  deadline?:number;
  source:DailySource;
  originalId?:string;

@@ -7,6 +7,7 @@ import {readIntegrations, runtimeIntegrationRevision} from './integration-settin
 import {isYzjRecentGroups,yzjRecentGroupsId,recentGroupsLimit} from '../protocol/assistant-daily-types.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
 import type {MailConnectors} from './mail-connectors.js';
+import {messageAttention} from './assistant-message-attention.js';
 import {AssistantDailyEnterprise} from './assistant-daily-enterprise.js';
 
 const digest = (value:unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -43,13 +44,13 @@ function urlFor(value:string,domains?:string[]) {
 }
 const yzjDomains=['yunzhijia.com','yunzhijia.cn','kdweibo.com','kdweibo.cn'];
 
-type RecentCursor={lastId:string;itemId?:string};
+type RecentCursor={lastId:string;itemId?:string;analyzed?:true};
 export type RecentGroupCursors=Record<string,RecentCursor>;
 type RecentSnapshot={items:DailyItem[];cursors:RecentGroupCursors};
 export type DailySourceScan={items:DailyItem[];partial:boolean;recentCursors?:RecentGroupCursors};
 const messageRows=(value:unknown)=>rows(value,'list','messages','items').map(row=>row.message&&typeof row.message==='object'?object(row.message):row);
-const recentGroupFields='{success:.success,data:{more:.data.more,list:[.data.list[]|{groupId,groupType,lastMsgId,lastMsgSendTime}]}}';
-const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:(if (.content|type)=="string" then .content[:300] else null end)}]}}';
+const recentGroupFields='{success:.success,data:{more:.data.more,list:[.data.list[]|{groupId,groupType,groupName,name,lastMsgId,lastMsgSendTime}]}}';
+const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:((.content//.text) | if type=="string" then .[:300] elif type=="object" then (.content//.text) | if type=="string" then .[:300] else null end else null end)}]}}';
 
 const mentionsUser=(entry:Record<string,unknown>,user:string)=>{
  const mentions=entry.atOpenIds??entry.mentionOpenIds??entry.notifyToOpenIds;
@@ -159,6 +160,7 @@ export class AssistantDailySources {
    if(identity.account!==source.account||identity.revision!==source.revision)throw new KTeamError('daily_source_changed',409);
    if(isYzjRecentGroups(source))return this.recentGroups(source,identity.user,from,now,signal,recent);
    const value=await this.messagePage(source.id,signal);
+   const core=await sharedRuntime();
    const conversation=object(object(value).group);
    const directConversation=conversation.groupType===1||source.id.startsWith(identity.user+'-')||source.id.endsWith('-'+identity.user);
    return {items:messageRows(value).flatMap(entry=>{
@@ -168,7 +170,8 @@ export class AssistantDailySources {
     const addressed=mentionsUser(entry,identity.user);
     if(!id||!sender||sender===identity.user||!Number.isFinite(stamp)||stamp<from||!direct&&!addressed)return [];
     const title=addressed?'有人在云之家 @了你':'收到云之家私聊消息';
-    return [item(id,title,field(entry,'content','text')||'请在原会话核对内容',stamp,{originalId:id,url:urlFor(field(entry,'webUrl','url'),yzjDomains)})];
+    return [item(id,title,field(entry,'content','text')||'请在原会话核对内容',stamp,{originalId:id,url:urlFor(field(entry,'webUrl','url'),yzjDomains),
+     messageAttention:messageAttention({content:entry.content??entry.text,group:source.label,stamp,addressed,direct},text=>core.redactSecrets(text).text)})];
    }),partial:true};
   }
   const today=calendarWindow(new Date(now),timeZone).today;
@@ -199,7 +202,8 @@ export class AssistantDailySources {
   return this.enterprise.dailyYzj(['im','message','list','--group-id',groupId,'--type','newest','--limit','20',...(bounded?['--jq',recentMessageFields]:[])],signal);
  }
  private async recentGroups(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
-  const groups=new Map<string,{lastId:string;lastAt:number}>();
+  const core=await sharedRuntime();
+  const groups=new Map<string,{lastId:string;lastAt:number;name:string}>();
   for(let page=1;page<=5&&groups.size<recentGroupsLimit;page++){
    signal.throwIfAborted();
    const response=object(await this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page',String(page),'--jq',recentGroupFields],signal));
@@ -207,7 +211,7 @@ export class AssistantDailySources {
     const id=field(group,'groupId');
     if(group.groupType!==2||!id||groups.has(id))continue;
     const last=object(group.lastMsg);
-    groups.set(id,{lastId:field(group,'lastMsgId')||field(last,'msgId'),lastAt:yzjMessageTime(group.lastMsgSendTime??last.sendTime)});
+    groups.set(id,{name:field(group,'groupName','name'),lastId:field(group,'lastMsgId')||field(last,'msgId'),lastAt:yzjMessageTime(group.lastMsgSendTime??last.sendTime)});
     if(groups.size===recentGroupsLimit)break;
    }
    if(response.more!==true)break;
@@ -219,29 +223,32 @@ export class AssistantDailySources {
   const targets=[...groups];
   for(let index=0;index<targets.length;index+=4){
    signal.throwIfAborted();
-   const checked=await Promise.allSettled(targets.slice(index,index+4).map(async([groupId,{lastId,lastAt}])=>{
+   const checked=await Promise.allSettled(targets.slice(index,index+4).map(async([groupId,{lastId,lastAt,name}])=>{
     const key=digest([source.account,groupId]);
     const cursor=previous?.cursors[key];
     const prior=cursor?.itemId?known.get(cursor.itemId):undefined;
     if(Number.isFinite(lastAt)&&lastAt<cut)return {key,lastId};
-    if(lastId&&cursor?.lastId===lastId)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
+    if(lastId&&cursor?.lastId===lastId&&cursor.analyzed)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
     const messages=messageRows(await this.messagePage(groupId,signal,true)).filter(message=>{
      const author=messageAuthor(message),stamp=messageTime(message);
      return Boolean(author&&author!==user&&stamp>=cut&&stamp<=now);
     });
     const latest=messages.sort((a,b)=>messageTime(b)-messageTime(a))[0];
     const latestId=latest&&field(latest,'msgId','messageId','id');
-    const attention=messages.filter(message=>mentionsUser(message,user)||/请.{0,12}(确认|审批|核对|处理)|需要.{0,8}(决定|确认)|截止/.test(field(message,'content','text'))).length;
+    const actionable=messages.map(message=>messageAttention({
+     content:message.content??message.text,group:name||'云之家群聊',stamp:messageTime(message),addressed:mentionsUser(message,user),
+    },text=>core.redactSecrets(text).text)).find(Boolean);
     const item:DailyItem|undefined=latestId?{
-     id:digest([key,latestId]),source,title:'一个近期群有消息待查看',detail:'本次可见 '+messages.length+' 条其他成员的消息。'+(attention?'其中 '+attention+' 条含待核对线索。':''),
-     observedAt:messageTime(latest),attentionCount:attention,urgent:messages.some(message=>mentionsUser(message,user)),
+     id:digest([key,latestId]),source,title:actionable?.group??'一个近期群有消息待查看',
+     detail:actionable?.text??'本次可见 '+messages.length+' 条其他成员的消息。',
+     observedAt:messageTime(latest),messageAttention:actionable,urgent:messages.some(message=>mentionsUser(message,user)),
     }:undefined;
     return {key,lastId,item};
    }));
    signal.throwIfAborted();
    for(const result of checked)if(result.status==='fulfilled'){
     const {key,lastId,item}=result.value;
-    if(lastId)cursors[key]={lastId,itemId:item?.id};
+    if(lastId)cursors[key]={lastId,itemId:item?.id,analyzed:true};
     if(item)items.push(item);
    }
    if(checked.every(result=>result.status==='rejected'))break;

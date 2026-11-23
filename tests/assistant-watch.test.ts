@@ -172,3 +172,16 @@ test('assistant guides setup independently without reading content or prompting 
  unknown=true;
  assert.deepEqual(await sources.connectorSetup(),{enterprise:undefined,mail:true});
 });
+
+test('message triage grounds next steps in the source and rejects chatter or credential text',async()=>{
+ const {messageAttention}=await import('../src/service/assistant-message-attention.js');
+ const redact=(text:string)=>text.replace('private-fixture','[redacted]');
+ const input={group:'验收群',stamp:100};
+ assert.equal(messageAttention({...input,content:'收到，辛苦了'},redact),undefined);
+ assert.equal(messageAttention({...input,content:'请确认 API key private-fixture'},redact),undefined);
+ assert.equal(messageAttention({...input,content:'请确认 private-fixture'},redact),undefined);
+ assert.deepEqual(messageAttention({...input,content:'{"text":"原定周会改到下午 3 点"}'},redact),
+  {kind:'schedule',group:'验收群',text:'原定周会改到下午 3 点',at:100});
+ assert.equal(messageAttention({...input,content:'验收材料周五截止'},redact)?.kind,'deadline');
+ assert.equal(messageAttention({...input,content:'请你确认交付范围'},redact)?.kind,'decision');
+});
