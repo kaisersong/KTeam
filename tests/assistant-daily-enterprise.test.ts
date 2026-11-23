@@ -49,7 +49,7 @@ test('enterprise brief connectors keep account scope, bound recent groups and sk
  assert.equal(readers.length,31);
 });
 
-test('enterprise calendars normalize provider dates, flag partial coverage and keep titles out of the private brief message',async()=>{
+test('enterprise calendars normalize provider dates, flag partial coverage and show concrete times in the private brief',async()=>{
  const called:string[]=[];
  const enterprise=new AssistantDailyEnterprise({
   dailyEnterpriseIdentity:async provider=>status(provider),
@@ -68,10 +68,9 @@ test('enterprise calendars normalize provider dates, flag partial coverage and k
  const scans=await Promise.all(calendar.map(source=>enterprise.scan(source,now-3600000,now,'Asia/Shanghai',signal)));
  assert.deepEqual(scans.map(result=>result.partial),[true,false,true]);
  assert.ok(called.some(call=>call.startsWith('wecom:meeting list')));
- const message=dailyBriefMessage('2026-11-23','morning',scans.flatMap(scan=>scan.items),now,'Asia/Shanghai')!;
- assert.match(message,/日程和会议 3 项/);
- assert.match(message,/09:30/);
- assert.doesNotMatch(message,/用例/);
+ const message=dailyBriefMessage('2026-11-23','morning',scans.flatMap(scan=>scan.items),'Asia/Shanghai',text=>text)!;
+ assert.match(message,/09:30 · 钉钉用例/);
+ assert.match(message,/10:00 · 飞书用例/);
 });
 
 test('WeCom group reads use its pinned cursor and message contract without requiring provider message IDs',async()=>{

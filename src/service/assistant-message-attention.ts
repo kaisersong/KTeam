@@ -21,15 +21,22 @@ export function messageText(input:unknown):string {
  }
  return '';
 }
+/** Bounded text suitable for the assistant's transcript, with sensitive fields suppressed. */
+export function transcriptExcerpt(input:unknown,redact:(text:string)=>string,limit:number):string|undefined {
+ const body=messageText(input);
+ if(!body||privateCredential.test(body)||redact(body)!==body)return;
+ return body.slice(0,limit);
+}
+
 export function messageAttention(input:{content:unknown;group:string;stamp:number;addressed?:boolean;direct?:boolean;mentionPresent?:boolean},
  redact:(text:string)=>string):DailyMessageAttention|undefined {
  const body=messageText(input.content);
- if(body.length<5||privateCredential.test(body))return;
+ if(body.length<5)return;
+ const text=transcriptExcerpt(body,redact,180);
+ if(!text)return;
  const general=broadcast.test(body);
  const targetsSomeone=input.mentionPresent||/@[\p{L}\p{N}]/u.test(body);
  if(!input.addressed&&!input.direct&&targetsSomeone&&!general)return;
- const text=redact(body).slice(0,180);
- if(text!==body.slice(0,180)||!text)return;
  const relevant=input.addressed||input.direct||general;
  const resolvedAt=resolved.exec(body);
  const pending=!resolvedAt||decision.test(body.slice(resolvedAt.index+resolvedAt[0].length));

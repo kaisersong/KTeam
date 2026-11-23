@@ -1,30 +1,14 @@
 import {createHash} from 'node:crypto';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,type DailyMessageAttention,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
+import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,isDailyMessage,type DailyMessageAttention,type DailyItem,type DailySlot} from '../protocol/assistant-daily-types.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
+import {transcriptExcerpt} from './assistant-message-attention.js';
 import {findOwnerMessage} from './room-reads.js';
 import type {TeamStore} from './team-store.js';
 
-const kinds:Record<DailySourceKind,string>={
- mail:'待查看邮件','yzj-message':'待查看云之家消息','yzj-calendar':'日程和会议','yzj-doc':'更新的知识库文档',news:'关注资讯','enterprise-message':'待查看企业消息','enterprise-calendar':'日程和会议',
-};
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
-
-/** The transcript can be cached on paired devices. Keep source content in the revalidated brief view. */
-export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],at:number,timeZone:string){
- if(!items.length)return undefined;
- const counts=new Map<string,number>();
- for(const item of items){const label=kinds[item.source.kind];counts.set(label,(counts.get(label)??0)+1);}
- const lines=Array.from(counts,([label,count])=>'- '+label+' '+count+' 项');
- const next=items.filter(item=>isDailyCalendar(item.source)&&(item.deadline??0)>at)
-  .map(item=>item.deadline!).sort((a,b)=>a-b)[0];
- if(next!==undefined)lines.push('下一项日程 '+new Intl.DateTimeFormat('zh-CN',{timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(next)+'。');
- const urgent=items.filter(item=>item.urgent).length;
- return ['**'+day+' '+dailySlotLabels[slot]+'**',...lines,
-  ...(urgent?['其中 '+urgent+' 项需要优先核对。']:[]),'打开会话顶部「简报」查看详情。'].join('\n');
-}
 
 const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;priority:number}>={
  schedule:{label:'日程变更',priority:0},
@@ -33,29 +17,73 @@ const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;priorit
  reply:{label:'待回复',priority:3},
 };
 const plain=(text:string)=>text.replace(/[<&>]/g,value=>({'<':'＜','>':'＞','&':'＆'})[value]!).replace(/[\x5c`*_{}\[\]()#!|~]/g,value=>'\\'+value);
+function sortMessageAttention(a:DailyItem,b:DailyItem){
+ return Number(isDailyDirectChats(b.source))-Number(isDailyDirectChats(a.source))||
+  attentionLabels[a.messageAttention!.kind].priority-attentionLabels[b.messageAttention!.kind].priority||
+  b.messageAttention!.at-a.messageAttention!.at;
+}
+function describeAttention(item:DailyItem,time:Intl.DateTimeFormat,evidence?:string){
+ const attention=item.messageAttention!;
+ const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
+ const source=provider+(isDailyDirectChats(item.source)?'单聊':'')+' · '+time.format(attention.at);
+ const context=attentionLabels[attention.kind].label+' · '+plain(attention.group);
+ const ask=attention.text.match(/(?:请(?:你|您)?|麻烦(?:你|您)?|等你)([^。！？\n]{2,100})/)?.[1]?.trim();
+ const ack=/请(?:你|您|大家)?(?:在群里)?回复[「“”'"]?收到|请确认收到/.test(attention.text);
+ const followUp=attention.kind==='schedule'
+  ? [evidence??'请核对原会话通知中的新安排。']
+  : attention.kind==='decision'||attention.kind==='reply'
+   ? [...(ask?['对方请你'+ask.replace(/[，、；：;]+$/,'')+'。']:[]),
+     ack?'回复草稿「收到，谢谢通知。」': '可引用这条提醒，补上你的决定或回复口径。']
+   : [];
+ return {context,source,text:plain(attention.text),followUp:followUp.map(plain)};
+}
+const dateAndTime=(timeZone:string)=>new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+
 export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvidence=new Map<string,string>()){
- const actionable=items.flatMap(item=>item.messageAttention?[{id:item.id,source:item.source,...item.messageAttention}]:[])
-  .sort((a,b)=>Number(isDailyDirectChats(b.source))-Number(isDailyDirectChats(a.source))||
-   attentionLabels[a.kind].priority-attentionLabels[b.kind].priority||b.at-a.at);
+ const actionable=items.filter(item=>item.messageAttention).sort(sortMessageAttention);
  if(!actionable.length)return undefined;
- const time=new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const time=dateAndTime(timeZone);
  const entries=actionable.slice(0,3).map(item=>{
-  const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
-  const action=attentionLabels[item.kind];
-  const proof=calendarEvidence.get(item.id);
-  const ask=item.text.match(/(?:请(?:你|您)?|麻烦(?:你|您)?|等你)([^。！？\n]{2,100})/)?.[1]?.trim();
-  const ack=/请(?:你|您|大家)?(?:在群里)?回复[「“”'"]?收到|请确认收到/.test(item.text);
-  const followUp=item.kind==='schedule'
-   ? [proof??'请核对原群通知中的新安排。']
-   : item.kind==='decision'||item.kind==='reply'
-    ? [...(ask?['对方请你'+ask.replace(/[，、；：;]+$/,'')+'。']:[]),
-      ack?'回复草稿「收到，谢谢通知。」': '可引用这条提醒，补上你的决定或回复口径。']
-    : [];
-  return ['**'+action.label+' · '+plain(item.group)+'**',provider+(isDailyDirectChats(item.source)?'单聊':'')+' · '+time.format(item.at),
-   '消息要点「'+plain(item.text)+'」',...followUp.map(plain)].join('\n\n');
+  const {context,source,text,followUp}=describeAttention(item,time,calendarEvidence.get(item.id));
+  return ['**'+context+'**',source,'消息要点「'+text+'」',...followUp].join('\n\n');
  });
  return ['**消息里需要关注的事项**',...entries,
   ...(actionable.length>entries.length?['更多事项可从顶部「简报」查看。']:[])].join('\n\n');
+}
+
+export function dailyBriefItems(items:DailyItem[],at:number,redact:(text:string)=>string){
+ const actionable=items.filter(item=>isDailyMessage(item.source)&&item.messageAttention&&
+  transcriptExcerpt(item.messageAttention.text,redact,180)).sort(sortMessageAttention);
+ const others=items.filter(item=>!isDailyMessage(item.source)&&(!isDailyCalendar(item.source)||(item.deadline??0)>=at)&&
+  item.title!=='无主题'&&transcriptExcerpt(item.title,redact,90));
+ return [...actionable,...others];
+}
+
+/** Only include bounded excerpts from sources confirmed for the assistant's private chat. */
+export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],timeZone:string,redact:(text:string)=>string,calendarEvidence=new Map<string,string>()){
+ if(!items.length)return undefined;
+ const times=dateAndTime(timeZone);
+ const labels={mail:'待阅邮件','yzj-doc':'知识库更新',news:'公开资讯'};
+ const entries=items.map(item=>{
+  if(item.messageAttention){
+   const preview=transcriptExcerpt(item.messageAttention.text,redact,180);
+   if(!preview)return;
+   const group=transcriptExcerpt(item.messageAttention.group,redact,70)??'原会话';
+   const safe={...item,messageAttention:{...item.messageAttention,text:preview,group}};
+   const {context,source,text,followUp}=describeAttention(safe,times,calendarEvidence.get(item.id));
+   const next=followUp.find(value=>value.startsWith('回复草稿')||value.startsWith('已核对'));
+   return '- **'+context+'**（'+source+'）'+text+(next?' '+next:'');
+  }
+  const title=transcriptExcerpt(item.title,redact,90);
+  if(!title)return;
+  if(isDailyCalendar(item.source)){
+   const detail=transcriptExcerpt(item.detail,redact,120);
+   return '- **'+(item.urgent?'日程冲突':'日程')+'** '+times.format(item.deadline!)+' · '+plain(title)+(detail?.includes('冲突')?' · '+plain(detail.slice(detail.indexOf('冲突'))):'');
+  }
+  const label=item.source.kind in labels?labels[item.source.kind as keyof typeof labels]:undefined;
+  return label?'- **'+label+'** '+plain(title):undefined;
+ }).filter(Boolean);
+ return entries.length?['**'+day+' '+dailySlotLabels[slot]+'**','',...entries].join('\n'):undefined;
 }
 
 export type BriefDelivery={kind?:'message-notice';id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>};

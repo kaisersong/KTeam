@@ -11,7 +11,7 @@ import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {hostRequest} from '../src/service/client.js';
 import {initConfig} from '../src/service/config.js';
-import {dailyBriefPublisher,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
+import {dailyBriefMessage,dailyBriefPublisher,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {startHost} from '../src/service/server.js';
@@ -158,13 +158,18 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   const store=new TeamStore(root);
   try{
    const publish=dailyBriefPublisher(upstream.upstream,store,new TeamCoordinator(upstream.upstream,store,host.epoch),()=>({roomId:assistant.roomId,botId:assistant.botId}),host.epoch);
-   const body='**早报**\n- 待查看邮件 1 项\n打开会话顶部「简报」查看详情。';
+   const body=dailyBriefMessage('2026-11-23','morning',[{
+    id:'fixture-brief',title:'样例交付时间确认',detail:'私有正文样例',observedAt:Date.now(),urgent:true,
+    source:{kind:'mail',id:'fixture-mail',account:'fixture',revision:'1',label:'fixture'},
+   }],'Asia/Shanghai',text=>text)!;
    const input={roomId:assistant.roomId,id:'assistant-daily-brief-fixture',body,deadline:Date.now()+60000,guard:async()=>{}};
    await assert.rejects(publish({...input,roomId:'foreign-room'}),/assistant_scope_required/);
    const id=await publish(input);
    const message=(await upstream.upstream.conversationMessage(assistant.roomId,id)).message;
    assert.equal(message.sender.logicalAgentId,assistant.botId);
    assert.equal(message.text,body);
+   assert.match(message.text,/待阅邮件.*样例交付时间确认/);
+   assert.doesNotMatch(message.text,/私有正文样例/);
    assert.equal(message.responsePolicy,'none');
    const noticeBody=dailyMessageNotice([{id:'chat-notice',title:'private title',detail:'private content',observedAt:Date.now(),urgent:true,
     messageAttention:{kind:'schedule',group:'验收群',text:'今天的例会取消',at:Date.now()},

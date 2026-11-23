@@ -4,7 +4,7 @@ import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
+import {dailyBriefItems,dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
 import {dailyKinds,dailyPresets,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
@@ -26,6 +26,7 @@ function periodicSourceInterval(source:DailySource){
  if(isDailyMessage(source))return recentGroupsInterval;
 }
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
+const dailyMessageKey=(item:DailyItem)=>sha(JSON.stringify([dailySourceKey(item.source),item.messageAttention]));
 const actionId = z.object({id:z.string().max(128)}).strict();
 
 interface Plan {
@@ -46,7 +47,7 @@ interface Brief {
  revision:number;
 }
 type PublishBrief=(input:BriefDelivery)=>Promise<string>;
-type MessageNoticeState={version?:1;seen:Record<string,number>;receipt:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
+type MessageNoticeState={version?:1;seen:Record<string,number>;receipt?:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[]; recentCursors?:RecentGroupCursors;
 }
@@ -377,7 +378,10 @@ export class AssistantDaily {
    const previous=this.store.operationsWithPrefix(briefPrefix).slice(0,10) as Brief[];
    const known=new Set((previous[0]?.items??[]).map(item=>item.id));
    const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isDailyRecentChats(item.source)).map(item=>item.id)));
-   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(isDailyCalendar(item.source)||!(isDailyRecentChats(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
+   const candidates=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(isDailyCalendar(item.source)||!(isDailyRecentChats(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt);
+   const core=candidates.length?await sharedRuntime():undefined;
+   const items=core?dailyBriefItems(candidates,now,text=>core.redactSecrets(text).text).slice(0,32):[];
+   guard();
    this.store.transaction(()=>{
     for(const row of due) {
      const id=briefPrefix+row.day+':'+row.slot;
@@ -407,16 +411,42 @@ export class AssistantDaily {
     !plan.config.sources.some(selected=>dailySourceKey(selected)===dailySourceKey(source)&&selected.revision===source.revision))continue;
    const fresh=scan.items.flatMap(item=>{
     if(!item.messageAttention||item.messageAttention.at<attentionCutoff||item.messageAttention.at>now||this.isSnoozed(item,now))return [];
-    const key=sha(JSON.stringify([dailySourceKey(source),item.messageAttention]));
+    const key=dailyMessageKey(item);
     return seen[key]?[]:[{key,item}];
    });
    if(!fresh.length||!await this.current(source,checks,signal))continue;
    for(const {key,item} of fresh)items.set(key,item);
   }
+  const {calendarEvidence,usedCalendars}=await this.messageCalendarEvidence([...items.values()],plan,now,checks,signal);
+  const body=dailyMessageNotice([...items.values()],plan.config.timeZone,calendarEvidence);
+  if(!body)return;
+  const deadline=now+briefDeliveryWindow;
+  const assertEligible=async()=>{
+   await this.verifyScope?.();
+   guard();
+   if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+   const current=new Map<string,Promise<boolean>>();
+   for(const source of [...items.values()].map(item=>item.source).concat([...usedCalendars.values()]))if(!await this.current(source,current,signal))throw new KTeamError('daily_source_changed',409);
+   guard();
+  };
+  await assertEligible();
+  const id='assistant-daily-message-'+sha(JSON.stringify([roomId,[...items.keys()].sort()]));
+  for(const key of items.keys())seen[key]=now;
+  const receipt={id,status:'attempted' as const};
+  // Once an attempt is reserved, a lost receipt or restart cannot send it twice.
+  this.store.setState(messageNoticeKey,{version:1,seen,receipt});
+  try{
+   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,deadline,guard:assertEligible});
+   this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'sent',messageId}});
+  }catch{
+   this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'unconfirmed'}});
+  }
+ }
+ private async messageCalendarEvidence(items:DailyItem[],plan:Plan,now:number,checks:Map<string,Promise<boolean>>,signal:AbortSignal){
   const calendarEvidence=new Map<string,string>();
   const calendars=new Map<string,Promise<DailyItem[]|undefined>>();
   const usedCalendars=new Map<string,DailySource>();
-  for(const [key,item] of [...items].sort(([,a],[,b])=>b.observedAt-a.observedAt).filter(([,item])=>item.messageAttention?.kind==='schedule').slice(0,3)){
+  for(const item of items.filter(item=>item.messageAttention?.kind==='schedule').slice(0,3)){
    const attention=item.messageAttention!;
    const source=plan.config.sources.find(candidate=>isDailyCalendar(candidate)&&candidate.provider===item.source.provider&&candidate.account===item.source.account);
    if(!source||!await this.current(source,checks,signal))continue;
@@ -446,31 +476,9 @@ export class AssistantDaily {
    }else{
     calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，未能唯一匹配这场会议。请以原群通知为准。');
    }
-   usedCalendars.set(key,source);
+   usedCalendars.set(dailySourceKey(source),source);
   }
-  const body=dailyMessageNotice([...items.values()],plan.config.timeZone,calendarEvidence);
-  if(!body)return;
-  const deadline=now+briefDeliveryWindow;
-  const assertEligible=async()=>{
-   await this.verifyScope?.();
-   guard();
-   if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
-   const current=new Map<string,Promise<boolean>>();
-   for(const source of [...items.values()].map(item=>item.source).concat([...usedCalendars.values()]))if(!await this.current(source,current,signal))throw new KTeamError('daily_source_changed',409);
-   guard();
-  };
-  await assertEligible();
-  const id='assistant-daily-message-'+sha(JSON.stringify([roomId,[...items.keys()].sort()]));
-  for(const key of items.keys())seen[key]=now;
-  const receipt:MessageNoticeState['receipt']={id,status:'attempted'};
-  // Once an attempt is reserved, a lost receipt or restart cannot send it twice.
-  this.store.setState(messageNoticeKey,{version:1,seen,receipt});
-  try{
-   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,deadline,guard:assertEligible});
-   this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'sent',messageId}});
-  }catch{
-   this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'unconfirmed'}});
-  }
+  return {calendarEvidence,usedCalendars};
  }
  private async deliverBriefs(plan:Plan,guard:()=>void,signal:AbortSignal){
   if(!this.publishBrief)return;
@@ -487,15 +495,33 @@ export class AssistantDaily {
     guard();
     if(await this.current(item.source,allowed,signal))visible.push(item);
    }
-   const body=dailyBriefMessage(brief.day,brief.slot,visible,brief.at,plan.config.timeZone);
+   const now=this.now();
+   const core=visible.length?await sharedRuntime():undefined;
+   const redact=(text:string)=>core?.redactSecrets(text).text??text;
+   const selected=dailyBriefItems(visible,now,redact).slice(0,5);
+   const {calendarEvidence,usedCalendars}=await this.messageCalendarEvidence(selected,plan,now,allowed,signal);
+   const body=dailyBriefMessage(brief.day,brief.slot,selected,plan.config.timeZone,redact,calendarEvidence);
    const assertEligible=async()=>{
     await this.verifyScope?.();
     guard();
     if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+    const current=new Map<string,Promise<boolean>>();
+    for(const source of selected.map(item=>item.source).concat([...usedCalendars.values()]))if(!await this.current(source,current,signal))throw new KTeamError('daily_source_changed',409);
+    guard();
    };
-   await assertEligible();
    if(!body){this.store.saveOperation({...brief,delivery:'expired'},brief.revision);continue;}
-   const attempt=this.store.saveOperation({...brief,delivery:'attempted'},brief.revision);
+   await assertEligible();
+   const attempt=this.store.transaction(()=>{
+    const attempted=this.store.saveOperation({...brief,delivery:'attempted'},brief.revision);
+    const keys=selected.filter(item=>item.messageAttention).map(dailyMessageKey);
+    if(keys.length){
+     const prior=this.store.state<MessageNoticeState>(messageNoticeKey);
+     const seen=Object.fromEntries(Object.entries(prior?.seen??{}).filter(([,at])=>at>=now-messageCatchupWindow));
+     for(const key of keys)seen[key]=now;
+     this.store.setState(messageNoticeKey,{...prior,version:1,seen});
+    }
+    return attempted;
+   });
    try {
     const messageId=await this.publishBrief({id:brief.id,roomId,body,deadline,guard:assertEligible});
     this.store.saveOperation({...attempt,delivery:'sent',messageId},attempt.revision);
