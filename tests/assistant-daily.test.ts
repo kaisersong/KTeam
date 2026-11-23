@@ -251,3 +251,33 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   assert.equal(attempts,2);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('an actionable schedule notice checks the consented calendar before posting its finding',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-calendar-notice-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room',now=Date.parse('2026-11-23T08:00:00Z');
+ const message:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'日历',account:'fixture',revision:'1'};
+ let deliveries=0;
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now,skips:[],config:{...defaultDaily('UTC'),sources:[message,calendar]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[message,calendar],yzjAvailable:true}),current:async()=>true,
+  original:async()=>({url:undefined}),newsSource:async()=>assert.fail('not a news plan'),
+  scan:async(source,_from,_now,_timeZone,_signal,_recent,date)=>{
+   const base={id:'sample',title:'样例例会',detail:'',observedAt:now-1000,urgent:false,source};
+   if(source.kind==='yzj-message')return {partial:true,items:[{...base,messageAttention:{kind:'schedule',group:'样例组',text:'明天的样例例会取消',at:now-1000}}]};
+   if(date===undefined)return {partial:false,items:[]};
+   assert.equal(date,'2026-11-24');
+   return {partial:false,items:[{...base,detail:'11/24 09:00–10:00'}]};
+  },
+ },()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  deliveries++;
+  assert.match(input.body,/已核对 2026-11-24 的日历，当前仍列有「样例例会 · 11\/24 09:00–10:00」/);
+  assert.doesNotMatch(input.body,/我可以/);
+  return 'calendar-notice';
+ });
+ try{await daily.refresh();assert.equal(deliveries,1);}
+ finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});

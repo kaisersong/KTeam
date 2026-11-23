@@ -26,23 +26,32 @@ export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],at
   ...(urgent?['其中 '+urgent+' 项需要优先核对。']:[]),'打开会话顶部「简报」查看详情。'].join('\n');
 }
 
-const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;offer:string;priority:number}>={
- schedule:{label:'日程变更',offer:'我可以核对你的日历，整理受影响的安排。',priority:0},
- deadline:{label:'截止或到期',offer:'我可以整理提交要求和待办清单。',priority:1},
- decision:{label:'需要确认',offer:'我可以整理待确认项、待补信息和回复草稿。',priority:2},
- reply:{label:'需要看一眼',offer:'我可以先帮你拟一条回复，供你确认。',priority:3},
+const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;priority:number}>={
+ schedule:{label:'日程变更',priority:0},
+ deadline:{label:'截止或到期',priority:1},
+ decision:{label:'需要确认',priority:2},
+ reply:{label:'待回复',priority:3},
 };
 const plain=(text:string)=>text.replace(/[<&>]/g,value=>({'<':'＜','>':'＞','&':'＆'})[value]!).replace(/[\x5c`*_{}\[\]()#!|~]/g,value=>'\\'+value);
-export function dailyMessageNotice(items:DailyItem[],timeZone:string){
- const actionable=items.flatMap(item=>item.messageAttention?[{source:item.source,...item.messageAttention}]:[])
+export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvidence=new Map<string,string>()){
+ const actionable=items.flatMap(item=>item.messageAttention?[{id:item.id,source:item.source,...item.messageAttention}]:[])
   .sort((a,b)=>attentionLabels[a.kind].priority-attentionLabels[b.kind].priority||b.at-a.at);
  if(!actionable.length)return undefined;
  const time=new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
  const entries=actionable.slice(0,3).map(item=>{
   const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
   const action=attentionLabels[item.kind];
+  const proof=calendarEvidence.get(item.id);
+  const ask=item.text.match(/(?:请(?:你|您)?|麻烦(?:你|您)?|等你)([^。！？\n]{2,100})/)?.[1]?.trim();
+  const ack=/请(?:你|您|大家)?(?:在群里)?回复[「“”'"]?收到|请确认收到/.test(item.text);
+  const followUp=item.kind==='schedule'
+   ? [proof??'请核对原群通知中的新安排。']
+   : item.kind==='decision'||item.kind==='reply'
+    ? [...(ask?['对方请你'+ask.replace(/[，、；：;]+$/,'')+'。']:[]),
+      ack?'回复草稿「收到，谢谢通知。」': '可引用这条提醒，补上你的决定或回复口径。']
+    : [];
   return ['**'+action.label+' · '+plain(item.group)+'**',provider+' · '+time.format(item.at),
-   '消息要点「'+plain(item.text)+'」',action.offer].join('\n\n');
+   '消息要点「'+plain(item.text)+'」',...followUp.map(plain)].join('\n\n');
  });
  return ['**消息里需要关注的事项**',...entries,
   ...(actionable.length>entries.length?['更多事项可从顶部「简报」查看。']:[])].join('\n\n');

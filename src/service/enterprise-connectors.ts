@@ -52,6 +52,7 @@ export class EnterpriseConnectors{
    return identity?.success===true&&identity.data?.openId&&identity.data?.orgId?true:undefined;
   }).catch(()=>undefined);
  }
+ dailyYzjConnectedAt(orgId:string,openId:string){return this.cloud.connectedAt(orgId,openId);}
  async dailyYzj(args:readonly string[],signal?:AbortSignal){
   const binary=this.seed();
   const result=await connectorCommand(binary,[...args],signal);

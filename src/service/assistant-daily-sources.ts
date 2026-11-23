@@ -44,7 +44,7 @@ function urlFor(value:string,domains?:string[]) {
 }
 const yzjDomains=['yunzhijia.com','yunzhijia.cn','kdweibo.com','kdweibo.cn'];
 
-type RecentCursor={lastId:string;itemId?:string;analyzed?:true};
+type RecentCursor={lastId:string;itemId?:string;triageVersion?:2};
 export type RecentGroupCursors=Record<string,RecentCursor>;
 type RecentSnapshot={items:DailyItem[];cursors:RecentGroupCursors};
 export type DailySourceScan={items:DailyItem[];partial:boolean;recentCursors?:RecentGroupCursors};
@@ -52,10 +52,10 @@ const messageRows=(value:unknown)=>rows(value,'list','messages','items').map(row
 const recentGroupFields='{success:.success,data:{more:.data.more,list:[.data.list[]|{groupId,groupType,groupName,name,lastMsgId,lastMsgSendTime}]}}';
 const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:((.content//.text) | if type=="string" then .[:300] elif type=="object" then (.content//.text) | if type=="string" then .[:300] else null end else null end)}]}}';
 
-const mentionsUser=(entry:Record<string,unknown>,user:string)=>{
- const mentions=entry.atOpenIds??entry.mentionOpenIds??entry.notifyToOpenIds;
- return Array.isArray(mentions)&&mentions.includes(user);
-};
+const mentionsUser=(entry:Record<string,unknown>,user:string)=>[entry.atOpenIds,entry.mentionOpenIds,entry.notifyToOpenIds]
+ .some(value=>Array.isArray(value)&&value.includes(user));
+const mentionsSomeone=(entry:Record<string,unknown>)=>[entry.atOpenIds,entry.mentionOpenIds,entry.notifyToOpenIds]
+ .some(value=>Array.isArray(value)&&value.length>0);
 const messageAuthor=(entry:Record<string,unknown>)=>field(entry,'senderOpenId','fromOpenId','openId');
 function yzjMessageTime(value:unknown){
  // The CLI serializes local IM timestamps without an offset. The same response
@@ -73,10 +73,17 @@ export class AssistantDailySources {
   const account=object(await this.enterprise.dailyYzj(['whoami'],signal));
   const org=field(account,'orgId'),user=field(account,'openId');
   if(!org||!user||account.tokenStatus==='expired')throw new KTeamError('daily_source_unavailable',503);
-  const projected=(await this.enterprise.view()).connectors.find(row=>row.provider==='yzj');
-  const connection=projected?.connection;
-  if(connection?.openId && (connection.openId!==user||connection.orgId!==org))throw new KTeamError('daily_source_changed',409);
-  return {account:digest([org,user]),revision:digest([org,user,connection?.connectedAt??null]),user};
+  const connectedAt=this.enterprise.dailyYzjConnectedAt(org,user);
+  return {account:digest([org,user]),revision:digest([org,user,connectedAt??null]),legacyRevision:digest([org,user,null]),connectedAt,user};
+ }
+ async restoreYzjSources(sources:DailySource[],authorizedAt:number,signal:AbortSignal):Promise<DailySource[]> {
+  if(!sources.some(source=>source.kind.startsWith('yzj-')))return sources;
+  const identity=await this.yzjIdentity(signal).catch(()=>undefined);
+  if(!identity?.connectedAt||Date.parse(identity.connectedAt)>authorizedAt)return sources;
+  // Older plans could record the null timestamp before the UI checked the CLI.
+  // Repair only an exact legacy fingerprint for an account connected before consent.
+  return sources.map(source=>source.kind.startsWith('yzj-')&&source.account===identity.account&&source.revision===identity.legacyRevision
+   ? {...source,revision:identity.revision}:source);
  }
  async connectorSetup(){
   const [enterprise,mail]=await Promise.allSettled([this.enterprise.hasSavedConnection(),this.mail.dailyAccounts()]);
@@ -126,7 +133,7 @@ export class AssistantDailySources {
  async newsSource(topic:string):Promise<DailySource> {
   return dailySource.parse({kind:'news',id:topic,label:topic,account:'public',revision:await runtimeIntegrationRevision()});
  }
- async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal,recent?:RecentSnapshot):Promise<DailySourceScan> {
+ async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal,recent?:RecentSnapshot,calendarDate?:string):Promise<DailySourceScan> {
   const item=(id:string,title:string,detail:string,observedAt:number,more:Partial<DailyItem>={}):DailyItem=>({
    id:digest([source.kind,source.account,source.id,id]),source,title,detail,observedAt,urgent:false,...more,
   });
@@ -146,7 +153,7 @@ export class AssistantDailySources {
     return url?[item(url,hit.title.slice(0,256),hit.snippet.slice(0,500),now,{url})]:[];
    }),partial:true};
   }
-  if(source.provider)return this.otherEnterprise.scan(source,from,now,timeZone,signal);
+  if(source.provider)return this.otherEnterprise.scan(source,from,now,timeZone,signal,calendarDate);
   if(source.kind==='yzj-doc') {
    const value=await this.enterprise.dailyYzj(['doc','list','--workspace',source.id],signal);
    return {items:rows(value,'list','items','docs').flatMap(entry=>{
@@ -174,7 +181,7 @@ export class AssistantDailySources {
      messageAttention:messageAttention({content:entry.content??entry.text,group:source.label,stamp,addressed,direct},text=>core.redactSecrets(text).text)})];
    }),partial:true};
   }
-  const today=calendarWindow(new Date(now),timeZone).today;
+  const today=calendarDate??calendarWindow(new Date(now),timeZone).today;
   const value=await this.enterprise.dailyYzj(['calendar','event','list','--start',today,'--end',today],signal);
   const entries=rows(value,'list','events','items');
   let incomplete=false;
@@ -221,6 +228,7 @@ export class AssistantDailySources {
   const items:DailyItem[]=[];
   const known=new Map(previous?.items.map(item=>[item.id,item]));
   const targets=[...groups];
+  let checkedCount=0;
   for(let index=0;index<targets.length;index+=4){
    signal.throwIfAborted();
    const checked=await Promise.allSettled(targets.slice(index,index+4).map(async([groupId,{lastId,lastAt,name}])=>{
@@ -228,7 +236,7 @@ export class AssistantDailySources {
     const cursor=previous?.cursors[key];
     const prior=cursor?.itemId?known.get(cursor.itemId):undefined;
     if(Number.isFinite(lastAt)&&lastAt<cut)return {key,lastId};
-    if(lastId&&cursor?.lastId===lastId&&cursor.analyzed)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
+    if(lastId&&cursor?.lastId===lastId&&cursor.triageVersion===2)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
     const messages=messageRows(await this.messagePage(groupId,signal,true)).filter(message=>{
      const author=messageAuthor(message),stamp=messageTime(message);
      return Boolean(author&&author!==user&&stamp>=cut&&stamp<=now);
@@ -236,7 +244,7 @@ export class AssistantDailySources {
     const latest=messages.sort((a,b)=>messageTime(b)-messageTime(a))[0];
     const latestId=latest&&field(latest,'msgId','messageId','id');
     const actionable=messages.map(message=>messageAttention({
-     content:message.content??message.text,group:name||'云之家群聊',stamp:messageTime(message),addressed:mentionsUser(message,user),
+     content:message.content??message.text,group:name||'云之家群聊',stamp:messageTime(message),addressed:mentionsUser(message,user),mentionPresent:mentionsSomeone(message),
     },text=>core.redactSecrets(text).text)).find(Boolean);
     const item:DailyItem|undefined=latestId?{
      id:digest([key,latestId]),source,title:actionable?.group??'一个近期群有消息待查看',
@@ -247,12 +255,13 @@ export class AssistantDailySources {
    }));
    signal.throwIfAborted();
    for(const result of checked)if(result.status==='fulfilled'){
+    checkedCount++;
     const {key,lastId,item}=result.value;
-    if(lastId)cursors[key]={lastId,itemId:item?.id,analyzed:true};
+    if(lastId)cursors[key]={lastId,itemId:item?.id,triageVersion:2};
     if(item)items.push(item);
    }
-   if(checked.every(result=>result.status==='rejected'))break;
   }
+  if(targets.length&&!checkedCount)throw new KTeamError('daily_source_unavailable',503);
   return {items,partial:true,recentCursors:cursors};
  }
  async original(item:DailyItem) {

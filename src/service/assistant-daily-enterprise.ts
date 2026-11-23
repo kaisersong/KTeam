@@ -4,6 +4,7 @@ import {messageAttention} from './assistant-message-attention.js';
 import {KTeamError} from '../errors.js';
 import {dailySource,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyEnterpriseLabels,dailyEnterpriseProviders,recentGroupsLimit,type DailyEnterpriseProvider} from '../protocol/assistant-daily-types.js';
+import {calendarWindow} from '../runtime/calendar.js';
 import {nextRoutineAt} from '../protocol/routine-calendar.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
 import type {DailySourceScan} from './assistant-daily-sources.js';
@@ -160,12 +161,12 @@ export class AssistantDailyEnterprise {
      const mentions=Array.isArray(entry.mentions)?entry.mentions:[];
      const urgent=mentions.some(mention=>string(row(row(mention).id).open_id??row(mention).id)===user);
      const content=provider==='feishu'?row(entry.body).content:entry.text??entry.content;
-     return [{id,stamp,urgent,content}];
+     return [{id,stamp,urgent,content,mentionPresent:mentions.length>0}];
     }).sort((a,b)=>b.stamp-a.stamp).slice(0,messageLimit);
     const latest=messages[0];
     if(!latest)return;
     const actionable=messages.map(message=>messageAttention({content:message.content,group:group.name||dailyEnterpriseLabels[provider]+'群聊',
-     stamp:message.stamp,addressed:message.urgent},text=>core.redactSecrets(text).text)).find(Boolean);
+     stamp:message.stamp,addressed:message.urgent,mentionPresent:message.mentionPresent},text=>core.redactSecrets(text).text)).find(Boolean);
     return {
      id:hash([source.account,group.id,latest.id]),source,title:actionable?.group??'一个近期群有消息待查看',
      detail:actionable?.text??'本次可见 '+messages.length+' 条群消息。',observedAt:latest.stamp,
@@ -183,8 +184,11 @@ export class AssistantDailyEnterprise {
   // Bounded history always represents a subset of the provider's available data.
   return {items,partial:true};
  }
- private async calendar(source:DailySource,provider:DailyEnterpriseProvider,now:number,timeZone:string,signal:AbortSignal):Promise<DailySourceScan>{
-  const {start,end}=dateRange(now,timeZone);
+ private async calendar(source:DailySource,provider:DailyEnterpriseProvider,now:number,timeZone:string,signal:AbortSignal,calendarDate?:string):Promise<DailySourceScan>{
+  const today=calendarWindow(new Date(now),timeZone).today;
+  const current=dateRange(now,timeZone);
+  const shift=calendarDate?Date.parse(calendarDate)-Date.parse(today):0;
+  const {start,end}=shift?dateRange((current.start+current.end)/2+shift,timeZone):current;
   const args=['--start',new Date(start).toISOString(),'--end',new Date(end-1).toISOString(),'--format','json'];
   let entries:Row[],partial=false;
   if(provider==='feishu'){
@@ -221,11 +225,11 @@ export class AssistantDailyEnterprise {
    };
   })};
  }
- async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal){
+ async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal,calendarDate?:string){
   const provider=source.provider;
   const identity=provider&&await this.identity(provider,signal);
   if(!provider||!identity||identity.account!==source.account||identity.revision!==source.revision)
    throw new KTeamError('daily_source_changed',409);
-  return source.kind==='enterprise-message'?this.recentGroups(source,provider,identity.user,from,now,signal):this.calendar(source,provider,now,timeZone,signal);
+  return source.kind==='enterprise-message'?this.recentGroups(source,provider,identity.user,from,now,signal):this.calendar(source,provider,now,timeZone,signal,calendarDate);
  }
 }

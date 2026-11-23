@@ -15,6 +15,7 @@ const sourcePrefix='assistant-daily-source:';
 const briefPrefix='assistant-daily-brief:';
 const messageNoticeKey='assistant-daily-message-notice';
 const messageNoticeWindow=recentGroupsInterval+60000;
+const messageCatchupWindow=60*60000;
 const snoozePrefix='assistant-daily-snooze:';
 const briefDeliveryWindow=15*60000;
 const maxAge=24*3600000;
@@ -55,7 +56,7 @@ export class AssistantDaily {
  private active?:Promise<void>;
  private controller=new AbortController();
  readonly watches:AssistantWatch;
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup"|"restoreYzjSources">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
   this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
@@ -323,12 +324,24 @@ export class AssistantDaily {
   return this.active=pending;
  }
  private async scan(manual:boolean) {
-  const plan=this.plan();
+  let plan=this.plan();
   if(!plan||plan.config.paused||this.blocked())return;
   await this.verifyScope?.();
   const now=this.now(),controller=this.controller;
-  const guard=()=>{controller.signal.throwIfAborted();if(this.plan()?.revision!==plan.revision||this.blocked())throw new KTeamError('daily_plan_changed',409);};
-  const due=dailyTimes(plan.config,now).filter(row=>row.due!=null&&row.due>=plan.changedAt&&!plan.skips.includes(row.day+':'+row.slot)&&!this.store.operation(briefPrefix+row.day+':'+row.slot)).sort((a,b)=>b.due!-a.due!);
+  const planRevision=plan.revision;
+  const guard=()=>{controller.signal.throwIfAborted();if(this.plan()?.revision!==planRevision||this.blocked())throw new KTeamError('daily_plan_changed',409);};
+  const yzjDue=plan.config.sources.some(source=>source.kind.startsWith('yzj-')&&
+   (manual||now-(this.store.state<Scan>(this.scanKey(source))?.at??0)>=(periodicSourceInterval(source)??checkInterval)));
+  if(yzjDue&&this.sources.restoreYzjSources){
+   const sources=await this.sources.restoreYzjSources(plan.config.sources,plan.changedAt,controller.signal);
+   guard();
+   if(sources.some((source,index)=>source!==plan!.config.sources[index])){
+    plan={...plan,config:{...plan.config,sources}};
+    this.store.setState(planKey,plan);
+   }
+  }
+  const activePlan=plan;
+  const due=dailyTimes(plan.config,now).filter(row=>row.due!=null&&row.due>=activePlan.changedAt&&!activePlan.skips.includes(row.day+':'+row.slot)&&!this.store.operation(briefPrefix+row.day+':'+row.slot)).sort((a,b)=>b.due!-a.due!);
   const upcoming=dailyTimes(plan.config,now).some(row=>row.next!==null&&row.next-now<15*60000);
   const next=upcoming&&due[0]?.due&&now-due[0].due>15*60000?undefined:due[0];
   const checks=new Map<string,Promise<boolean>>();
@@ -384,8 +397,8 @@ export class AssistantDaily {
   if(!this.publishBrief||!roomId)return;
   const now=this.now(),cutoff=now-messageNoticeWindow;
   const previous=this.store.state<MessageNoticeState>(messageNoticeKey);
-  const seen=Object.fromEntries(Object.entries(previous?.seen??{}).filter(([,firstSeen])=>firstSeen>=cutoff));
-  const attentionCutoff=previous?.version===1?cutoff:now-60*60000;
+  const seen=Object.fromEntries(Object.entries(previous?.seen??{}).filter(([,firstSeen])=>firstSeen>=now-messageCatchupWindow));
+  const attentionCutoff=now-messageCatchupWindow;
   const items=new Map<string,DailyItem>();
   const checks=new Map<string,Promise<boolean>>();
   for(const scan of this.retained(plan)){
@@ -400,7 +413,42 @@ export class AssistantDaily {
    if(!fresh.length||!await this.current(source,checks,signal))continue;
    for(const {key,item} of fresh)items.set(key,item);
   }
-  const body=dailyMessageNotice([...items.values()],plan.config.timeZone);
+  const calendarEvidence=new Map<string,string>();
+  const calendars=new Map<string,Promise<DailyItem[]|undefined>>();
+  const usedCalendars=new Map<string,DailySource>();
+  for(const [key,item] of [...items].sort(([,a],[,b])=>b.observedAt-a.observedAt).filter(([,item])=>item.messageAttention?.kind==='schedule').slice(0,3)){
+   const attention=item.messageAttention!;
+   const source=plan.config.sources.find(candidate=>isDailyCalendar(candidate)&&candidate.provider===item.source.provider&&candidate.account===item.source.account);
+   if(!source||!await this.current(source,checks,signal))continue;
+   const date=calendarWindow(new Date(attention.at),plan.config.timeZone).today;
+   // Derive relative dates from the original message, even when the next poll crosses midnight.
+   const offset=/后天/.test(attention.text)?2:/明天|明早|明晚/.test(attention.text)?1:0;
+   const requestedDate=new Date(Date.parse(date)+offset*86400000).toISOString().slice(0,10);
+   const lookupKey=JSON.stringify([dailySourceKey(source),requestedDate]);
+   let lookup=calendars.get(lookupKey);
+   if(!lookup){
+    lookup=this.sources.scan(source,now,now,plan.config.timeZone,signal,undefined,requestedDate)
+     .then(result=>result.items).catch(()=>undefined);
+    calendars.set(lookupKey,lookup);
+   }
+   const entries=await lookup;
+   if(!entries)continue;
+   const normalize=(text:string)=>text.toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+   const context=normalize(attention.text+' '+attention.group);
+   const matches=entries.filter(entry=>normalize(entry.title).length>=3&&context.includes(normalize(entry.title)));
+   if(matches.length===1){
+    const matched=matches[0]!;
+    const core=await sharedRuntime();
+    const raw=(matched.title+' · '+matched.detail).slice(0,300);
+    const safe=core.redactSecrets(raw).text;
+    if(safe!==raw)continue;
+    calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，当前仍列有「'+safe+'」。');
+   }else{
+    calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，未能唯一匹配这场会议。请以原群通知为准。');
+   }
+   usedCalendars.set(key,source);
+  }
+  const body=dailyMessageNotice([...items.values()],plan.config.timeZone,calendarEvidence);
   if(!body)return;
   const deadline=now+briefDeliveryWindow;
   const assertEligible=async()=>{
@@ -408,7 +456,7 @@ export class AssistantDaily {
    guard();
    if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
    const current=new Map<string,Promise<boolean>>();
-   for(const item of items.values())if(!await this.current(item.source,current,signal))throw new KTeamError('daily_source_changed',409);
+   for(const source of [...items.values()].map(item=>item.source).concat([...usedCalendars.values()]))if(!await this.current(source,current,signal))throw new KTeamError('daily_source_changed',409);
    guard();
   };
   await assertEligible();
