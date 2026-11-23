@@ -3,7 +3,7 @@ import {sharedRuntime} from '../runtime/native.js';
 import {messageAttention} from './assistant-message-attention.js';
 import {KTeamError} from '../errors.js';
 import {dailySource,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyEnterpriseLabels,dailyEnterpriseProviders,recentGroupsLimit,type DailyEnterpriseProvider} from '../protocol/assistant-daily-types.js';
+import {dailyEnterpriseLabels,dailyEnterpriseProviders,isDailyDirectChats,recentDirectChatsId,recentGroupsLimit,type DailyEnterpriseProvider} from '../protocol/assistant-daily-types.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {nextRoutineAt} from '../protocol/routine-calendar.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
@@ -89,6 +89,7 @@ export class AssistantDailyEnterprise {
    const {account,revision}=result.value;
    return [
     dailySource.parse({kind:'enterprise-message',id:'recent-groups-30',label:dailyEnterpriseLabels[provider]+' · 最近 30 个群 · 每 15 分钟',account,revision,provider}),
+    ...(provider==='feishu'?[dailySource.parse({kind:'enterprise-message',id:recentDirectChatsId,label:'飞书 · 最近 30 个单聊 · 每 15 分钟',account,revision,provider})]:[]),
     dailySource.parse({kind:'enterprise-calendar',id:'calendar',label:dailyEnterpriseLabels[provider]+' · 日程和会议',account,revision,provider}),
    ];
   });
@@ -100,10 +101,11 @@ export class AssistantDailyEnterprise {
  private async read(provider:DailyEnterpriseProvider,args:readonly string[],signal:AbortSignal){
   return unwrap(await this.connector.dailyEnterpriseRead(provider,args,signal),provider);
  }
- private async groups(provider:DailyEnterpriseProvider,now:number,signal:AbortSignal):Promise<Group[]>{
+ private async conversations(provider:DailyEnterpriseProvider,now:number,signal:AbortSignal,direct:boolean):Promise<Group[]>{
   let response:unknown,entries:Row[];
   if(provider==='feishu'){
-   response=await this.read(provider,['im','+chat-list','--as','user','--sort','active_time','--page-size',String(recentGroupsLimit),'--format','json'],signal);
+   response=await this.read(provider,['im','+chat-list','--as','user','--sort','active_time',
+    ...(direct?['--types','p2p']:[]),'--page-size',String(recentGroupsLimit),'--format','json'],signal);
    entries=list(response,'chats');
   }else if(provider==='dingtalk'){
    response=await this.read(provider,['chat','+chat-list','--types','group','--limit','100','--format','json'],signal);
@@ -124,7 +126,8 @@ export class AssistantDailyEnterprise {
   const groups=new Map<string,Group>();
   for(const entry of entries){
    const id=string(entry.chat_id??entry.openConversationId??entry.group_id);
-   if(!/^[A-Za-z0-9_+/=:@.-]{1,256}$/.test(id)||id.startsWith('-')||entry.chat_mode==='p2p'||entry.conversationType==='direct'||entry.chat_status==='dissolved'||entry.chat_status==='dissolved_save')continue;
+   const isDirect=entry.chat_mode==='p2p'||entry.conversationType==='direct';
+   if(!/^[A-Za-z0-9_+/=:@.-]{1,256}$/.test(id)||id.startsWith('-')||isDirect!==direct||entry.chat_status==='dissolved'||entry.chat_status==='dissolved_save')continue;
    groups.set(id,{id,name:string(entry.name??entry.chat_name??entry.group_name),lastAt:timestamp(entry.lastMsgCreateAt??entry.last_msg_time)});
   }
   const lastActivity=(group:Group)=>Number.isFinite(group.lastAt)?group.lastAt:0;
@@ -140,9 +143,11 @@ export class AssistantDailyEnterprise {
    chat_id:groupId,begin_time:wecomTime(from),end_time:wecomTime(now),
   })],signal),'messages');
  }
- private async recentGroups(source:DailySource,provider:DailyEnterpriseProvider,user:string,from:number,now:number,signal:AbortSignal):Promise<DailySourceScan>{
+ private async recentChats(source:DailySource,provider:DailyEnterpriseProvider,user:string,from:number,now:number,signal:AbortSignal):Promise<DailySourceScan>{
   const core=await sharedRuntime();
-  const targets=await this.groups(provider,now,signal);
+  const direct=isDailyDirectChats(source);
+  if(direct&&provider!=='feishu')throw new KTeamError('daily_source_unavailable',503);
+  const targets=await this.conversations(provider,now,signal,direct);
   const cut=Math.max(from,now-day);
   const items:DailyItem[]=[];
   let checked=0;
@@ -165,12 +170,16 @@ export class AssistantDailyEnterprise {
     }).sort((a,b)=>b.stamp-a.stamp).slice(0,messageLimit);
     const latest=messages[0];
     if(!latest)return;
-    const actionable=messages.map(message=>messageAttention({content:message.content,group:group.name||dailyEnterpriseLabels[provider]+'群聊',
-     stamp:message.stamp,addressed:message.urgent,mentionPresent:message.mentionPresent},text=>core.redactSecrets(text).text)).find(Boolean);
+    const actionable=messages.flatMap(message=>{
+     const attention=messageAttention({content:message.content,group:group.name||dailyEnterpriseLabels[provider]+(direct?'单聊':'群聊'),
+      stamp:message.stamp,addressed:message.urgent,mentionPresent:message.mentionPresent,direct},text=>core.redactSecrets(text).text);
+     return attention?[{attention,id:message.id}]:[];
+    })[0];
+    if(direct&&!actionable)return;
     return {
-     id:hash([source.account,group.id,latest.id]),source,title:actionable?.group??'一个近期群有消息待查看',
-     detail:actionable?.text??'本次可见 '+messages.length+' 条群消息。',observedAt:latest.stamp,
-     messageAttention:actionable,urgent:messages.some(message=>message.urgent),
+     id:hash([source.account,group.id,direct?actionable!.id:latest.id]),source,title:actionable?.attention.group??'一个近期群有消息待查看',
+     detail:actionable?.attention.text??'本次可见 '+messages.length+' 条群消息。',observedAt:direct?actionable!.attention.at:latest.stamp,
+     messageAttention:actionable?.attention,urgent:direct||messages.some(message=>message.urgent),
     };
    }));
    signal.throwIfAborted();
@@ -230,6 +239,6 @@ export class AssistantDailyEnterprise {
   const identity=provider&&await this.identity(provider,signal);
   if(!provider||!identity||identity.account!==source.account||identity.revision!==source.revision)
    throw new KTeamError('daily_source_changed',409);
-  return source.kind==='enterprise-message'?this.recentGroups(source,provider,identity.user,from,now,signal):this.calendar(source,provider,now,timeZone,signal,calendarDate);
+  return source.kind==='enterprise-message'?this.recentChats(source,provider,identity.user,from,now,signal):this.calendar(source,provider,now,timeZone,signal,calendarDate);
  }
 }

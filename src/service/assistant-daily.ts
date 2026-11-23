@@ -5,7 +5,7 @@ import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
-import {dailyKinds,dailyPresets,isDailyCalendar,isDailyMessage,isDailyRecentGroups,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
+import {dailyKinds,dailyPresets,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
@@ -376,8 +376,8 @@ export class AssistantDaily {
    });
    const previous=this.store.operationsWithPrefix(briefPrefix).slice(0,10) as Brief[];
    const known=new Set((previous[0]?.items??[]).map(item=>item.id));
-   const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isDailyRecentGroups(item.source)).map(item=>item.id)));
-   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(isDailyCalendar(item.source)||!(isDailyRecentGroups(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
+   const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isDailyRecentChats(item.source)).map(item=>item.id)));
+   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(isDailyCalendar(item.source)||!(isDailyRecentChats(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
    this.store.transaction(()=>{
     for(const row of due) {
      const id=briefPrefix+row.day+':'+row.slot;

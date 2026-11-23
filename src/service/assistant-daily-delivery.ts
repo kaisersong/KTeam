@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,type DailyMessageAttention,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
+import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,type DailyMessageAttention,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
 import {findOwnerMessage} from './room-reads.js';
@@ -35,7 +35,8 @@ const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;priorit
 const plain=(text:string)=>text.replace(/[<&>]/g,value=>({'<':'＜','>':'＞','&':'＆'})[value]!).replace(/[\x5c`*_{}\[\]()#!|~]/g,value=>'\\'+value);
 export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvidence=new Map<string,string>()){
  const actionable=items.flatMap(item=>item.messageAttention?[{id:item.id,source:item.source,...item.messageAttention}]:[])
-  .sort((a,b)=>attentionLabels[a.kind].priority-attentionLabels[b.kind].priority||b.at-a.at);
+  .sort((a,b)=>Number(isDailyDirectChats(b.source))-Number(isDailyDirectChats(a.source))||
+   attentionLabels[a.kind].priority-attentionLabels[b.kind].priority||b.at-a.at);
  if(!actionable.length)return undefined;
  const time=new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
  const entries=actionable.slice(0,3).map(item=>{
@@ -50,7 +51,7 @@ export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvi
     ? [...(ask?['对方请你'+ask.replace(/[，、；：;]+$/,'')+'。']:[]),
       ack?'回复草稿「收到，谢谢通知。」': '可引用这条提醒，补上你的决定或回复口径。']
     : [];
-  return ['**'+action.label+' · '+plain(item.group)+'**',provider+' · '+time.format(item.at),
+  return ['**'+action.label+' · '+plain(item.group)+'**',provider+(isDailyDirectChats(item.source)?'单聊':'')+' · '+time.format(item.at),
    '消息要点「'+plain(item.text)+'」',...followUp.map(plain)].join('\n\n');
  });
  return ['**消息里需要关注的事项**',...entries,

@@ -4,7 +4,7 @@ import {sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailySource, type DailyItem, type DailySource} from '../protocol/assistant-daily.js';
 import {readIntegrations, runtimeIntegrationRevision} from './integration-settings.js';
-import {isYzjRecentGroups,yzjRecentGroupsId,recentGroupsLimit} from '../protocol/assistant-daily-types.js';
+import {isYzjRecentGroups,isDailyDirectChats,recentDirectChatsId,yzjRecentGroupsId,recentGroupsLimit} from '../protocol/assistant-daily-types.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
 import type {MailConnectors} from './mail-connectors.js';
 import {messageAttention} from './assistant-message-attention.js';
@@ -102,6 +102,7 @@ export class AssistantDailySources {
   try {
    const {account,revision}=await this.yzjIdentity(signal);
    sources.push({kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群 · 每 15 分钟',account,revision});
+   sources.push({kind:'yzj-message',id:recentDirectChatsId,label:'最近 30 个单聊 · 每 15 分钟',account,revision});
    sources.push({kind:'yzj-calendar',id:'calendar',label:'云之家日程和会议',account,revision});
    const result=await Promise.allSettled([
     this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page','1'],signal),
@@ -165,7 +166,7 @@ export class AssistantDailySources {
   if(source.kind==='yzj-message') {
    const identity=await this.yzjIdentity(signal);
    if(identity.account!==source.account||identity.revision!==source.revision)throw new KTeamError('daily_source_changed',409);
-   if(isYzjRecentGroups(source))return this.recentGroups(source,identity.user,from,now,signal,recent);
+   if(isYzjRecentGroups(source)||isDailyDirectChats(source))return this.recentChats(source,identity.user,from,now,signal,recent);
    const value=await this.messagePage(source.id,signal);
    const core=await sharedRuntime();
    const conversation=object(object(value).group);
@@ -208,15 +209,16 @@ export class AssistantDailySources {
  private messagePage(groupId:string,signal:AbortSignal,bounded=false){
   return this.enterprise.dailyYzj(['im','message','list','--group-id',groupId,'--type','newest','--limit','20',...(bounded?['--jq',recentMessageFields]:[])],signal);
  }
- private async recentGroups(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
+ private async recentChats(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
   const core=await sharedRuntime();
+  const direct=isDailyDirectChats(source);
   const groups=new Map<string,{lastId:string;lastAt:number;name:string}>();
   for(let page=1;page<=5&&groups.size<recentGroupsLimit;page++){
    signal.throwIfAborted();
    const response=object(await this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page',String(page),'--jq',recentGroupFields],signal));
    for(const group of rows(response,'list')){
     const id=field(group,'groupId');
-    if(group.groupType!==2||!id||groups.has(id))continue;
+    if(group.groupType!==(direct?1:2)||!id||id===user+'-'+user||groups.has(id))continue;
     const last=object(group.lastMsg);
     groups.set(id,{name:field(group,'groupName','name'),lastId:field(group,'lastMsgId')||field(last,'msgId'),lastAt:yzjMessageTime(group.lastMsgSendTime??last.sendTime)});
     if(groups.size===recentGroupsLimit)break;
@@ -243,13 +245,20 @@ export class AssistantDailySources {
     });
     const latest=messages.sort((a,b)=>messageTime(b)-messageTime(a))[0];
     const latestId=latest&&field(latest,'msgId','messageId','id');
-    const actionable=messages.map(message=>messageAttention({
-     content:message.content??message.text,group:name||'云之家群聊',stamp:messageTime(message),addressed:mentionsUser(message,user),mentionPresent:mentionsSomeone(message),
-    },text=>core.redactSecrets(text).text)).find(Boolean);
-    const item:DailyItem|undefined=latestId?{
-     id:digest([key,latestId]),source,title:actionable?.group??'一个近期群有消息待查看',
-     detail:actionable?.text??'本次可见 '+messages.length+' 条其他成员的消息。',
-     observedAt:messageTime(latest),messageAttention:actionable,urgent:messages.some(message=>mentionsUser(message,user)),
+    const actionable=messages.flatMap(message=>{
+     const attention=messageAttention({
+      content:message.content??message.text,group:name||(direct?'云之家单聊':'云之家群聊'),
+      stamp:messageTime(message),addressed:mentionsUser(message,user),mentionPresent:mentionsSomeone(message),direct,
+     },text=>core.redactSecrets(text).text);
+     const id=field(message,'msgId','messageId','id');
+     return attention&&id?[{attention,id}]:[];
+    })[0];
+    const item:DailyItem|undefined=latestId&&(!direct||actionable)?{
+     id:digest([key,direct?actionable!.id:latestId]),source,title:actionable?.attention.group??'一个近期群有消息待查看',
+     detail:actionable?.attention.text??'本次可见 '+messages.length+' 条其他成员的消息。',
+     observedAt:direct?actionable!.attention.at:messageTime(latest),messageAttention:actionable?.attention,
+     urgent:direct||messages.some(message=>mentionsUser(message,user)),
+     ...(direct?{originalId:actionable!.id}:{}),
     }:undefined;
     return {key,lastId,item};
    }));

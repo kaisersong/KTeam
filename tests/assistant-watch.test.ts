@@ -8,7 +8,7 @@ import {AssistantDailySources} from '../src/service/assistant-daily-sources.js';
 import {AssistantWatch} from '../src/service/assistant-watch.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {watchDisplay} from '../src/protocol/assistant-watch.js';
-import {yzjRecentGroupsId,type DailyItem} from '../src/protocol/assistant-daily-types.js';
+import {recentDirectChatsId,yzjRecentGroupsId,type DailyItem} from '../src/protocol/assistant-daily-types.js';
 
 test('manual checks survive restart, distinguish missed and completed, and reject conflicting edits',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-watch-'));
@@ -206,4 +206,45 @@ test('legacy daily source fingerprints recover only for a matching login already
  login=new Date(at-1000).toISOString();
  user='another-user';
  assert.equal(await recover(),source);
+});
+
+test('only the separately selected Yunzhijia direct source reads p2p messages and filters idle chat',async()=>{
+ const now=Date.parse('2026-11-23T09:00:00Z');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const reads:string[]=[];
+ const adapter=new AssistantDailySources({dailyAccounts:async()=>[]} as never,{
+  dailyYzjConnectedAt:()=>undefined,
+  dailyYzj:async(args:string[])=>{
+   if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me'};
+   if(args[0]==='doc')return {list:[]};
+   if(args[1]==='group')return {list:[
+    {groupType:1,groupId:'me-colleague',groupName:'样例联系人',lastMsgId:'outgoing'},
+    {groupType:1,groupId:'me-idle',groupName:'其他联系人',lastMsgId:'idle'},
+    {groupType:1,groupId:'me-me',lastMsgId:'self'},
+    {groupType:2,groupId:'group',lastMsgId:'group-msg'},
+    {groupType:8,groupId:'system',lastMsgId:'system-msg'},
+   ],more:false};
+   const id=args[4]!;
+   reads.push(id);
+   if(id==='me-colleague')return {list:[
+    {msgId:'incoming',fromOpenId:'colleague',sendTime:now-2000,content:'请确认交付范围'},
+    {msgId:'outgoing',fromOpenId:'me',sendTime:now-1000,content:'请确认我的回复'},
+   ]};
+   return {list:[{msgId:'idle',fromOpenId:'colleague',sendTime:now-1000,content:'收到，谢谢'}]};
+  },
+ } as never);
+ const sources=(await adapter.catalog(true)).sources;
+ const direct=sources.find(source=>source.id===recentDirectChatsId)!;
+ const normal=sources.find(source=>source.id===yzjRecentGroupsId)!;
+ assert.deepEqual(reads,[]);
+ assert.equal(direct.account,hash(['fixture-org','me']));
+ const signal=new AbortController().signal;
+ await adapter.scan(normal,now-60000,now,'UTC',signal);
+ assert.deepEqual(reads.splice(0),['group']);
+ const result=await adapter.scan(direct,now-60000,now,'UTC',signal);
+ assert.deepEqual(reads,['me-colleague','me-idle']);
+ assert.equal(result.items.length,1);
+ assert.equal(result.items[0]?.originalId,'incoming');
+ assert.equal(result.items[0]?.urgent,true);
+ assert.equal(result.items[0]?.messageAttention?.group,'样例联系人');
 });
