@@ -180,7 +180,6 @@
 
 .mobile-pairing{padding:20px 0;max-width:480px}.mobile-pairing p{margin:12px 0}.mobile-pairing textarea{width:100%;min-height:100px;overflow-wrap:anywhere}
 
-.sidebar-mobile-entry{display:flex;align-items:center;gap:10px;margin:2px 16px;padding:6px 8px;border:0;border-radius:6px;font-size:12px;color:var(--muted);text-align:left;background:transparent}.sidebar-mobile-entry:hover{color:var(--text-primary);background:var(--surface-panel)}
 .mobile-pairing img{display:block;border-radius:16px;border:12px solid white;background:white}.mobile-pairing-steps{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0;padding:0;list-style:none}.mobile-pairing-steps li{display:flex;align-items:center;gap:8px}.mobile-pairing-steps b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--surface-panel)}
 .sidebar-update{flex-shrink:0;margin:8px 12px 0;border-radius:12px;background:var(--accent-soft,#edf3e8);color:var(--accent,#4e6d3e)}
 .sidebar-update button{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-radius:inherit;background:transparent;color:inherit;text-align:left;cursor:pointer}
