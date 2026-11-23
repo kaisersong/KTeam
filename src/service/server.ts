@@ -287,7 +287,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         await automation.assistant.verifyDailyScope();
         const action=url.pathname.slice('/v1/assistant/daily'.length);
         if(req.method==='GET'){
-          if(action==='/plan')return send(res,200,dailyWork.planView());
+          if(action==='/plan')return send(res,200,await dailyWork.clientPlan());
           if(action==='/watches')return send(res,200,await dailyWork.watches.view());
           if(action==='/today')return send(res,200,await dailyWork.view());
           if(action==='/sources')return send(res,200,await dailyWork.catalog(url.searchParams.get('yzj')==='1'));

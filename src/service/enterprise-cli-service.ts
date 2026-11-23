@@ -19,6 +19,7 @@ export class EnterpriseCliConnectorService {
     this.installed = this.runtime.find(provider);
     this.state = { provider, phase: this.runtime.supported(provider) ? this.installed ? 'ready' : 'notInstalled' : 'unsupported', revision: 0, installed: Boolean(this.installed), ...(this.installed ? { version: this.installed.version } : {}) };
   }
+  hasSavedConnection(): boolean { return this.state.phase === 'connected' || this.history.hasLogin(); }
   getState(): EnterpriseCliState { return { ...this.state, ...(this.state.connection ? { connection: { ...this.state.connection } } : {}) }; }
   async dailyIdentity(signal?: AbortSignal) {
     const result=await this.dailyRead(enterpriseCliArgs(this.provider,'check'),signal);

@@ -77,6 +77,11 @@ export class AssistantDailySources {
   if(connection?.openId && (connection.openId!==user||connection.orgId!==org))throw new KTeamError('daily_source_changed',409);
   return {account:digest([org,user]),revision:digest([org,user,connection?.connectedAt??null]),user};
  }
+ async connectorSetup(){
+  const [enterprise,mail]=await Promise.allSettled([this.enterprise.hasSavedConnection(),this.mail.dailyAccounts()]);
+  return {enterprise:enterprise.status==='fulfilled'&&enterprise.value!==undefined?!enterprise.value:undefined,
+   mail:mail.status==='fulfilled'?mail.value.length===0:undefined};
+ }
  async catalog(includeEnterprise=false, signal?:AbortSignal):Promise<{sources:DailySource[];yzjAvailable:boolean}> {
   const mail=await this.mail.dailyAccounts();
   const sources=mail.map(account=>dailySource.parse({kind:'mail',id:account.id,label:account.email,account:account.id,revision:String(account.revision)}));

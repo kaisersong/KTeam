@@ -3,7 +3,7 @@ import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react
 import {AssistantWatches} from "./assistant-watch";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
-import {dailyBriefDeliveryLabels,type DailyBriefDelivery,dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
+import {dailyBriefDeliveryLabels,type DailyBriefDelivery,type AssistantConnectorSetup,dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
 
 type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange;preset?:DailyPreset};
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
@@ -92,6 +92,28 @@ function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved,onC
   </View>
   {error&&<Text accessibilityRole="alert" style={{color:colors.text}}>{error}</Text>}
  </View>;
+}
+
+export function AssistantConnectorGuide({roomId,call,colors}:Pick<ToolProps,'call'|'colors'>&{roomId:string}){
+ const [setup,setSetup]=useState<AssistantConnectorSetup>();
+ useEffect(()=>{
+  let active=true,loading=false;
+  const load=async()=>{
+   if(loading)return;
+   loading=true;
+   try{
+    const plan=await call("dailyWork.plan",{roomId});
+    if(active)setSetup(plan.connectorSetup);
+   }catch{if(active)setSetup(undefined);}
+   finally{loading=false;}
+  };
+  void load();
+  const timer=setInterval(()=>void load(),15000);
+  return ()=>{active=false;clearInterval(timer);};
+ },[call,roomId]);
+ if(!setup?.enterprise&&!setup?.mail)return null;
+ const missing=setup.enterprise&&setup.mail?"企业通讯和邮箱":setup.enterprise?"企业通讯":"邮箱";
+ return <Text style={{color:colors.muted,marginHorizontal:12,marginVertical:6}}>在桌面 KTeam「设置 → 连接器」连接{missing}后，就可以把相关内容加进简报。</Text>;
 }
 
 export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:ToolProps&{

@@ -152,3 +152,23 @@ test('the recent-groups scope pages to 30 groups and only reopens groups that ch
  assert.deepEqual(reads.slice(30),['g1']);
  assert.deepEqual(second.items.map(item=>item.id),first.items.map(item=>item.id));
 });
+
+test('assistant guides setup independently without reading content or prompting for configured sources',async()=>{
+ let hasEnterprise=false,hasMail=false,unknown=false;
+ const sources=new AssistantDailySources({
+  dailyAccounts:async()=>hasMail?[{id:'mail-fixture',status:'needs_reconnect'}]:[],
+  dailySearch:()=>assert.fail('setup must not read messages'),
+ } as never,{
+  hasSavedConnection:async()=>unknown?undefined:hasEnterprise,
+  dailyYzj:()=>assert.fail('setup must not read conversations'),
+ } as never);
+ assert.deepEqual(await sources.connectorSetup(),{enterprise:true,mail:true});
+ hasMail=true;
+ assert.deepEqual(await sources.connectorSetup(),{enterprise:true,mail:false});
+ hasEnterprise=true;
+ assert.deepEqual(await sources.connectorSetup(),{enterprise:false,mail:false});
+ hasMail=false;
+ assert.deepEqual(await sources.connectorSetup(),{enterprise:false,mail:true});
+ unknown=true;
+ assert.deepEqual(await sources.connectorSetup(),{enterprise:undefined,mail:true});
+});

@@ -13,7 +13,7 @@ import type {EnterpriseCliProvider} from '../protocol/enterprise-cli.js';
 const working=new Set(['installing','checking','opening','waiting','cancelling','stopPending']);
 export class EnterpriseConnectors{
  private readonly enterprise=new Map<string,EnterpriseCliConnectorService>();private readonly cloud:YzjCliAuthService;
- private cloudBinary='';private cloudVersion='';private update?:{controller:AbortController;done:Promise<void>};private updateError=false;private closed=false;private loading?:Promise<void>;
+ private cloudBinary='';private cloudVersion='';private update?:{controller:AbortController;done:Promise<void>};private updateError=false;private closed=false;private loading?:Promise<void>;private existingCloudConnection?:Promise<boolean|undefined>;
  constructor(private readonly options:{configRoot?:string;packageRoot?:string;openExternal?:(url:string)=>Promise<void>}={}){
   const root=options.configRoot??getConfigDir(),openExternal=options.openExternal??(async(value:string)=>{const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password)throw Error('connector_url_invalid');const windows=process.platform==='win32';await new Promise<void>((resolve,reject)=>execFile(windows?'rundll32.exe':process.platform==='darwin'?'/usr/bin/open':'xdg-open',windows?['url.dll,FileProtocolHandler',url.href]:[url.href],{timeout:10000},error=>error?reject(error):resolve()));});
   const runtime=new ManagedEnterpriseCliRuntime({rootDir:join(root,'tools/enterprise-cli')});runtime.configurePath();for(const provider of ['dingtalk','feishu','wecom'] as const)this.enterprise.set(provider,new EnterpriseCliConnectorService(provider,{runtime,openExternal,historyPath:join(root,'connectors',provider+'-history.json')}));
@@ -30,6 +30,17 @@ export class EnterpriseConnectors{
    if(!this.cloudBinary)throw new KTeamError('connector_cli_unavailable');this.updateError=false;const controller=new AbortController(),op={controller,done:Promise.resolve()};this.update=op;op.done=(async()=>{try{const cli=ensureBundledYzjCli({configDir:this.options.configRoot,packageRoot:this.options.packageRoot});const result=await connectorCommand(process.execPath,[...getYzjCliLaunchArgs(cli,this.options.packageRoot),'update'],controller.signal,450000);if(result.code!==0)throw Error('update_failed');const version=await connectorCommand(cli.binaryPath,['--version'],controller.signal);this.cloudVersion=/^yzj-cli (\d+\.\d+\.\d+)\s*$/.exec(version.stdout)?.[1]??this.cloudVersion;if(!this.options.configRoot)configureBundledYzjCli();}catch{if(!controller.signal.aborted)this.updateError=true;}finally{if(this.update===op)this.update=undefined;}})();return this.view();
   }
   if(!['login','check'].includes(action))throw new KTeamError('connector_action_invalid');await this.cloud.control(action as 'login'|'check','user');return this.view();
+ }
+ async hasSavedConnection(){
+  if(this.closed)return undefined;
+  if(this.cloud.hasSavedConnection()||[...this.enterprise.values()].some(service=>service.hasSavedConnection()))return true;
+  try{if(!this.cloudBinary)this.seed();}catch{return false;}
+  return this.existingCloudConnection??=connectorCommand(this.cloudBinary,['whoami'],undefined,3000).then(result=>{
+   if(result.code===3)return false;
+   if(result.code!==0)return undefined;
+   const identity=JSON.parse(result.stdout);
+   return identity?.success===true&&identity.data?.openId&&identity.data?.orgId?true:undefined;
+  }).catch(()=>undefined);
  }
  async dailyYzj(args:readonly string[],signal?:AbortSignal){
   const binary=this.seed();

@@ -31,7 +31,7 @@ function Section({title,description,children}:{title:string;description?:string;
 const sections=[['general','通用设置',SlidersHorizontal],['mobile','手机连接',Smartphone],['models','模型设置',Cpu],['decision','决策与主动性',Settings],['connectors','连接器',Users],['skills','技能管理',Sparkles],['plugins','插件',Puzzle],['tools','工具管理',Search],['mcp','MCP 服务器',Shield],['memory','记忆',Info],['voice','语音',SlidersHorizontal],['appearance','外观设置',Palette],['permissions','授权管理',Shield],['data','数据与关于',Info]] as const;
 type Page=typeof sections[number][0];
 
-export function SettingsWorkspace({initialPage='general',preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
+export function SettingsWorkspace({initialPage='general',initialConnector,preferences,onPreferences,onModelsSaved,onClose,onCreate,onBot,bots}:{initialPage?:Page;initialConnector?:'enterprise'|'mail';onModelsSaved?:()=>Promise<void>;preferences?:AppPreferences;onPreferences:(value:AppPreferences)=>void;onClose:()=>void;onCreate:()=>void;onBot:(bot:Bot)=>void;bots:Bot[]}){
  const [page,setPage]=useState<Page>(initialPage);
  useEffect(()=>setPage(initialPage),[initialPage]);
  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229&&!e.defaultPrevented){if(document.activeElement instanceof HTMLElement)document.activeElement.blur();onClose();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[onClose]);
@@ -40,7 +40,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='mobile'&&<MobileSettings/>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved} onFinished={onClose}/>}
  {page==='decision'&&<DecisionPanel/>}
- {page==='connectors'&&<ConnectorSettings bots={bots} onBot={onBot} onCreate={onCreate}/>}
+ {page==='connectors'&&<ConnectorSettings initialConnector={initialConnector} bots={bots} onBot={onBot} onCreate={onCreate}/>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='plugins'&&<PluginSettings/>}
  {page==='tools'&&<ToolsSettings/>}
@@ -51,15 +51,19 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  </div></div>;
 }
 
-function ConnectorSettings({bots,onBot,onCreate}:{bots:Bot[];onBot:(bot:Bot)=>void;onCreate:()=>void}){
+function ConnectorSettings({initialConnector,bots,onBot,onCreate}:{initialConnector?:'enterprise'|'mail';bots:Bot[];onBot:(bot:Bot)=>void;onCreate:()=>void}){
  const [tab,setTab]=useState<'apps'|'agents'>('apps');
+ const enterprise=useRef<HTMLDivElement>(null),mail=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  if(initialConnector)(initialConnector==='enterprise'?enterprise:mail).current?.focus();
+ },[initialConnector]);
  return <>
   <Section title="连接器"><SettingsTabs label="连接器分类" value={tab} onChange={setTab} tabs={[
    {id:'apps',label:'应用连接器'},{id:'agents',label:'本机 Agent'},
   ]}/></Section>
   {tab==='agents'
    ?<div role="tabpanel" aria-label="本机 Agent"><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/></div>
-   :<div role="tabpanel" aria-label="应用连接器"><MailConnectorSettings/><MailSettings/><EnterpriseConnectorSettings/></div>}
+   :<div role="tabpanel" aria-label="应用连接器"><div ref={mail} tabIndex={-1}><MailConnectorSettings/><MailSettings/></div><div ref={enterprise} tabIndex={-1}><EnterpriseConnectorSettings/></div></div>}
  </>;
 }
 

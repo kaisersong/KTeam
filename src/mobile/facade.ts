@@ -212,7 +212,7 @@ export class MobileFacade {
         if(method==="dailyWork.original")return daily.original(input);
         fields(input,[]);
         if(method==="dailyWork.watches")return daily.watches.view(()=>this.assert(p));
-        return method==="dailyWork.plan"?daily.planView():daily.view();
+        return method==="dailyWork.plan"?daily.clientPlan():daily.view();
       }
       case "bots.list": {
         fields(i, []);

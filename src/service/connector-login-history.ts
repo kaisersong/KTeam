@@ -20,7 +20,7 @@ export class YzjCliConnectionHistory {
     return createHash('sha256').update(JSON.stringify([orgId, openId])).digest('hex');
   }
 
-  get(orgId: string, openId: string): string | undefined {
+  private load(): void {
     if (!this.loaded) {
       this.loaded = true;
       let fd: number | undefined;
@@ -34,6 +34,15 @@ export class YzjCliConnectionHistory {
       } catch { /* Missing or invalid history must not block identity checks. */ }
       finally { if (fd !== undefined) closeSync(fd); }
     }
+  }
+
+  hasLogin(): boolean {
+    this.load();
+    return this.record !== undefined;
+  }
+
+  get(orgId: string, openId: string): string | undefined {
+    this.load();
     return this.record?.accountKey === this.key(orgId, openId) ? this.record.connectedAt : undefined;
   }
 
