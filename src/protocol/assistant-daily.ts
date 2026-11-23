@@ -2,7 +2,7 @@ import {z} from 'zod';
 import {calendarWindow} from '../runtime/calendar.js';
 import {nextRoutineAt, routineTimeZone} from './routine-schedule.js';
 
-import {dailySlots,dailyKinds,dailyPresetIds,type DailySource,type DailyConfiguration,type DailyChange} from './assistant-daily-types.js';
+import {dailySlots,dailyKinds,dailyPresetIds,dailyEnterpriseProviders,type DailySource,type DailyConfiguration,type DailyChange} from './assistant-daily-types.js';
 export type {DailySource,DailyConfiguration,DailyChange,DailyItem,DailyCoverage} from './assistant-daily-types.js';
 
 const dailyKind = z.enum(dailyKinds);
@@ -10,7 +10,8 @@ const id = z.string().min(1).max(256).regex(/^[^\u0000-\u001f\u007f-\u009f]+$/u)
 const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 const slot = z.enum(dailySlots);
 const revision = z.number().int().nonnegative();
-export const dailySource = z.object({kind:dailyKind,id,label:id,account:id,revision:id}).strict() satisfies z.ZodType<DailySource>;
+export const dailySource = z.object({kind:dailyKind,id,label:id,account:id,revision:id,provider:z.enum(dailyEnterpriseProviders).optional()}).strict()
+ .refine(source=>source.kind.startsWith('enterprise-')===Boolean(source.provider)) satisfies z.ZodType<DailySource>;
 export const dailyConfiguration = z.object({
  timeZone:z.string().max(64),
  weekdays:z.array(z.number().int().min(1).max(7)).min(1).max(7),
@@ -24,8 +25,8 @@ export const dailyChange = z.object({
  weekdays:dailyConfiguration.shape.weekdays.optional(),
  middayUrgentOnly:z.boolean().optional(), paused:z.boolean().optional(),
  skipToday:slot.optional(), restore:z.literal(true).optional(),
- sourceKinds:z.array(dailyKind).max(5).optional(),
- removeSourceKinds:z.array(dailyKind).max(5).optional(),
+ sourceKinds:z.array(dailyKind).max(dailyKinds.length).optional(),
+ removeSourceKinds:z.array(dailyKind).max(dailyKinds.length).optional(),
 }).strict() satisfies z.ZodType<DailyChange>;
 export const dailyPresetSelection = z.object({
  preset:z.enum([...dailyPresetIds,'sources']), expectedRevision:revision, expectedDraftId:z.string().uuid().nullable(),

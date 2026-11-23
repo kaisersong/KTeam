@@ -9,6 +9,7 @@ import {ensureBundledYzjCli,getYzjCliLaunchArgs,configureBundledYzjCli} from '..
 import {getConfigDir} from '../runtime/connector-paths.js';
 import {connectorCommand} from '../runtime/connector-command.js';
 import {record,fields,KTeamError} from '../errors.js';
+import type {EnterpriseCliProvider} from '../protocol/enterprise-cli.js';
 const working=new Set(['installing','checking','opening','waiting','cancelling','stopPending']);
 export class EnterpriseConnectors{
  private readonly enterprise=new Map<string,EnterpriseCliConnectorService>();private readonly cloud:YzjCliAuthService;
@@ -37,6 +38,15 @@ export class EnterpriseConnectors{
   const envelope=JSON.parse(result.stdout);
   if(envelope?.success!==true||typeof envelope.data!=='object'||envelope.data===null)throw new KTeamError('daily_source_unavailable',503);
   return envelope.data as unknown;
+ }
+ async dailyEnterpriseIdentity(provider:EnterpriseCliProvider,signal?:AbortSignal){
+  return this.enterprise.get(provider)?.dailyIdentity(signal);
+ }
+ async dailyEnterpriseRead(provider:EnterpriseCliProvider,args:readonly string[],signal:AbortSignal){
+  const service=this.enterprise.get(provider);
+  if(!service)throw new KTeamError('daily_source_unavailable',503);
+  const result=await service.dailyRead(args,signal);
+  return JSON.parse(result.stdout) as unknown;
  }
  async close(){this.closed=true;if(this.update){this.update.controller.abort();await this.update.done;}await Promise.all([this.cloud.dispose(),...[...this.enterprise.values()].map(service=>service.dispose())]);}
 }

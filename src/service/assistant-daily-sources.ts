@@ -4,9 +4,10 @@ import {sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailySource, type DailyItem, type DailySource} from '../protocol/assistant-daily.js';
 import {readIntegrations, runtimeIntegrationRevision} from './integration-settings.js';
-import {isYzjRecentGroups,yzjRecentGroupsId,yzjRecentGroupsLimit} from '../protocol/assistant-daily-types.js';
+import {isYzjRecentGroups,yzjRecentGroupsId,recentGroupsLimit} from '../protocol/assistant-daily-types.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
 import type {MailConnectors} from './mail-connectors.js';
+import {AssistantDailyEnterprise} from './assistant-daily-enterprise.js';
 
 const digest = (value:unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function object(value:unknown):Record<string,unknown> {
@@ -65,7 +66,8 @@ function yzjMessageTime(value:unknown){
 const messageTime=(entry:Record<string,unknown>)=>yzjMessageTime(entry.sendTime??entry.createTime??entry.timestamp);
 
 export class AssistantDailySources {
- constructor(private mail:MailConnectors,private enterprise:EnterpriseConnectors){}
+ private readonly otherEnterprise:AssistantDailyEnterprise;
+ constructor(private mail:MailConnectors,private enterprise:EnterpriseConnectors){this.otherEnterprise=new AssistantDailyEnterprise(enterprise);}
  private async yzjIdentity(signal?:AbortSignal) {
   const account=object(await this.enterprise.dailyYzj(['whoami'],signal));
   const org=field(account,'orgId'),user=field(account,'openId');
@@ -75,10 +77,15 @@ export class AssistantDailySources {
   if(connection?.openId && (connection.openId!==user||connection.orgId!==org))throw new KTeamError('daily_source_changed',409);
   return {account:digest([org,user]),revision:digest([org,user,connection?.connectedAt??null]),user};
  }
- async catalog(includeYzj=false, signal?:AbortSignal):Promise<{sources:DailySource[];yzjAvailable:boolean}> {
+ async catalog(includeEnterprise=false, signal?:AbortSignal):Promise<{sources:DailySource[];yzjAvailable:boolean}> {
   const mail=await this.mail.dailyAccounts();
   const sources=mail.map(account=>dailySource.parse({kind:'mail',id:account.id,label:account.email,account:account.id,revision:String(account.revision)}));
-  if(!includeYzj)return {sources,yzjAvailable:false};
+  if(!includeEnterprise)return {sources,yzjAvailable:false};
+  const additional=this.otherEnterprise.catalog(signal);
+  const yzjAvailable=await this.addYzjSources(sources,signal);
+  return {sources:[...sources,...await additional],yzjAvailable};
+ }
+ private async addYzjSources(sources:DailySource[],signal?:AbortSignal){
   try {
    const {account,revision}=await this.yzjIdentity(signal);
    sources.push({kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群 · 每 15 分钟',account,revision});
@@ -100,12 +107,13 @@ export class AssistantDailySources {
      }
     }catch{/* Unsupported discovery is never reported as a scanned source. */}
    }
-   return {sources,yzjAvailable:true};
-  }catch{return {sources,yzjAvailable:false};}
+   return true;
+  }catch{return false;}
  }
  async current(source:DailySource,signal?:AbortSignal):Promise<boolean> {
   if(source.kind==='mail')return (await this.mail.dailyAccounts()).some(account=>account.id===source.id&&source.revision===String(account.revision));
   if(source.kind==='news')return source.revision===await runtimeIntegrationRevision();
+  if(source.provider)return this.otherEnterprise.current(source,signal);
   const identity=await this.yzjIdentity(signal);
   return identity.account===source.account&&identity.revision===source.revision;
  }
@@ -132,6 +140,7 @@ export class AssistantDailySources {
     return url?[item(url,hit.title.slice(0,256),hit.snippet.slice(0,500),now,{url})]:[];
    }),partial:true};
   }
+  if(source.provider)return this.otherEnterprise.scan(source,from,now,timeZone,signal);
   if(source.kind==='yzj-doc') {
    const value=await this.enterprise.dailyYzj(['doc','list','--workspace',source.id],signal);
    return {items:rows(value,'list','items','docs').flatMap(entry=>{
@@ -186,7 +195,7 @@ export class AssistantDailySources {
  }
  private async recentGroups(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
   const groups=new Map<string,{lastId:string;lastAt:number}>();
-  for(let page=1;page<=5&&groups.size<yzjRecentGroupsLimit;page++){
+  for(let page=1;page<=5&&groups.size<recentGroupsLimit;page++){
    signal.throwIfAborted();
    const response=object(await this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page',String(page),'--jq',recentGroupFields],signal));
    for(const group of rows(response,'list')){
@@ -194,7 +203,7 @@ export class AssistantDailySources {
     if(group.groupType!==2||!id||groups.has(id))continue;
     const last=object(group.lastMsg);
     groups.set(id,{lastId:field(group,'lastMsgId')||field(last,'msgId'),lastAt:yzjMessageTime(group.lastMsgSendTime??last.sendTime)});
-    if(groups.size===yzjRecentGroupsLimit)break;
+    if(groups.size===recentGroupsLimit)break;
    }
    if(response.more!==true)break;
   }

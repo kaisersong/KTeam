@@ -7,7 +7,7 @@ import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../..
 
 const slots=['morning','midday','evening'] as const;
 const slotLabel={morning:'早报',midday:'午报',evening:'晚报'};
-const kindLabel={mail:'邮件','yzj-message':'云之家消息','yzj-calendar':'云之家日程','yzj-doc':'云之家知识库',news:'公开资讯'};
+const kindLabel={mail:'邮件','yzj-message':'云之家消息','yzj-calendar':'云之家日程','yzj-doc':'云之家知识库',news:'公开资讯','enterprise-message':'企业消息','enterprise-calendar':'企业日程'};
 const key=(source:DailySource)=>JSON.stringify([source.kind,source.account,source.id]);
 const format=(at:number,timeZone?:string)=>new Intl.DateTimeFormat('zh-CN',{timeZone,dateStyle:'short',timeStyle:'short'}).format(at);
 interface Draft {
@@ -98,8 +98,8 @@ function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:Daily
  const [topic,setTopic]=useState('');
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
- const [yzjLoaded,setYzjLoaded]=useState(false);
- const [yzjAvailable,setYzjAvailable]=useState(false);
+ const [enterpriseLoaded,setEnterpriseLoaded]=useState(false);
+ const [enterpriseAvailable,setEnterpriseAvailable]=useState(false);
  const visible=[...new Map([...selected,...available].map(source=>[key(source),source])).values()];
  const act=async(action:()=>Promise<void>)=>{setError('');setBusy(true);try{await action();}catch(e){setError(explain(e));}finally{setBusy(false);}};
  function toggle(source:DailySource){
@@ -122,9 +122,9 @@ function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:Daily
   </fieldset>
   <div className="assistant-daily-actions">
    <button className="secondary" disabled={busy} onClick={()=>void act(async()=>{const data=await api.dailyWorkSources(false);setAvailable(items=>[...items.filter(source=>source.kind!=='mail'),...data.sources]);if(!data.sources.length)setError('还没有连接邮箱。');})}>选择邮箱</button>
-   <button className="secondary" disabled={busy} onClick={()=>void act(async()=>{const data=await api.dailyWorkSources(true);setAvailable(items=>[...items.filter(source=>source.kind==='news'),...data.sources]);setYzjAvailable(data.yzjAvailable);setYzjLoaded(true);})}>选择云之家来源</button>
+   <button className="secondary" disabled={busy} onClick={()=>void act(async()=>{const data=await api.dailyWorkSources(true);setAvailable(items=>[...items.filter(source=>source.kind==='news'),...data.sources]);setEnterpriseAvailable(data.sources.some((source:DailySource)=>source.provider||source.kind.startsWith('yzj-')));setEnterpriseLoaded(true);})}>选择企业应用来源</button>
   </div>
-  {yzjLoaded&&!yzjAvailable&&<p role="status">暂时无法读取云之家来源。可先确认其他来源。</p>}
+  {enterpriseLoaded&&!enterpriseAvailable&&<p role="status">暂时无法读取企业应用来源。可先确认其他来源。</p>}
   <form className="assistant-daily-actions" onSubmit={event=>{event.preventDefault();if(topic.trim())void act(async()=>{const result=await api.dailyWorkNews({topic:topic.trim()});setSelected(items=>[...items.filter(item=>key(item)!==key(result.source)),result.source]);setTopic('');});}}>
     <input aria-label="可用于公开搜索的关键词" placeholder="可公开搜索的资讯关键词" maxLength={160} value={topic} onChange={event=>setTopic(event.target.value)}/>
     <button className="secondary" disabled={busy||!topic.trim()} type="submit">添加订阅</button>
