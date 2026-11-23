@@ -1,15 +1,14 @@
 import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,Clock3} from 'lucide-react';
-import {dailySlotLabels,type DailySlot} from '../../../src/protocol/assistant-daily-types';
+import {dailySlotLabels,type DailyConfiguration,type DailySlot} from '../../../src/protocol/assistant-daily-types';
+import {routineScheduleLabel} from '../../../src/protocol/routine-calendar';
 import {api,explain,type Room} from './api';
 import {setRoutineEnabled,type RoutineRow} from './room-routines';
 
 type Followup={id:string;roomId:string;reason:string;dueAt:number;originMessageId:string;state:string};
-type DailyPlan={effectivePaused?:boolean;config:null|{paused:boolean;timeZone:string};next?:{slot:DailySlot;next:number}|null};
+type DailyPlan={effectivePaused?:boolean;config:null|Pick<DailyConfiguration,'paused'|'timeZone'|'weekdays'|'schedule'>;next?:{slot:DailySlot;next:number}|null};
 type Row={id:string;title:string;status:string;at?:number;routine?:RoutineRow;open:()=>void};
 type Props={room:Room;botIds:string[];roomPaused:boolean;onManage:()=>void;onToday:()=>void;onLocate:(id:string)=>void};
-
-const when=(at:number,timeZone?:string)=>new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(at);
 
 export function UpcomingWork({room,botIds,roomPaused,onManage,onToday,onLocate}:Props){
  const [data,setData]=useState<{rows:RoutineRow[];followups:Followup[];daily?:DailyPlan;partial:boolean}>();
@@ -52,17 +51,18 @@ export function UpcomingWork({room,botIds,roomPaused,onManage,onToday,onLocate}:
   if(routine.schedule.kind==='once'&&routine.runCount>0&&!routine.needsReview)continue;
   const at=routine.enabled&&!routine.needsReview?routine.nextAt??undefined:undefined;
   rows.push({id:routine.id,title:routine.name,at,routine,open:onManage,
-   status:routine.needsReview?'需要核对上次结果':!routine.enabled?'已暂停':roomPaused?'会话已暂停':at?when(at,routine.timeZone):'后续触发已结束'});
+   status:routine.needsReview?'需要核对上次结果':!routine.enabled?'已暂停':roomPaused?'会话已暂停':at!==undefined?routineScheduleLabel(routine.schedule,routine.timeZone):'后续触发已结束'});
  }
  for(const followup of data?.followups??[]){
   if(followup.roomId!==room.roomId||followup.state!=='pending')continue;
-  rows.push({id:followup.id,title:followup.reason,at:followup.dueAt,status:when(followup.dueAt),open:()=>onLocate(followup.originMessageId)});
+  rows.push({id:followup.id,title:followup.reason,at:followup.dueAt,status:routineScheduleLabel({kind:'once',at:followup.dueAt}),open:()=>onLocate(followup.originMessageId)});
  }
  const daily=data?.daily;
  if(daily?.config&&(daily.next||daily.config.paused||daily.effectivePaused)){
   const at=daily.next?.next;
+  const time=daily.next?daily.config.schedule[daily.next.slot]:null;
   rows.push({id:'daily-brief',title:daily.next?'小 K '+dailySlotLabels[daily.next.slot]:'小 K 简报',at,open:onToday,
-   status:daily.config.paused||daily.effectivePaused||roomPaused?'已暂停':at?when(at,daily.config.timeZone):'尚未安排'});
+   status:daily.config.paused||daily.effectivePaused||roomPaused?'已暂停':time?routineScheduleLabel({kind:'daily',weekdays:daily.config.weekdays,time}):'尚未安排'});
  }
  rows.sort((left,right)=>(left.at??Infinity)-(right.at??Infinity));
  return <section className="workspace-section upcoming-work" aria-label="即将进行">

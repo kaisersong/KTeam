@@ -4,7 +4,7 @@ import {Alert,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-n
 import {activityStateLabels} from "../../src/protocol/activity-records";
 import {MAX_REVIEW_LINES,type ArtifactReviewNote,type ArtifactReviewView} from "../../src/protocol/artifact-review";
 import {planReviewPreset} from "../../src/protocol/member-presets";
-import {nextRoutineAt,type RoutineSchedule} from "../../src/protocol/routine-calendar";
+import {nextRoutineAt,routineScheduleLabel,type RoutineSchedule} from "../../src/protocol/routine-calendar";
 import type {PluginCommandChoice,PluginPreview,PluginRegistryView} from "../../src/protocol/plugins";
 
 type Colors={bg:string;panel:string;text:string;muted:string;green:string;line:string;user:string};
@@ -265,7 +265,7 @@ export function RoutinesPanel({colors,call,mutate,disabled,roomId,onResult}:Tool
   </Card>}
   {!draft&&read.data?.items.map(row=><Card colors={colors} key={row.id}>
    <Text style={[styles.title,{color:colors.text}]}>{row.name}</Text>
-   <Body colors={colors}>{row.needsReview?"结果待核对":row.enabled?row.nextAt?"下次 · "+formatTime(row.nextAt,row.timeZone):"后续触发已结束":"已暂停"} · 已触发 {row.runCount}/{row.maxRuns} 次</Body>
+   <Body colors={colors}>{row.needsReview?"结果待核对":row.enabled?row.nextAt?routineScheduleLabel(row.schedule,row.timeZone):"后续触发已结束":"已暂停"} · 已触发 {row.runCount}/{row.maxRuns} 次</Body>
    {row.lastError&&<Feedback colors={colors} state={{message:row.lastError}}/>}
    {trial===row.id&&<Body colors={colors}>已提交试运行。结果会回到本会话。</Body>}
    <View style={styles.actions}>
