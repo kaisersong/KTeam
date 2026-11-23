@@ -3,6 +3,8 @@ import { ManagedEnterpriseCliRuntime, type InstalledEnterpriseCli } from '../run
 import type { EnterpriseCliAction, EnterpriseCliConnection, EnterpriseCliProvider, EnterpriseCliState } from '../protocol/enterprise-cli.js';
 import { YzjCliConnectionHistory } from './connector-login-history.js';
 import { enterpriseCliArgs, findEnterpriseCliAuthorizationUrl, projectEnterpriseCliStatus } from './enterprise-cli-adapters.js';
+import { connectorCommand } from '../runtime/connector-command.js';
+import { KTeamError } from '../errors.js';
 interface Operation { controller: AbortController; done: Promise<void>; child?: ChildProcess; reason?: 'cancelled' | 'timedOut' | 'failed'; force?: ReturnType<typeof setTimeout> }
 interface Dependencies { runtime?: ManagedEnterpriseCliRuntime; spawn?: typeof spawn; openExternal?: (url: string) => Promise<void>; now?: () => number; historyPath?: string }
 export class EnterpriseCliConnectorService {
@@ -18,6 +20,20 @@ export class EnterpriseCliConnectorService {
     this.state = { provider, phase: this.runtime.supported(provider) ? this.installed ? 'ready' : 'notInstalled' : 'unsupported', revision: 0, installed: Boolean(this.installed), ...(this.installed ? { version: this.installed.version } : {}) };
   }
   getState(): EnterpriseCliState { return { ...this.state, ...(this.state.connection ? { connection: { ...this.state.connection } } : {}) }; }
+  async dailyIdentity(signal?: AbortSignal) {
+    const result=await this.dailyRead(enterpriseCliArgs(this.provider,'check'),signal);
+    const {phase,connection}=projectEnterpriseCliStatus(this.provider,result.code,result.stdout,result.stderr,new Date().toISOString());
+    if(phase!=='connected'||!connection?.openId||connection.tokenStatus==='expired')return;
+    const connectedAt=this.history.get(connection.orgId??this.provider,connection.openId);
+    if(connectedAt)return {...connection,connectedAt};
+  }
+  async dailyRead(args:readonly string[],signal?:AbortSignal) {
+    if(!this.installed||this.disposed||this.operation)throw new KTeamError('daily_source_unavailable',503);
+    const revision=this.state.revision;
+    const result=await connectorCommand(this.installed.binaryPath,[...args],signal,12000);
+    if(this.disposed||this.state.revision!==revision||result.code!==0)throw new KTeamError('daily_source_unavailable',503);
+    return result;
+  }
   private set(phase: EnterpriseCliState['phase'], connection?: EnterpriseCliConnection, progress?: number): void {
     this.state = { provider: this.provider, phase, revision: this.state.revision + 1, installed: Boolean(this.installed), ...(this.installed ? { version: this.installed.version } : {}), ...(connection ? { connection } : {}), ...(progress !== undefined ? { progress } : {}) };
   }

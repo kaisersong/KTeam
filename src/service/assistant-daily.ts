@@ -5,7 +5,7 @@ import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyBriefMessage} from './assistant-daily-delivery.js';
-import {dailyPresets,isYzjRecentGroups,yzjRecentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
+import {dailyKinds,dailyPresets,isDailyCalendar,isDailyRecentGroups,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
@@ -17,6 +17,11 @@ const snoozePrefix='assistant-daily-snooze:';
 const briefDeliveryWindow=15*60000;
 const maxAge=24*3600000;
 const checkInterval=10*60000;
+const mailCheckInterval=60*60000;
+function periodicSourceInterval(source:DailySource){
+ if(source.kind==='mail')return mailCheckInterval;
+ if(isDailyRecentGroups(source))return recentGroupsInterval;
+}
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const actionId = z.object({id:z.string().max(128)}).strict();
 
@@ -150,8 +155,8 @@ export class AssistantDaily {
     type:'object',additionalProperties:false,properties:{
      schedule:{type:'object',additionalProperties:false,properties:Object.fromEntries(['morning','midday','evening'].map(slot=>[slot,{type:['string','null']}]))},
      weekdays:{type:'array',items:{type:'integer',minimum:1,maximum:7}},
-     sourceKinds:{type:'array',items:{enum:['mail','yzj-message','yzj-calendar','yzj-doc','news']}},
-     removeSourceKinds:{type:'array',items:{enum:['mail','yzj-message','yzj-calendar','yzj-doc','news']}},
+     sourceKinds:{type:'array',items:{enum:dailyKinds}},
+     removeSourceKinds:{type:'array',items:{enum:dailyKinds}},
      middayUrgentOnly:{type:'boolean'},paused:{type:'boolean'},skipToday:{enum:['morning','midday','evening']},restore:{type:'boolean'},
     },
    }},
@@ -169,7 +174,7 @@ export class AssistantDaily {
    })(),
   }];
  }
- async catalog(includeYzj:boolean){return {ok:true,...await this.sources.catalog(includeYzj)};}
+ async catalog(includeEnterprise:boolean){return {ok:true,...await this.sources.catalog(includeEnterprise)};}
  async confirm(raw:unknown,assertCurrent?:()=>void) {
   const input=this.parse(dailyCommit,raw);
   const cached=this.store.operation('assistant-daily-commit:'+input.id);
@@ -183,8 +188,8 @@ export class AssistantDaily {
   const keys=input.sources.map(dailySourceKey);
   if(new Set(keys).size!==keys.length)throw new KTeamError('daily_invalid_input');
   const existing=new Map((plan?.config.sources??[]).map(source=>[dailySourceKey(source),source]));
-  const needsYzj=input.sources.some(source=>source.kind.startsWith('yzj-')&&existing.get(dailySourceKey(source))?.revision!==source.revision);
-  const catalog=new Map((await this.sources.catalog(needsYzj)).sources.map(source=>[dailySourceKey(source),source]));
+  const needsEnterprise=input.sources.some(source=>(source.provider||source.kind.startsWith('yzj-'))&&existing.get(dailySourceKey(source))?.revision!==source.revision);
+  const catalog=new Map((await this.sources.catalog(needsEnterprise)).sources.map(source=>[dailySourceKey(source),source]));
   const verified:DailySource[]=[];
   const currentChecks=new Map<string,Promise<boolean>>();
   for(const source of input.sources) {
@@ -211,7 +216,8 @@ export class AssistantDaily {
   return {ok:true,source:await this.sources.newsSource(topic)};
  }
  private async current(source:DailySource,checks:Map<string,Promise<boolean>>,signal?:AbortSignal){
-  const key=source.kind.startsWith('yzj-')?JSON.stringify(['yzj',source.account,source.revision]):dailySourceKey(source);
+  const provider=source.provider??(source.kind.startsWith('yzj-')?'yzj':undefined);
+  const key=provider?JSON.stringify([provider,source.account,source.revision]):dailySourceKey(source);
   let check=checks.get(key);
   if(!check){check=this.sources.current(source,signal).catch(()=>false);checks.set(key,check);}
   return check;
@@ -323,8 +329,8 @@ export class AssistantDaily {
    guard();
    const key=this.scanKey(source),previous=this.store.state<Scan>(key);
    const same=previous?.coverage.source.revision===source.revision?previous:undefined;
-   const recentGroups=isYzjRecentGroups(source);
-   if(!manual&&(!next||recentGroups)&&same&&now-same.at<(recentGroups?yzjRecentGroupsInterval:checkInterval))continue;
+   const interval=periodicSourceInterval(source);
+   if(!manual&&(!next||interval!==undefined)&&same&&now-same.at<(interval??checkInterval))continue;
    const from=Math.max(now-7*maxAge,same?.waterline!==undefined?same.waterline-maxAge:same?.coverage.from??now-maxAge);
    let state:DailyCoverage['state']='unavailable',items:DailyItem[]=[],recentCursors:RecentGroupCursors|undefined;
    try {
@@ -342,12 +348,16 @@ export class AssistantDaily {
   if(due.length) {
    await this.verifyScope?.();
    guard();
-   const scans=this.retained(plan).filter(scan=>scan.at===now||isYzjRecentGroups(scan.coverage.source)&&
-     scan.at>=now-yzjRecentGroupsInterval&&plan.config.sources.some(source=>dailySourceKey(source)===dailySourceKey(scan.coverage.source)&&source.revision===scan.coverage.source.revision));
+   const scans=this.retained(plan).filter(scan=>{
+    if(scan.at===now)return true;
+    const interval=periodicSourceInterval(scan.coverage.source);
+    return interval!==undefined&&scan.at>=now-interval&&plan.config.sources.some(source=>
+     dailySourceKey(source)===dailySourceKey(scan.coverage.source)&&source.revision===scan.coverage.source.revision);
+   });
    const previous=this.store.operationsWithPrefix(briefPrefix).slice(0,10) as Brief[];
    const known=new Set((previous[0]?.items??[]).map(item=>item.id));
-   const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isYzjRecentGroups(item.source)).map(item=>item.id)));
-   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(item.source.kind==='yzj-calendar'||!(isYzjRecentGroups(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
+   const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isDailyRecentGroups(item.source)).map(item=>item.id)));
+   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(isDailyCalendar(item.source)||!(isDailyRecentGroups(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
    this.store.transaction(()=>{
     for(const row of due) {
      const id=briefPrefix+row.day+':'+row.slot;

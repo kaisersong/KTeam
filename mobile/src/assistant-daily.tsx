@@ -9,7 +9,7 @@ type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:D
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
 type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean;delivery?:DailyBriefDelivery}[]};
 type RoomTarget={roomId:string;title:string;kind?:string};
-const sourceLabel:Record<DailySource["kind"],string>={mail:"邮件","yzj-message":"云之家消息","yzj-calendar":"云之家日程","yzj-doc":"云之家知识库",news:"公开资讯"};
+const sourceLabel:Record<DailySource["kind"],string>={mail:"邮件","yzj-message":"云之家消息","yzj-calendar":"云之家日程","yzj-doc":"云之家知识库",news:"公开资讯","enterprise-message":"企业消息","enterprise-calendar":"企业日程"};
 const states:Record<DailyCoverage["state"],string>={ok:"已核对",partial:"覆盖不完整",unavailable:"暂不可用"};
 const errors:Record<string,string>={
  mobile_method_forbidden:"请更新配对电脑上的 KTeam。",
@@ -47,7 +47,7 @@ function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved,onC
   const result=await call("dailyWork.sources",{roomId,yzj});
   const sources:DailySource[]=result.sources;
   setAvailable(current=>[...new Map([...current,...sources].map(source=>[sourceKey(source),source])).values()]);
-  if(yzj&&!result.yzjAvailable)setError("云之家暂未连接，可先选择其他来源。");
+  if(yzj&&!sources.some(source=>source.provider||source.kind.startsWith("yzj-")))setError("企业应用暂未连接，可先选择其他来源。");
   else if(!yzj&&!sources.length)setError("还没有连接邮箱。");
  });
  const visible=[...new Map([...selected,...available].map(source=>[sourceKey(source),source])).values()];
@@ -72,7 +72,7 @@ function PlanCard({draft,previous,roomId,colors,call,mutate,disabled,onSaved,onC
   })}
   <View style={styles.actions}>
    <ToolButton colors={colors} disabled={pending||disabled} onPress={()=>discover(false)}>选择邮箱</ToolButton>
-   <ToolButton colors={colors} disabled={pending||disabled} onPress={()=>discover(true)}>选择云之家来源</ToolButton>
+   <ToolButton colors={colors} disabled={pending||disabled} onPress={()=>discover(true)}>选择企业应用来源</ToolButton>
   </View>
   <TextInput accessibilityLabel="可公开搜索的资讯关键词" placeholder="可公开搜索的资讯关键词" placeholderTextColor={colors.muted} maxLength={160} value={topic} onChangeText={setTopic} style={[styles.input,{color:colors.text,borderColor:colors.line}]}/>
   <View style={styles.actions}>
