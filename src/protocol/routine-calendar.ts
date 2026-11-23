@@ -1,4 +1,18 @@
 export type RoutineSchedule={kind:'once';at:number}|{kind:'interval';startAt:number;minutes:number}|{kind:'daily';time:string;weekdays:number[]};
+const weekdayNames = ['周一','周二','周三','周四','周五','周六','周日'];
+
+export function routineScheduleLabel(schedule:RoutineSchedule,timeZone?:string):string {
+ if(schedule.kind==='once'){
+  return new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(schedule.at);
+ }
+ if(schedule.kind==='interval'){
+  return schedule.minutes % 60 === 0 ? '每 '+schedule.minutes / 60+' 小时' : '每 '+schedule.minutes+' 分钟';
+ }
+ const days=[...new Set(schedule.weekdays)].sort((a,b)=>a-b);
+ const cadence=days.length===7?'每天':days.join(',')==='1,2,3,4,5'?'周一至周五':'每'+days.map(day=>weekdayNames[day-1]).join('、');
+ return cadence+' '+schedule.time;
+}
+
 /** Absolute intervals do not drift. Daily times skip DST gaps and use the first fold only. */
 export function nextRoutineAt(schedule:RoutineSchedule,timeZone:string,after:number,endAt?:number):number|null{
  let next:number|undefined;
