@@ -11,7 +11,7 @@ import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {hostRequest} from '../src/service/client.js';
 import {initConfig} from '../src/service/config.js';
-import {dailyBriefPublisher} from '../src/service/assistant-daily-delivery.js';
+import {dailyBriefPublisher,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {startHost} from '../src/service/server.js';
@@ -166,6 +166,14 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.equal(message.sender.logicalAgentId,assistant.botId);
    assert.equal(message.text,body);
    assert.equal(message.responsePolicy,'none');
+   const noticeBody=dailyMessageNotice([{id:'chat-notice',title:'private title',detail:'private content',observedAt:Date.now(),urgent:true,
+    source:{kind:'yzj-message',id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}}])!;
+   const noticeId=await publish({...input,kind:'message-notice',id:'assistant-daily-message-fixture',body:noticeBody});
+   const notice=(await upstream.upstream.conversationMessage(assistant.roomId,noticeId)).message;
+   assert.equal(notice.sender.logicalAgentId,assistant.botId);
+   assert.equal(notice.responsePolicy,'none');
+   assert.match(notice.text,/云之家有 1 个群出现新消息/);
+   assert.doesNotMatch(notice.text,/private (title|content)/);
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
 

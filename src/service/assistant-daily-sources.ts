@@ -234,7 +234,7 @@ export class AssistantDailySources {
     const attention=messages.filter(message=>mentionsUser(message,user)||/请.{0,12}(确认|审批|核对|处理)|需要.{0,8}(决定|确认)|截止/.test(field(message,'content','text'))).length;
     const item:DailyItem|undefined=latestId?{
      id:digest([key,latestId]),source,title:'一个近期群有消息待查看',detail:'本次可见 '+messages.length+' 条其他成员的消息。'+(attention?'其中 '+attention+' 条含待核对线索。':''),
-     observedAt:messageTime(latest),urgent:messages.some(message=>mentionsUser(message,user)),
+     observedAt:messageTime(latest),attentionCount:attention,urgent:messages.some(message=>mentionsUser(message,user)),
     }:undefined;
     return {key,lastId,item};
    }));

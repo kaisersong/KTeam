@@ -145,7 +145,7 @@ test('recent groups refresh every fifteen minutes and a scheduled brief uses the
   original:async()=>({url:undefined}),scan:async(_source,_from,_now,_zone,_signal,previous)=>{
    scans++;
    if(scans===2)assert.equal(previous?.cursors['fixture']?.lastId,'msg-fixture');
-   return {items:[{id:'fixture-group',source,title:'待查看',detail:'两项',observedAt:now,urgent:true}],partial:true,recentCursors:{fixture:{lastId:'msg-fixture',itemId:'fixture-group'}}};
+   return {items:[{id:'fixture-group',source,title:'待查看',detail:'两项',observedAt:Date.parse('2026-11-23T08:00:00Z'),urgent:true}],partial:true,recentCursors:{fixture:{lastId:'msg-fixture',itemId:'fixture-group'}}};
   },
  },()=>roomId,()=>now,async()=>{},async()=>{sends++;return 'brief-message';});
  try{
@@ -200,5 +200,49 @@ test('mail checks hourly, while a brief can use the latest check without reading
   await daily['run'](false);
   assert.equal(reads,3);
   assert.equal((await daily.view()).items.length,0);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('fresh group messages are posted between briefs and an unknown delivery stays deduplicated across restarts',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-live-message-notice-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room',start=Date.parse('2026-11-23T16:00:00Z');
+ const source:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
+ let now=start,current=true,attempts=0,unknown=false;
+ let item:DailyItem={id:'fresh-first',source,title:'private title',detail:'private content',observedAt:start-60000,urgent:false,attentionCount:1};
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:start,skips:[],config:{...defaultDaily('UTC'),sources:[source]}});
+ const service=()=>new AssistantDaily(store,{
+  catalog:async()=>({sources:[source],yzjAvailable:true}),current:async()=>current,newsSource:async()=>assert.fail('not a news plan'),
+  original:async()=>({url:undefined}),scan:async()=>({items:[item],partial:true}),
+ },()=>roomId,()=>now,async()=>{},async input=>{
+  attempts++;
+  await input.guard();
+  assert.equal(input.kind,'message-notice');
+  assert.equal(input.roomId,roomId);
+  assert.match(input.body,/云之家有 1 个群出现新消息/);
+  assert.doesNotMatch(input.body,/private (title|content)/);
+  if(unknown)throw new Error('unknown delivery');
+  return 'message-1';
+ });
+ let daily=service();
+ try{
+  await daily['run'](false);
+  assert.equal(attempts,1);
+  await daily.refresh();
+  assert.equal(attempts,1);
+  now+=15*60000;
+  item={...item,id:'fresh-second',observedAt:now};
+  unknown=true;
+  await daily['run'](false);
+  assert.equal(attempts,2);
+  await daily.close();
+  daily=service();
+  await daily.refresh();
+  assert.equal(attempts,2);
+  current=false;
+  item={...item,id:'revoked-item'};
+  await daily.refresh();
+  assert.equal(attempts,2);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });

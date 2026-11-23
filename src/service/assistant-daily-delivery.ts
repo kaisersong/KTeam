@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {dailySlotLabels,isDailyCalendar,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
+import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyRecentGroups,type DailyItem,type DailySlot,type DailySourceKind} from '../protocol/assistant-daily-types.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
 import {findOwnerMessage} from './room-reads.js';
@@ -26,11 +26,25 @@ export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],at
   ...(urgent?['其中 '+urgent+' 项需要优先核对。']:[]),'打开会话顶部「简报」查看详情。'].join('\n');
 }
 
-type BriefDelivery={id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>};
+export function dailyMessageNotice(items:DailyItem[]){
+ if(!items.length)return undefined;
+ const counts=new Map<string,number>();
+ for(const item of items){
+  const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
+  const template=provider+(isDailyRecentGroups(item.source)?'有 {count} 个群出现新消息。':'有 {count} 条消息待查看。');
+  counts.set(template,(counts.get(template)??0)+1);
+ }
+ const attention=items.filter(item=>item.urgent||(item.attentionCount??0)>0).length;
+ return ['**新消息提醒**',...Array.from(counts,([template,count])=>template.replace('{count}',String(count))),
+  ...(attention?['其中 '+attention+' 项有 @ 提及或待核对线索。']:[]),
+  '打开会话顶部「简报」查看详情。'].join('\n');
+}
+
+export type BriefDelivery={kind?:'message-notice';id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>};
 
 /** Publish with the same host-owned admission as other assistant chat replies. */
 export function dailyBriefPublisher(upstream:Upstreams,store:TeamStore,coordinator:TeamCoordinator,assistant:()=>{roomId:string;botId:string}|undefined,hostFence:number){
- return async ({id,roomId,body,deadline,guard}:BriefDelivery)=>{
+ return async ({kind,id,roomId,body,deadline,guard}:BriefDelivery)=>{
   const identity=assistant(),binding=identity&&store.binding(identity.botId);
   if(!identity||identity.roomId!==roomId||!binding)throw new KTeamError('assistant_scope_required',403);
   const botId=identity.botId;
@@ -46,14 +60,15 @@ export function dailyBriefPublisher(upstream:Upstreams,store:TeamStore,coordinat
   await current();
   const eventId=(kind:string)=>'msg_'+hash(id+':'+kind).slice(0,32);
   const threadId='assistant-daily-'+hash(id).slice(0,24);
-  const description='在小 K 私聊中投递本期简报';
+  const topic=kind==='message-notice'?'新消息提醒':'简报';
+  const description='在小 K 私聊中投递'+topic;
   const expires=new Date(Math.min(deadline,Date.now()+300000)).toISOString();
   let task=(await upstream.aimp(roomId,'event',{id:eventId('request'),roomId,threadId,act:'request',body:description,
    payload:{kind:'task.request@1',must_understand:true,description,deadline:new Date(deadline).toISOString(),expires,budget:'none',
-    acceptance:{predicates:['artifact_hash'],subjective:'简报来自本期已确认来源的运行结果。',trust_root:LOCAL_HUMAN},assignee:agentAddress(botId),reviewer:LOCAL_HUMAN},
+    acceptance:{predicates:['artifact_hash'],subjective:topic+'来自已确认来源的运行结果。',trust_root:LOCAL_HUMAN},assignee:agentAddress(botId),reviewer:LOCAL_HUMAN},
   })).task as any;
   await current();
-  task=(await upstream.aimp(roomId,'agent-event',{logicalAgentId:botId,id:eventId('accept'),roomId,threadId,taskRef:task.taskRef,act:'accept',body:'准备投递简报。',
+  task=(await upstream.aimp(roomId,'agent-event',{logicalAgentId:botId,id:eventId('accept'),roomId,threadId,taskRef:task.taskRef,act:'accept',body:'准备投递'+topic+'。',
    targetEvent:{id:task.headId,hash:task.headHash},payload:{kind:'task.accept@1',must_understand:true,terms_hash:task.termsHash,caveats:[]},
   })).task as any;
   await current();
@@ -71,7 +86,7 @@ export function dailyBriefPublisher(upstream:Upstreams,store:TeamStore,coordinat
   if(!matches(message)||!message.messageId)throw new KTeamError('daily_brief_receipt_invalid',502);
   const artifacts=[{ref:'message://'+roomId+'/'+message.messageId,version:1,sha256:hash(body),media_type:'text/markdown'}];
   // The chat receipt is definitive even if closing the protocol record fails.
-  await upstream.aimp(roomId,'agent-event',{...admission,id:eventId('deliver'),threadId,act:'deliver',body:'简报已投递。',
+  await upstream.aimp(roomId,'agent-event',{...admission,id:eventId('deliver'),threadId,act:'deliver',body:topic+'已投递。',
    targetEvent:{id:task.headId,hash:task.headHash},artifacts,payload:{kind:'task.deliver@1',must_understand:true,draft:false,caveats:[]},
   }).then(()=>upstream.aimp(roomId,'verify-delivery',{taskRef:task.taskRef})).catch(()=>{});
   return String(message.messageId);

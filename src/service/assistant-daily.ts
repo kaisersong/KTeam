@@ -4,8 +4,8 @@ import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyBriefMessage} from './assistant-daily-delivery.js';
-import {dailyKinds,dailyPresets,isDailyCalendar,isDailyRecentGroups,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
+import {dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
+import {dailyKinds,dailyPresets,isDailyCalendar,isDailyMessage,isDailyRecentGroups,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
@@ -13,6 +13,8 @@ import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-s
 const planKey='assistant-daily-plan';
 const sourcePrefix='assistant-daily-source:';
 const briefPrefix='assistant-daily-brief:';
+const messageNoticeKey='assistant-daily-message-notice';
+const messageNoticeWindow=recentGroupsInterval+60000;
 const snoozePrefix='assistant-daily-snooze:';
 const briefDeliveryWindow=15*60000;
 const maxAge=24*3600000;
@@ -20,7 +22,7 @@ const checkInterval=10*60000;
 const mailCheckInterval=60*60000;
 function periodicSourceInterval(source:DailySource){
  if(source.kind==='mail')return mailCheckInterval;
- if(isDailyRecentGroups(source))return recentGroupsInterval;
+ if(isDailyMessage(source))return recentGroupsInterval;
 }
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const actionId = z.object({id:z.string().max(128)}).strict();
@@ -42,7 +44,8 @@ interface Brief {
  roomId?:string; planRevision?:number; deadline?:number;
  revision:number;
 }
-type PublishBrief=(input:{id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>})=>Promise<string>;
+type PublishBrief=(input:BriefDelivery)=>Promise<string>;
+type MessageNoticeState={seen:Record<string,number>;receipt:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[]; recentCursors?:RecentGroupCursors;
 }
@@ -374,6 +377,51 @@ export class AssistantDaily {
    });
   }
   await this.deliverBriefs(plan,guard,controller.signal);
+  await this.deliverMessageNotice(plan,guard,controller.signal);
+ }
+ private async deliverMessageNotice(plan:Plan,guard:()=>void,signal:AbortSignal){
+  const roomId=this.assistantRoom();
+  if(!this.publishBrief||!roomId)return;
+  const now=this.now(),cutoff=now-messageNoticeWindow;
+  const previous=this.store.state<MessageNoticeState>(messageNoticeKey);
+  const seen=Object.fromEntries(Object.entries(previous?.seen??{}).filter(([,firstSeen])=>firstSeen>=cutoff));
+  const alreadyInBrief=new Set((this.store.operationsWithPrefix(briefPrefix).slice(0,3) as Brief[])
+   .filter(brief=>brief.at>=cutoff&&brief.delivery&&['attempted','sent','unconfirmed'].includes(brief.delivery))
+   .flatMap(brief=>brief.items.map(item=>item.id)));
+  const items=new Map<string,DailyItem>();
+  const checks=new Map<string,Promise<boolean>>();
+  for(const scan of this.retained(plan)){
+   const source=scan.coverage.source;
+   if(!isDailyMessage(source)||scan.at<cutoff||scan.coverage.state==='unavailable'||
+    !plan.config.sources.some(selected=>dailySourceKey(selected)===dailySourceKey(source)&&selected.revision===source.revision))continue;
+   const fresh=scan.items.filter(item=>item.observedAt>=cutoff&&item.observedAt<=now&&
+    !seen[item.id]&&!alreadyInBrief.has(item.id)&&!this.isSnoozed(item,now));
+   if(!fresh.length||!await this.current(source,checks,signal))continue;
+   for(const item of fresh)items.set(item.id,item);
+  }
+  const body=dailyMessageNotice([...items.values()]);
+  if(!body)return;
+  const deadline=now+briefDeliveryWindow;
+  const assertEligible=async()=>{
+   await this.verifyScope?.();
+   guard();
+   if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+   const current=new Map<string,Promise<boolean>>();
+   for(const item of items.values())if(!await this.current(item.source,current,signal))throw new KTeamError('daily_source_changed',409);
+   guard();
+  };
+  await assertEligible();
+  const id='assistant-daily-message-'+sha(JSON.stringify([roomId,[...items.keys()].sort()]));
+  for(const item of items.values())seen[item.id]=now;
+  const receipt:MessageNoticeState['receipt']={id,status:'attempted'};
+  // Once an attempt is reserved, a lost receipt or restart cannot send it twice.
+  this.store.setState(messageNoticeKey,{seen,receipt});
+  try{
+   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,deadline,guard:assertEligible});
+   this.store.setState(messageNoticeKey,{seen,receipt:{id,status:'sent',messageId}});
+  }catch{
+   this.store.setState(messageNoticeKey,{seen,receipt:{id,status:'unconfirmed'}});
+  }
  }
  private async deliverBriefs(plan:Plan,guard:()=>void,signal:AbortSignal){
   if(!this.publishBrief)return;
