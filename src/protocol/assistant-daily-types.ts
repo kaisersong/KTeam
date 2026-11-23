@@ -73,3 +73,8 @@ export interface DailyCoverage {
  checkedAt:number;
  from:number;
 }
+
+export type DailyBriefDelivery = 'pending'|'attempted'|'sent'|'unconfirmed'|'expired';
+export const dailyBriefDeliveryLabels:Record<DailyBriefDelivery,string> = {
+ pending:'待投递', attempted:'送达待核对', sent:'已发到小 K 私聊', unconfirmed:'送达未确认', expired:'仅在简报页保留',
+};

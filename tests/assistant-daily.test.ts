@@ -76,3 +76,57 @@ test('brief timing uses the selected timezone, skips non-working days and preser
  assert.deepEqual(rows.map(row=>row.due==null?null:new Date(row.due).toISOString()),['2026-11-23T00:30:00.000Z','2026-11-23T04:00:00.000Z',null]);
  assert.ok(dailyTimes(plan,Date.parse('2026-11-22T08:00:00Z')).every(row=>row.due===undefined));
 });
+
+test('scheduled briefs are queued once for fresh nonempty runs and never replay an uncertain delivery',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-daily-delivery-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room';
+ let now=Date.parse('2026-11-23T08:29:30Z');
+ const makeItem=():DailyItem=>({id:'fixture-mail',title:'Private fixture subject',detail:'Private fixture body',observedAt:now,source:mail,urgent:true});
+ let collected:DailyItem[]=[];
+ let deliveryUnknown=false;
+ const sent:string[]=[];
+ const sources={
+  catalog:async()=>({sources:[mail],yzjAvailable:false}),current:async()=>true,
+  scan:async()=>({items:collected,partial:false}),newsSource:async()=>assert.fail('not a news plan'),original:async()=>({url:undefined}),
+ };
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ const create=()=>new AssistantDaily(store,sources,()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  assert.equal(input.roomId,roomId);
+  sent.push(input.body);
+  if(deliveryUnknown)throw Error('simulated lost receipt');
+  return 'fixture-message';
+ });
+ let daily=create();
+ try{
+  const config={...defaultDaily('UTC'),schedule:{morning:'08:30',midday:'12:00',evening:'18:00'},sources:[mail]};
+  store.setState('assistant-daily-plan',{revision:1,config,changedAt:now,skips:[]});
+  now=Date.parse('2026-11-23T08:30:20Z');
+  const empty=await daily.refresh();
+  assert.equal(empty.briefs.length,1);
+  assert.deepEqual(sent,[]);
+  collected=[makeItem()];
+  now=Date.parse('2026-11-23T12:00:15Z');
+  const pushed=await daily.refresh();
+  assert.equal(pushed.briefs[0]?.delivery,'sent');
+  assert.equal(sent.length,1);
+  assert.match(sent[0]!,/午报.*待查看邮件 1 项/s);
+  assert.doesNotMatch(sent[0]!,/Private fixture|fixture@example/);
+  await daily.refresh();
+  assert.equal(sent.length,1);
+  deliveryUnknown=true;
+  collected=[{...makeItem(),id:'another-mail'}];
+  now=Date.parse('2026-11-23T18:03:00Z');
+  assert.equal((await daily.refresh()).briefs[0]?.delivery,'unconfirmed');
+  assert.equal(sent.length,2);
+  await daily.close();
+  daily=create();
+  await daily.refresh();
+  assert.equal(sent.length,2);
+  now=Date.parse('2026-11-24T09:10:00Z');
+  const late=await daily.refresh();
+  assert.equal(late.briefs[0]?.slot,'morning');
+  assert.equal(sent.length,2);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});

@@ -4,7 +4,8 @@ import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyPresets,type DailyPreset} from '../protocol/assistant-daily-types.js';
+import {dailyBriefMessage} from './assistant-daily-delivery.js';
+import {dailyPresets,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources} from './assistant-daily-sources.js';
@@ -13,6 +14,7 @@ const planKey='assistant-daily-plan';
 const sourcePrefix='assistant-daily-source:';
 const briefPrefix='assistant-daily-brief:';
 const snoozePrefix='assistant-daily-snooze:';
+const briefDeliveryWindow=15*60000;
 const maxAge=24*3600000;
 const checkInterval=10*60000;
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -29,6 +31,13 @@ interface Draft {
  id:string; previousRevision:number; originId:string; change:DailyChange;
  config:DailyConfiguration; skips:string[]; createdAt:number; committedRevision?:number; preset?:DailyPreset;
 }
+interface Brief {
+ id:string; day:string; slot:DailySlot; at:number; items:DailyItem[]; coverage:DailyCoverage[]; missed:boolean;
+ delivery?:DailyBriefDelivery;
+ roomId?:string; planRevision?:number; deadline?:number;
+ revision:number;
+}
+type PublishBrief=(input:{id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>})=>Promise<string>;
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[];
 }
@@ -38,7 +47,7 @@ export class AssistantDaily {
  private active?:Promise<void>;
  private controller=new AbortController();
  readonly watches:AssistantWatch;
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>){
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
   this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
@@ -228,7 +237,7 @@ export class AssistantDaily {
   });
   const briefs=this.store.operationsWithPrefix(briefPrefix).slice(0,20).map(brief=>({
    id:brief.id,slot:brief.slot,day:brief.day,at:brief.at,
-   missed:brief.missed===true,items:(brief.items as DailyItem[]).filter(item=>eligible(item.source)),
+   missed:brief.missed===true,delivery:brief.delivery,items:(brief.items as DailyItem[]).filter(item=>eligible(item.source)),
    coverage:(brief.coverage as DailyCoverage[]).filter(row=>eligible(row.source)),
   }));
   return {ok:true,...this.summary(),draft:draft?.committedRevision?undefined:draft,items:visible,coverage,briefs};
@@ -335,9 +344,45 @@ export class AssistantDaily {
     for(const row of due) {
      const id=briefPrefix+row.day+':'+row.slot;
      if(this.store.operation(id))continue;
-     this.store.saveOperation({id,day:row.day,slot:row.slot,at:now,items:row===next?items:[],coverage:row===next?scans.map(scan=>scan.coverage):[],missed:row!==next},0);
+     const roomId=this.assistantRoom(),deadline=row.due!+briefDeliveryWindow;
+     const canNotify=this.publishBrief&&roomId&&row===next&&items.length&&now<deadline;
+     this.store.saveOperation({id,day:row.day,slot:row.slot,at:now,items:row===next?items:[],coverage:row===next?scans.map(scan=>scan.coverage):[],missed:row!==next,
+      ...(canNotify?{delivery:'pending',roomId,planRevision:plan.revision,deadline}:{})},0);
     }
    });
+  }
+  await this.deliverBriefs(plan,guard,controller.signal);
+ }
+ private async deliverBriefs(plan:Plan,guard:()=>void,signal:AbortSignal){
+  if(!this.publishBrief)return;
+  for(const brief of this.store.operationsWithPrefix(briefPrefix).slice(0,6) as Brief[]){
+   if(brief.delivery!=='pending')continue;
+   const {deadline,roomId}=brief;
+   if(!deadline||!roomId||this.now()>=deadline||brief.planRevision!==plan.revision||roomId!==this.assistantRoom()){
+    this.store.saveOperation({...brief,delivery:'expired'},brief.revision);
+    continue;
+   }
+   const allowed=new Map<string,Promise<boolean>>();
+   const visible:DailyItem[]=[];
+   for(const item of brief.items){
+    guard();
+    if(await this.current(item.source,allowed,signal))visible.push(item);
+   }
+   const body=dailyBriefMessage(brief.day,brief.slot,visible);
+   const assertEligible=async()=>{
+    await this.verifyScope?.();
+    guard();
+    if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+   };
+   await assertEligible();
+   if(!body){this.store.saveOperation({...brief,delivery:'expired'},brief.revision);continue;}
+   const attempt=this.store.saveOperation({...brief,delivery:'attempted'},brief.revision);
+   try {
+    const messageId=await this.publishBrief({id:brief.id,roomId,body,deadline,guard:assertEligible});
+    this.store.saveOperation({...attempt,delivery:'sent',messageId},attempt.revision);
+   } catch {
+    this.store.saveOperation({...attempt,delivery:'unconfirmed'},attempt.revision);
+   }
   }
  }
  async close(){if(this.timer)clearInterval(this.timer);this.controller.abort();await this.active?.catch(()=>{});}

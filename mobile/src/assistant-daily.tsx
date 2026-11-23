@@ -3,11 +3,11 @@ import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react
 import {AssistantWatches} from "./assistant-watch";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
-import {dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
+import {dailyBriefDeliveryLabels,type DailyBriefDelivery,dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
 
 type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange;preset?:DailyPreset};
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
-type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean}[]};
+type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean;delivery?:DailyBriefDelivery}[]};
 type RoomTarget={roomId:string;title:string;kind?:string};
 const sourceLabel:Record<DailySource["kind"],string>={mail:"邮件","yzj-message":"云之家消息","yzj-calendar":"云之家日程","yzj-doc":"云之家知识库",news:"公开资讯"};
 const states:Record<DailyCoverage["state"],string>={ok:"已核对",partial:"覆盖不完整",unavailable:"暂不可用"};
@@ -236,7 +236,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
   {!!view?.briefs.length&&<Text accessibilityRole="header" style={[styles.heading,{color:colors.text}]}>简报</Text>}
   <ToolButton colors={colors} disabled={disabled} onPress={onAttention}>团队事项</ToolButton>
   {view?.briefs.map(brief=><View key={brief.id} style={[styles.card,{borderColor:colors.line}]}>
-   <ToolButton colors={colors} onPress={()=>setExpanded(id=>id===brief.id?undefined:brief.id)}>{brief.day+" "+labels[brief.slot]+(brief.missed?" · 已错过":"")}</ToolButton>
+   <ToolButton colors={colors} onPress={()=>setExpanded(id=>id===brief.id?undefined:brief.id)}>{brief.day+" "+labels[brief.slot]+(brief.missed?" · 已错过":brief.delivery?" · "+dailyBriefDeliveryLabels[brief.delivery]:"")}</ToolButton>
    {expanded===brief.id&&<>
     {brief.items.length?items(brief.items):<Text style={{color:colors.muted}}>{brief.missed?"本期未补投。":brief.coverage.some(row=>row.state==="ok")?"已核对的范围内没有新增事项。":"本期没有可确认的来源结果。"}</Text>}
     {coverage(brief.coverage)}

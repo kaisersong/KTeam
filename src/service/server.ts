@@ -1,4 +1,5 @@
 import {previewMessageReference} from './message-references.js';
+import {dailyBriefPublisher} from './assistant-daily-delivery.js';
 import {AssistantDaily} from './assistant-daily.js';
 import {AssistantDailySources} from './assistant-daily-sources.js';
 import {Plugins} from './plugins.js';
@@ -117,7 +118,7 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const groupMembers=new GroupMembers(upstream,teamStore);
   const teamRoles = new TeamRoles(upstream,teamStore,undefined,localAgents);
   const automation = new TeamAutomation(upstream,teamStore,owner.epoch,undefined,coordinator,localAgents,conversations,approvals,{choose:systemOneChoice,judge:kimJudgment},teamRoles);
-  const dailyWork=new AssistantDaily(teamStore,new AssistantDailySources(mailConnectors,enterpriseConnectors),()=>automation.assistant.identity()?.roomId,Date.now,()=>automation.assistant.verifyDailyScope());
+  const dailyWork=new AssistantDaily(teamStore,new AssistantDailySources(mailConnectors,enterpriseConnectors),()=>automation.assistant.identity()?.roomId,Date.now,()=>automation.assistant.verifyDailyScope(),dailyBriefPublisher(upstream,teamStore,coordinator,()=>automation.assistant.identity(),owner.epoch));
   automation.dailyWork=dailyWork;
   const composerAttachments=new ComposerAttachments(options.root,upstream,teamStore,conversations,roomId=>automation.reconcileSubmissions(roomId),(roomId,id,messageId)=>automation.automatic!.accept(roomId,id,messageId));
   const workRecovery = new WorkRecovery(upstream,teamStore,coordinator);

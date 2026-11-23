@@ -11,6 +11,9 @@ import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {hostRequest} from '../src/service/client.js';
 import {initConfig} from '../src/service/config.js';
+import {dailyBriefPublisher} from '../src/service/assistant-daily-delivery.js';
+import {TeamCoordinator} from '../src/service/coordination.js';
+import {TeamStore} from '../src/service/team-store.js';
 import {startHost} from '../src/service/server.js';
 import {realUpstreams} from './helpers/real-upstreams.js';
 
@@ -146,6 +149,20 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.equal(today.config.schedule.morning,'09:15');
   assert.equal(today.config.schedule.evening,'17:30');
   assert.equal(today.draft,undefined);
+  const store=new TeamStore(root);
+  try{
+   const publish=dailyBriefPublisher(upstream.upstream,store,new TeamCoordinator(upstream.upstream,store,host.epoch),()=>({roomId:assistant.roomId,botId:assistant.botId}),host.epoch);
+   const body='**早报**\n- 待查看邮件 1 项\n打开会话顶部「简报」查看详情。';
+   const input={roomId:assistant.roomId,id:'assistant-daily-brief-fixture',body,deadline:Date.now()+60000,guard:async()=>{}};
+   await assert.rejects(publish({...input,roomId:'foreign-room'}),/assistant_scope_required/);
+   const id=await publish(input);
+   const message=(await upstream.upstream.conversationMessage(assistant.roomId,id)).message;
+   assert.equal(message.sender.logicalAgentId,assistant.botId);
+   assert.equal(message.text,body);
+   assert.equal(message.responsePolicy,'none');
+   assert.equal(calls.some(call=>!call.propose),false);
+  }finally{store.close();}
+
  }finally{
   pair?.close();
   phone?.close();
