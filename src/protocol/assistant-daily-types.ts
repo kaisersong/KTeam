@@ -1,3 +1,5 @@
+export type AssistantConnectorSetup = { enterprise?: boolean; mail?: boolean };
+
 export const dailySlots = ['morning', 'midday', 'evening'] as const;
 export const dailySlotLabels = {morning:'早报', midday:'午报', evening:'晚报'} as const;
 export const yzjRecentGroupsId = 'recent-groups-30';

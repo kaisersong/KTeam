@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
 import {AssistantWatches} from './assistant-watch';
 import {Check,ChevronRight} from 'lucide-react';
-import {dailyBriefDeliveryLabels,dailyPresetIds,dailyPresets,type DailyPreset,type DailyBriefDelivery} from '../../../src/protocol/assistant-daily-types';
+import {dailyBriefDeliveryLabels,dailyPresetIds,dailyPresets,type DailyPreset,type DailyBriefDelivery,type AssistantConnectorSetup} from '../../../src/protocol/assistant-daily-types';
 import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../../../src/protocol/assistant-daily';
 
 const slots=['morning','midday','evening'] as const;
@@ -18,6 +18,7 @@ interface Plan {
  config:DailyConfiguration|null;
  revision:number;
  draft?:Draft;
+ connectorSetup?:AssistantConnectorSetup;
  next?:{slot:keyof typeof slotLabel;next:number}|null;
 }
 interface Today extends Plan {
@@ -31,7 +32,7 @@ function describePlan(config:DailyConfiguration) {
  return schedule.length?schedule.join(' · '):'未设置简报时段';
 }
 
-export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
+export function AssistantDailyPlan({onPlan,onConnect}:{onPlan:()=>void;onConnect:(connector:keyof AssistantConnectorSetup)=>void}){
  const [data,setData]=useState<Plan>();
  const [loadError,setLoadError]=useState('');
  const [choiceError,setChoiceError]=useState('');
@@ -57,12 +58,18 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
   try{
    const plan=await api.chooseDailyWorkPreset({preset,expectedRevision:data.revision,expectedDraftId:data.draft?.id??null});
    request.current++;
-   setData(plan);
+   setData(current=>({...plan,connectorSetup:current?.connectorSetup}));
    setShowChoices(false);
   }catch(e){setChoiceError(explain(e));void load();}
   finally{setChoosing(undefined);}
  };
- if(showChoices||!data.config&&!data.draft)return <section className="proposal-card assistant-daily-choices" aria-label="选择每日工作方案">
+ const setup=data.connectorSetup;
+ const guide=setup?.enterprise||setup?.mail?<aside className="assistant-daily-actions" aria-label="小 K 的连接引导">
+  <span>连接后，就可以把{setup.enterprise&&setup.mail?'群消息、日程和邮件':setup.enterprise?'群消息和日程':'待处理邮件'}加进简报。</span>
+  {setup.enterprise&&<button type="button" className="secondary" onClick={()=>onConnect('enterprise')}>连接企业通讯</button>}
+  {setup.mail&&<button type="button" className="secondary" onClick={()=>onConnect('mail')}>连接邮箱</button>}
+ </aside>:null;
+ if(showChoices||!data.config&&!data.draft)return <>{guide}<section className="proposal-card assistant-daily-choices" aria-label="选择每日工作方案">
   <h3>选一个简报安排</h3>
   {!data.config&&<p>默认在周一到周五运行。选好后可以添加读取来源。</p>}
   <div className="assistant-daily-choice-list">{dailyPresetIds.map(id=>{
@@ -78,10 +85,10 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
    {data.config&&!data.draft&&<button type="button" className="secondary" onClick={()=>setShowChoices(false)}>取消</button>}
    <button type="button" className="secondary" onClick={()=>{setShowChoices(false);onPlan();}}>在对话中自定义</button>
   </div>
- </section>;
- if(data.draft)return <DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onChoose={()=>setShowChoices(true)} onSaved={()=>void load()}/>;
+ </section></>;
+ if(data.draft)return <>{guide}<DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onChoose={()=>setShowChoices(true)} onSaved={()=>void load()}/></>;
  if(!data.config)return null;
- return <div className="assistant-daily-plan-receipt">
+ return <>{guide}<div className="assistant-daily-plan-receipt">
   <strong>{describePlan(data.config)}</strong>
   <button type="button" className="secondary" disabled={Boolean(choosing)} onClick={()=>void choose('sources')}>{data.config.sources.length?'调整读取来源':'选择读取来源'}</button>
   {!data.config.sources.length&&<span>当前未设置读取来源。</span>}
@@ -89,7 +96,7 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
   {data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}
   <button className="secondary" onClick={()=>setShowChoices(true)}>更换简报安排</button>
   <button className="secondary" onClick={onPlan}>在对话中调整</button>
- </div>;
+ </div></>;
 }
 
 function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:DailyConfiguration|null;onSaved:()=>void;onChoose:()=>void}){

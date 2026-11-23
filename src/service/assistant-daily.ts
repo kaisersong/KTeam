@@ -52,7 +52,7 @@ export class AssistantDaily {
  private active?:Promise<void>;
  private controller=new AbortController();
  readonly watches:AssistantWatch;
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
   this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
@@ -228,6 +228,10 @@ export class AssistantDaily {
  planView(){
   const draft=this.draft();
   return {ok:true,...this.summary(),effectivePaused:this.blocked()||this.plan()?.config.paused===true,draft:draft?.committedRevision?undefined:draft};
+ }
+ async clientPlan(){
+  const connectorSetup=await this.sources.connectorSetup?.();
+  return {...this.planView(),connectorSetup};
  }
  async view() {
   const plan=this.plan();

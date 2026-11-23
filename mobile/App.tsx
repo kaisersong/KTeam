@@ -1,6 +1,6 @@
 import {ActiveConversationWork,MobileReferencePicker,MobileWorkInput} from "./src/conversation-work";
 import {messageAnchors,type MessageAnchor} from "../src/protocol/message-reference";
-import {AssistantDailyPanel} from "./src/assistant-daily";
+import {AssistantConnectorGuide,AssistantDailyPanel} from "./src/assistant-daily";
 import {ArtifactReviewActions,MemberPanel,PluginCommandsPanel,PluginsPanel,RoutinesPanel,WorkDetailPanel,WorkListPanel} from "./src/conversation-tools";
 import {planReviewPreset} from "../src/protocol/member-presets";
 import {isPluginCommand} from "../src/protocol/plugins";
@@ -2113,6 +2113,7 @@ function AppBody() {
               )}
             </View>
           )}
+          {room.kind==="assistant"&&!offline&&!writesLocked&&<AssistantConnectorGuide key={room.roomId} roomId={room.roomId} call={call} colors={colors}/>}
           <GlassSurface style={s.composer}>
             <Pressable
               accessibilityRole="button"
