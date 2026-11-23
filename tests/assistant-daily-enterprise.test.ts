@@ -25,7 +25,7 @@ test('enterprise brief connectors keep account scope, bound recent groups and sk
    ]}};
    assert.equal(args[1],'+chat-messages-list');
    return {ok:true,data:{messages:[
-    {message_id:'message-'+readers.length,create_time:String(now-30000),sender:{id:'other-user'},body:{content:'not persisted'},mentions:[{id:{open_id:status(provider).openId}}]},
+    {message_id:'message-'+readers.length,create_time:String(now-30000),sender:{id:'other-user'},body:{content:'API key must not be published'},mentions:[{id:{open_id:status(provider).openId}}]},
     {message_id:'own',create_time:String(now-10000),sender:{id:status(provider).openId}},
    ]}};
   },
@@ -41,7 +41,7 @@ test('enterprise brief connectors keep account scope, bound recent groups and sk
  assert.equal(readers[0]?.args.includes('active_time'),true);
  assert.ok(!readers.some(read=>read.args.includes('oc_private')||read.args.includes('--unsafe')||read.args.includes('oc_30')));
  assert.ok(scan.items.every(item=>item.urgent&&item.observedAt===now-30000));
- assert.ok(!JSON.stringify(scan).includes('not persisted'));
+ assert.ok(!JSON.stringify(scan).includes('must not be published'));
  connected=false;
  assert.equal(await enterprise.current(source,signal),false);
  await assert.rejects(enterprise.scan(source,now-3600000,now,'Asia/Shanghai',signal),/daily_source_changed/);
