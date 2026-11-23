@@ -1742,7 +1742,7 @@ function AppBody() {
                   { color: colors.muted, textAlign: "center", marginTop: 16 },
                 ]}
               >
-                电脑侧栏点“连接手机”，用手机扫码。首次连接使用同一
+                在电脑端打开「设置 → 手机连接」，再用手机扫码。首次连接使用同一
                 Wi-Fi，电脑保持唤醒
               </Text>
               <Pressable
@@ -2457,7 +2457,7 @@ function AppBody() {
             连接新电脑
           </Text>
           <Text style={[s.caption, { color: colors.muted, marginBottom: 16 }]}>
-            电脑侧栏点“连接手机”即可显示二维码。同一 Wi-Fi
+            在电脑端打开「设置 → 手机连接」显示二维码。同一 Wi-Fi
             下扫码后，在电脑确认这部手机。
           </Text>
           {button(
@@ -2654,7 +2654,7 @@ function AppBody() {
                   marginTop: 12,
                 }}
               >
-                电脑 KTeam → 连接手机
+                电脑 KTeam → 设置 → 手机连接
               </Text>
             </View>
             <View style={s.scanFooter}>
