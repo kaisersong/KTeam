@@ -17,6 +17,11 @@ const snoozePrefix='assistant-daily-snooze:';
 const briefDeliveryWindow=15*60000;
 const maxAge=24*3600000;
 const checkInterval=10*60000;
+const mailCheckInterval=60*60000;
+function periodicSourceInterval(source:DailySource){
+ if(source.kind==='mail')return mailCheckInterval;
+ if(isYzjRecentGroups(source))return yzjRecentGroupsInterval;
+}
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const actionId = z.object({id:z.string().max(128)}).strict();
 
@@ -323,8 +328,8 @@ export class AssistantDaily {
    guard();
    const key=this.scanKey(source),previous=this.store.state<Scan>(key);
    const same=previous?.coverage.source.revision===source.revision?previous:undefined;
-   const recentGroups=isYzjRecentGroups(source);
-   if(!manual&&(!next||recentGroups)&&same&&now-same.at<(recentGroups?yzjRecentGroupsInterval:checkInterval))continue;
+   const interval=periodicSourceInterval(source);
+   if(!manual&&(!next||interval!==undefined)&&same&&now-same.at<(interval??checkInterval))continue;
    const from=Math.max(now-7*maxAge,same?.waterline!==undefined?same.waterline-maxAge:same?.coverage.from??now-maxAge);
    let state:DailyCoverage['state']='unavailable',items:DailyItem[]=[],recentCursors:RecentGroupCursors|undefined;
    try {
@@ -342,8 +347,12 @@ export class AssistantDaily {
   if(due.length) {
    await this.verifyScope?.();
    guard();
-   const scans=this.retained(plan).filter(scan=>scan.at===now||isYzjRecentGroups(scan.coverage.source)&&
-     scan.at>=now-yzjRecentGroupsInterval&&plan.config.sources.some(source=>dailySourceKey(source)===dailySourceKey(scan.coverage.source)&&source.revision===scan.coverage.source.revision));
+   const scans=this.retained(plan).filter(scan=>{
+    if(scan.at===now)return true;
+    const interval=periodicSourceInterval(scan.coverage.source);
+    return interval!==undefined&&scan.at>=now-interval&&plan.config.sources.some(source=>
+     dailySourceKey(source)===dailySourceKey(scan.coverage.source)&&source.revision===scan.coverage.source.revision);
+   });
    const previous=this.store.operationsWithPrefix(briefPrefix).slice(0,10) as Brief[];
    const known=new Set((previous[0]?.items??[]).map(item=>item.id));
    const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isYzjRecentGroups(item.source)).map(item=>item.id)));

@@ -163,3 +163,42 @@ test('recent groups refresh every fifteen minutes and a scheduled brief uses the
   assert.equal(sends,1);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('mail checks hourly, while a brief can use the latest check without reading the inbox again',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-mail-cadence-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room';
+ const start=Date.parse('2026-11-23T08:10:00Z');
+ let now=start,reads=0,connected=true;
+ const sent:string[]=[];
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:start,skips:[],config:{...defaultDaily('UTC'),sources:[mail]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[mail],yzjAvailable:false}),current:async()=>connected,newsSource:async()=>assert.fail('not a news plan'),
+  original:async()=>({url:undefined}),scan:async()=>{
+   reads++;
+   return {items:[{id:'mail-'+reads,source:mail,title:'待阅邮件',detail:'测试邮箱',observedAt:now,urgent:false}],partial:false};
+  },
+ },()=>roomId,()=>now,async()=>{},async input=>{sent.push(input.body);return 'brief-message';});
+ try{
+  await daily['run'](false);
+  now=start+20*60000;
+  await daily['run'](false);
+  assert.equal(reads,1);
+  assert.equal(sent.length,1);
+  assert.match(sent[0]!,/邮件/);
+  now=start+60*60000-1;
+  await daily['run'](false);
+  assert.equal(reads,1);
+  now+=1;
+  await daily['run'](false);
+  assert.equal(reads,2);
+  await daily.refresh();
+  assert.equal(reads,3);
+  connected=false;
+  now+=60*60000;
+  await daily['run'](false);
+  assert.equal(reads,3);
+  assert.equal((await daily.view()).items.length,0);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
