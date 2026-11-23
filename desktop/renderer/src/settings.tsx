@@ -1,3 +1,4 @@
+import {SettingsTabs} from './settings-shared';
 import {PluginSettings} from './plugin-settings';
 import {buildDetails} from './build-info';
 import {MobileSettings} from './mobile-settings';
@@ -39,7 +40,7 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='mobile'&&<MobileSettings/>}
  {page==='models'&&<ModelsPanel onSaved={onModelsSaved} onFinished={onClose}/>}
  {page==='decision'&&<DecisionPanel/>}
- {page==='connectors'&&<><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/><MailConnectorSettings/><MailSettings/><EnterpriseConnectorSettings/></>}
+ {page==='connectors'&&<ConnectorSettings bots={bots} onBot={onBot} onCreate={onCreate}/>}
  {page==='skills'&&<ResourcesPanel kind="skills" preferences={preferences} onSaved={onPreferences}/>}
  {page==='plugins'&&<PluginSettings/>}
  {page==='tools'&&<ToolsSettings/>}
@@ -48,6 +49,18 @@ export function SettingsWorkspace({initialPage='general',preferences,onPreferenc
  {page==='permissions'&&<PermissionsPanel bots={bots}/>}
  {page==='data'&&<DataPanel/>}
  </div></div>;
+}
+
+function ConnectorSettings({bots,onBot,onCreate}:{bots:Bot[];onBot:(bot:Bot)=>void;onCreate:()=>void}){
+ const [tab,setTab]=useState<'apps'|'agents'>('apps');
+ return <>
+  <Section title="连接器"><SettingsTabs label="连接器分类" value={tab} onChange={setTab} tabs={[
+   {id:'apps',label:'应用连接器'},{id:'agents',label:'本机 Agent'},
+  ]}/></Section>
+  {tab==='agents'
+   ?<div role="tabpanel" aria-label="本机 Agent"><AgentsPanel bots={bots} onBot={onBot} onCreate={onCreate}/></div>
+   :<div role="tabpanel" aria-label="应用连接器"><MailConnectorSettings/><MailSettings/><EnterpriseConnectorSettings/></div>}
+ </>;
 }
 
 function PreferencesPanel({kind,preferences,onSaved}:{kind:'general'|'appearance';preferences?:AppPreferences;onSaved:(value:AppPreferences)=>void}){
