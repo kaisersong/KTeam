@@ -72,3 +72,26 @@ test('enterprise calendars normalize provider dates, flag partial coverage and k
  assert.match(message,/09:30/);
  assert.doesNotMatch(message,/用例/);
 });
+
+test('WeCom group reads use its pinned cursor and message contract without requiring provider message IDs',async()=>{
+ let page=0;
+ const enterprise=new AssistantDailyEnterprise({
+  dailyEnterpriseIdentity:async provider=>provider==='wecom'?status(provider):undefined,
+  dailyEnterpriseRead:async(_provider,args)=>{
+   const input=JSON.parse(args[4]!);
+   if(args[1]==='groups'){
+    assert.equal(input.cursor,page?'next':undefined);
+    return page++?{chats:[{chat_id:'group-b',last_msg_time:'2026-11-23 08:58:00'}],has_more:false}:
+     {chats:[{chat_id:'group-a',last_msg_time:'2026-11-23 08:59:00'}],has_more:true,next_cursor:'next'};
+   }
+   assert.deepEqual(Object.keys(input).sort(),['begin_time','chat_id','end_time']);
+   return {messages:[{userid:'other',send_time:'2026-11-23 08:58:00',msg_type:'text',text:{content:'private text'}}]};
+  },
+ });
+ const source=(await enterprise.catalog()).find(entry=>entry.kind==='enterprise-message')!;
+ const scan=await enterprise.scan(source,now-3600000,now,'Asia/Shanghai',signal);
+ assert.equal(page,2);
+ assert.equal(scan.items.length,2);
+ assert.equal(new Set(scan.items.map(item=>item.id)).size,2);
+ assert.doesNotMatch(JSON.stringify(scan),/private text/);
+});

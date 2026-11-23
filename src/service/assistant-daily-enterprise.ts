@@ -24,6 +24,10 @@ function list(value:unknown,...keys:string[]):Row[]{
  }
  throw new KTeamError('daily_source_response_unknown',502);
 }
+function wecomList(value:unknown,key:string){
+ const entry=row(value);
+ return entry[key]===undefined&&entry[key+'_count']===0?[]:list(value,key);
+}
 function unwrap(value:unknown,provider:DailyEnterpriseProvider){
  const entry=row(value);
  if(entry.success===false||entry.ok===false||entry.errcode!==undefined&&entry.errcode!==0||
@@ -102,10 +106,17 @@ export class AssistantDailyEnterprise {
    response=await this.read(provider,['chat','+chat-list','--types','group','--limit','100','--format','json'],signal);
    entries=list(response,'chats','conversations');
   }else{
-   response=await this.read(provider,['chat','groups','list','--json',JSON.stringify({
-    begin_time:wecomTime(now-day),end_time:wecomTime(now),
-   })],signal);
-   entries=list(response,'groups','group_list','chat_list');
+   entries=[];
+   let cursor:string|undefined;
+   for(let page=0;page<3&&entries.length<recentGroupsLimit;page++){
+    const data=await this.read(provider,['chat','groups','list','--json',JSON.stringify({
+     begin_time:wecomTime(now-day),end_time:wecomTime(now),cursor,
+    })],signal);
+    entries.push(...wecomList(data,'chats'));
+    const next=string(row(data).next_cursor);
+    if(row(data).has_more!==true||!next||next===cursor)break;
+    cursor=next;
+   }
   }
   const groups=new Map<string,Group>();
   for(const entry of entries){
@@ -122,9 +133,9 @@ export class AssistantDailyEnterprise {
    '--start',start,'--end',end,'--order','desc','--page-size',String(messageLimit),'--no-reactions','--format','json'],signal),'messages');
   if(provider==='dingtalk')return list(await this.read(provider,['chat','+chat-messages','--group',groupId,
    '--start',start,'--end',end,'--order','desc','--limit',String(messageLimit),'--no-reactions','--format','json'],signal),'messages');
-  return list(await this.read(provider,['chat','messages','list','--json',JSON.stringify({
-   chat_id:groupId,begin_time:wecomTime(from),end_time:wecomTime(now),limit:messageLimit,
-  })],signal),'messages','message_list');
+  return wecomList(await this.read(provider,['chat','messages','list','--json',JSON.stringify({
+   chat_id:groupId,begin_time:wecomTime(from),end_time:wecomTime(now),
+  })],signal),'messages');
  }
  private async recentGroups(source:DailySource,provider:DailyEnterpriseProvider,user:string,from:number,now:number,signal:AbortSignal):Promise<DailySourceScan>{
   const targets=await this.groups(provider,now,signal);
@@ -136,15 +147,17 @@ export class AssistantDailyEnterprise {
    signal.throwIfAborted();
    const results=await Promise.allSettled(due.slice(index,index+4).map(async group=>{
     const entries=await this.messages(provider,group.id,cut,now,signal);
-    const messages=entries.slice(0,messageLimit).flatMap(entry=>{
-     const id=string(entry.message_id??entry.messageId??entry.msg_id);
+    const messages=entries.flatMap(entry=>{
      const stamp=timestamp(entry.create_time??entry.createTime??entry.send_time??entry.msg_time);
-     const sender=string(row(entry.sender).id??entry.senderId??entry.sender_id??entry.from_userid);
-     if(!id||!Number.isFinite(stamp)||stamp<cut||stamp>now||!sender||sender===user||entry.is_self===true)return [];
+     const sender=string(row(entry.sender).id??entry.senderId??entry.sender_id??entry.userid);
+     if(!Number.isFinite(stamp)||stamp<cut||stamp>now||!sender||sender===user||entry.is_self===true)return [];
+     const id=string(entry.message_id??entry.messageId??entry.msg_id)||
+      (provider==='wecom'?hash([sender,stamp,entry.msg_type,string(row(entry.text).content)]):'');
+     if(!id)return [];
      const mentions=Array.isArray(entry.mentions)?entry.mentions:[];
      const urgent=mentions.some(mention=>string(row(row(mention).id).open_id??row(mention).id)===user);
      return [{id,stamp,urgent}];
-    }).sort((a,b)=>b.stamp-a.stamp);
+    }).sort((a,b)=>b.stamp-a.stamp).slice(0,messageLimit);
     const latest=messages[0];
     if(!latest)return;
     return {
@@ -176,8 +189,8 @@ export class AssistantDailyEnterprise {
   }else{
    const range={begin_time:wecomTime(start),end_time:wecomTime(end-1000)};
    const [schedule,meeting]=await Promise.allSettled([
-    this.read(provider,['calendar','schedules','list','--json',JSON.stringify(range)],signal).then(data=>list(data,'schedule_list')),
-    this.read(provider,['meeting','list','--json',JSON.stringify({...range,limit:30})],signal).then(data=>({rows:[...list(data,'created_meetings'),...list(data,'attended_meetings')],partial:row(data).has_more===true})),
+    this.read(provider,['calendar','schedules','list','--json',JSON.stringify(range)],signal).then(data=>wecomList(data,'schedule_list')),
+    this.read(provider,['meeting','list','--json',JSON.stringify({...range,limit:30})],signal).then(data=>({rows:[...wecomList(data,'created_meetings'),...wecomList(data,'attended_meetings')],partial:row(data).has_more===true})),
    ]);
    signal.throwIfAborted();
    if(schedule.status==='rejected'&&meeting.status==='rejected')throw new KTeamError('daily_source_unavailable',503);
