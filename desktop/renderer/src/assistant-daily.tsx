@@ -32,7 +32,7 @@ function describePlan(config:DailyConfiguration) {
  return schedule.length?schedule.join(' · '):'未设置简报时段';
 }
 
-export function AssistantDailyPlan({onPlan,onConnect}:{onPlan:()=>void;onConnect:(connector:keyof AssistantConnectorSetup)=>void}){
+export function AssistantDailyPlan({onPlan,onConnect,onApplied,showConfirmed=false}:{onPlan:()=>void;onConnect?:(connector:keyof AssistantConnectorSetup)=>void;showConfirmed?:boolean;onApplied?:()=>void}){
  const [data,setData]=useState<Plan>();
  const [loadError,setLoadError]=useState('');
  const [choiceError,setChoiceError]=useState('');
@@ -64,7 +64,7 @@ export function AssistantDailyPlan({onPlan,onConnect}:{onPlan:()=>void;onConnect
   finally{setChoosing(undefined);}
  };
  const setup=data.connectorSetup;
- const guide=setup?.enterprise||setup?.mail?<aside className="assistant-daily-actions" aria-label="小 K 的连接引导">
+ const guide=onConnect&&(setup?.enterprise||setup?.mail)?<aside className="assistant-daily-actions" aria-label="小 K 的连接引导">
   <span>连接后，就可以把{setup.enterprise&&setup.mail?'群消息、日程和邮件':setup.enterprise?'群消息和日程':'待处理邮件'}加进简报。</span>
   {setup.enterprise&&<button type="button" className="secondary" onClick={()=>onConnect('enterprise')}>连接企业通讯</button>}
   {setup.mail&&<button type="button" className="secondary" onClick={()=>onConnect('mail')}>连接邮箱</button>}
@@ -86,9 +86,9 @@ export function AssistantDailyPlan({onPlan,onConnect}:{onPlan:()=>void;onConnect
    <button type="button" className="secondary" onClick={()=>{setShowChoices(false);onPlan();}}>在对话中自定义</button>
   </div>
  </section></>;
- if(data.draft)return <>{guide}<DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onChoose={()=>setShowChoices(true)} onSaved={()=>void load()}/></>;
- if(!data.config)return null;
- return <>{guide}<div className="assistant-daily-plan-receipt">
+ if(data.draft)return <>{guide}<DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onChoose={()=>setShowChoices(true)} onSaved={()=>{void load();onApplied?.();}}/></>;
+ if(!data.config||!showConfirmed)return guide;
+ return <div className="assistant-daily-plan-receipt">
   <strong>{describePlan(data.config)}</strong>
   <button type="button" className="secondary" disabled={Boolean(choosing)} onClick={()=>void choose('sources')}>{data.config.sources.length?'调整读取来源':'选择读取来源'}</button>
   {!data.config.sources.length&&<span>当前未设置读取来源。</span>}
@@ -96,7 +96,7 @@ export function AssistantDailyPlan({onPlan,onConnect}:{onPlan:()=>void;onConnect
   {data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}
   <button className="secondary" onClick={()=>setShowChoices(true)}>更换简报安排</button>
   <button className="secondary" onClick={onPlan}>在对话中调整</button>
- </div></>;
+ </div>;
 }
 
 function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:DailyConfiguration|null;onSaved:()=>void;onChoose:()=>void}){
@@ -145,7 +145,7 @@ function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:Daily
  </section>;
 }
 
-export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:string;title:string}[];onTask:(roomId:string,text:string)=>void}){
+export function AssistantDailyToday({destinations,onTask,onPlan}:{destinations:{roomId:string;title:string}[];onTask:(roomId:string,text:string)=>void;onPlan:()=>void}){
  const [watchReference,setWatchReference]=useState<string>();
  const [task,setTask]=useState<DailyItem>();
  const [reply,setReply]=useState<{item:DailyItem;text:string|null}>();
@@ -155,7 +155,8 @@ export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:
  const [error,setError]=useState('');
  const [original,setOriginal]=useState<{subject:string;body:string}>();
  const act=useCallback(async(action:()=>Promise<void>)=>{setBusy(true);setError('');try{await action();}catch(e){setError(explain(e));}finally{setBusy(false);}},[]);
- useEffect(()=>{void act(async()=>setView(await api.dailyWorkToday()));},[act]);
+ const reload=useCallback(()=>void act(async()=>setView(await api.dailyWorkToday())),[act]);
+ useEffect(reload,[reload]);
  const prepareTask=(item:DailyItem)=>{
   setTask(item);
   setDestination('');
@@ -176,11 +177,11 @@ export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:
   </li>)}</ul>;
  }
  return <div className="assistant-daily-today">
+  <AssistantDailyPlan showConfirmed onPlan={onPlan} onApplied={reload}/>
+  {view?.config&&<div className="assistant-daily-actions">
+   <button className="secondary" disabled={busy||view.config.paused} onClick={()=>void act(async()=>{setOriginal(undefined);setView(await api.refreshDailyWork());})}>运行一次</button>
+  </div>}
   <AssistantWatches reference={watchReference} onClearReference={()=>setWatchReference(undefined)}/>
-  <div className="assistant-daily-actions">
-   <span>{view?.config?describePlan(view.config):'在小 K 私聊里确定每日工作。'}</span>
-   {view?.config&&<button className="secondary" disabled={busy||view.config.paused} onClick={()=>void act(async()=>{setOriginal(undefined);setView(await api.refreshDailyWork());})}>运行一次</button>}
-  </div>
   {error&&<p className="settings-error" role="alert">{error}</p>}
   {unseen.length>0&&<details><summary>有 {unseen.length} 个来源未查完</summary><ul>{unseen.map(row=><li key={key(row.source)}>{row.source.label} · {row.state==='partial'?'覆盖不完整':'暂不可用'}{row.checkedAt?' · '+format(row.checkedAt,timeZone):''}</li>)}</ul></details>}
   {reply&&<section className="proposal-card">

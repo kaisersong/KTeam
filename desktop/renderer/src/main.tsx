@@ -217,6 +217,11 @@ function App(){
   },
  });
  const open=async(type:string)=>{botCreation.current.abort();botCreation.current=new AbortController();setMemberSetup(undefined);setPresetSubmitted(false);suggestedPresetName.current=undefined;setAgent(BUILTIN);setModal(type);setName('');setGoal('');setSelectedBots([]);requestId.current=crypto.randomUUID();if(type==='bot'){try{const catalog=await api.models();setModels(catalog.models);setModelId(catalog.defaultModelId);}catch(error){setError(explain(error));}}};
+ const customizeDailyPlan=()=>{
+  setModal(undefined);
+  if(!draft.trim())setDraft('我想自定义每日工作。');
+  requestAnimationFrame(()=>document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus());
+ };
  const chooseMemberPreset=(active:boolean)=>{
   if(!active){
    if(name===suggestedPresetName.current)setName('');
@@ -379,7 +384,7 @@ function App(){
  </div>)}
  {jobs.filter(job=>job.codexDispatch).slice(0,5).reverse().map(job=><CodexWorkBlocked key={job.id} job={job} bots={bots} onSettings={bot=>{setEditingBot(bot);setEditingTab('agent');setModal('bot-settings');}} onDispatch={()=>void act(async()=>{const target=room.roomId;const source=await api.conversationMessage({roomId:target,messageId:job.originId});if(activeRoom.current===target)setCodexDraft({roomId:target,text:source.message.text??'',botId:job.codexDispatch.botId});})}/>)}
  {proposals.filter(p=>!p.replyId).map(proposalCard)}
- {room.kind==='assistant'&&<AssistantDailyPlan key={room.roomId} onConnect={target=>{setConnectorTarget(target);setSettingsTab('connectors');void open('settings');}} onPlan={()=>{if(!draft.trim())setDraft('我想自定义每日工作。');document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus();}}/>}
+ {room.kind==='assistant'&&<AssistantDailyPlan key={room.roomId} onConnect={target=>{setConnectorTarget(target);setSettingsTab('connectors');void open('settings');}} onPlan={customizeDailyPlan}/>}
  {!messages.length&&room.kind==='assistant'&&<div className="starter-list">{['帮我创建一个资料核对 Bot','帮我创建一个群聊'].map(text=><button key={text} onClick={()=>{setDraft(text);document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus();}}>{text}<ArrowRight size={15}/></button>)}</div>}
 
  {botQuestions.map(question=><BotQuestionCard key={question.id} question={question} onSource={()=>{select(question.sourceRoomId);setNotificationJob(question.jobId);setPanel('inspector');}} onAnswer={async answer=>{await api.answerBotQuestion({id:question.id,answer});await refresh();}}/>)}{toolApprovals.map(a=><ToolApprovalCard key={a.id} approval={a} bot={bots.find(b=>b.id===a.botId)} onDecide={async (decision,applyToGroup)=>{try{await api.decideToolApproval({id:a.id,expectedHash:a.hash,decision,...(applyToGroup===undefined?{}:{applyToGroup})});}
@@ -441,7 +446,7 @@ function App(){
   if(target.toolCallId)void showGeneratedFile({roomId:target.roomId,toolCallId:target.toolCallId})
    .catch(error=>setError(explain(error)));
  }}/>}
- {modal==='assistant-today'&&<Modal title="简报" onClose={()=>setModal(undefined)}><AssistantDailyToday destinations={rooms.filter(item=>item.kind==='group'||item.kind==='direct')} onTask={(target,text)=>{
+ {modal==='assistant-today'&&<Modal title="简报" onClose={()=>setModal(undefined)}><AssistantDailyToday onPlan={customizeDailyPlan} destinations={rooms.filter(item=>item.kind==='group'||item.kind==='direct')} onTask={(target,text)=>{
   setDrafts(previous=>({...previous,[target]:previous[target]?.trim()?previous[target]+'\n\n'+text:text}));
   select(target);
  }}/><details className="assistant-team-attention"><summary>团队事项</summary><AttentionWorkbench onOpen={value=>{select(value.roomId);if(value.message)setRaw(value.message);}}/></details></Modal>}
