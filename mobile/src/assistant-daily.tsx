@@ -3,11 +3,11 @@ import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react
 import {AssistantWatches} from "./assistant-watch";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
-import {dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
+import {dailyBriefDeliveryLabels,type DailyBriefDelivery,dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
 
 type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange;preset?:DailyPreset};
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
-type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean}[]};
+type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;slot:Slot;day:string;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean;delivery?:DailyBriefDelivery}[]};
 type RoomTarget={roomId:string;title:string;kind?:string};
 const sourceLabel:Record<DailySource["kind"],string>={mail:"邮件","yzj-message":"云之家消息","yzj-calendar":"云之家日程","yzj-doc":"云之家知识库",news:"公开资讯"};
 const states:Record<DailyCoverage["state"],string>={ok:"已核对",partial:"覆盖不完整",unavailable:"暂不可用"};
@@ -150,7 +150,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
     else if(typeof original.url==="string"&&original.url.startsWith("https://"))await Linking.openURL(original.url);
     else setError("来源没有提供可打开的原文链接。");
    })}>看原文</ToolButton>}
-   {["mail","yzj-message"].includes(item.source.kind)&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setReply({item});setOpened(undefined);setTask(undefined);}}>准备回复</ToolButton>}
+   {(item.source.kind==="mail"||item.source.kind==="yzj-message"&&item.originalId)&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setReply({item});setOpened(undefined);setTask(undefined);}}>准备回复</ToolButton>}
    {item.source.kind==="yzj-message"&&item.originalId&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>setWatchReference(item.id)}>请小 K 盯这件事</ToolButton>}
    {!!rooms.length&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>{setTask(item);setOpened(undefined);setReply(undefined);}}>转任务</ToolButton>}
    {today&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>void act(async()=>setView(await mutate("dailyWork.snooze",{roomId,id:item.id})))}>一小时后再看</ToolButton>}
@@ -188,6 +188,10 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
   </View>}
   {!showChoices&&plan?.draft&&<PlanCard key={plan.draft.id} {...props} roomId={roomId} draft={plan.draft} previous={plan.config} onSaved={load} onChoose={()=>setShowChoices(true)}/>}
   {!showChoices&&plan?.config&&!plan.draft&&<View style={styles.actions}>
+   <ToolButton colors={colors} disabled={disabled||pending} onPress={()=>void act(async()=>{
+    const next=await mutate("dailyWork.preset",{roomId,preset:"sources",expectedRevision:plan.revision,expectedDraftId:null});
+    lastId.current++;setPlan(next);
+   })}>{plan.config.sources.length?"调整读取来源":"选择读取来源"}</ToolButton>
    <ToolButton colors={colors} disabled={disabled} onPress={()=>setShowChoices(true)}>更换简报安排</ToolButton>
    <ToolButton colors={colors} disabled={disabled} onPress={()=>onDraft(roomId,"我想自定义每日工作。")}>在对话中调整</ToolButton>
   </View>}
@@ -236,7 +240,7 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
   {!!view?.briefs.length&&<Text accessibilityRole="header" style={[styles.heading,{color:colors.text}]}>简报</Text>}
   <ToolButton colors={colors} disabled={disabled} onPress={onAttention}>团队事项</ToolButton>
   {view?.briefs.map(brief=><View key={brief.id} style={[styles.card,{borderColor:colors.line}]}>
-   <ToolButton colors={colors} onPress={()=>setExpanded(id=>id===brief.id?undefined:brief.id)}>{brief.day+" "+labels[brief.slot]+(brief.missed?" · 已错过":"")}</ToolButton>
+   <ToolButton colors={colors} onPress={()=>setExpanded(id=>id===brief.id?undefined:brief.id)}>{brief.day+" "+labels[brief.slot]+(brief.missed?" · 已错过":brief.delivery?" · "+dailyBriefDeliveryLabels[brief.delivery]:"")}</ToolButton>
    {expanded===brief.id&&<>
     {brief.items.length?items(brief.items):<Text style={{color:colors.muted}}>{brief.missed?"本期未补投。":brief.coverage.some(row=>row.state==="ok")?"已核对的范围内没有新增事项。":"本期没有可确认的来源结果。"}</Text>}
     {coverage(brief.coverage)}

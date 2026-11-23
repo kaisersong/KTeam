@@ -4,15 +4,17 @@ import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyPresets,type DailyPreset} from '../protocol/assistant-daily-types.js';
+import {dailyBriefMessage} from './assistant-daily-delivery.js';
+import {dailyPresets,isYzjRecentGroups,yzjRecentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
-import type {AssistantDailySources} from './assistant-daily-sources.js';
+import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
 
 const planKey='assistant-daily-plan';
 const sourcePrefix='assistant-daily-source:';
 const briefPrefix='assistant-daily-brief:';
 const snoozePrefix='assistant-daily-snooze:';
+const briefDeliveryWindow=15*60000;
 const maxAge=24*3600000;
 const checkInterval=10*60000;
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -29,8 +31,15 @@ interface Draft {
  id:string; previousRevision:number; originId:string; change:DailyChange;
  config:DailyConfiguration; skips:string[]; createdAt:number; committedRevision?:number; preset?:DailyPreset;
 }
+interface Brief {
+ id:string; day:string; slot:DailySlot; at:number; items:DailyItem[]; coverage:DailyCoverage[]; missed:boolean;
+ delivery?:DailyBriefDelivery;
+ roomId?:string; planRevision?:number; deadline?:number;
+ revision:number;
+}
+type PublishBrief=(input:{id:string;roomId:string;body:string;deadline:number;guard:()=>Promise<void>})=>Promise<string>;
 interface Scan {
- at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[];
+ at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[]; recentCursors?:RecentGroupCursors;
 }
 
 export class AssistantDaily {
@@ -38,7 +47,7 @@ export class AssistantDaily {
  private active?:Promise<void>;
  private controller=new AbortController();
  readonly watches:AssistantWatch;
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>){
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
   this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
@@ -114,6 +123,10 @@ export class AssistantDaily {
   if((plan?.revision??0)!==input.expectedRevision)throw new KTeamError('daily_plan_changed',409);
   if(draft?.preset===input.preset&&draft.previousRevision===input.expectedRevision)return this.planView();
   if((draft?.id??null)!==input.expectedDraftId)throw new KTeamError('daily_plan_changed',409);
+  if(input.preset==='sources'){
+   if(!draft)this.propose({},'daily-source-edit');
+   return this.planView();
+  }
   const {schedule,middayUrgentOnly}=dailyPresets[input.preset];
   this.propose({schedule,middayUrgentOnly,paused:false},'daily-preset:'+input.preset,input.preset);
   return this.planView();
@@ -228,7 +241,7 @@ export class AssistantDaily {
   });
   const briefs=this.store.operationsWithPrefix(briefPrefix).slice(0,20).map(brief=>({
    id:brief.id,slot:brief.slot,day:brief.day,at:brief.at,
-   missed:brief.missed===true,items:(brief.items as DailyItem[]).filter(item=>eligible(item.source)),
+   missed:brief.missed===true,delivery:brief.delivery,items:(brief.items as DailyItem[]).filter(item=>eligible(item.source)),
    coverage:(brief.coverage as DailyCoverage[]).filter(row=>eligible(row.source)),
   }));
   return {ok:true,...this.summary(),draft:draft?.committedRevision?undefined:draft,items:visible,coverage,briefs};
@@ -310,34 +323,74 @@ export class AssistantDaily {
    guard();
    const key=this.scanKey(source),previous=this.store.state<Scan>(key);
    const same=previous?.coverage.source.revision===source.revision?previous:undefined;
-   if(!manual&&!next&&same&&now-same.at<checkInterval)continue;
+   const recentGroups=isYzjRecentGroups(source);
+   if(!manual&&(!next||recentGroups)&&same&&now-same.at<(recentGroups?yzjRecentGroupsInterval:checkInterval))continue;
    const from=Math.max(now-7*maxAge,same?.waterline!==undefined?same.waterline-maxAge:same?.coverage.from??now-maxAge);
-   let state:DailyCoverage['state']='unavailable',items:DailyItem[]=[];
+   let state:DailyCoverage['state']='unavailable',items:DailyItem[]=[],recentCursors:RecentGroupCursors|undefined;
    try {
     if(!await this.current(source,checks,controller.signal))throw new KTeamError('daily_source_changed',409);
-    const result=await this.sources.scan(source,from,now,plan.config.timeZone,controller.signal);
+    const result=await this.sources.scan(source,from,now,plan.config.timeZone,controller.signal,same?.recentCursors?{items:same.items,cursors:same.recentCursors}:undefined);
     if(!await this.current(source,new Map(),controller.signal))throw new KTeamError('daily_source_changed',409);
     state=result.partial?'partial':'ok';
+    recentCursors=result.recentCursors;
     items=[...new Map(result.items.map(item=>[item.id,item])).values()].slice(0,100);
    }catch{ /* A failed account is never interpreted as an empty successful source. */ }
    await this.verifyScope?.();
    guard();
-   this.store.setState(key,{at:now,waterline:state==='ok'?now:same?.waterline,coverage:{source,state,checkedAt:now,from},items});
+   this.store.setState(key,{at:now,waterline:state==='ok'?now:same?.waterline,coverage:{source,state,checkedAt:now,from},items,recentCursors});
   }
   if(due.length) {
    await this.verifyScope?.();
    guard();
-   const scans=this.retained(plan).filter(scan=>scan.at===now);
-   const previous=this.store.operationsWithPrefix(briefPrefix)[0];
-   const known=new Set((previous?.items??[]).map((item:DailyItem)=>item.id));
-   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(item.source.kind==='yzj-calendar'||!known.has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
+   const scans=this.retained(plan).filter(scan=>scan.at===now||isYzjRecentGroups(scan.coverage.source)&&
+     scan.at>=now-yzjRecentGroupsInterval&&plan.config.sources.some(source=>dailySourceKey(source)===dailySourceKey(scan.coverage.source)&&source.revision===scan.coverage.source.revision));
+   const previous=this.store.operationsWithPrefix(briefPrefix).slice(0,10) as Brief[];
+   const known=new Set((previous[0]?.items??[]).map(item=>item.id));
+   const recentKnown=new Set(previous.filter(brief=>brief.at>=now-maxAge).flatMap(brief=>brief.items.filter(item=>isYzjRecentGroups(item.source)).map(item=>item.id)));
+   const items=scans.flatMap(scan=>scan.items).filter(item=>!this.isSnoozed(item,now)&&(next?.slot!=='midday'||!plan.config.middayUrgentOnly||item.urgent)&&(item.source.kind==='yzj-calendar'||!(isYzjRecentGroups(item.source)?recentKnown:known).has(item.id))).sort((a,b)=>Number(b.urgent)-Number(a.urgent)||b.observedAt-a.observedAt).slice(0,32);
    this.store.transaction(()=>{
     for(const row of due) {
      const id=briefPrefix+row.day+':'+row.slot;
      if(this.store.operation(id))continue;
-     this.store.saveOperation({id,day:row.day,slot:row.slot,at:now,items:row===next?items:[],coverage:row===next?scans.map(scan=>scan.coverage):[],missed:row!==next},0);
+     const roomId=this.assistantRoom(),deadline=row.due!+briefDeliveryWindow;
+     const canNotify=this.publishBrief&&roomId&&row===next&&items.length&&now<deadline;
+     this.store.saveOperation({id,day:row.day,slot:row.slot,at:now,items:row===next?items:[],coverage:row===next?scans.map(scan=>scan.coverage):[],missed:row!==next,
+      ...(canNotify?{delivery:'pending',roomId,planRevision:plan.revision,deadline}:{})},0);
     }
    });
+  }
+  await this.deliverBriefs(plan,guard,controller.signal);
+ }
+ private async deliverBriefs(plan:Plan,guard:()=>void,signal:AbortSignal){
+  if(!this.publishBrief)return;
+  for(const brief of this.store.operationsWithPrefix(briefPrefix).slice(0,6) as Brief[]){
+   if(brief.delivery!=='pending')continue;
+   const {deadline,roomId}=brief;
+   if(!deadline||!roomId||this.now()>=deadline||brief.planRevision!==plan.revision||roomId!==this.assistantRoom()){
+    this.store.saveOperation({...brief,delivery:'expired'},brief.revision);
+    continue;
+   }
+   const allowed=new Map<string,Promise<boolean>>();
+   const visible:DailyItem[]=[];
+   for(const item of brief.items){
+    guard();
+    if(await this.current(item.source,allowed,signal))visible.push(item);
+   }
+   const body=dailyBriefMessage(brief.day,brief.slot,visible,brief.at,plan.config.timeZone);
+   const assertEligible=async()=>{
+    await this.verifyScope?.();
+    guard();
+    if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+   };
+   await assertEligible();
+   if(!body){this.store.saveOperation({...brief,delivery:'expired'},brief.revision);continue;}
+   const attempt=this.store.saveOperation({...brief,delivery:'attempted'},brief.revision);
+   try {
+    const messageId=await this.publishBrief({id:brief.id,roomId,body,deadline,guard:assertEligible});
+    this.store.saveOperation({...attempt,delivery:'sent',messageId},attempt.revision);
+   } catch {
+    this.store.saveOperation({...attempt,delivery:'unconfirmed'},attempt.revision);
+   }
   }
  }
  async close(){if(this.timer)clearInterval(this.timer);this.controller.abort();await this.active?.catch(()=>{});}

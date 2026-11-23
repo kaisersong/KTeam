@@ -1534,7 +1534,7 @@ function AppBody() {
         ) : (
           <View style={{ flex: 1 }} />
         )}
-        {room?.kind==="assistant"&&button("今日",()=>setToolPanel({kind:"daily",roomId:room.roomId}),undefined,offline||writesLocked)}
+        {room?.kind==="assistant"&&button("简报",()=>setToolPanel({kind:"daily",roomId:room.roomId}),undefined,offline||writesLocked)}
         {room&&button("工作",()=>Alert.alert(room.title,"",[
           {text:"工作记录",onPress:()=>setToolPanel({kind:"work",roomId:room.roomId})},
           {text:"例行任务",onPress:()=>setToolPanel({kind:"routines",roomId:room.roomId})},
@@ -2703,7 +2703,7 @@ function AppBody() {
         <SafeAreaView style={[s.safe,{backgroundColor:colors.bg}]}>
           <View style={[s.header,{borderBottomColor:colors.line}]}>
             <Text accessibilityRole="header" style={[s.title,{color:colors.text,flex:1}]}>
-              {toolPanel?.kind==="append"&&toolPanel.independent?"另提问题":toolPanel?({work:"工作记录",routines:"例行任务",daily:"今日",plugins:"插件",commands:"插件命令",member:"创建成员",reference:"引用其他会话的消息",append:"补充当前工作"})[toolPanel.kind]:""}
+              {toolPanel?.kind==="append"&&toolPanel.independent?"另提问题":toolPanel?({work:"工作记录",routines:"例行任务",daily:"简报",plugins:"插件",commands:"插件命令",member:"创建成员",reference:"引用其他会话的消息",append:"补充当前工作"})[toolPanel.kind]:""}
             </Text>
             {toolPanel?.kind==="work"&&toolPanel.jobId&&button("全部工作",()=>setToolPanel({kind:"work",roomId:toolPanel.roomId}))}
             {button("关闭",()=>setToolPanel(undefined))}

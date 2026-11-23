@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
 import {AssistantWatches} from './assistant-watch';
 import {Check,ChevronRight} from 'lucide-react';
-import {dailyPresetIds,dailyPresets,type DailyPreset} from '../../../src/protocol/assistant-daily-types';
+import {dailyBriefDeliveryLabels,dailyPresetIds,dailyPresets,type DailyPreset,type DailyBriefDelivery} from '../../../src/protocol/assistant-daily-types';
 import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../../../src/protocol/assistant-daily';
 
 const slots=['morning','midday','evening'] as const;
@@ -23,7 +23,7 @@ interface Plan {
 interface Today extends Plan {
  items:DailyItem[];
  coverage:DailyCoverage[];
- briefs:{id:string;slot:keyof typeof slotLabel;day:string;at:number;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean}[];
+ briefs:{id:string;slot:keyof typeof slotLabel;day:string;at:number;items:DailyItem[];coverage:DailyCoverage[];missed?:boolean;delivery?:DailyBriefDelivery}[];
 }
 function describePlan(config:DailyConfiguration) {
  if(config.paused)return '每日工作已暂停';
@@ -36,7 +36,7 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
  const [loadError,setLoadError]=useState('');
  const [choiceError,setChoiceError]=useState('');
  const [showChoices,setShowChoices]=useState(false);
- const [choosing,setChoosing]=useState<DailyPreset>();
+ const [choosing,setChoosing]=useState<DailyPreset|'sources'>();
  const request=useRef(0);
  const load=useCallback(async()=>{
   const id=++request.current;
@@ -51,7 +51,7 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
   return ()=>{clearInterval(timer);request.current++;};
  },[load]);
  if(!data)return loadError?<p className="settings-error" role="alert">{loadError}</p>:null;
- const choose=async(preset:DailyPreset)=>{
+ const choose=async(preset:DailyPreset|'sources')=>{
   if(choosing)return;
   setChoosing(preset);setChoiceError('');
   try{
@@ -83,6 +83,9 @@ export function AssistantDailyPlan({onPlan}:{onPlan:()=>void}){
  if(!data.config)return null;
  return <div className="assistant-daily-plan-receipt">
   <strong>{describePlan(data.config)}</strong>
+  <button type="button" className="secondary" disabled={Boolean(choosing)} onClick={()=>void choose('sources')}>{data.config.sources.length?'调整读取来源':'选择读取来源'}</button>
+  {!data.config.sources.length&&<span>当前未设置读取来源。</span>}
+  {choiceError&&<p role="alert">{choiceError}</p>}
   {data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}
   <button className="secondary" onClick={()=>setShowChoices(true)}>更换简报安排</button>
   <button className="secondary" onClick={onPlan}>在对话中调整</button>
@@ -158,7 +161,7 @@ export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:
    <div><strong>{item.title}</strong><small>{item.source.label}{item.deadline?' · '+format(item.deadline,timeZone):''}</small><p>{item.detail}</p></div>
    <div className="assistant-daily-actions">
     {(item.url||item.source.kind==='mail')&&<button className="secondary" disabled={busy} onClick={()=>loadOriginal(item.id)}>看原文</button>}
-    {(item.source.kind==='mail'||item.source.kind==='yzj-message')&&<button className="secondary" disabled={busy} onClick={()=>setReply({item,text:null})}>准备回复</button>}
+    {(item.source.kind==='mail'||item.source.kind==='yzj-message'&&item.originalId)&&<button className="secondary" disabled={busy} onClick={()=>setReply({item,text:null})}>准备回复</button>}
     {item.source.kind==='yzj-message'&&item.originalId&&<button className="secondary" disabled={busy} onClick={()=>setWatchReference(item.id)}>请小 K 盯这件事</button>}
     {destinations.length>0&&<button className="secondary" disabled={busy} onClick={()=>prepareTask(item)}>转任务</button>}
     {view?.items.some(row=>row.id===item.id)&&<button className="secondary" disabled={busy} onClick={()=>void act(async()=>setView(await api.snoozeDailyWork({id:item.id})))}>一小时后再看</button>}
@@ -199,6 +202,6 @@ export function AssistantDailyToday({destinations,onTask}:{destinations:{roomId:
   {original&&<section className="proposal-card"><h3>{original.subject}</h3><pre>{original.body}</pre><button className="secondary" onClick={()=>setOriginal(undefined)}>关闭原文</button></section>}
   {view?.items.some(item=>item.urgent)&&<section><h3>需要你处理</h3>{list(view.items.filter(item=>item.urgent).slice(0,3))}{view.items.filter(item=>item.urgent).length>3&&<details><summary>还有 {view.items.filter(item=>item.urgent).length-3} 项需要处理</summary>{list(view.items.filter(item=>item.urgent).slice(3))}</details>}</section>}
   {!!view?.items.some(item=>!item.urgent)&&<section><h3>接下来的安排和关注事项</h3>{list(view.items.filter(item=>!item.urgent))}</section>}
-  {!!view?.briefs.length&&<section><h3>简报</h3>{view.briefs.map(brief=><details key={brief.id}><summary>{brief.day} {slotLabel[brief.slot]}{brief.missed?' · 已错过':''}</summary>{brief.items.length?list(brief.items):<p>{brief.missed?'本期没有补投。':brief.coverage.some(row=>row.state==='ok')?'已核对的范围内没有新增事项。':'本期没有可确认的来源结果。'}</p>}{brief.coverage.length>0&&<ul>{brief.coverage.map(row=><li key={key(row.source)}>{row.source.label} · {row.state==='ok'?'已核对':row.state==='partial'?'覆盖不完整':'暂不可用'} · 起点 {format(row.from,timeZone)}</li>)}</ul>}</details>)}</section>}
+  {!!view?.briefs.length&&<section><h3>简报</h3>{view.briefs.map(brief=><details key={brief.id}><summary>{brief.day} {slotLabel[brief.slot]}{brief.missed?' · 已错过':brief.delivery?' · '+dailyBriefDeliveryLabels[brief.delivery]:''}</summary>{brief.items.length?list(brief.items):<p>{brief.missed?'本期没有补投。':brief.coverage.some(row=>row.state==='ok')?'已核对的范围内没有新增事项。':'本期没有可确认的来源结果。'}</p>}{brief.coverage.length>0&&<ul>{brief.coverage.map(row=><li key={key(row.source)}>{row.source.label} · {row.state==='ok'?'已核对':row.state==='partial'?'覆盖不完整':'暂不可用'} · 起点 {format(row.from,timeZone)}</li>)}</ul>}</details>)}</section>}
  </div>;
 }

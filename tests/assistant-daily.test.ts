@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {AssistantDaily} from '../src/service/assistant-daily.js';
+import {yzjRecentGroupsId} from '../src/protocol/assistant-daily-types.js';
 import {dailyTimes,defaultDaily,type DailyItem,type DailySource} from '../src/protocol/assistant-daily.js';
 import {TeamStore} from '../src/service/team-store.js';
 
@@ -75,4 +76,90 @@ test('brief timing uses the selected timezone, skips non-working days and preser
  const rows=dailyTimes(plan,Date.parse('2026-11-23T04:01:00Z'));
  assert.deepEqual(rows.map(row=>row.due==null?null:new Date(row.due).toISOString()),['2026-11-23T00:30:00.000Z','2026-11-23T04:00:00.000Z',null]);
  assert.ok(dailyTimes(plan,Date.parse('2026-11-22T08:00:00Z')).every(row=>row.due===undefined));
+});
+
+test('scheduled briefs are queued once for fresh nonempty runs and never replay an uncertain delivery',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-daily-delivery-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room';
+ let now=Date.parse('2026-11-23T08:29:30Z');
+ const makeItem=():DailyItem=>({id:'fixture-mail',title:'Private fixture subject',detail:'Private fixture body',observedAt:now,source:mail,urgent:true});
+ let collected:DailyItem[]=[];
+ let deliveryUnknown=false;
+ const sent:string[]=[];
+ const sources={
+  catalog:async()=>({sources:[mail],yzjAvailable:false}),current:async()=>true,
+  scan:async()=>({items:collected,partial:false}),newsSource:async()=>assert.fail('not a news plan'),original:async()=>({url:undefined}),
+ };
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ const create=()=>new AssistantDaily(store,sources,()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  assert.equal(input.roomId,roomId);
+  sent.push(input.body);
+  if(deliveryUnknown)throw Error('simulated lost receipt');
+  return 'fixture-message';
+ });
+ let daily=create();
+ try{
+  const config={...defaultDaily('UTC'),schedule:{morning:'08:30',midday:'12:00',evening:'18:00'},sources:[mail]};
+  store.setState('assistant-daily-plan',{revision:1,config,changedAt:now,skips:[]});
+  now=Date.parse('2026-11-23T08:30:20Z');
+  const empty=await daily.refresh();
+  assert.equal(empty.briefs.length,1);
+  assert.deepEqual(sent,[]);
+  collected=[makeItem()];
+  now=Date.parse('2026-11-23T12:00:15Z');
+  const pushed=await daily.refresh();
+  assert.equal(pushed.briefs[0]?.delivery,'sent');
+  assert.equal(sent.length,1);
+  assert.match(sent[0]!,/午报.*待查看邮件 1 项/s);
+  assert.doesNotMatch(sent[0]!,/Private fixture|fixture@example/);
+  await daily.refresh();
+  assert.equal(sent.length,1);
+  deliveryUnknown=true;
+  collected=[{...makeItem(),id:'another-mail'}];
+  now=Date.parse('2026-11-23T18:03:00Z');
+  assert.equal((await daily.refresh()).briefs[0]?.delivery,'unconfirmed');
+  assert.equal(sent.length,2);
+  await daily.close();
+  daily=create();
+  await daily.refresh();
+  assert.equal(sent.length,2);
+  now=Date.parse('2026-11-24T09:10:00Z');
+  const late=await daily.refresh();
+  assert.equal(late.briefs[0]?.slot,'morning');
+  assert.equal(sent.length,2);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('recent groups refresh every fifteen minutes and a scheduled brief uses the fresh observation',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-group-cadence-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room';
+ let now=Date.parse('2026-11-23T08:19:00Z'),scans=0,sends=0;
+ const source:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群',account:'fixture',revision:'1'};
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now,skips:[],config:{...defaultDaily('UTC'),sources:[source]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[source],yzjAvailable:true}),current:async()=>true,newsSource:async()=>assert.fail('not a news plan'),
+  original:async()=>({url:undefined}),scan:async(_source,_from,_now,_zone,_signal,previous)=>{
+   scans++;
+   if(scans===2)assert.equal(previous?.cursors['fixture']?.lastId,'msg-fixture');
+   return {items:[{id:'fixture-group',source,title:'待查看',detail:'两项',observedAt:now,urgent:true}],partial:true,recentCursors:{fixture:{lastId:'msg-fixture',itemId:'fixture-group'}}};
+  },
+ },()=>roomId,()=>now,async()=>{},async()=>{sends++;return 'brief-message';});
+ try{
+  await daily['run'](false);
+  now=Date.parse('2026-11-23T08:30:00Z');
+  await daily['run'](false);
+  assert.equal(scans,1);
+  assert.equal(sends,1);
+  now=Date.parse('2026-11-23T08:33:59Z');
+  await daily['run'](false);
+  assert.equal(scans,1);
+  now=Date.parse('2026-11-23T08:34:00Z');
+  await daily['run'](false);
+  assert.equal(scans,2);
+  assert.equal(sends,1);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
