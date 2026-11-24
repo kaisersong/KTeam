@@ -3,7 +3,7 @@ import {Linking,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react
 import {AssistantWatches} from "./assistant-watch";
 import * as Clipboard from "expo-clipboard";
 import {ToolButton,type ToolProps} from "./conversation-tools";
-import {dailyBriefDeliveryLabels,type DailyBriefDelivery,type AssistantConnectorSetup,dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from "../../src/protocol/assistant-daily-types";
+import {dailyBriefDeliveryLabels,type DailyBriefDelivery,type AssistantConnectorSetup,dailySlots,dailySlotLabels as labels,dailyPresetIds,dailyPresets,type DailyPreset,type DailySlot as Slot,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailyMessageAttention,type DailySource} from "../../src/protocol/assistant-daily-types";
 
 type Draft={id:string;previousRevision:number;config:DailyConfiguration;change:DailyChange;preset?:DailyPreset};
 type Plan={config:DailyConfiguration|null;draft?:Draft;revision:number;next?:{slot:Slot;next:number}};
@@ -11,7 +11,11 @@ type Today=Plan&{items:DailyItem[];coverage:DailyCoverage[];briefs:{id:string;sl
 type RoomTarget={roomId:string;title:string;kind?:string};
 const sourceLabel:Record<DailySource["kind"],string>={mail:"邮件","yzj-message":"云之家消息","yzj-calendar":"云之家日程","yzj-doc":"云之家知识库",news:"公开资讯","enterprise-message":"企业消息","enterprise-calendar":"企业日程"};
 const states:Record<DailyCoverage["state"],string>={ok:"已核对",partial:"覆盖不完整",unavailable:"暂不可用"};
+const attentionLabels:Record<DailyMessageAttention["kind"],string>={
+ schedule:"日程变更",invitation:"参会待确认",deadline:"截止或到期",decision:"需要确认",reply:"待回复",
+};
 const errors:Record<string,string>={
+ upstream_rejected:"电脑暂时无法完成这项简报操作。",
  mobile_method_forbidden:"请更新配对电脑上的 KTeam。",
  mobile_operation_unknown:"操作结果待核对。请保留原操作并重试。",
  daily_plan_changed:"方案已更新，请重新核对。",
@@ -163,7 +167,10 @@ export function AssistantDailyPanel({roomId,rooms,onDraft,onAttention,...props}:
  const tz=plan?.config?.timeZone;
  const items=(rows:DailyItem[],today=false)=>rows.map(item=><View key={item.id} style={[styles.card,{borderColor:colors.line,backgroundColor:colors.panel}]}>
   <Text style={[styles.heading,{color:colors.text}]}>{item.title}</Text>
-  <Text style={{color:colors.muted}}>{item.source.label}{item.deadline?" · "+clock(item.deadline,tz):""}</Text>
+  <Text style={{color:colors.muted}}>
+   {item.messageAttention?attentionLabels[item.messageAttention.kind]+" · ":""}
+   {item.source.label}{item.deadline?" · "+clock(item.deadline,tz):item.messageAttention?" · "+clock(item.messageAttention.at,tz):""}
+  </Text>
   <Text style={{color:colors.text}}>{item.detail}</Text>
   <View style={styles.actions}>
    {(item.url||item.source.kind==="mail")&&<ToolButton colors={colors} disabled={disabled||pending} onPress={()=>void act(async()=>{
