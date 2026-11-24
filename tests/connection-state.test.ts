@@ -1,6 +1,18 @@
-import{test}from'node:test';import assert from'node:assert/strict';import{recoveredConnectionError,preserveActionError}from'../desktop/renderer/src/connection-state.js';
+import{test}from'node:test';import assert from'node:assert/strict';import{recoveredConnectionError,preserveActionError,isConnectionError,upstreamRejectionMessage}from'../desktop/renderer/src/connection-state.js';
 test('a recovered service clears only its stale connection banner, never action receipts or unrelated errors',()=>{const broker={broker:{available:true},kswarm:{available:false},ready:false};assert.equal(recoveredConnectionError('broker_unavailable',broker),true);assert.equal(recoveredConnectionError('kswarm_unavailable',broker),false);for(const code of ['upstream_operation_unknown','native_result_unknown','model_authentication_failed','upstream_protocol_unavailable'])assert.equal(recoveredConnectionError(code,broker),false);assert.equal(recoveredConnectionError('upstream_protocol_unavailable',{...broker,ready:true}),true);const chinese=(s:string)=>s==='broker_unavailable'?'协作消息服务尚未连接':s;assert.equal(recoveredConnectionError('协作消息服务尚未连接',broker,chinese),true);});
 
 test('background disconnect cannot overwrite an unknown action receipt before recovery',()=>{assert.equal(preserveActionError('upstream_operation_unknown','broker_unavailable'),'upstream_operation_unknown');assert.equal(preserveActionError('native_result_unknown','broker_unavailable'),'native_result_unknown');assert.equal(preserveActionError('broker_unavailable','kswarm_unavailable'),'kswarm_unavailable');assert.equal(preserveActionError('','broker_unavailable'),'broker_unavailable');});
 
 test('automatic reconnect clears stale host transport errors only after service health, never a lost mutation result',()=>{for(const code of ['ENOENT','ECONNREFUSED','ECONNRESET','EPIPE','host_start_timeout','host_timeout','managed_services_start_timeout','managed_service_port_foreign']){assert.equal(recoveredConnectionError(code,{ready:false}),false);assert.equal(recoveredConnectionError(code,{ready:true}),true);assert.equal(preserveActionError(code,'broker_unavailable'),'broker_unavailable');}for(const code of ['host_operation_unknown','upstream_operation_unknown','native_result_unknown'])assert.equal(recoveredConnectionError(code,{ready:true}),false);});
+
+
+test('upstream refusals use operation-specific copy and are not treated as connection failures',()=>{
+ const read=upstreamRejectionMessage(new Error('upstream_rejected'),'read')!;
+ const send=upstreamRejectionMessage('upstream_rejected','send')!;
+ assert.match(read,/更新会话/);
+ assert.match(send,/草稿已保留/);
+ assert.equal(isConnectionError(read),false);
+ assert.equal(isConnectionError(send),false);
+ assert.equal(isConnectionError('broker_unavailable'),true);
+ assert.equal(upstreamRejectionMessage('upstream_operation_unknown','send'),undefined);
+});

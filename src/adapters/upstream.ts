@@ -20,6 +20,7 @@ export function loopbackUrl(input: string): string {
 export class Upstreams {
   private brokerUrl: string;
   private kswarmUrl: string;
+  private rejectionLogs=new Map<string,number>();
   constructor(private options: UpstreamOptions) {
     this.brokerUrl = loopbackUrl(options.brokerUrl);
     this.kswarmUrl = loopbackUrl(options.kswarmUrl);
@@ -65,8 +66,22 @@ export class Upstreams {
       if (!response.ok || result.ok === false) {
         // Broker duplicate is an original receipt, not permission to run anything again.
         if (result.code === 'room_message_duplicate' && result.message) return { ...result, ok: true, reused: true };
-        const code = String((typeof result.code==='string'?result.code:result.error) ?? 'upstream_rejected');
-        throw new KTeamError(/^[a-z0-9_-]+$/.test(code) ? code : 'upstream_rejected', response.status >= 400 ? response.status : 409);
+        const nested=result.error&&typeof result.error==='object'&&!Array.isArray(result.error)
+          ? (result.error as Record<string,unknown>).code : result.error;
+        const supplied=typeof result.code==='string'?result.code:nested;
+        const code=typeof supplied==='string'&&/^[a-z][a-z0-9_-]{0,79}$/.test(supplied)?supplied:'upstream_rejected';
+        if(code==='upstream_rejected'){
+          // Record only fixed diagnostics. Request URLs and upstream payloads can contain private data.
+          const key=component+':'+method+':'+response.status;
+          const now=Date.now();
+          if(now-(this.rejectionLogs.get(key)??0)>=60000){
+            if(this.rejectionLogs.size>=24)this.rejectionLogs.clear();
+            this.rejectionLogs.set(key,now);
+            console.warn('[KTeam upstream] '+JSON.stringify({component,method,status:response.status}));
+          }
+        }
+        if(code==='upstream_rejected'&&!readOnly&&response.status>=500)throw new KTeamError('upstream_operation_unknown',503);
+        throw new KTeamError(code,response.status>=400?response.status:409);
       }
       return result;
     } catch (error) {

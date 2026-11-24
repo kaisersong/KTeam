@@ -8,7 +8,17 @@ export function recoveredConnectionError(error:string,upstream:Upstream,explain:
  if(['upstream_protocol_unavailable','aimp_unavailable'].some(code=>error===explain(code)))return upstream.ready===true;
  return false;
 }
+export function isConnectionError(error:string,explain:(code:string)=>string=(code=>code)){
+ return recoveredConnectionError(error,{ready:true,broker:{available:true},kswarm:{available:true}},explain);
+}
 export function preserveActionError(previous:string,next:string,explain:(code:string)=>string=(code=>code)){
- const connection=[...hostErrors,'broker_unavailable','kswarm_unavailable','upstream_protocol_unavailable','aimp_unavailable'].some(code=>previous===explain(code));
- return previous&&!connection?previous:next;
+ return previous&&!isConnectionError(previous,explain)?previous:next;
+}
+
+export const rejectedConversationRead='暂时无法更新会话，已保留当前内容。';
+export const rejectedMessageSend='发送操作未完成，草稿已保留。请先查看会话中是否已有这条消息。';
+export function upstreamRejectionMessage(error:unknown,operation:'read'|'send'){
+ const code=error instanceof Error?error.message:String(error);
+ if(code!=='upstream_rejected')return;
+ return operation==='read'?rejectedConversationRead:rejectedMessageSend;
 }
