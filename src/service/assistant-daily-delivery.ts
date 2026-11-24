@@ -4,6 +4,7 @@ import {KTeamError} from '../errors.js';
 import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,isDailyMessage,type DailyMessageAttention,type DailyItem,type DailySlot} from '../protocol/assistant-daily-types.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
+import type {CalendarContext} from './assistant-calendar-context.js';
 import {transcriptExcerpt} from './assistant-message-attention.js';
 import {findOwnerMessage} from './room-reads.js';
 import type {TeamStore} from './team-store.js';
@@ -12,6 +13,7 @@ const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
 
 const attentionLabels:Record<DailyMessageAttention['kind'],{label:string;priority:number}>={
  schedule:{label:'日程变更',priority:0},
+ invitation:{label:'参会待确认',priority:1},
  deadline:{label:'截止或到期',priority:1},
  decision:{label:'需要确认',priority:2},
  reply:{label:'待回复',priority:3},
@@ -22,24 +24,29 @@ function sortMessageAttention(a:DailyItem,b:DailyItem){
   attentionLabels[a.messageAttention!.kind].priority-attentionLabels[b.messageAttention!.kind].priority||
   b.messageAttention!.at-a.messageAttention!.at;
 }
-function describeAttention(item:DailyItem,time:Intl.DateTimeFormat,evidence?:string){
+function describeAttention(item:DailyItem,time:Intl.DateTimeFormat,evidence?:string|CalendarContext){
  const attention=item.messageAttention!;
  const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
  const source=provider+(isDailyDirectChats(item.source)?'单聊':'')+' · '+time.format(attention.at);
  const context=attentionLabels[attention.kind].label+' · '+plain(attention.group);
  const ask=attention.text.match(/(?:请(?:你|您)?|麻烦(?:你|您)?|等你)([^。！？\n]{2,100})/)?.[1]?.trim();
  const ack=/请(?:你|您|大家)?(?:在群里)?回复[「“”'"]?收到|请确认收到/.test(attention.text);
+ const meeting=typeof evidence==='object'?evidence:undefined;
  const followUp=attention.kind==='schedule'
-  ? [evidence??'请核对原会话通知中的新安排。']
+  ? [typeof evidence==='string'?evidence:'请核对原会话通知中的新安排。']
+  : attention.kind==='invitation'
+   ? [meeting?.observation??'日历暂未核实，参会待确认。', '可选回复  '+(meeting?.choices??['收到议程','我核对安排后再确认']).join(' / ')]
   : attention.kind==='decision'||attention.kind==='reply'
    ? [...(ask?['对方请你'+ask.replace(/[，、；：;]+$/,'')+'。']:[]),
-     ack?'回复草稿「收到，谢谢通知。」': '可引用这条提醒，补上你的决定或回复口径。']
+     ack?'回复草稿「收到，谢谢通知。」':attention.kind==='decision'
+      ?'可选回复  我核对后再确认 / 请先把相关材料发我'
+      :'可引用这条提醒，补上你的回复口径。']
    : [];
  return {context,source,text:plain(attention.text),followUp:followUp.map(plain)};
 }
 const dateAndTime=(timeZone:string)=>new Intl.DateTimeFormat('zh-CN',{timeZone,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 
-export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvidence=new Map<string,string>()){
+export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvidence:ReadonlyMap<string,string|CalendarContext>=new Map()){
  const actionable=items.filter(item=>item.messageAttention).sort(sortMessageAttention);
  if(!actionable.length)return undefined;
  const time=dateAndTime(timeZone);
@@ -60,7 +67,7 @@ export function dailyBriefItems(items:DailyItem[],at:number,redact:(text:string)
 }
 
 /** Only include bounded excerpts from sources confirmed for the assistant's private chat. */
-export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],timeZone:string,redact:(text:string)=>string,calendarEvidence=new Map<string,string>()){
+export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],timeZone:string,redact:(text:string)=>string,calendarEvidence:ReadonlyMap<string,string|CalendarContext>=new Map()){
  if(!items.length)return undefined;
  const times=dateAndTime(timeZone);
  const labels={mail:'待阅邮件','yzj-doc':'知识库更新',news:'公开资讯'};
@@ -71,8 +78,8 @@ export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],ti
    const group=transcriptExcerpt(item.messageAttention.group,redact,70)??'原会话';
    const safe={...item,messageAttention:{...item.messageAttention,text:preview,group}};
    const {context,source,text,followUp}=describeAttention(safe,times,calendarEvidence.get(item.id));
-   const next=followUp.find(value=>value.startsWith('回复草稿')||value.startsWith('已核对'));
-   return '- **'+context+'**（'+source+'）'+text+(next?' '+next:'');
+   const next=followUp.filter(value=>/^(?:回复草稿|已核对|已查看|日历暂未|会议时间|会议的|可选回复)/.test(value));
+   return '- **'+context+'**（'+source+'）'+text+(next.length?' '+next.join(' '):'');
   }
   const title=transcriptExcerpt(item.title,redact,90);
   if(!title)return;

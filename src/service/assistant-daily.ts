@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
+import {invitationContext,messageCalendarDate,type CalendarContext} from './assistant-calendar-context.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyBriefItems,dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
@@ -443,26 +444,33 @@ export class AssistantDaily {
   }
  }
  private async messageCalendarEvidence(items:DailyItem[],plan:Plan,now:number,checks:Map<string,Promise<boolean>>,signal:AbortSignal){
-  const calendarEvidence=new Map<string,string>();
-  const calendars=new Map<string,Promise<DailyItem[]|undefined>>();
+  const calendarEvidence=new Map<string,string|CalendarContext>();
+  const calendars=new Map<string,Promise<Awaited<ReturnType<AssistantDailySources['scan']>>|undefined>>();
   const usedCalendars=new Map<string,DailySource>();
-  for(const item of items.filter(item=>item.messageAttention?.kind==='schedule').slice(0,3)){
+  for(const item of items.filter(item=>item.messageAttention?.kind==='schedule'||item.messageAttention?.kind==='invitation').slice(0,3)){
    const attention=item.messageAttention!;
    const source=plan.config.sources.find(candidate=>isDailyCalendar(candidate)&&candidate.provider===item.source.provider&&candidate.account===item.source.account);
    if(!source||!await this.current(source,checks,signal))continue;
-   const date=calendarWindow(new Date(attention.at),plan.config.timeZone).today;
-   // Derive relative dates from the original message, even when the next poll crosses midnight.
-   const offset=/后天/.test(attention.text)?2:/明天|明早|明晚/.test(attention.text)?1:0;
-   const requestedDate=new Date(Date.parse(date)+offset*86400000).toISOString().slice(0,10);
+   const requestedDate=messageCalendarDate(attention.text,attention.at,plan.config.timeZone);
+   if(!requestedDate)continue;
    const lookupKey=JSON.stringify([dailySourceKey(source),requestedDate]);
    let lookup=calendars.get(lookupKey);
    if(!lookup){
     lookup=this.sources.scan(source,now,now,plan.config.timeZone,signal,undefined,requestedDate)
-     .then(result=>result.items).catch(()=>undefined);
+     .catch(()=>undefined);
     calendars.set(lookupKey,lookup);
    }
-   const entries=await lookup;
-   if(!entries)continue;
+   const agenda=await lookup;
+   if(!agenda)continue;
+   const entries=agenda.items;
+   if(attention.kind==='invitation'){
+    const result=invitationContext(attention,requestedDate,entries,agenda.partial,plan.config.timeZone);
+    const core=await sharedRuntime();
+    if(core.redactSecrets(result.observation).text!==result.observation)continue;
+    calendarEvidence.set(item.id,result);
+    usedCalendars.set(dailySourceKey(source),source);
+    continue;
+   }
    const normalize=(text:string)=>text.toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
    const context=normalize(attention.text+' '+attention.group);
    const matches=entries.filter(entry=>normalize(entry.title).length>=3&&context.includes(normalize(entry.title)));

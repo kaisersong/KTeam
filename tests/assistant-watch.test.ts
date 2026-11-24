@@ -248,3 +248,26 @@ test('only the separately selected Yunzhijia direct source reads p2p messages an
  assert.equal(result.items[0]?.urgent,true);
  assert.equal(result.items[0]?.messageAttention?.group,'样例联系人');
 });
+
+
+test('a matching reply from the current account suppresses only the referenced request',async()=>{
+ const now=Date.parse('2026-11-24T07:00:00Z');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const source=new AssistantDailySources({} as never,{
+  dailyYzjConnectedAt:()=>undefined,
+  dailyYzj:async(args:string[])=>{
+   if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me'};
+   if(args[1]==='group')return {list:[{groupType:1,groupId:'peer',lastMsgId:'outbound'}]};
+   return {list:[
+    {msgId:'outbound',fromOpenId:'me',sendTime:now-1000,replyMsgId:'answered',content:'收到'},
+    {msgId:'answered',fromOpenId:'peer',sendTime:now-2000,content:'请确认预算'},
+    {msgId:'pending',fromOpenId:'peer',sendTime:now-3000,content:'请确认交付范围'},
+   ]};
+  },
+ } as never);
+ const selected={kind:'yzj-message' as const,id:recentDirectChatsId,label:'样例',account:hash(['fixture-org','me']),revision:hash(['fixture-org','me',null])};
+ const result=await source.scan(selected,now-60000,now,'UTC',new AbortController().signal);
+ assert.equal(result.items.length,1);
+ assert.equal(result.items[0]?.originalId,'pending');
+ assert.match(result.items[0]?.messageAttention?.text??'',/交付范围/);
+});

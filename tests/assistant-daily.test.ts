@@ -319,3 +319,40 @@ test('the scheduled brief sends actionable message details once without a second
   assert.equal(sent.length,1);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('meeting invitations query the stated date and present conflict-safe response drafts',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-meeting-invitation-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room',now=Date.parse('2026-11-24T04:00:00Z');
+ const message:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'日历',account:'fixture',revision:'1'};
+ let dateChecked:string|undefined;
+ const sent:string[]=[];
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now-60000,skips:[],config:{...defaultDaily('Asia/Shanghai'),sources:[message,calendar]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[message,calendar],yzjAvailable:true}),current:async()=>true,
+  original:async()=>({url:undefined}),newsSource:async()=>assert.fail('not a news plan'),
+  scan:async(source,_from,_now,_zone,_signal,_recent,date)=>{
+   const base={source,id:'fixture',title:'已有架构评审',detail:'',observedAt:now-1000,urgent:false};
+   if(source.kind==='yzj-message')return {partial:true,items:[{...base,urgent:true,messageAttention:{
+    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）14:30–16:00 例会预通知，邀请你参加。',at:now-1000,
+   }}]};
+   if(!date)return {partial:false,items:[]};
+   dateChecked=date;
+   return {partial:false,items:[{...base,deadline:Date.parse('2026-12-01T06:00:00Z'),calendarEnd:Date.parse('2026-12-01T08:00:00Z'),calendarBusy:true}]};
+  },
+ },()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  sent.push(input.body);
+  return 'fixture-brief';
+ });
+ try{
+  await daily.refresh();
+  assert.equal(dateChecked,'2026-12-01');
+  assert.equal(sent.length,1);
+  assert.match(sent[0]!,/参会待确认.*已核对 2026-12-01 日历，与「已有架构评审」时间冲突/s);
+  assert.match(sent[0]!,/时间有冲突，协调后再确认/);
+  assert.doesNotMatch(sent[0]!,/确认参加/);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});

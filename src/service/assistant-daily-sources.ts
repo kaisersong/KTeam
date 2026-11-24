@@ -44,13 +44,13 @@ function urlFor(value:string,domains?:string[]) {
 }
 const yzjDomains=['yunzhijia.com','yunzhijia.cn','kdweibo.com','kdweibo.cn'];
 
-type RecentCursor={lastId:string;itemId?:string;triageVersion?:2};
+type RecentCursor={lastId:string;itemId?:string;triageVersion?:3};
 export type RecentGroupCursors=Record<string,RecentCursor>;
 type RecentSnapshot={items:DailyItem[];cursors:RecentGroupCursors};
 export type DailySourceScan={items:DailyItem[];partial:boolean;recentCursors?:RecentGroupCursors};
 const messageRows=(value:unknown)=>rows(value,'list','messages','items').map(row=>row.message&&typeof row.message==='object'?object(row.message):row);
 const recentGroupFields='{success:.success,data:{more:.data.more,list:[.data.list[]|{groupId,groupType,groupName,name,lastMsgId,lastMsgSendTime}]}}';
-const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:((.content//.text) | if type=="string" then .[:300] elif type=="object" then (.content//.text) | if type=="string" then .[:300] else null end else null end)}]}}';
+const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,replyMsgId,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:((.content//.text) | if type=="string" then .[:300] elif type=="object" then (.content//.text) | if type=="string" then .[:300] else null end else null end)}]}}';
 
 const mentionsUser=(entry:Record<string,unknown>,user:string)=>[entry.atOpenIds,entry.mentionOpenIds,entry.notifyToOpenIds]
  .some(value=>Array.isArray(value)&&value.includes(user));
@@ -202,7 +202,7 @@ export class AssistantDailySources {
    const range=formatter.formatRange(meeting.start,meeting.end);
    return item(meeting.id,meeting.title,conflicts.length?range+' · 冲突 '+conflicts.map(other=>other.title).join('、'):range,now,{
     urgent:conflicts.length>0&&meeting.start<=now+2*3600000,
-    deadline:meeting.start, originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
+    deadline:meeting.start,calendarEnd:meeting.end,calendarBusy:busy(meeting.entry), originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
    });
   }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)||Number(object(value).count)>entries.length};
  }
@@ -238,8 +238,11 @@ export class AssistantDailySources {
     const cursor=previous?.cursors[key];
     const prior=cursor?.itemId?known.get(cursor.itemId):undefined;
     if(Number.isFinite(lastAt)&&lastAt<cut)return {key,lastId};
-    if(lastId&&cursor?.lastId===lastId&&cursor.triageVersion===2)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
-    const messages=messageRows(await this.messagePage(groupId,signal,true)).filter(message=>{
+    if(lastId&&cursor?.lastId===lastId&&cursor.triageVersion===3)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
+    const page=messageRows(await this.messagePage(groupId,signal,true));
+    const replied=new Set(page.filter(message=>messageAuthor(message)===user&&messageTime(message)<=now)
+     .map(message=>field(message,'replyMsgId')).filter(Boolean));
+    const messages=page.filter(message=>{
      const author=messageAuthor(message),stamp=messageTime(message);
      return Boolean(author&&author!==user&&stamp>=cut&&stamp<=now);
     });
@@ -251,7 +254,7 @@ export class AssistantDailySources {
       stamp:messageTime(message),addressed:mentionsUser(message,user),mentionPresent:mentionsSomeone(message),direct,
      },text=>core.redactSecrets(text).text);
      const id=field(message,'msgId','messageId','id');
-     return attention&&id?[{attention,id}]:[];
+     return attention&&id&&!replied.has(id)?[{attention,id}]:[];
     })[0];
     const item:DailyItem|undefined=latestId&&(!direct||actionable)?{
      id:digest([key,direct?actionable!.id:latestId]),source,title:actionable?.attention.group??'一个近期群有消息待查看',
@@ -266,7 +269,7 @@ export class AssistantDailySources {
    for(const result of checked)if(result.status==='fulfilled'){
     checkedCount++;
     const {key,lastId,item}=result.value;
-    if(lastId)cursors[key]={lastId,itemId:item?.id,triageVersion:2};
+    if(lastId)cursors[key]={lastId,itemId:item?.id,triageVersion:3};
     if(item)items.push(item);
    }
   }

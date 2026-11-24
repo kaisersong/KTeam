@@ -228,7 +228,7 @@ export class AssistantDailyEnterprise {
   return {partial,items:events.map(appointment=>{
    const conflicts=appointment.busy?events.filter(other=>other!==appointment&&other.busy&&other.start<appointment.end&&appointment.start<other.end):[];
    return {
-    id:hash([source.account,appointment.id,appointment.start]),source,title:appointment.title,observedAt:now,deadline:appointment.start,
+    id:hash([source.account,appointment.id,appointment.start]),source,title:appointment.title,observedAt:now,deadline:appointment.start,calendarEnd:appointment.end,calendarBusy:appointment.busy,
     detail:formatter.formatRange(appointment.start,appointment.end)+(conflicts.length?' · 冲突 '+conflicts.map(other=>other.title).join('、'):''),
     urgent:conflicts.length>0&&appointment.start<=now+2*3600000,
    };
