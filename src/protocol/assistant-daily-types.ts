@@ -3,6 +3,7 @@ export type AssistantConnectorSetup = { enterprise?: boolean; mail?: boolean };
 export const dailySlots = ['morning', 'midday', 'evening'] as const;
 export const dailySlotLabels = {morning:'早报', midday:'午报', evening:'晚报'} as const;
 export const yzjRecentGroupsId = 'recent-groups-30';
+export const recentDirectChatsId = 'recent-direct-chats-30';
 export const recentGroupsLimit = 30;
 export const recentGroupsInterval = 15*60000;
 export const isYzjRecentGroups=(source:DailySource)=>source.kind==='yzj-message'&&source.id===yzjRecentGroupsId;
@@ -12,7 +13,8 @@ export type DailyEnterpriseProvider = typeof dailyEnterpriseProviders[number];
 export const dailyEnterpriseLabels = {dingtalk:'钉钉',feishu:'飞书',wecom:'企业微信'} as const;
 export const isDailyMessage=(source:DailySource)=>source.kind==='yzj-message'||source.kind==='enterprise-message';
 export const isDailyCalendar=(source:DailySource)=>source.kind==='yzj-calendar'||source.kind==='enterprise-calendar';
-export const isDailyRecentGroups=(source:DailySource)=>isYzjRecentGroups(source)||source.kind==='enterprise-message';
+export const isDailyDirectChats=(source:DailySource)=>isDailyMessage(source)&&source.id===recentDirectChatsId;
+export const isDailyRecentChats=(source:DailySource)=>isYzjRecentGroups(source)||isDailyDirectChats(source)||source.kind==='enterprise-message';
 export type DailySlot = typeof dailySlots[number];
 export type DailySourceKind = typeof dailyKinds[number];
 
@@ -68,7 +70,7 @@ export interface DailyPresetSelection {
  expectedDraftId:string|null;
 }
 
-export type DailyMessageAttention = {kind:'schedule'|'deadline'|'decision'|'reply';group:string;text:string;at:number};
+export type DailyMessageAttention = {kind:'schedule'|'invitation'|'deadline'|'decision'|'reply';group:string;text:string;at:number};
 
 export interface DailyItem {
  id:string;
@@ -78,6 +80,8 @@ export interface DailyItem {
  urgent:boolean;
  messageAttention?:DailyMessageAttention;
  deadline?:number;
+ calendarEnd?:number;
+ calendarBusy?:boolean;
  source:DailySource;
  originalId?:string;
  url?:string;

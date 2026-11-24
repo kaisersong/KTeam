@@ -8,7 +8,7 @@ import {AssistantDailySources} from '../src/service/assistant-daily-sources.js';
 import {AssistantWatch} from '../src/service/assistant-watch.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {watchDisplay} from '../src/protocol/assistant-watch.js';
-import {yzjRecentGroupsId,type DailyItem} from '../src/protocol/assistant-daily-types.js';
+import {recentDirectChatsId,yzjRecentGroupsId,type DailyItem} from '../src/protocol/assistant-daily-types.js';
 
 test('manual checks survive restart, distinguish missed and completed, and reject conflicting edits',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-watch-'));
@@ -99,7 +99,7 @@ test('cloud chat reads the selected conversation within the pinned CLI limit and
  const now=Date.parse('2026-11-23T09:00:00Z'),calls:string[][]=[];
  const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
  const source=new AssistantDailySources({} as never,{
-  view:async()=>({connectors:[]}),
+  dailyYzjConnectedAt:()=>undefined,
   dailyYzj:async(args:string[])=>{
    calls.push(args);
    if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me',tokenStatus:'valid'};
@@ -121,7 +121,7 @@ test('the recent-groups scope pages to 30 groups and only reopens groups that ch
  const groups=Array.from({length:36},(_,index)=>({groupType:index===0?1:2,groupId:'g'+index,groupName:'Protected name',lastMsgId:'latest-'+index,lastMsgSendTime:'2026-11-23 16:59:58.000'}));
  let ownMessage=false;
  const source=new AssistantDailySources({} as never,{
-  view:async()=>({connectors:[]}),
+  dailyYzjConnectedAt:()=>undefined,
   dailyYzj:async(args:string[])=>{
    if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me',tokenStatus:'valid'};
    if(args[1]==='group'){
@@ -182,6 +182,92 @@ test('message triage grounds next steps in the source and rejects chatter or cre
  assert.equal(messageAttention({...input,content:'请确认 private-fixture'},redact),undefined);
  assert.deepEqual(messageAttention({...input,content:'{"text":"原定周会改到下午 3 点"}'},redact),
   {kind:'schedule',group:'验收群',text:'原定周会改到下午 3 点',at:100});
- assert.equal(messageAttention({...input,content:'验收材料周五截止'},redact)?.kind,'deadline');
- assert.equal(messageAttention({...input,content:'请你确认交付范围'},redact)?.kind,'decision');
+ assert.equal(messageAttention({...input,addressed:true,content:'验收材料周五截止'},redact)?.kind,'deadline');
+ assert.equal(messageAttention({...input,addressed:true,content:'请你确认交付范围'},redact)?.kind,'decision');
+ assert.equal(messageAttention({...input,content:'@all 截止目前收到的明天会议材料如下，大家可以提前审阅'},redact),undefined);
+ assert.equal(messageAttention({...input,mentionPresent:true,content:'@某同事 请确认试点时间'},redact),undefined);
+ assert.equal(messageAttention({...input,addressed:true,content:'采购申请我已处理，已经回复'},redact),undefined);
+});
+
+
+test('legacy daily source fingerprints recover only for a matching login already active when consent was saved',async()=>{
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const at=Date.parse('2026-11-23T09:00:00Z');
+ let login=new Date(at-1000).toISOString(),user='me';
+ const adapter=new AssistantDailySources({} as never,{
+  dailyYzjConnectedAt:()=>login,
+  dailyYzj:async()=>({orgId:'fixture-org',openId:user}),
+ } as never);
+ const source={kind:'yzj-message' as const,id:yzjRecentGroupsId,label:'最近 30 个群',account:hash(['fixture-org','me']),revision:hash(['fixture-org','me',null])};
+ const recover=async()=>(await adapter.restoreYzjSources([source],at,new AbortController().signal))[0]!;
+ assert.equal((await recover()).revision,hash(['fixture-org','me',login]));
+ login=new Date(at+1000).toISOString();
+ assert.equal(await recover(),source);
+ login=new Date(at-1000).toISOString();
+ user='another-user';
+ assert.equal(await recover(),source);
+});
+
+test('only the separately selected Yunzhijia direct source reads p2p messages and filters idle chat',async()=>{
+ const now=Date.parse('2026-11-23T09:00:00Z');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const reads:string[]=[];
+ const adapter=new AssistantDailySources({dailyAccounts:async()=>[]} as never,{
+  dailyYzjConnectedAt:()=>undefined,
+  dailyYzj:async(args:string[])=>{
+   if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me'};
+   if(args[0]==='doc')return {list:[]};
+   if(args[1]==='group')return {list:[
+    {groupType:1,groupId:'me-colleague',groupName:'样例联系人',lastMsgId:'outgoing'},
+    {groupType:1,groupId:'me-idle',groupName:'其他联系人',lastMsgId:'idle'},
+    {groupType:1,groupId:'me-me',lastMsgId:'self'},
+    {groupType:2,groupId:'group',lastMsgId:'group-msg'},
+    {groupType:8,groupId:'system',lastMsgId:'system-msg'},
+   ],more:false};
+   const id=args[4]!;
+   reads.push(id);
+   if(id==='me-colleague')return {list:[
+    {msgId:'incoming',fromOpenId:'colleague',sendTime:now-2000,content:'请确认交付范围'},
+    {msgId:'outgoing',fromOpenId:'me',sendTime:now-1000,content:'请确认我的回复'},
+   ]};
+   return {list:[{msgId:'idle',fromOpenId:'colleague',sendTime:now-1000,content:'收到，谢谢'}]};
+  },
+ } as never);
+ const sources=(await adapter.catalog(true)).sources;
+ const direct=sources.find(source=>source.id===recentDirectChatsId)!;
+ const normal=sources.find(source=>source.id===yzjRecentGroupsId)!;
+ assert.deepEqual(reads,[]);
+ assert.equal(direct.account,hash(['fixture-org','me']));
+ const signal=new AbortController().signal;
+ await adapter.scan(normal,now-60000,now,'UTC',signal);
+ assert.deepEqual(reads.splice(0),['group']);
+ const result=await adapter.scan(direct,now-60000,now,'UTC',signal);
+ assert.deepEqual(reads,['me-colleague','me-idle']);
+ assert.equal(result.items.length,1);
+ assert.equal(result.items[0]?.originalId,'incoming');
+ assert.equal(result.items[0]?.urgent,true);
+ assert.equal(result.items[0]?.messageAttention?.group,'样例联系人');
+});
+
+
+test('a matching reply from the current account suppresses only the referenced request',async()=>{
+ const now=Date.parse('2026-11-24T07:00:00Z');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const source=new AssistantDailySources({} as never,{
+  dailyYzjConnectedAt:()=>undefined,
+  dailyYzj:async(args:string[])=>{
+   if(args[0]==='whoami')return {orgId:'fixture-org',openId:'me'};
+   if(args[1]==='group')return {list:[{groupType:1,groupId:'peer',lastMsgId:'outbound'}]};
+   return {list:[
+    {msgId:'outbound',fromOpenId:'me',sendTime:now-1000,replyMsgId:'answered',content:'收到'},
+    {msgId:'answered',fromOpenId:'peer',sendTime:now-2000,content:'请确认预算'},
+    {msgId:'pending',fromOpenId:'peer',sendTime:now-3000,content:'请确认交付范围'},
+   ]};
+  },
+ } as never);
+ const selected={kind:'yzj-message' as const,id:recentDirectChatsId,label:'样例',account:hash(['fixture-org','me']),revision:hash(['fixture-org','me',null])};
+ const result=await source.scan(selected,now-60000,now,'UTC',new AbortController().signal);
+ assert.equal(result.items.length,1);
+ assert.equal(result.items[0]?.originalId,'pending');
+ assert.match(result.items[0]?.messageAttention?.text??'',/交付范围/);
 });

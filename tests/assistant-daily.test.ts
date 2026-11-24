@@ -112,8 +112,8 @@ test('scheduled briefs are queued once for fresh nonempty runs and never replay 
   const pushed=await daily.refresh();
   assert.equal(pushed.briefs[0]?.delivery,'sent');
   assert.equal(sent.length,1);
-  assert.match(sent[0]!,/午报.*待查看邮件 1 项/s);
-  assert.doesNotMatch(sent[0]!,/Private fixture|fixture@example/);
+  assert.match(sent[0]!,/午报.*待阅邮件.*Private fixture subject/s);
+  assert.doesNotMatch(sent[0]!,/Private fixture body|fixture@example/);
   await daily.refresh();
   assert.equal(sent.length,1);
   deliveryUnknown=true;
@@ -132,7 +132,7 @@ test('scheduled briefs are queued once for fresh nonempty runs and never replay 
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 
-test('recent groups refresh every fifteen minutes and a scheduled brief uses the fresh observation',async()=>{
+test('recent groups refresh every fifteen minutes and count-only snapshots stay silent',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-group-cadence-'));
  const store=new TeamStore(root);
  const roomId='assistant-room';
@@ -153,14 +153,14 @@ test('recent groups refresh every fifteen minutes and a scheduled brief uses the
   now=Date.parse('2026-11-23T08:30:00Z');
   await daily['run'](false);
   assert.equal(scans,1);
-  assert.equal(sends,1);
+  assert.equal(sends,0);
   now=Date.parse('2026-11-23T08:33:59Z');
   await daily['run'](false);
   assert.equal(scans,1);
   now=Date.parse('2026-11-23T08:34:00Z');
   await daily['run'](false);
   assert.equal(scans,2);
-  assert.equal(sends,1);
+  assert.equal(sends,0);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 
@@ -249,5 +249,110 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   item={...item,id:'revoked-item',messageAttention:{kind:'decision',group:'验收群',text:'请确认测试结果',at:now}};
   await daily.refresh();
   assert.equal(attempts,2);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('an actionable schedule notice checks the consented calendar before posting its finding',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-calendar-notice-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room',now=Date.parse('2026-11-23T08:00:00Z');
+ const message:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'日历',account:'fixture',revision:'1'};
+ let deliveries=0;
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now,skips:[],config:{...defaultDaily('UTC'),sources:[message,calendar]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[message,calendar],yzjAvailable:true}),current:async()=>true,
+  original:async()=>({url:undefined}),newsSource:async()=>assert.fail('not a news plan'),
+  scan:async(source,_from,_now,_timeZone,_signal,_recent,date)=>{
+   const base={id:'sample',title:'样例例会',detail:'',observedAt:now-1000,urgent:false,source};
+   if(source.kind==='yzj-message')return {partial:true,items:[{...base,messageAttention:{kind:'schedule',group:'样例组',text:'明天的样例例会取消',at:now-1000}}]};
+   if(date===undefined)return {partial:false,items:[]};
+   assert.equal(date,'2026-11-24');
+   return {partial:false,items:[{...base,detail:'11/24 09:00–10:00'}]};
+  },
+ },()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  deliveries++;
+  assert.match(input.body,/已核对 2026-11-24 的日历，当前仍列有「样例例会 · 11\/24 09:00–10:00」/);
+  assert.doesNotMatch(input.body,/我可以/);
+  return 'calendar-notice';
+ });
+ try{await daily.refresh();assert.equal(deliveries,1);}
+ finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('the scheduled brief sends actionable message details once without a second live notification',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-content-brief-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room';
+ const start=Date.parse('2026-11-23T17:59:00Z');
+ let now=start,current=true;
+ const source:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群',account:'fixture',revision:'1'};
+ const notice={kind:'decision' as const,group:'样例验收群',text:'请确认收到，下周一前提交验收材料。',at:start};
+ const base={source,title:'仅在详情页保留',detail:'正文不可出现在简报',observedAt:start,urgent:false};
+ const noise=Array.from({length:36},(_,i)=>({...base,id:'noise-'+i,observedAt:start+1000}));
+ const sent:string[]=[];
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:start,skips:[],config:{...defaultDaily('UTC'),sources:[source]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[source],yzjAvailable:true}),current:async()=>current,newsSource:async()=>assert.fail('not a news plan'),
+  original:async()=>({url:undefined}),scan:async()=>({items:[...noise,{...base,id:'useful',messageAttention:notice}],partial:true}),
+ },()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  assert.equal(input.kind,undefined);
+  current=false;
+  await assert.rejects(input.guard(),/daily_source_changed/);
+  current=true;
+  await input.guard();
+  sent.push(input.body);
+  return 'brief-message';
+ });
+ try{
+  now+=60000;
+  const view=await daily.refresh();
+  assert.equal(view.briefs[0]?.delivery,'sent');
+  assert.equal(sent.length,1);
+  assert.match(sent[0]!,/晚报.*需要确认 · 样例验收群.*下周一前提交验收材料.*回复草稿/s);
+  assert.doesNotMatch(sent[0]!,/36 项|查看详情|正文不可出现在简报/);
+  await daily.refresh();
+  assert.equal(sent.length,1);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('meeting invitations query the stated date and present conflict-safe response drafts',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-meeting-invitation-'));
+ const store=new TeamStore(root);
+ const roomId='assistant-room',now=Date.parse('2026-11-24T04:00:00Z');
+ const message:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'日历',account:'fixture',revision:'1'};
+ let dateChecked:string|undefined;
+ const sent:string[]=[];
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now-60000,skips:[],config:{...defaultDaily('Asia/Shanghai'),sources:[message,calendar]}});
+ const daily=new AssistantDaily(store,{
+  catalog:async()=>({sources:[message,calendar],yzjAvailable:true}),current:async()=>true,
+  original:async()=>({url:undefined}),newsSource:async()=>assert.fail('not a news plan'),
+  scan:async(source,_from,_now,_zone,_signal,_recent,date)=>{
+   const base={source,id:'fixture',title:'已有架构评审',detail:'',observedAt:now-1000,urgent:false};
+   if(source.kind==='yzj-message')return {partial:true,items:[{...base,urgent:true,messageAttention:{
+    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）14:30–16:00 例会预通知，邀请你参加。',at:now-1000,
+   }}]};
+   if(!date)return {partial:false,items:[]};
+   dateChecked=date;
+   return {partial:false,items:[{...base,deadline:Date.parse('2026-12-01T06:00:00Z'),calendarEnd:Date.parse('2026-12-01T08:00:00Z'),calendarBusy:true}]};
+  },
+ },()=>roomId,()=>now,async()=>{},async input=>{
+  await input.guard();
+  sent.push(input.body);
+  return 'fixture-brief';
+ });
+ try{
+  await daily.refresh();
+  assert.equal(dateChecked,'2026-12-01');
+  assert.equal(sent.length,1);
+  assert.match(sent[0]!,/参会待确认.*已核对 2026-12-01 日历，与「已有架构评审」时间冲突/s);
+  assert.match(sent[0]!,/时间有冲突，协调后再确认/);
+  assert.doesNotMatch(sent[0]!,/确认参加/);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });

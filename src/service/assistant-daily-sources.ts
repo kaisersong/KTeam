@@ -4,7 +4,7 @@ import {sharedRuntime} from '../runtime/native.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailySource, type DailyItem, type DailySource} from '../protocol/assistant-daily.js';
 import {readIntegrations, runtimeIntegrationRevision} from './integration-settings.js';
-import {isYzjRecentGroups,yzjRecentGroupsId,recentGroupsLimit} from '../protocol/assistant-daily-types.js';
+import {isYzjRecentGroups,isDailyDirectChats,recentDirectChatsId,yzjRecentGroupsId,recentGroupsLimit} from '../protocol/assistant-daily-types.js';
 import type {EnterpriseConnectors} from './enterprise-connectors.js';
 import type {MailConnectors} from './mail-connectors.js';
 import {messageAttention} from './assistant-message-attention.js';
@@ -44,18 +44,18 @@ function urlFor(value:string,domains?:string[]) {
 }
 const yzjDomains=['yunzhijia.com','yunzhijia.cn','kdweibo.com','kdweibo.cn'];
 
-type RecentCursor={lastId:string;itemId?:string;analyzed?:true};
+type RecentCursor={lastId:string;itemId?:string;triageVersion?:3};
 export type RecentGroupCursors=Record<string,RecentCursor>;
 type RecentSnapshot={items:DailyItem[];cursors:RecentGroupCursors};
 export type DailySourceScan={items:DailyItem[];partial:boolean;recentCursors?:RecentGroupCursors};
 const messageRows=(value:unknown)=>rows(value,'list','messages','items').map(row=>row.message&&typeof row.message==='object'?object(row.message):row);
 const recentGroupFields='{success:.success,data:{more:.data.more,list:[.data.list[]|{groupId,groupType,groupName,name,lastMsgId,lastMsgSendTime}]}}';
-const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:((.content//.text) | if type=="string" then .[:300] elif type=="object" then (.content//.text) | if type=="string" then .[:300] else null end else null end)}]}}';
+const recentMessageFields='{success:.success,data:{list:[(.data.list//.data.messages//.data.items//.data)[]|(.message//.)|{msgId,messageId,id,replyMsgId,fromOpenId,senderOpenId,openId,sendTime,createTime,timestamp,atOpenIds,mentionOpenIds,notifyToOpenIds,content:((.content//.text) | if type=="string" then .[:300] elif type=="object" then (.content//.text) | if type=="string" then .[:300] else null end else null end)}]}}';
 
-const mentionsUser=(entry:Record<string,unknown>,user:string)=>{
- const mentions=entry.atOpenIds??entry.mentionOpenIds??entry.notifyToOpenIds;
- return Array.isArray(mentions)&&mentions.includes(user);
-};
+const mentionsUser=(entry:Record<string,unknown>,user:string)=>[entry.atOpenIds,entry.mentionOpenIds,entry.notifyToOpenIds]
+ .some(value=>Array.isArray(value)&&value.includes(user));
+const mentionsSomeone=(entry:Record<string,unknown>)=>[entry.atOpenIds,entry.mentionOpenIds,entry.notifyToOpenIds]
+ .some(value=>Array.isArray(value)&&value.length>0);
 const messageAuthor=(entry:Record<string,unknown>)=>field(entry,'senderOpenId','fromOpenId','openId');
 function yzjMessageTime(value:unknown){
  // The CLI serializes local IM timestamps without an offset. The same response
@@ -73,10 +73,17 @@ export class AssistantDailySources {
   const account=object(await this.enterprise.dailyYzj(['whoami'],signal));
   const org=field(account,'orgId'),user=field(account,'openId');
   if(!org||!user||account.tokenStatus==='expired')throw new KTeamError('daily_source_unavailable',503);
-  const projected=(await this.enterprise.view()).connectors.find(row=>row.provider==='yzj');
-  const connection=projected?.connection;
-  if(connection?.openId && (connection.openId!==user||connection.orgId!==org))throw new KTeamError('daily_source_changed',409);
-  return {account:digest([org,user]),revision:digest([org,user,connection?.connectedAt??null]),user};
+  const connectedAt=this.enterprise.dailyYzjConnectedAt(org,user);
+  return {account:digest([org,user]),revision:digest([org,user,connectedAt??null]),legacyRevision:digest([org,user,null]),connectedAt,user};
+ }
+ async restoreYzjSources(sources:DailySource[],authorizedAt:number,signal:AbortSignal):Promise<DailySource[]> {
+  if(!sources.some(source=>source.kind.startsWith('yzj-')))return sources;
+  const identity=await this.yzjIdentity(signal).catch(()=>undefined);
+  if(!identity?.connectedAt||Date.parse(identity.connectedAt)>authorizedAt)return sources;
+  // Older plans could record the null timestamp before the UI checked the CLI.
+  // Repair only an exact legacy fingerprint for an account connected before consent.
+  return sources.map(source=>source.kind.startsWith('yzj-')&&source.account===identity.account&&source.revision===identity.legacyRevision
+   ? {...source,revision:identity.revision}:source);
  }
  async connectorSetup(){
   const [enterprise,mail]=await Promise.allSettled([this.enterprise.hasSavedConnection(),this.mail.dailyAccounts()]);
@@ -95,6 +102,7 @@ export class AssistantDailySources {
   try {
    const {account,revision}=await this.yzjIdentity(signal);
    sources.push({kind:'yzj-message',id:yzjRecentGroupsId,label:'最近 30 个群 · 每 15 分钟',account,revision});
+   sources.push({kind:'yzj-message',id:recentDirectChatsId,label:'最近 30 个单聊 · 每 15 分钟',account,revision});
    sources.push({kind:'yzj-calendar',id:'calendar',label:'云之家日程和会议',account,revision});
    const result=await Promise.allSettled([
     this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page','1'],signal),
@@ -126,7 +134,7 @@ export class AssistantDailySources {
  async newsSource(topic:string):Promise<DailySource> {
   return dailySource.parse({kind:'news',id:topic,label:topic,account:'public',revision:await runtimeIntegrationRevision()});
  }
- async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal,recent?:RecentSnapshot):Promise<DailySourceScan> {
+ async scan(source:DailySource,from:number,now:number,timeZone:string,signal:AbortSignal,recent?:RecentSnapshot,calendarDate?:string):Promise<DailySourceScan> {
   const item=(id:string,title:string,detail:string,observedAt:number,more:Partial<DailyItem>={}):DailyItem=>({
    id:digest([source.kind,source.account,source.id,id]),source,title,detail,observedAt,urgent:false,...more,
   });
@@ -146,7 +154,7 @@ export class AssistantDailySources {
     return url?[item(url,hit.title.slice(0,256),hit.snippet.slice(0,500),now,{url})]:[];
    }),partial:true};
   }
-  if(source.provider)return this.otherEnterprise.scan(source,from,now,timeZone,signal);
+  if(source.provider)return this.otherEnterprise.scan(source,from,now,timeZone,signal,calendarDate);
   if(source.kind==='yzj-doc') {
    const value=await this.enterprise.dailyYzj(['doc','list','--workspace',source.id],signal);
    return {items:rows(value,'list','items','docs').flatMap(entry=>{
@@ -158,7 +166,7 @@ export class AssistantDailySources {
   if(source.kind==='yzj-message') {
    const identity=await this.yzjIdentity(signal);
    if(identity.account!==source.account||identity.revision!==source.revision)throw new KTeamError('daily_source_changed',409);
-   if(isYzjRecentGroups(source))return this.recentGroups(source,identity.user,from,now,signal,recent);
+   if(isYzjRecentGroups(source)||isDailyDirectChats(source))return this.recentChats(source,identity.user,from,now,signal,recent);
    const value=await this.messagePage(source.id,signal);
    const core=await sharedRuntime();
    const conversation=object(object(value).group);
@@ -174,7 +182,7 @@ export class AssistantDailySources {
      messageAttention:messageAttention({content:entry.content??entry.text,group:source.label,stamp,addressed,direct},text=>core.redactSecrets(text).text)})];
    }),partial:true};
   }
-  const today=calendarWindow(new Date(now),timeZone).today;
+  const today=calendarDate??calendarWindow(new Date(now),timeZone).today;
   const value=await this.enterprise.dailyYzj(['calendar','event','list','--start',today,'--end',today],signal);
   const entries=rows(value,'list','events','items');
   let incomplete=false;
@@ -194,22 +202,23 @@ export class AssistantDailySources {
    const range=formatter.formatRange(meeting.start,meeting.end);
    return item(meeting.id,meeting.title,conflicts.length?range+' · 冲突 '+conflicts.map(other=>other.title).join('、'):range,now,{
     urgent:conflicts.length>0&&meeting.start<=now+2*3600000,
-    deadline:meeting.start, originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
+    deadline:meeting.start,calendarEnd:meeting.end,calendarBusy:busy(meeting.entry), originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
    });
   }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)||Number(object(value).count)>entries.length};
  }
  private messagePage(groupId:string,signal:AbortSignal,bounded=false){
   return this.enterprise.dailyYzj(['im','message','list','--group-id',groupId,'--type','newest','--limit','20',...(bounded?['--jq',recentMessageFields]:[])],signal);
  }
- private async recentGroups(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
+ private async recentChats(source:DailySource,user:string,from:number,now:number,signal:AbortSignal,previous?:RecentSnapshot):Promise<DailySourceScan>{
   const core=await sharedRuntime();
+  const direct=isDailyDirectChats(source);
   const groups=new Map<string,{lastId:string;lastAt:number;name:string}>();
   for(let page=1;page<=5&&groups.size<recentGroupsLimit;page++){
    signal.throwIfAborted();
    const response=object(await this.enterprise.dailyYzj(['im','group','recent','--limit','20','--page',String(page),'--jq',recentGroupFields],signal));
    for(const group of rows(response,'list')){
     const id=field(group,'groupId');
-    if(group.groupType!==2||!id||groups.has(id))continue;
+    if(group.groupType!==(direct?1:2)||!id||id===user+'-'+user||groups.has(id))continue;
     const last=object(group.lastMsg);
     groups.set(id,{name:field(group,'groupName','name'),lastId:field(group,'lastMsgId')||field(last,'msgId'),lastAt:yzjMessageTime(group.lastMsgSendTime??last.sendTime)});
     if(groups.size===recentGroupsLimit)break;
@@ -221,6 +230,7 @@ export class AssistantDailySources {
   const items:DailyItem[]=[];
   const known=new Map(previous?.items.map(item=>[item.id,item]));
   const targets=[...groups];
+  let checkedCount=0;
   for(let index=0;index<targets.length;index+=4){
    signal.throwIfAborted();
    const checked=await Promise.allSettled(targets.slice(index,index+4).map(async([groupId,{lastId,lastAt,name}])=>{
@@ -228,31 +238,42 @@ export class AssistantDailySources {
     const cursor=previous?.cursors[key];
     const prior=cursor?.itemId?known.get(cursor.itemId):undefined;
     if(Number.isFinite(lastAt)&&lastAt<cut)return {key,lastId};
-    if(lastId&&cursor?.lastId===lastId&&cursor.analyzed)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
-    const messages=messageRows(await this.messagePage(groupId,signal,true)).filter(message=>{
+    if(lastId&&cursor?.lastId===lastId&&cursor.triageVersion===3)return {key,lastId,item:prior&&prior.observedAt>=cut?prior:undefined};
+    const page=messageRows(await this.messagePage(groupId,signal,true));
+    const replied=new Set(page.filter(message=>messageAuthor(message)===user&&messageTime(message)<=now)
+     .map(message=>field(message,'replyMsgId')).filter(Boolean));
+    const messages=page.filter(message=>{
      const author=messageAuthor(message),stamp=messageTime(message);
      return Boolean(author&&author!==user&&stamp>=cut&&stamp<=now);
     });
     const latest=messages.sort((a,b)=>messageTime(b)-messageTime(a))[0];
     const latestId=latest&&field(latest,'msgId','messageId','id');
-    const actionable=messages.map(message=>messageAttention({
-     content:message.content??message.text,group:name||'云之家群聊',stamp:messageTime(message),addressed:mentionsUser(message,user),
-    },text=>core.redactSecrets(text).text)).find(Boolean);
-    const item:DailyItem|undefined=latestId?{
-     id:digest([key,latestId]),source,title:actionable?.group??'一个近期群有消息待查看',
-     detail:actionable?.text??'本次可见 '+messages.length+' 条其他成员的消息。',
-     observedAt:messageTime(latest),messageAttention:actionable,urgent:messages.some(message=>mentionsUser(message,user)),
+    const actionable=messages.flatMap(message=>{
+     const attention=messageAttention({
+      content:message.content??message.text,group:name||(direct?'云之家单聊':'云之家群聊'),
+      stamp:messageTime(message),addressed:mentionsUser(message,user),mentionPresent:mentionsSomeone(message),direct,
+     },text=>core.redactSecrets(text).text);
+     const id=field(message,'msgId','messageId','id');
+     return attention&&id&&!replied.has(id)?[{attention,id}]:[];
+    })[0];
+    const item:DailyItem|undefined=latestId&&(!direct||actionable)?{
+     id:digest([key,direct?actionable!.id:latestId]),source,title:actionable?.attention.group??'一个近期群有消息待查看',
+     detail:actionable?.attention.text??'本次可见 '+messages.length+' 条其他成员的消息。',
+     observedAt:direct?actionable!.attention.at:messageTime(latest),messageAttention:actionable?.attention,
+     urgent:direct||messages.some(message=>mentionsUser(message,user)),
+     ...(direct?{originalId:actionable!.id}:{}),
     }:undefined;
     return {key,lastId,item};
    }));
    signal.throwIfAborted();
    for(const result of checked)if(result.status==='fulfilled'){
+    checkedCount++;
     const {key,lastId,item}=result.value;
-    if(lastId)cursors[key]={lastId,itemId:item?.id,analyzed:true};
+    if(lastId)cursors[key]={lastId,itemId:item?.id,triageVersion:3};
     if(item)items.push(item);
    }
-   if(checked.every(result=>result.status==='rejected'))break;
   }
+  if(targets.length&&!checkedCount)throw new KTeamError('daily_source_unavailable',503);
   return {items,partial:true,recentCursors:cursors};
  }
  async original(item:DailyItem) {

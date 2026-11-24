@@ -10,7 +10,7 @@ KTeam's collaboration is built on **AIMP (Agent Intent Messaging Protocol)**. Th
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Current version: 0.10.2.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
+**Current version: 0.10.3.** Get the installer from [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest). Available for macOS on Apple silicon (arm64) and Windows (x64). Mac and Windows installer builds support auto-update; the portable build updates manually. See [Version History](#version-history) for changes.
 
 ---
 
@@ -37,6 +37,12 @@ Current reference: **[AIMP Design Specification v3.2](spec/aimp/aimp-design-spec
 **KTeam does not yet claim full AIMP v3.2 compliance or Core-L2 certification.** A production identity root, receipt activation and complete state transitions are still unavailable. This release adds scoped effect observation and verified host receipts for typed HTML and mail paths; these do not certify every tool or replace business acceptance. The verification script `verify_v31_vectors.py` mentioned in the spec is not shipped in this repository. The v3.2 specification is the reference for incremental implementation. Standard session negotiation, Templates and FastJoin are currently unavailable; existing local discussion remains experimental.
 
 ---
+
+## What's in 0.10.3
+
+- Little K sends actionable briefings in its private chat. Select recent Yunzhijia or Feishu direct chats separately from group sources.
+- Meeting invitations show verified calendar conflicts and copyable reply suggestions. Desktop and paired phones share the same briefing and source coverage.
+- Conversation errors distinguish a failed request from a disconnected computer and preserve unsent drafts.
 
 ## What's in 0.10.2
 
@@ -162,8 +168,8 @@ Intel Macs are not supported yet. Existing Mac installations can update to the l
 
 **Windows (x64)**
 
-- **Installer (recommended):** download `KTeam-setup-0.10.2.exe` and run it. It supports auto-update.
-- **Portable:** download `KTeam-portable-0.10.2.exe` and run it directly. It does not auto-update; download new versions from Releases.
+- **Installer (recommended):** download `KTeam-setup-0.10.3.exe` and run it. It supports auto-update.
+- **Portable:** download `KTeam-portable-0.10.3.exe` and run it directly. It does not auto-update; download new versions from Releases.
 
 The Windows builds are not code-signed yet. The first time you run one, Windows shows "Windows protected your PC"; click "More info", then "Run anyway".
 

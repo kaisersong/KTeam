@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {AssistantDailyEnterprise} from '../src/service/assistant-daily-enterprise.js';
 import {dailySource} from '../src/protocol/assistant-daily.js';
-import {dailyBriefMessage} from '../src/service/assistant-daily-delivery.js';
+import {recentDirectChatsId} from '../src/protocol/assistant-daily-types.js';
+import {dailyBriefMessage,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
 import type {DailyEnterpriseProvider} from '../src/protocol/assistant-daily-types.js';
 
 const now=Date.parse('2026-11-23T01:00:00Z');
@@ -31,7 +32,7 @@ test('enterprise brief connectors keep account scope, bound recent groups and sk
   },
  });
  const catalog=await enterprise.catalog();
- assert.equal(catalog.length,6);
+ assert.equal(catalog.length,7);
  const source=catalog.find(entry=>entry.provider==='feishu'&&entry.kind==='enterprise-message')!;
  assert.equal(dailySource.safeParse({...source,provider:undefined}).success,false);
  const scan=await enterprise.scan(source,now-3600000,now,'Asia/Shanghai',signal);
@@ -48,7 +49,7 @@ test('enterprise brief connectors keep account scope, bound recent groups and sk
  assert.equal(readers.length,31);
 });
 
-test('enterprise calendars normalize provider dates, flag partial coverage and keep titles out of the private brief message',async()=>{
+test('enterprise calendars normalize provider dates, flag partial coverage and show concrete times in the private brief',async()=>{
  const called:string[]=[];
  const enterprise=new AssistantDailyEnterprise({
   dailyEnterpriseIdentity:async provider=>status(provider),
@@ -67,10 +68,9 @@ test('enterprise calendars normalize provider dates, flag partial coverage and k
  const scans=await Promise.all(calendar.map(source=>enterprise.scan(source,now-3600000,now,'Asia/Shanghai',signal)));
  assert.deepEqual(scans.map(result=>result.partial),[true,false,true]);
  assert.ok(called.some(call=>call.startsWith('wecom:meeting list')));
- const message=dailyBriefMessage('2026-11-23','morning',scans.flatMap(scan=>scan.items),now,'Asia/Shanghai')!;
- assert.match(message,/日程和会议 3 项/);
- assert.match(message,/09:30/);
- assert.doesNotMatch(message,/用例/);
+ const message=dailyBriefMessage('2026-11-23','morning',scans.flatMap(scan=>scan.items),'Asia/Shanghai',text=>text)!;
+ assert.match(message,/09:30 · 钉钉用例/);
+ assert.match(message,/10:00 · 飞书用例/);
 });
 
 test('WeCom group reads use its pinned cursor and message contract without requiring provider message IDs',async()=>{
@@ -94,4 +94,33 @@ test('WeCom group reads use its pinned cursor and message contract without requi
  assert.equal(scan.items.length,2);
  assert.equal(new Set(scan.items.map(item=>item.id)).size,2);
  assert.doesNotMatch(JSON.stringify(scan),/private text/);
+});
+
+test('Feishu uses a separate user-scoped p2p query and ignores group and outbound records',async()=>{
+ const calls:string[][]=[];
+ const enterprise=new AssistantDailyEnterprise({
+  dailyEnterpriseIdentity:async provider=>provider==='feishu'?status(provider):undefined,
+  dailyEnterpriseRead:async(_provider,args)=>{
+   calls.push([...args]);
+   if(args[1]==='+chat-list')return {ok:true,data:{chats:[
+    {chat_id:'oc_group',chat_mode:'group'},{chat_id:'oc_direct',chat_mode:'p2p',name:'样例联系人'},
+   ]}};
+   assert.equal(args[args.indexOf('--chat-id')+1],'oc_direct');
+   return {ok:true,data:{messages:[
+    {message_id:'inbound',create_time:String(now-2000),sender:{id:'other'},body:{content:'请确认交付时间'}},
+    {message_id:'outbound',create_time:String(now-1000),sender:{id:'fixture-feishu'},body:{content:'请确认我发的内容'}},
+   ]}};
+  },
+ });
+ const source=(await enterprise.catalog()).find(entry=>entry.id===recentDirectChatsId)!;
+ const {items}=await enterprise.scan(source,now-60000,now,'Asia/Shanghai',signal);
+ assert.deepEqual(calls[0]?.slice(0,8),['im','+chat-list','--as','user','--sort','active_time','--types','p2p']);
+ assert.equal(calls.length,2);
+ assert.equal(items.length,1);
+ assert.equal(items[0]?.urgent,true);
+ assert.equal(items[0]?.messageAttention?.kind,'decision');
+ const group={...items[0]!,source:{...source,id:'recent-groups-30'},messageAttention:{kind:'schedule' as const,text:'周会改期',group:'验收群',at:now}};
+ const notice=dailyMessageNotice([group,...items],'Asia/Shanghai')!;
+ assert.ok(notice.indexOf('飞书单聊')<notice.indexOf('验收群'));
+ assert.doesNotMatch(notice,/我发的内容/);
 });

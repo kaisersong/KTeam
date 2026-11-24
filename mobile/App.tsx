@@ -137,6 +137,8 @@ const names: Record<string, string> = {
   model_quota_exhausted: "模型额度不足或受到限流，请在电脑检查模型服务。",
   generated_file_not_found: "这份产物暂不可用，请确认连接的是生成它的电脑。",
   generated_file_receipt_changed: "产物记录已变化，请在电脑核对。",
+  upstream_rejected: "后台服务未能完成这次操作。",
+  upstream_operation_unknown: "发送结果待核对，请先查看会话。",
   mobile_auth_required: "手机连接已失效，请重新配对",
   mobile_device_revoked: "手机权限已被撤销",
   mobile_operation_unknown: "结果待核对，请勿重复发送",
@@ -1252,7 +1254,8 @@ function AppBody() {
       setLatest(true);
       list.current?.scrollToOffset({ offset: 0 });
     } catch (e) {
-      tell(e);
+      if (errorText(e) === "upstream_rejected") setError("发送操作未完成，草稿已保留。请先查看会话中是否已有这条消息。");
+      else tell(e);
       await getPending(computer);
     } finally {
       setBusy(false);
@@ -1597,11 +1600,12 @@ function AppBody() {
           ]}
         >
           <Text style={[s.title, { color: colors.text }]}>
-            {computer && offline ? "暂时连接不上电脑" : "连接提示"}
+            {computer && offline ? "暂时连接不上电脑" : "操作提示"}
           </Text>
           <Text style={[s.caption, { color: colors.muted, marginTop: 8 }]}>
             {error || "正在尝试连接电脑。"}
           </Text>
+          {computer && offline ? <>
           <Text style={[s.caption, { color: colors.muted, marginTop: 8 }]}>
             确认电脑已联网并开启 KTeam。Wi-Fi 或 5G 均可连接；电脑恢复在线后会自动重连。
           </Text>
@@ -1619,6 +1623,7 @@ function AppBody() {
             )}
             {tab !== "我" && button("切换电脑", openConnections)}
           </View>
+          </> : <View style={s.actions}>{button("关闭",()=>setError(""))}</View>}
         </View>
       )}
       {tab === "会话" && !room && (

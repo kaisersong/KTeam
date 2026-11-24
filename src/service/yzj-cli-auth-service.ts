@@ -25,6 +25,7 @@ export class YzjCliAuthService {
   private readonly history: YzjCliConnectionHistory;
   constructor(private readonly deps: Dependencies = {}) { this.history = new YzjCliConnectionHistory(deps.connectionHistoryPath); }
   hasSavedConnection(): boolean { return this.state.phase === 'authenticated' || this.history.hasLogin(); }
+  connectedAt(orgId:string,openId:string):string|undefined { return this.history.get(orgId,openId); }
   getState(): YzjCliAuthState { return { ...this.state, ...(this.state.connection ? { connection: { ...this.state.connection } } : {}) }; }
   private set(phase: Phase, connection?: YzjCliConnection): void {
     this.state = { phase, revision: this.state.revision + 1, ...(connection ? { connection } : {}) };

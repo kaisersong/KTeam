@@ -1,10 +1,13 @@
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {setTimeout as delay} from 'node:timers/promises';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync,readFileSync,symlinkSync,unlinkSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,realpathSync,rmSync,writeFileSync,readFileSync,symlinkSync,unlinkSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {ensureBundledYzjCli,configureBundledYzjCli} from '../src/runtime/bundled-yzj-cli.js';
+import {ENTERPRISE_CLI_COMMANDS,getEnterpriseCliArtifact} from '../src/runtime/enterprise-cli-catalog.js';
 import {connectorCommand} from '../src/runtime/connector-command.js';
 import {EnterpriseConnectors} from '../src/service/enterprise-connectors.js';
 import {initConfig} from '../src/service/config.js';
@@ -38,6 +41,59 @@ test('connector mutations fence stale/forged inputs, cancel duplicate and recove
   await owner.control({provider:'yzj',action:'cancel',expectedRevision:current.revision});
   await owner.close();owner=new EnterpriseConnectors({configRoot:root});assert.equal((await owner.view()).connectors[0]!.installed,true);
  }finally{await owner.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('opening settings restores all existing CLI logins after each host restart without initiating login', {skip:process.platform==='win32'}, async()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-restore-')));
+ const savedPath=process.env.PATH;
+ const marker=join(root,'status-checks');
+ const installed=[['yzj','authenticated'],['dingtalk','connected'],['feishu','connected']];
+ function fixture(file:string,args:string,provider:string,result:unknown){
+  mkdirSync(join(file,'..'),{recursive:true});
+  const script=`#!/bin/sh
+if [ "$*" = '--version' ]; then echo 'yzj-cli 0.1.8'; exit; fi
+if [ "$*" != '${args}' ]; then echo unexpected >> "${marker}"; exit 1; fi
+echo ${provider} >> "${marker}"
+cat <<'STATUS'
+${JSON.stringify(result)}
+STATUS
+`;
+  writeFileSync(file,script,{mode:0o700});
+  return script;
+ }
+ try{
+  const cloud=ensureBundledYzjCli({configDir:root});
+  fixture(cloud.binaryPath,'whoami','yzj',{success:true,data:{openId:'fixture-user',orgId:'fixture-org'}});
+  for(const provider of ['dingtalk','feishu'] as const){
+   const {version}=getEnterpriseCliArtifact(provider,process.platform,process.arch)!;
+   const dir=join(root,'tools','enterprise-cli',provider,`${process.platform}-${process.arch}`,version);
+   const args=provider==='dingtalk'?'auth status --readonly --format json':'auth status --json';
+   const result=provider==='dingtalk'
+    ? {success:true,authenticated:true,user_id:'fixture-user',token_valid:true}
+    : {appId:'fixture-app',identities:{user:{available:true,openId:'fixture-user',tokenStatus:'valid'}}};
+   const script=fixture(join(dir,ENTERPRISE_CLI_COMMANDS[provider]),args,provider,result);
+   writeFileSync(join(dir,'installed.json'),JSON.stringify({version,sha256:createHash('sha256').update(script).digest('hex')}));
+  }
+  for(let start=0;start<2;start++){
+   const owner=new EnterpriseConnectors({configRoot:root,openExternal:async()=>assert.fail('status must not open authorization')});
+   try{
+    const rows=()=>owner.view().then(view=>view.connectors.filter(row=>row.installed));
+    const first=await Promise.all([rows(),rows()]);
+    assert.ok(first.every(snapshot=>snapshot.length===installed.length&&snapshot.every(row=>!['ready','idle'].includes(row.phase))));
+    let snapshot=await rows();
+    for(let poll=0;poll<100&&snapshot.some(row=>row.phase==='checking');poll++){
+     await delay(25);
+     snapshot=await rows();
+    }
+    assert.deepEqual(snapshot.map(row=>[row.provider,row.phase]),installed);
+   }finally{await owner.close();}
+  }
+  assert.deepEqual(readFileSync(marker,'utf8').trim().split('\n').sort(),installed.flatMap(([provider])=>[provider,provider]).sort());
+ }finally{
+  if(savedPath===undefined)delete process.env.PATH;
+  else process.env.PATH=savedPath;
+  rmSync(root,{recursive:true,force:true});
+ }
 });
 
 test('real host exposes connector semantic routes only to authenticated main client',async()=>{
