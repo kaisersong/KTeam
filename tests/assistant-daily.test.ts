@@ -132,6 +132,47 @@ test('scheduled briefs are queued once for fresh nonempty runs and never replay 
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 
+for(const recoveredAt of ['09:00:00','09:30:01'])test('a failed scheduled brief rechecks its source after restart at '+recoveredAt,async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-daily-recovery-'));
+ const store=new TeamStore(root),roomId='assistant-room';
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'云之家日程和会议',account:'fixture',revision:'1'};
+ let now=Date.parse('2026-11-25T08:29:00Z'),available=false,scans=0;
+ const sent:string[]=[];
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,config:{...defaultDaily('UTC'),sources:[calendar]},changedAt:now,skips:[]});
+ const create=()=>new AssistantDaily(store,{
+  catalog:async()=>({sources:[calendar],yzjAvailable:true}),current:async()=>true,
+  original:async()=>({url:undefined}),newsSource:async()=>assert.fail('not a news plan'),
+  scan:async()=>{
+   scans++;
+   if(!available)throw Error('fixture connection unavailable');
+   return {partial:false,items:[{id:'calendar-fixture',source:calendar,title:'日历核验会议',detail:'10:00—10:30',observedAt:now,urgent:false,deadline:Date.parse('2026-11-25T10:00:00Z')}]};
+  },
+ },()=>roomId,()=>now,async()=>{},async input=>{await input.guard();sent.push(input.body);return 'fixture-message';});
+ let daily=create();
+ try{
+  now=Date.parse('2026-11-25T08:30:30Z');
+  await daily['run'](false);
+  assert.equal((await daily.view()).briefs[0]?.coverage[0]?.state,'unavailable');
+  assert.equal(scans,1);
+  assert.deepEqual(sent,[]);
+  await daily.close();
+  daily=create();
+  now+=60*1000;
+  await daily['run'](false);
+  assert.equal(scans,1);
+  available=true;
+  now=Date.parse('2026-11-25T'+recoveredAt+'Z');
+  await daily['run'](false);
+  const recovered=recoveredAt==='09:00:00';
+  assert.equal((await daily.view()).briefs[0]?.delivery,recovered?'sent':undefined);
+  assert.equal(sent.length,recovered?1:0);
+  if(recovered)assert.match(sent[0]!,/早报.*日历核验会议/s);
+  await daily.refresh();
+  assert.equal(sent.length,recovered?1:0);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
 test('recent groups refresh every fifteen minutes and count-only snapshots stay silent',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-group-cadence-'));
  const store=new TeamStore(root);
