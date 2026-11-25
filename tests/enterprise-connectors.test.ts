@@ -1,4 +1,4 @@
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {test} from 'node:test';
@@ -10,9 +10,57 @@ import {ensureBundledYzjCli,configureBundledYzjCli} from '../src/runtime/bundled
 import {ENTERPRISE_CLI_COMMANDS,getEnterpriseCliArtifact} from '../src/runtime/enterprise-cli-catalog.js';
 import {connectorCommand} from '../src/runtime/connector-command.js';
 import {EnterpriseConnectors} from '../src/service/enterprise-connectors.js';
+import {YzjCliAuthService} from '../src/service/yzj-cli-auth-service.js';
 import {initConfig} from '../src/service/config.js';
 import {startHost} from '../src/service/server.js';
 import {hostRequest} from '../src/service/client.js';
+
+test('renewing the same Yunzhijia account retains its daily source identity across restart',async()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-yzj-reauth-')));
+ const historyPath=join(root,'history.json');
+ let now=Date.parse('2026-11-24T07:00:00Z'),user='owner',signedIn=false;
+ const orgId='fixture-org';
+ const run=((_command:string,args:string[])=>{
+  if(args[0]==='auth')signedIn=true;
+  const output=args[0]==='whoami'&&signedIn?JSON.stringify({success:true,data:{orgId,openId:user,tokenStatus:'valid'}}):'';
+  const status=signedIn?0:3;
+  return spawn(process.execPath,['-e',`process.stdout.write(${JSON.stringify(output)});process.exitCode=${status};`],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+ }) as typeof spawn;
+ const start=()=>new YzjCliAuthService({spawn:run,resolveBinary:()=>process.execPath,now:()=>now,connectionHistoryPath:historyPath});
+ let connector=start();
+ const wait=async(phase:string)=>{
+  for(let index=0;index<120;index++){
+   const state=connector.getState();
+   if(state.phase===phase)return state;
+   await delay(25);
+  }
+  assert.fail('connector did not reach '+phase);
+ };
+ const login=async()=>{
+  await connector.control('login','user');
+  return (await wait('authenticated')).connection!;
+ };
+ try{
+  const initial=(await login()).connectedAt;
+  assert.equal(initial,new Date(now).toISOString());
+  await connector.dispose();
+  connector=start();
+  signedIn=false;
+  await connector.control('check','user');
+  await wait('signedOut');
+  now+=86400000;
+  const renewed=await login();
+  assert.equal(renewed.connectedAt,initial);
+  assert.equal(renewed.checkedAt,new Date(now).toISOString());
+  user='another-user';
+  now+=1000;
+  assert.equal((await login()).connectedAt,new Date(now).toISOString());
+  assert.equal(connector.connectedAt(orgId,'owner'),undefined);
+  user='owner';
+  now+=1000;
+  assert.equal((await login()).connectedAt,new Date(now).toISOString());
+ }finally{await connector.dispose();rmSync(root,{recursive:true,force:true});}
+});
 
 test('bundled native CLI and process-local launcher execute; existing updated copy survives; symlinks fail closed',async()=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'kteam-cli-bundle-')));
