@@ -73,7 +73,7 @@ test("document verification recognition rejects inspection before removal and op
   ]) assert.equal(postWriteVerification(command,parseCommandSegments),undefined,command);
 });
 
-test("approval display is redacted while the tool input and original hash stay intact, and a mixed inspection rejects allow_once", async () => {
+test("redacted approval keeps its input and hash, and mixed inspection permits only a bound single approval", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "kteam-approval-redact-")));
   const config = join(root, "config");
   mkdirSync(config);
@@ -103,27 +103,36 @@ test("approval display is redacted while the tool input and original hash stay i
     assert.equal(await pendingWork, false);
 
     const mixed = new AbortController();
+    const mixedInput = { command: 'rm -f "old fixture.txt" old.log 2>&1\necho exit=$?\nls . 2>ignored.log' };
     const mixedWork = approvals.ask(
-      { roomId: "room", botId: "bot", jobId: "job-mixed" },
+      { roomId: "room", botId: "bot", jobId: "job-mixed", cwd: root },
       "bash",
-      { command: "ls /work && rm /work/old" },
+      mixedInput,
       mixed.signal,
       async () => {},
     );
     const inspection = await listed(approvals, "job-mixed");
     assert.equal(inspection.inspectionRequired, true);
+    assert.equal(inspection.highRisk, true);
+    assert.equal(inspection.canAlways, false);
+    assert.deepEqual(inspection.operationFacts.filter((fact:{kind:string})=>fact.kind==='delete').map((fact:{target:string})=>fact.target),
+      [join(root, 'old fixture.txt'), join(root, 'old.log')]);
     const before = store.operation(inspection.id);
-    await assert.rejects(
-      approvals.decide({ id: inspection.id, expectedHash: inspection.hash, decision: "allow_once" }),
-      /tool_inspection_required/,
-    );
+    for(const decision of ['allow_always','allow_directory','allow_directory_routine']){
+      await assert.rejects(approvals.decide({ id: inspection.id, expectedHash: inspection.hash, decision }), /tool_permission_once_required/);
+    }
+    await assert.rejects(approvals.decide({ id: inspection.id, expectedHash: 'changed', decision: 'allow_once' }), /tool_approval_changed/);
     const after = store.operation(inspection.id);
     assert.equal(after.status, "pending");
     assert.equal(after.revision, before.revision);
     assert.equal(after.hash, before.hash);
     assert.deepEqual(after.input, before.input);
-    mixed.abort();
-    assert.equal(await mixedWork, false);
+    assert.deepEqual(after.input, mixedInput);
+    const allowOnce = { id: inspection.id, expectedHash: inspection.hash, decision: 'allow_once' };
+    assert.equal((await approvals.decide(allowOnce)).status, 'allowed');
+    assert.equal(await mixedWork, true);
+    assert.equal((await approvals.decide(allowOnce)).reused, true);
+    assert.deepEqual(approvals.permissions.list(), []);
 
     if(process.platform!=="win32"){
       const reportInput={command:reportWorkflow};

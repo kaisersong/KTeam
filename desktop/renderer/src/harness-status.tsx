@@ -1,6 +1,6 @@
 import {unexecutedModelToolOutput} from '../../../src/protocol/model-tool-output';
 import {showGeneratedFile} from './artifact-viewer';
-import {approvalChangeText,toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
+import {approvalChangeText,mixedInspectionWarning,toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
 import React,{useRef,useState}from'react';
@@ -14,10 +14,11 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
  const deciding=useRef(false);
  const [error,setError]=useState('');
  const [grants,setGrants]=useState<any[]>();
- const splitRequired=approval.inspectionRequired===true;
+ const mixedInspection=approval.inspectionRequired===true;
+ const singleDecision=mixedInspection||approval.highRisk===true;
  const directoryDecision=approval.directoryOperations==='routine'?'allow_directory_routine':'allow_directory';
- const directories:string[]=approval.directories?.length?approval.directories:approval.directory?[approval.directory]:[];
- const groupScope=!splitRequired&&directories.length?approval.directoryGroupScope:undefined;
+ const directories:string[]=singleDecision?[]:approval.directories?.length?approval.directories:approval.directory?[approval.directory]:[];
+ const groupScope=directories.length?approval.directoryGroupScope:undefined;
  const description=toolApprovalSummary(approval.toolName,approval.display);
  const change=approvalChangeText(approval.change);
  const facts=approval.operationFacts??[];
@@ -47,17 +48,17 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
   <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
   <p>{description.summary}{description.target&&<> · <code>{description.target}</code></>}</p>
   {change&&<p>{change}</p>}
-  {splitRequired?<p className="approval-warning" role="alert">检查与删除混在同一条命令。请拒绝这次申请，让成员先单独检查，再提交修改。</p>:
+  {mixedInspection?<p className="approval-warning" role="alert">{mixedInspectionWarning}</p>:
    approval.reason&&<p className="approval-reason">{approval.reason}</p>}
   {approval.terminalTrigger&&<p className="approval-trigger"><span>触发确认的命令段</span><code>{approval.terminalTrigger}</code></p>}
   {relevant.length>0&&<ul className="approval-targets" aria-label="修改目标">{relevant.map((fact:any)=><li key={fact.kind+':'+fact.target}><span>{fact.kind==='delete'?'删除或清空':fact.kind==='overwrite'?'写入或覆盖':'目标待核对'}</span><code>{fact.target}</code></li>)}</ul>}
-  {directories.length>0&&!splitRequired&&<div className="approval-scope">
+  {directories.length>0&&<div className="approval-scope">
    <ul aria-label="授权目录">{directories.map(path=><li key={path}><code>{path}</code></li>)}</ul>
    {groupScope&&<label className="approval-group"><input type="checkbox" checked={applyToGroup} disabled={!!busy} onChange={e=>setApplyToGroup(e.target.checked)}/>给当前群所有 Bot 授权（{groupScope.members.length} 位）</label>}
    <small>{approval.directoryOperations==='routine'?'覆盖所列目录及子目录的常规读写、Git 和本地命令。删除、推送及敏感操作需单独确认。':'长期允许所列目录及子目录的普通文件读写。'}{groupScope&&' 新成员需另行授权。'}</small>
    {approval.pendingOperationCount>1&&<small>还有 {approval.pendingOperationCount-1} 项待处理操作。</small>}
   </div>}
-  {!directories.length&&approval.canAlways&&!splitRequired&&<small>{approval.commandScoped?'长期允许此成员在当前目录执行这条完整命令。':approval.toolName==='bash'?'长期允许此成员在该目录下执行常规命令。':'长期允许此成员在该目录下执行同类操作。'}</small>}
+  {!directories.length&&approval.canAlways&&!singleDecision&&<small>{approval.commandScoped?'长期允许此成员在当前目录执行这条完整命令。':approval.toolName==='bash'?'长期允许此成员在该目录下执行常规命令。':'长期允许此成员在该目录下执行同类操作。'}</small>}
   <details className="operation-details approval-details">
    <summary>完整命令与技术详情</summary>
    <div className="approval-details-body">
@@ -81,9 +82,9 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
   <footer className="approval-footer">
    <button type="button" className="text-button approval-manage" aria-expanded={!!grants} onClick={()=>void toggleGrants()}>管理此成员已有授权</button>
    <div className="approval-actions">
-    <button className="secondary" disabled={!!busy} onClick={()=>void decide('deny')}><X size={14}/>{busy==='deny'?'正在拒绝…':splitRequired?'拒绝此申请':'拒绝'}</button>
-    {!splitRequired&&<>
-     <button className={directories.length||approval.commandScoped?'secondary':'primary'} disabled={!!busy} onClick={()=>void decide('allow_once')}><Check size={14}/>{busy==='allow_once'?'正在确认…':'允许本次'}</button>
+    <button className="secondary" disabled={!!busy} onClick={()=>void decide('deny')}><X size={14}/>{busy==='deny'?'正在拒绝…':singleDecision?'拒绝此申请':'拒绝'}</button>
+    <button className={!singleDecision&&(directories.length||approval.commandScoped)?'secondary':'primary'} disabled={!!busy} onClick={()=>void decide('allow_once')}><Check size={14}/>{busy==='allow_once'?'正在确认…':singleDecision?'仅允许这一次':'允许本次'}</button>
+    {!singleDecision&&<>
      {directories.length?<button className="primary" disabled={!!busy} onClick={()=>void decide(directoryDecision)}>{busy===directoryDecision?'正在授权…':approval.directoryOperations==='routine'?(directories.length>1?'长期允许所列目录':'长期允许此目录'):'长期允许此目录读写'}</button>:
       approval.canAlways&&<button className={approval.commandScoped?'primary':'secondary'} disabled={!!busy} onClick={()=>void decide('allow_always')}>{busy==='allow_always'?'正在授权…':approval.commandScoped?'长期允许此命令':approval.toolName==='bash'?'长期允许此目录常规命令':'长期允许此类操作'}</button>}
     </>}
