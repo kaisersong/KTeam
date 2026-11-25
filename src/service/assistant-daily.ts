@@ -19,6 +19,8 @@ const messageNoticeWindow=recentGroupsInterval+60000;
 const messageCatchupWindow=60*60000;
 const snoozePrefix='assistant-daily-snooze:';
 const briefDeliveryWindow=15*60000;
+const briefSourceRecoveryWindow=60*60000;
+const briefSourceRetryInterval=2*60000;
 const maxAge=24*3600000;
 const checkInterval=10*60000;
 const mailCheckInterval=60*60000;
@@ -343,8 +345,21 @@ export class AssistantDaily {
    }
   }
   const activePlan=plan;
-  const due=dailyTimes(plan.config,now).filter(row=>row.due!=null&&row.due>=activePlan.changedAt&&!activePlan.skips.includes(row.day+':'+row.slot)&&!this.store.operation(briefPrefix+row.day+':'+row.slot)).sort((a,b)=>b.due!-a.due!);
-  const upcoming=dailyTimes(plan.config,now).some(row=>row.next!==null&&row.next-now<15*60000);
+  const times=dailyTimes(plan.config,now);
+  const due=times.flatMap(row=>{
+   if(row.due==null||row.due<activePlan.changedAt||activePlan.skips.includes(row.day+':'+row.slot))return [];
+   const id=briefPrefix+row.day+':'+row.slot;
+   const prior=this.store.operation(id) as Brief|undefined;
+   // A scan failure during the delivery window can leave a recoverable empty
+   // slot. A healthy empty scan, a missed slot or any publication ends it.
+   const recoverable=prior&&!prior.delivery&&!prior.missed&&!prior.items.length
+    &&prior.at>=row.due&&prior.at<row.due+briefDeliveryWindow
+    &&prior.coverage.some(source=>source.state==='unavailable');
+   const deadline=row.due+(recoverable?briefSourceRecoveryWindow:briefDeliveryWindow);
+   if(prior&&(!recoverable||now>=deadline))return [];
+   return [{...row,due:row.due,id,prior,deadline}];
+  }).sort((a,b)=>b.due-a.due);
+  const upcoming=times.some(row=>row.next!==null&&row.next-now<briefDeliveryWindow);
   const next=upcoming&&due[0]?.due&&now-due[0].due>15*60000?undefined:due[0];
   const checks=new Map<string,Promise<boolean>>();
   for(const source of plan.config.sources) {
@@ -352,7 +367,9 @@ export class AssistantDaily {
    const key=this.scanKey(source),previous=this.store.state<Scan>(key);
    const same=previous?.coverage.source.revision===source.revision?previous:undefined;
    const interval=periodicSourceInterval(source);
-   if(!manual&&(!next||interval!==undefined)&&same&&now-same.at<(interval??checkInterval))continue;
+   const retry=next?.prior&&same?.coverage.state==='unavailable';
+   if(!manual&&(!next||interval!==undefined||next.prior)&&same
+    &&now-same.at<(retry?briefSourceRetryInterval:interval??checkInterval))continue;
    const from=Math.max(now-7*maxAge,same?.waterline!==undefined?same.waterline-maxAge:same?.coverage.from??now-maxAge);
    let state:DailyCoverage['state']='unavailable',items:DailyItem[]=[],recentCursors:RecentGroupCursors|undefined;
    try {
@@ -372,7 +389,7 @@ export class AssistantDaily {
    guard();
    const scans=this.retained(plan).filter(scan=>{
     if(scan.at===now)return true;
-    const interval=periodicSourceInterval(scan.coverage.source);
+    const interval=periodicSourceInterval(scan.coverage.source)??(next?.prior?checkInterval:undefined);
     return interval!==undefined&&scan.at>=now-interval&&plan.config.sources.some(source=>
      dailySourceKey(source)===dailySourceKey(scan.coverage.source)&&source.revision===scan.coverage.source.revision);
    });
@@ -385,12 +402,13 @@ export class AssistantDaily {
    guard();
    this.store.transaction(()=>{
     for(const row of due) {
-     const id=briefPrefix+row.day+':'+row.slot;
-     if(this.store.operation(id))continue;
-     const roomId=this.assistantRoom(),deadline=row.due!+briefDeliveryWindow;
+     const {id,prior,deadline}=row;
+     if(this.store.operation(id)?.revision!==prior?.revision)continue;
+     if(prior&&row===next&&!items.length&&scans.some(scan=>scan.coverage.state==='unavailable'))continue;
+     const roomId=this.assistantRoom();
      const canNotify=this.publishBrief&&roomId&&row===next&&items.length&&now<deadline;
      this.store.saveOperation({id,day:row.day,slot:row.slot,at:now,items:row===next?items:[],coverage:row===next?scans.map(scan=>scan.coverage):[],missed:row!==next,
-      ...(canNotify?{delivery:'pending',roomId,planRevision:plan.revision,deadline}:{})},0);
+      ...(canNotify?{delivery:'pending',roomId,planRevision:plan.revision,deadline}:{})},prior?.revision??0);
     }
    });
   }
