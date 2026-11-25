@@ -1,13 +1,15 @@
 import {isPluginCommand,type PluginCommandChoice} from '../../../src/protocol/plugins';
+import {parseSkillCommand,skillCommandNeedsList} from '../../../src/protocol/skill-command';
 import {useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
 import {spaceCommand,spaceCommandCandidate} from './space-command';
 
 export function SkillCommands({roomId,botId,kind,value,onSelect}:{roomId:string;botId?:string;kind?:string;value:string;onSelect:(text:string)=>void}){
- const active=value.startsWith('/')||isPluginCommand(value);
- const showSpace=active&&spaceCommandCandidate(value);
+ const skillInput=skillCommandNeedsList(value)||!!parseSkillCommand(value);
+ const showSpace=spaceCommandCandidate(value);
  const pluginOnly=isPluginCommand(value);
- const showPlugins=active&&(pluginOnly||'/plugin'.startsWith(value));
+ const showPlugins=pluginOnly||(skillInput&&'/plugin'.startsWith(value.trim()));
+ const active=skillInput||showSpace||showPlugins;
  const [pluginChoices,setPluginChoices]=useState<PluginCommandChoice[]>();
  const [pluginError,setPluginError]=useState('');
  const selection=useRef(0);
@@ -31,7 +33,7 @@ export function SkillCommands({roomId,botId,kind,value,onSelect}:{roomId:string;
   }catch(error){if(current())setPluginError(explain(error));}
  };
  const supportsSkills=kind==='direct'||kind==='assistant';
- const showSkills=active&&supportsSkills&&!spaceCommand(value)&&!pluginOnly;
+ const showSkills=skillInput&&supportsSkills&&!spaceCommand(value)&&!pluginOnly;
  const [data,setData]=useState<any>(),[error,setError]=useState('');
  useEffect(()=>{
   setData(undefined);setError('');
