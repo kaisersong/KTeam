@@ -63,6 +63,12 @@ export class ComposerAttachments {
  }
  async content(value:unknown){const input=record(value);fields(input,['roomId','id']);const roomId=text(input.roomId,'room_id'),id=uploadId(input.id);await this.conversations.scope(roomId);const op=this.entry(id,roomId);if(op.status!=='staged')throw new KTeamError('attachment_not_found',404);const bytes=this.bytes(op);return {ok:true,id:op.uploadId,name:op.file.name,extension:op.file.extension,bytes:bytes.length,data:bytes.toString('base64')};}
  async preview(value:unknown){
+  const actual=await this.publishedFile(value);
+  const mediaType=attachmentImageType(actual.file.extension);
+  if(mediaType)return {ok:true,file:actual.file,preview:null,image:{mediaType,base64:actual.body.toString('base64')}};
+  return this.conversations.previewFile(actual);
+ }
+ async publishedFile(value:unknown){
   const input=record(value);fields(input,['roomId','messageId','fileId']);
   const roomId=text(input.roomId,'room_id'),messageId=text(input.messageId,'message_id'),fileId=text(input.fileId,'file_id');
   await this.conversations.scope(roomId);
@@ -79,8 +85,6 @@ export class ComposerAttachments {
   }else if(ref.envelope.from!==LOCAL_HUMAN||ref.envelope.room_id!==roomId||intentHash(ref.envelope)!==ref.intentHash)throw new KTeamError('attachment_message_changed',409);
   const actual=await this.conversations.file(roomId,fileId);
   if(!equalFile(actual.file,file))throw new KTeamError('attachment_changed',409);
-  const mediaType=attachmentImageType(file.extension);
-  if(mediaType)return {ok:true,file:actual.file,preview:null,image:{mediaType,base64:actual.body.toString('base64')}};
-  return this.conversations.preview(roomId,fileId);
+  return actual;
  }
 }

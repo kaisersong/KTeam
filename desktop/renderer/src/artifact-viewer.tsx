@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {X,ExternalLink,Monitor,Maximize2,Minimize2} from 'lucide-react';
+import {X,ExternalLink,Monitor,Maximize2,Minimize2,Download} from 'lucide-react';
 import {api,explain} from './api';
 import {Markdown} from './Markdown';
 import {ArtifactReviewPanel} from './artifact-review';
@@ -29,6 +29,7 @@ async function readPreview(identity:Identity):Promise<Preview>{
 }
 export function ArtifactViewer({roomId}:{roomId?:string}){
  const [selection,setIdentity]=useState<Identity>(),[preview,setPreview]=useState<{source:Identity;data:Preview}>(),[error,setError]=useState(''),[busy,setBusy]=useState(false),[expanded,setExpanded]=useState(false),[review,setReview]=useState(false),[attempt,setAttempt]=useState(0);
+ const [save,setSave]=useState<{source:Identity;pending?:boolean;error?:string}>();
  const identity=selection?.roomId===roomId?selection:undefined;
  const closeButton=useRef<HTMLButtonElement>(null),trigger=useRef<HTMLElement|null>(null);
  useEffect(()=>{const open=(event:Event)=>{
@@ -45,6 +46,15 @@ export function ArtifactViewer({roomId}:{roomId?:string}){
  if(!identity)return null;
  const close=()=>{setIdentity(undefined);setExpanded(false);if(trigger.current?.isConnected)trigger.current.focus();};
  const generated='toolCallId' in identity?identity:undefined;
+ const download=async()=>{
+  setSave({source:identity,pending:true});
+  const {roomId}=identity;
+  const source='toolCallId' in identity?{roomId,toolCallId:identity.toolCallId}:{roomId,messageId:identity.messageId,fileId:identity.fileId};
+  try{
+   const result=await api.downloadArtifact(source);
+   setSave(result.cancelled?undefined:{source:identity});
+  }catch(e){setSave({source:identity,error:explain(e)});}
+ };
  const external=async(target:'browser'|'system')=>{
   setBusy(true);setError('');
   try{
@@ -57,6 +67,7 @@ export function ArtifactViewer({roomId}:{roomId?:string}){
   <header>
    <strong>{data?.name??('name' in identity?identity.name:'产物预览')}</strong>
    <div>
+    <button className="secondary" disabled={busy||save?.pending||!data} onClick={()=>void download()}><Download size={16} aria-hidden="true"/>{save?.source===identity&&save.pending?'下载中…':'下载'}</button>
     {generated&&data&&['markdown','text'].includes(data.kind)&&<button className="secondary" aria-pressed={review} onClick={()=>setReview(value=>!value)}>{review?'返回预览':'审阅产物'}</button>}
     {generated&&<button className="icon-button" aria-label="浏览器打开" title="浏览器打开" disabled={busy||!data} onClick={()=>void external('browser')}><ExternalLink size={16}/></button>}
     <button className="icon-button" aria-label="系统默认打开" title="系统默认打开" disabled={busy||!data} onClick={()=>void external('system')}><Monitor size={16}/></button>
@@ -65,6 +76,7 @@ export function ArtifactViewer({roomId}:{roomId?:string}){
    </div>
   </header>
   {error&&!review&&<p role="alert" className="flow-error">{error}<button className="text-button" onClick={()=>{setError('');setAttempt(value=>value+1);}}>重新读取</button></p>}
+  {save?.source===identity&&save.error&&<p role="alert" className="flow-error">{save.error}</p>}
   <div className="artifact-viewer-content">
    {review&&generated?<ArtifactReviewPanel key={generated.roomId+':'+generated.toolCallId} roomId={generated.roomId} toolCallId={generated.toolCallId}/>:<>
     {!data&&!error&&<p className="artifact-document" role="status">正在读取产物…</p>}
@@ -75,6 +87,6 @@ export function ArtifactViewer({roomId}:{roomId?:string}){
     {data?.kind==='unsupported'&&<p className="artifact-document">{data.reason==='preview_too_large'?'文件较大，请使用系统默认程序查看。':'此格式可使用系统默认程序打开。'}</p>}
    </>}
   </div>
-  {data&&<footer>{(data.bytes/1024).toFixed(1)} KiB{data.truncated?' · 预览已截断':''}{data.kind==='html'?' · 静态预览':''}</footer>}
+  {data&&<footer>{(data.bytes/1024).toFixed(1)} KiB{data.truncated?' · 预览已截断':''}{data.kind==='html'?' · 静态预览':''}{save?.source===identity&&!save.pending&&!save.error&&<span role="status"> · 已下载</span>}</footer>}
  </aside>;
 }

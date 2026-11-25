@@ -53,6 +53,7 @@ export interface KTeamAPI {
  artifactReview(input:{roomId:string;toolCallId:string}):Promise<ArtifactReviewView>;
  submitArtifactReview(input:{roomId:string;toolCallId:string;expectedSha256:string;action:ArtifactReviewDecision['action'];notes:ArtifactReviewNote[]}):Promise<{ok:true;decision:ArtifactReviewDecision}>;
  previewGeneratedFile(input:{roomId:string;toolCallId:string}):Promise<{ok:true;name:string;bytes:number;kind:string;content:string;mediaType?:string;reason?:string}>;
+ downloadArtifact(input:ArtifactDownloadIdentity):Promise<{ok:true;cancelled:boolean}>;
  openGeneratedFile(input:{roomId:string;toolCallId:string;target?:'browser'|'system'}):Promise<any>;
  conversationAction(input:any):Promise<any>;
  mailConnectors:()=>Promise<any>;controlMailConnector:(input:unknown)=>Promise<any>;
@@ -169,6 +170,7 @@ const reasons:Record<string,string>={
  bot_skills_invalid:'技能选择无效，请刷新后重试',bot_skills_external:'请在原 Agent 中管理技能',followup_changed:'跟进状态已变化，请刷新后重试',followup_already_started:'跟进已经开始，请到原会话暂停工作',followup_not_found:'这条跟进已不存在',followup_scope_denied:'当前已不能访问这条跟进的会话',user_cancelled:'你已取消这条跟进',
 
  generated_file_changed:'文件已被修改或移走，请重新生成后打开',generated_file_not_found:'此会话中没有这份生成结果',generated_file_forbidden:'无法打开这份文件',generated_file_open_failed:'无法打开文件，请检查本机浏览器',
+ artifact_download_forbidden:'当前客户端无法下载产物',artifact_download_busy:'请先完成当前的产物下载',artifact_download_failed:'读取原文件失败，请重试',artifact_save_failed:'无法保存到所选位置，请检查目录权限或选择其他目录',
  memory_scope_forbidden:'此成员不在当前会话中，无法查看记忆',memory_embedding_dimensions:'向量服务返回的维度与配置不一致，请检查模型和维度',
  tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
@@ -203,3 +205,4 @@ Object.assign(reasons,{
  assistant_scope_required:'请先完成小 K 助理设置。',
 });
 export const explain=(error:unknown)=>{const code=error instanceof Error?error.message:String(error);return reasons[code]??code;};
+import type {ArtifactDownloadIdentity} from '../../../src/protocol/artifact-download';
