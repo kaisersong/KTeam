@@ -145,7 +145,11 @@ export class YzjCliAuthService {
     if (expiresAt.success && Number.isFinite(Date.parse(expiresAt.data))) connection.expiresAt = new Date(expiresAt.data).toISOString();
     if (data.tokenStatus === 'valid' || data.tokenStatus === 'needs_refresh' || data.tokenStatus === 'expired') connection.tokenStatus = data.tokenStatus;
     if (connection.orgId && connection.openId) {
-      if (verifiedLogin) this.history.recordLogin(connection.orgId, connection.openId, connection.checkedAt);
+      // A fresh CLI credential for the same organization and user does not
+      // invalidate the daily sources that user already confirmed.
+      if (verifiedLogin && !this.history.get(connection.orgId, connection.openId)) {
+        this.history.recordLogin(connection.orgId, connection.openId, connection.checkedAt);
+      }
       const connectedAt = this.history.get(connection.orgId, connection.openId);
       if (connectedAt) connection.connectedAt = connectedAt;
     }
