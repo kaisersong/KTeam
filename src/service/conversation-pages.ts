@@ -1,11 +1,11 @@
 import {ownerPage} from './room-reads.js';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {attachmentMessageView} from '../protocol/message-attachments.js';
+import {attachmentMessageView,artifactReplyAttachment} from '../protocol/message-attachments.js';
 import {projectMessage as originalMessage} from './collaboration.js';
 export const MESSAGE_PAGE_BYTES=384*1024;
 /** Preserve the original owner IDs/sequence, while duplicate envelope bodies remain on demand. */
-export function projectMessage(message:any):any{const {envelope,...result}=originalMessage(message) as any;return {...result,...(attachmentMessageView(message)?{attachmentView:true}:{})};}
+export function projectMessage(message:any):any{const {envelope,...result}=originalMessage(message) as any;return {...result,...(attachmentMessageView(message)?{attachmentView:true}:{}),...(artifactReplyAttachment(message)?{artifactReplyMessageId:message.sourceRef.artifactReplyMessageId}:{})};}
 /** Adapt the original bounded read downwards on byte overflow; never retry a mutation. */
 export async function conversationPage(upstream:Upstreams,roomId:string,input:{after?:number;before?:number;tail?:boolean;limit?:number}={}){
  const source=await ownerPage(upstream,roomId,input);

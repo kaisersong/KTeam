@@ -1,9 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
-import {createPortal} from 'react-dom';
 import {Paperclip,Image as ImageIcon,RefreshCw} from 'lucide-react';
 import {attachmentMessageView,attachmentImageType,type MessageAttachment} from '../../../src/protocol/message-attachments';
 import {api,explain,type Message} from './api';
-import {Modal} from './components';
+import {showMessageAttachment} from './artifact-viewer';
 function ImageAttachment({message,file,onOpen}:{message:Message;file:MessageAttachment;onOpen:()=>void}){
  const button=useRef<HTMLButtonElement>(null),[visible,setVisible]=useState(false),[image,setImage]=useState<string>(),[error,setError]=useState(''),[attempt,setAttempt]=useState(0);
  useEffect(()=>{const node=button.current;if(!node)return;if(!('IntersectionObserver'in window)){setVisible(true);return;}const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);observer.disconnect();}},{rootMargin:'200px'});observer.observe(node);return()=>observer.disconnect();},[]);
@@ -11,11 +10,13 @@ function ImageAttachment({message,file,onOpen}:{message:Message;file:MessageAtta
  return <div className="message-image-attachment"><button ref={button} className="message-image-button" type="button" aria-label={'查看图片 '+file.name} onClick={onOpen}>{image?<img src={image} alt={file.name} loading="lazy" onError={()=>{setImage(undefined);setError('图片加载失败');}}/>:<span className="message-image-loading"><ImageIcon size={22}/>{error?'图片暂时无法显示':'正在加载图片…'}</span>}</button>{error&&<button className="text-button" type="button" onClick={()=>setAttempt(value=>value+1)}><RefreshCw size={12}/>重新加载</button>}</div>;
 }
 export function MessageAttachments({message}:{message:Message}){
- const payload=attachmentMessageView(message),[preview,setPreview]=useState<any>(),[opening,setOpening]=useState<MessageAttachment>(),[busy,setBusy]=useState(false),[error,setError]=useState(''),generation=useRef(0);
- useEffect(()=>{generation.current++;setPreview(undefined);setOpening(undefined);setError('');setBusy(false);return()=>{generation.current++;};},[message.roomId,message.messageId]);
- if(!payload)return null;
- const close=()=>{generation.current++;setOpening(undefined);setPreview(undefined);setBusy(false);setError('');};
- const read=async(file:MessageAttachment)=>{const current=++generation.current;setOpening(file);setPreview(undefined);setBusy(true);setError('');try{const value=await api.previewMessageAttachment({roomId:message.roomId!,messageId:message.messageId,fileId:file.fileId,variant:'full'});if(current===generation.current)setPreview(value);}catch(e){if(current===generation.current)setError(explain(e));}finally{if(current===generation.current)setBusy(false);}};
- const isImage=!!opening&&!!attachmentImageType(opening.extension);
- return <div className="message-attachments" aria-label="这条消息的附件">{payload.attachments.map(file=>attachmentImageType(file.extension)?<ImageAttachment key={file.fileId} message={message} file={file} onOpen={()=>void read(file)}/>:<button className="message-attachment" type="button" key={file.fileId} disabled={busy} onClick={()=>void read(file)}><Paperclip size={15}/><span>{file.name}<small>{(file.bytes/1024).toFixed(1)} KiB</small></span></button>)}{opening&&createPortal(<Modal title={opening.name} className={isImage?'message-image-viewer':''} onClose={close}>{busy&&<p role="status">正在读取{isImage?'图片':'附件'}…</p>}{error&&<p className="flow-error" role="alert">{error}<button className="text-button" onClick={()=>void read(opening)}>重试</button></p>}{preview&&(isImage?<div className="message-image-canvas">{preview.image?<img src={'data:'+preview.image.mediaType+';base64,'+preview.image.base64} alt={opening.name} onError={()=>setError('图片加载失败，请检查原文件')}/>:<p role="alert">这张图片暂时无法预览。</p>}</div>:<>{preview.preview!==null?<><pre className="raw-markdown">{preview.preview}</pre>{preview.truncated&&<p>预览已截断，完整文件保留在会话资料库。</p>}</>:<p className="form-note">此格式暂不支持直接预览，可使用系统默认程序打开。</p>}<button className="secondary" onClick={()=>void api.openLibrary({roomId:message.roomId,fileId:preview.file.fileId}).catch(e=>setError(explain(e)))}>系统默认打开</button></>)}</Modal>,document.body)}</div>;
+ const payload=attachmentMessageView(message);
+ if(!payload||!message.roomId)return null;
+ const roomId=message.roomId;
+ const open=(file:MessageAttachment)=>showMessageAttachment({roomId,messageId:message.messageId,fileId:file.fileId,name:file.name,extension:file.extension});
+ return <div className="message-attachments" aria-label="这条消息的附件">{payload.attachments.map(file=>attachmentImageType(file.extension)
+  ? <ImageAttachment key={file.fileId} message={message} file={file} onOpen={()=>open(file)}/>
+  : <button className="message-attachment" type="button" key={file.fileId} onClick={()=>open(file)}>
+     <Paperclip size={15}/><span>{file.name}<small>{(file.bytes/1024).toFixed(1)} KiB</small></span>
+    </button>)}</div>;
 }
