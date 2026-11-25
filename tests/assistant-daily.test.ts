@@ -95,6 +95,8 @@ test('scheduled briefs are queued once for fresh nonempty runs and never replay 
  const create=()=>new AssistantDaily(store,sources,()=>roomId,()=>now,async()=>{},async input=>{
   await input.guard();
   assert.equal(input.roomId,roomId);
+  assert.match(input.card?.content??'',/Private fixture subject/);
+  assert.doesNotMatch(input.card?.content??'',/Private fixture body|fixture@example/);
   sent.push(input.body);
   if(deliveryUnknown)throw Error('simulated lost receipt');
   return 'fixture-message';
@@ -265,6 +267,8 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   assert.match(input.body,/验收群/);
   assert.match(input.body,/请确认验收事项/);
   assert.doesNotMatch(input.body,/private (title|content)/);
+  assert.match(input.card?.content??'',/验收群.*请确认验收事项.*可选回复/s);
+  assert.doesNotMatch(input.card?.content??'',/private (title|content)/);
   if(unknown)throw new Error('unknown delivery');
   return 'message-1';
  });
