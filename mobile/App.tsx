@@ -119,7 +119,7 @@ import {
 } from "../src/protocol/mobile-message-cache";
 import { latestMobileInbox } from "../src/protocol/mobile-inbox";
 import { mobileApprovalCard } from "../src/protocol/mobile-approval-card";
-import { approvalChangeText,toolApprovalSummary } from "../src/protocol/tool-approval-summary";
+import { approvalChangeText,mixedInspectionWarning,toolApprovalSummary } from "../src/protocol/tool-approval-summary";
 import { mobileRecoveryNotice } from "../src/protocol/work-recovery-view";
 import { acceptPairing } from "../src/protocol/mobile-pairing";
 import { ResponseBarrier, applyPhoneAuthority } from "../src/protocol/mobile-authority";
@@ -2270,8 +2270,8 @@ function AppBody() {
               {card.risk ? (
                 <Text style={{ color: colors.muted, marginBottom: 8 }}>{card.risk}</Text>
               ) : null}
-              {card.inspection ? (
-                <Text style={{ color: colors.text, marginBottom: 8 }}>{card.inspection}</Text>
+              {card.mixedInspection ? (
+                <Text style={{ color: colors.text, marginBottom: 8 }}>{mixedInspectionWarning}</Text>
               ) : null}
               {card.targets.map((target) => (
                 <Text key={target.label + target.target} selectable style={{ color: colors.text }}>

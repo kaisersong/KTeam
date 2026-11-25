@@ -1,11 +1,9 @@
-import {mixedInspectionWarning} from './tool-approval-summary.js';
-
 /** Presentation of a host approval record. The hash is the host's expectedHash and is not recomputed here. */
 export type MobileApprovalView = {
   toolName: string;
   reason?: string;
   risk?: string;
-  inspection?: string;
+  mixedInspection: boolean;
   targets: { label: string; target: string }[];
   parameters: string;
   directories: string[];
@@ -43,7 +41,7 @@ export function mobileApprovalCard(approval: {
     toolName: typeof approval.toolName === "string" && approval.toolName ? approval.toolName : "操作",
     reason: typeof approval.reason === "string" ? approval.reason : undefined,
     risk: approval.highRisk === true ? "高风险，需要单独确认" : tags.length ? tags.join("、") : undefined,
-    inspection: approval.inspectionRequired === true ? mixedInspectionWarning : undefined,
+    mixedInspection: approval.inspectionRequired === true,
     targets: facts.flatMap((fact) => {
       if (!fact || typeof fact !== "object") return [];
       const target = (fact as { target?: unknown }).target;
