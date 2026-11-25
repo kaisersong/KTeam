@@ -67,7 +67,7 @@ export function ArtifactViewer({roomId}:{roomId?:string}){
   <header>
    <strong>{data?.name??('name' in identity?identity.name:'产物预览')}</strong>
    <div>
-    <button className="secondary" disabled={busy||save?.pending||!data} onClick={()=>void download()}><Download size={16} aria-hidden="true"/>{save?.source===identity&&save.pending?'下载中…':'下载'}</button>
+    <button className="icon-button" aria-label="下载" title="下载" aria-busy={save?.source===identity&&save.pending} disabled={busy||save?.pending||!data} onClick={()=>void download()}><Download size={16} aria-hidden="true"/></button>
     {generated&&data&&['markdown','text'].includes(data.kind)&&<button className="secondary" aria-pressed={review} onClick={()=>setReview(value=>!value)}>{review?'返回预览':'审阅产物'}</button>}
     {generated&&<button className="icon-button" aria-label="浏览器打开" title="浏览器打开" disabled={busy||!data} onClick={()=>void external('browser')}><ExternalLink size={16}/></button>}
     <button className="icon-button" aria-label="系统默认打开" title="系统默认打开" disabled={busy||!data} onClick={()=>void external('system')}><Monitor size={16}/></button>
