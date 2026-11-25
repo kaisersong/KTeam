@@ -7,6 +7,7 @@ import {RoomRoutines} from './room-routines';
 import {UpcomingWork} from './upcoming-work';
 import {ConversationActivity} from './conversation-activity';
 import {WorkRecoveryNotice} from './work-recovery';
+import {WorkInputReceipts} from './work-inputs';
 import {TeamRolesPanel} from './team-roles';
 import {ExecutionFailureDetails} from './execution-failure';
 import {useUserProfile} from './user-profile';
@@ -17,7 +18,7 @@ import {ConversationMembers} from './components';
 import {Markdown} from './Markdown';
 export type WorkspaceTab='details'|'shared'|'library'|'computer'|'search'|'activity'|'inspector'|'routines';
 const tabs:[WorkspaceTab,string][]=[['details','详情'],['shared','共享'],['library','资料库'],['computer','电脑']];
-type Props={fleetPaused?:boolean;workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;onToday:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
+type Props={fleetPaused?:boolean;workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;onToday:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];inputReceipts:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
 export function ConversationWorkspace(p:Props){
  const user=useUserProfile();
  const [memberAction,setMemberAction]=useState<"add"|Bot>();
@@ -50,6 +51,7 @@ export function ConversationWorkspace(p:Props){
  {tab==='details'&&<>
   <UpcomingWork room={room} botIds={bots.map(bot=>bot.id)} roomPaused={Boolean(settings?.paused||settings?.quiet||p.fleetPaused)}
    onManage={()=>setTab('routines')} onToday={p.onToday} onLocate={locate}/>
+  <WorkInputReceipts receipts={p.inputReceipts} onSource={locate}/>
   <ConversationMembers onAddMember={()=>setMemberAction('add')} onRemoveMember={setMemberAction} room={room} bots={bots} jobs={jobs} onBot={p.onBot}/>
  {pins.length>0&&<section className="workspace-section"><h3><Pin size={15}/>置顶消息</h3>{pins.map(m=><button className="pin-preview" key={m.messageId} onClick={()=>p.onMessage(m)}>{messageDisplayText(m).slice(0,160)||(attachmentMessageView(m)?'附件消息':'')}</button>)}{pinKey.split(',').length>50&&<p className="muted">显示最近 50 条置顶消息。</p>}</section>}
 

@@ -9,9 +9,14 @@ function receiptText(item:any){
  }
  return labels[item.status]??'消息已收到，小K会继续核对。';
 }
-/** Progress only. Message disposition is chosen by the assistant, never by a composer mode. */
-export function WorkInputControls({receipts,onSource}:{receipts:any[];onSource:(id:string)=>void}){
+export function WorkInputReceipts({receipts,onSource}:{receipts:any[];onSource:(id:string)=>void}){
  const visible=visibleInputReceipts(receipts);
  if(!visible.length)return null;
- return <section className="work-input-controls" aria-label="消息处理进展"><details className="work-input-receipts"><summary>消息处理进展</summary><ol>{visible.slice(0,5).map(item=><li key={item.id}><span>{receiptText(item)}</span>{item.messageId&&<button type="button" className="text-button" onClick={()=>onSource(item.messageId)}>查看消息</button>}</li>)}</ol></details></section>;
+ return <section className="workspace-section work-input-receipts" aria-label="消息处理进展">
+  <h3>消息处理进展</h3>
+  <ol>{visible.slice(0,5).map(item=><li key={item.id}>
+   <span>{receiptText(item)}</span>
+   {item.messageId&&<button type="button" className="text-button" onClick={()=>onSource(item.messageId)}>查看消息</button>}
+  </li>)}</ol>
+ </section>;
 }
