@@ -42,7 +42,7 @@ test("a mixed inspection shows the full-command warning and allows one bound app
     display: "",
   });
   assert.deepEqual(card.decisions, ["deny", "allow_once"]);
-  assert.match(card.inspection ?? "", /允许本次将执行完整命令/);
+  assert.equal(card.mixedInspection, true);
   assert.equal(card.risk, "sensitive-access");
   assert.equal(card.hash, "bound-hash");
   assert.equal(card.parameters, "");
