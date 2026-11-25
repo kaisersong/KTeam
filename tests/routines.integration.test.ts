@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {resolve,join} from 'node:path';
-import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
+import {createServer} from 'node:http';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
@@ -13,9 +14,58 @@ import {ToolApprovals} from '../src/service/tool-approvals.js';
 import {initConfig} from '../src/service/config.js';
 import {startHost} from '../src/service/server.js';
 import {hostRequest} from '../src/service/client.js';
+import {sharedRuntime,modelIdentity,nativeTurn} from '../src/runtime/native.js';
 const models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture',fingerprint:'fixture'})};
 async function setup(){const f=await realUpstreams(),config=join(f.root,'config');mkdirSync(config);const previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=config;const dataRoot=join(f.root,'host-data');mkdirSync(dataRoot);const store=new TeamStore(dataRoot),coordinator=new TeamCoordinator(f.upstream,store,1,models),member=await coordinator.createMember({name:'周报负责人',modelId:'fixture',requestId:'routine-bot'},{requestSource:'user'});return {...f,store,coordinator,member,async end(){store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}};}
 const input=(f:any,now:number,requestId='routine-one')=>({roomId:f.member.roomId,botId:f.member.bot.id,name:'核对材料形成周报',prompt:'阅读本会话资料并生成周报，结果回到本群。',schedule:{kind:'interval',startAt:now+60000,minutes:15},timeZone:'Asia/Shanghai',maxRuns:3,endAt:null,enabled:true,expectedRevision:0,requestId,overlap:'skip'});
+test('read-only trial summarizes aggregate state without exposing the routine prompt or executing a model-requested write',async()=>{
+ process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
+ const f=await setup(),file=join(f.root,'should-not-exist.txt'),approvals=new ToolApprovals(f.store);
+ const requests:any[]=[];
+ const server=createServer(async(req,res)=>{
+  let body='';for await(const chunk of req)body+=chunk;
+  requests.push(JSON.parse(body));
+  const tool=requests.length===2;
+  const delta=tool?{tool_calls:[{index:0,id:'ignored-write',type:'function',function:{name:'write',arguments:JSON.stringify({file_path:file,content:'should not write'})}}]}:
+   {role:'assistant',content:'本会话的工作状态已汇总。'};
+  res.writeHead(200,{'content-type':'text/event-stream'});
+  res.end('data: '+JSON.stringify({id:'fixture',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta,finish_reason:tool?'tool_calls':'stop'}]})+'\n\ndata: [DONE]\n\n');
+ });
+ let automation:TeamAutomation|undefined;
+ try{
+  await new Promise<void>(done=>server.listen(0,'127.0.0.1',done));
+  const runtime=await sharedRuntime(),config=await runtime.loadConfig();
+  config.providers.openai={protocol:'openai_legacy',apiKey:'fixture-not-a-secret',baseUrl:'http://127.0.0.1:'+(server.address() as any).port+'/v1'};
+  config.models.fixture={provider:'openai',model:'fixture'};config.defaultModelId='fixture';
+  writeFileSync(join(process.env.KTEAM_MODEL_CONFIG_DIR!,'config.json'),JSON.stringify(config));
+  const coordinator=new TeamCoordinator(f.upstream,f.store,1,{catalog:models.catalog,identity:modelIdentity});
+  const member=await coordinator.createMember({name:'只读试运行成员',modelId:'fixture',requestId:'readonly-routine-member'},{requestSource:'user'});
+  automation=new TeamAutomation(f.upstream,f.store,1,nativeTurn,coordinator,undefined,undefined,approvals);
+  const {routine}=await automation.routines.save({...input({member},Date.now()),enabled:false,prompt:'ROUTINE_PRIVATE_PROMPT'});
+  const request={roomId:member.roomId,id:routine.id,expectedRevision:routine.revision,mode:'read-only'};
+  const first=await automation.routines.trial({...request,requestId:'read-only-first'});
+  await assert.rejects(automation.routines.trial({...request,mode:undefined,requestId:'read-only-first'}),/routine_request_conflict/);
+  await automation.tick();
+  assert.equal(f.store.job(first.jobId).state,'delivered');
+  const second=await automation.routines.trial({...request,requestId:'read-only-second'});
+  await automation.tick();
+  assert.equal(f.store.job(second.jobId).reason,'routine_readonly_tool_refused');
+  assert.equal(requests.length,2);
+  for(const request of requests){
+   assert.ok(!request.tools?.length);
+   assert.doesNotMatch(JSON.stringify(request),/ROUTINE_PRIVATE_PROMPT/);
+  }
+  assert.equal(existsSync(file),false);
+  assert.equal(approvals.list().length,0);
+  assert.equal((await automation.routines.list(member.roomId)).items[0]!.runCount,0);
+ }finally{
+  approvals.close();
+  await automation?.close();
+  server.closeAllConnections();
+  await new Promise<void>(done=>server.close(()=>done()));
+  await f.end();
+ }
+});
 test('named routines persist definitions, deduplicate saves and due keys, and never catch up missed runs',async()=>{
  const f=await setup();let now=Date.now(),changed=0;const routines=new Routines(f.upstream,f.store,()=>now,()=>changed++);
  try{const request=input(f,now),saved=await routines.save(request),row=saved.routine;

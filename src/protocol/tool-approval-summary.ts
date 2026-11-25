@@ -1,5 +1,21 @@
 /** Presentation only. Never used to grant permission or classify a command as safe. */
 export interface ApprovalSummary {summary:string;target?:string}
+export function approvalChangeText(value:unknown):string|undefined {
+ if(!value||typeof value!=='object')return;
+ const {kind,beforeBytes,afterBytes}=value as Record<string,unknown>;
+ if(kind==='mail'){
+  const {account,recipients}=value as Record<string,unknown>;
+  if(typeof account==='string'&&account.length<=254&&Number.isInteger(recipients)&&Number(recipients)>0&&Number(recipients)<=20)
+   return '从 '+account+' 向 '+recipients+' 位收件人发送新邮件';
+  return;
+ }
+ const bytes=(amount:unknown)=>typeof amount==='string'&&/^\d{1,20}$/.test(amount)?amount+' 字节':undefined;
+ const before=bytes(beforeBytes),after=bytes(afterBytes);
+ if(!after)return;
+ if(kind==='create')return '新建文件，写入 '+after;
+ if(kind==='replace'&&before)return '替换现有文件，'+before+' → '+after;
+ if(kind==='edit'&&before)return '替换文件中的一处内容，'+before+' → '+after;
+}
 const short=(value:string)=>value.length>100?value.slice(0,97)+'…':value;
 const name=(value:unknown)=>typeof value==='string'?short(value.replace(/[\\/]+$/,'').split(/[\\/]/).pop()||value):undefined;
 function words(value:string):string[]|undefined {

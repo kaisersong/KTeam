@@ -38,7 +38,7 @@ export class Routines {
   }
   const run=source?.trigger==='routine'?this.store.operation(source.originId):null;
   const expectedOrigin=source?.routine?.trial?run?.id:'routine-run:'+source?.routine?.id+':'+source?.routine?.scheduledAt;
-  if(!run||!!run.trial!==!!source.routine?.trial||run.outcome!=='enqueued'||run.roomId!==job.roomId||run.jobId!==source.id||run.routineId!==source.routine?.id||run.scheduledAt!==source.routine.scheduledAt||source.originId!==expectedOrigin)throw new KTeamError('routine_scope_changed',409);
+  if(!run||!!run.trial!==!!source.routine?.trial||run.outcome!=='enqueued'||run.roomId!==job.roomId||run.jobId!==source.id||run.routineId!==source.routine?.id||run.scheduledAt!==source.routine.scheduledAt||run.mode!==source.routine?.mode||source.originId!==expectedOrigin)throw new KTeamError('routine_scope_changed',409);
   await this.guard(source);return structuredClone(source.routine);
  }
  async list(roomId:string){
@@ -75,7 +75,9 @@ export class Routines {
  }
  async trial(value:unknown,assertCurrent=()=>{}){
   const input=record(value);
-  fields(input,['roomId','id','expectedRevision','requestId']);
+  fields(input,['roomId','id','expectedRevision','requestId','mode']);
+  if(input.mode!==undefined&&input.mode!=='read-only')throw new KTeamError('routine_invalid');
+  const mode=input.mode==='read-only'?'read-only':undefined;
   const roomId=text(input.roomId,'room_id'),id=text(input.id,'routine_id'),requestId=text(input.requestId,'request_id',128);
   if(!/^routine:[a-f0-9]{32}$/.test(id))throw new KTeamError('routine_not_found',404);
   const snapshot=this.store.operation(id);
@@ -85,7 +87,7 @@ export class Routines {
   return this.store.transaction(()=>{
    const row=this.store.operation(id),prior=this.store.operation(runId);
    if(prior){
-    if(prior.routineRevision!==input.expectedRevision)throw new KTeamError('routine_request_conflict',409);
+    if(prior.routineRevision!==input.expectedRevision||prior.mode!==mode)throw new KTeamError('routine_request_conflict',409);
     return {ok:true,jobId:prior.jobId,reused:true};
    }
    if(row?.revision!==input.expectedRevision||row.revision!==snapshot.revision)throw new KTeamError('routine_changed',409);
@@ -98,8 +100,8 @@ export class Routines {
     if((reviewStates.includes(job.state)||job.needsReview)&&!(row.reviewedJobIds??[]).includes(job.id))throw new KTeamError('routine_result_needs_review',409);
    }
    const scheduledAt=this.now(),jobId='job-'+hash(runId).slice(0,32);
-   this.store.enqueueFollowup({id:jobId,roomId,originId:runId,trigger:'routine',routine:{id,botId:row.botId,name:row.name,prompt:row.prompt,scheduledAt,configVersion:row.configVersion,trial:true}});
-   this.store.saveOperation({id:runId,roomId,routineId:id,routineRevision:row.revision,scheduledAt,jobId,outcome:'enqueued',trial:true},0);
+   this.store.enqueueFollowup({id:jobId,roomId,originId:runId,trigger:'routine',routine:{id,botId:row.botId,name:row.name,prompt:row.prompt,scheduledAt,configVersion:row.configVersion,trial:true,mode}});
+   this.store.saveOperation({id:runId,roomId,routineId:id,routineRevision:row.revision,scheduledAt,jobId,outcome:'enqueued',trial:true,mode},0);
    return {ok:true,jobId,reused:false};
   });
  }

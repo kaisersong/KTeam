@@ -8,3 +8,11 @@ test('real host and original model adapter preserve HTTP auth failure details ac
 test('unsupported durable tool profiles have an actionable capability diagnosis, including preserved old failures',()=>{assert.equal(executionFailureCode(new Error('tool_batch_profile_unavailable')),'model_tool_approval_unavailable');const source={state:'blocked',failure:{code:'execution_failed',phase:'preparing',message:'tool_batch_profile_unavailable',model:'fixture-model',evidence:'captured'}};const saved=JSON.stringify(source);assert.equal(executionFailure(source)?.code,'model_tool_approval_unavailable');assert.equal(JSON.stringify(source),saved);});
 
 test('strict model protocol rejection has a clear diagnosis without rewriting earlier execution records',()=>{const source={state:'blocked',failure:{code:'model_execution_failed',phase:'model',message:'KIMI_REASONING_ADMISSION_REQUIRED',model:'k3-256k',evidence:'captured'}},before=JSON.stringify(source);assert.equal(executionFailureCode(Error('KIMI_REASONING_ADMISSION_REQUIRED')),'model_response_protocol_invalid');assert.equal(executionFailure(source)?.code,'model_response_protocol_invalid');assert.equal(JSON.stringify(source),before);assert.equal(currentModelFailure('fixture',[{...source,roomId:'fixture',originId:'source'}])?.failure.code,'model_response_protocol_invalid');});
+import {executionDiagnostic} from '../src/protocol/execution-failure.js';
+test('diagnostic export contains only approved fields, including when legacy error fields contain sensitive text',()=>{
+ const sentinel='PRIVATE_58_nobody@example.invalid';
+ const result=executionDiagnostic({state:'blocked',harness:{permissionMode:sentinel,cwd:'/private/'+sentinel},partialText:sentinel,
+  failure:{phase:sentinel,at:sentinel,code:sentinel,evidence:'captured',message:sentinel,model:sentinel,exception:sentinel,toolName:sentinel,causeCode:sentinel}});
+ assert.deepEqual(result,{version:1,phase:'unknown',code:'unclassified',mode:'unknown',evidence:'captured',next:'先核对原工作的回执和执行状态'});
+ assert.doesNotMatch(JSON.stringify(result),new RegExp(sentinel));
+});

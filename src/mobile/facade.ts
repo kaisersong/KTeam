@@ -45,8 +45,12 @@ export class MobileFacade {
       if (!["allow_once", "deny"].includes(String(payload.decision)))
         throw new KTeamError("mobile_approval_scope_forbidden", 403);
       const approvalId = text(payload.id, "approval_id");
-      if (operationId !== mobileApprovalOperationId(approvalId))
+      if (!approvalId.startsWith("tool-approval:") || operationId !== mobileApprovalOperationId(approvalId))
         throw new KTeamError("mobile_operation_invalid");
+      const approval = this.store.operation(approvalId);
+      if (!approval || approval.hash !== payload.expectedHash)
+        throw new KTeamError("tool_approval_changed", 409);
+      await this.approvalScope(p, approval);
     }
     const id = "mobile-operation:" + p.id + ":" + operationId,
       digest = createHash("sha256")
@@ -57,6 +61,7 @@ export class MobileFacade {
       if (prior.digest !== digest)
         throw new KTeamError("mobile_operation_conflict", 409);
       if (prior.status === "completed") {
+        if (prior.method === "approvals.decide") return (await this.approvalReceipt(p, prior))?.result ?? prior.result;
         if(scopedWorkWrites.has(prior.method))await this.deps.conversations.owner(text(prior.roomId,"room_id"));
         if(dailyWorkWrites.has(prior.method))return this.dailyReceipt(p,prior);
         this.assert(p);
@@ -65,15 +70,8 @@ export class MobileFacade {
       if (prior.status === "rejected") throw new KTeamError(prior.code, 409);
       throw new KTeamError("mobile_operation_unknown", 409);
     }
-    if (method === "approvals.decide") {
-      const approval = this.store.operation(String(payload.id));
-      if (
-        !approval ||
-        approval.status !== "pending" ||
-        approval.hash !== payload.expectedHash
-      )
-        throw new KTeamError("tool_approval_changed", 409);
-    }
+    if (method === "approvals.decide" && this.store.operation(String(payload.id))?.status !== "pending")
+      throw new KTeamError("tool_approval_changed", 409);
     this.store.saveOperation(
       {
         id,
@@ -126,6 +124,37 @@ export class MobileFacade {
       );
       throw error;
     }
+  }
+  private async approvalScope(p: MobilePrincipal, approval: { roomId: string; displayRoomId?: string }) {
+    await this.deps.conversations.scope(approval.roomId);
+    if (approval.displayRoomId && approval.displayRoomId !== approval.roomId)
+      await this.deps.conversations.scope(approval.displayRoomId);
+    this.assert(p, true);
+  }
+  private async approvalReceipt(p: MobilePrincipal, operation: any) {
+    const original = this.store.operation(operation.approvalId);
+    if (!original || original.hash !== operation.expectedHash)
+      throw new KTeamError("tool_approval_changed", 409);
+    await this.approvalScope(p, original);
+    const approval = this.store.operation(operation.approvalId);
+    if (approval?.hash !== operation.expectedHash) return undefined;
+    const decision = approval.decision;
+    if (!Number.isFinite(approval.decidedAt) ||
+      !["allow_once", "allow_always", "allow_directory", "allow_directory_routine", "deny"].includes(decision)) {
+      if (approval.status === "cancelled" || (approval.status === "pending" && approval.expiresAt <= Date.now()))
+        return {ok:true,status:"rejected",code:"tool_approval_expired",result:undefined};
+      return undefined;
+    }
+    return {
+      ok: true,
+      status: "completed",
+      result: {
+        ok: true,
+        status: decision === "deny" ? "denied" : "allowed",
+        decision,
+        matchesRequest: decision === operation.decision,
+      },
+    };
   }
   private async dailyScope(p:MobilePrincipal,room:unknown){
     const d=this.deps;
@@ -262,7 +291,7 @@ export class MobileFacade {
       case "work.list": {
         fields(i, ["roomId","before"]);
         const result=await d.conversationUpdates.records(i);
-        return {ok:true,nextBefore:result.nextBefore,jobs:result.jobs.filter((job:any)=>job.groupPlanAvailable||job.workEvidenceAvailable||job.peerReviewVersion)
+        return {ok:true,nextBefore:result.nextBefore,jobs:result.jobs.filter((job:any)=>job.groupPlanAvailable||job.workEvidenceAvailable||job.peerReviewVersion||job.dispatchEvidence||["blocked","stopped","unknown"].includes(job.state))
           .map(({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}:any)=>({id,createdAt,state,groupPlanAvailable,workEvidenceAvailable,peerReviewVersion}))};
       }
       case "work.stageEvidence":
@@ -274,6 +303,7 @@ export class MobileFacade {
         return {ok:true,viewRevision,work:{
           groupPlan:job.groupPlan,workEvidence:job.workEvidence,workEvidenceLimited:job.workEvidenceLimited,
           peerReviewVersion:job.peerReviewVersion,peerReviewStale:job.peerReviewStale,
+          diagnostic:job.diagnostic,dispatchEvidence:job.dispatchEvidence,
         }};
       }
       case "routines.list": {
@@ -328,6 +358,12 @@ export class MobileFacade {
       }
       case "attachments.preview":
         return d.composerAttachments.preview(i);
+      case "connectors.mailStatus": {
+        fields(i, ["roomId","botId"]);
+        return new BotCapabilities(d.upstream,this.store).mail(
+          text(i.botId,"bot_id"),text(i.roomId,"room_id"),()=>d.mailConnectors.capabilityAccounts(),
+        );
+      }
       case "skills.list": {
         fields(i, ["roomId", "botId"]);
         const result = await new BotCapabilities(d.upstream, this.store).view(
@@ -344,6 +380,11 @@ export class MobileFacade {
             ":" +
             text(i.operationId, "operation_id"),
         );
+        if (op?.method === "approvals.decide") {
+          this.assert(p, true);
+          const receipt = await this.approvalReceipt(p, op);
+          if (receipt) return receipt;
+        }
         if (
           op &&
           ["executing", "unknown"].includes(op.status) &&
@@ -466,7 +507,7 @@ export class MobileFacade {
         fields(i, ["id", "expectedHash", "decision"]);
         if (!["allow_once", "deny"].includes(i.decision))
           throw new KTeamError("mobile_approval_scope_forbidden", 403);
-        const result = await d.approvals.decide(i, () => this.assert(p, true));
+        const result = await d.approvals.decide(i, () => this.assert(p, true), {id:p.id,epoch:p.epoch});
         void d.automation.tick();
         return result;
       }

@@ -7,6 +7,7 @@ import { ImapMailReader,type MailReader } from './mail-imap-reader.js';
 import { OAuthMailReader } from './mail-oauth-reader.js';
 import { MailSmtpSender,type MailSender } from './mail-smtp-sender.js';
 import { MailOAuthFlow } from './mail-oauth-flow.js';
+import type {MailCapabilityAccount} from '../../protocol/mail-capability.js';
 export function mailError(error:unknown):Error {
  const message=error instanceof Error?error.message:'';
  if((MAIL_ERROR_CODES as readonly string[]).includes(message))return Error(message);
@@ -30,6 +31,19 @@ export class MailConnectorService {
  }
  private invalidate(id:string):void{this.generation.set(id,(this.generation.get(id)??0)+1);this.reader.close(id);this.sender.close(id);}
  list():MailAccountDto[]{return this.deps.store.list().map(a=>({...a,status:'saved',...this.status.get(a.id)}));}
+ capabilityAccounts():MailCapabilityAccount[]{
+  return this.list().flatMap(view=>{
+   const account=this.deps.store.get(view.id);
+   if(!account||account.revision!==view.revision)return [];
+   return [{email:view.email,connection:view.status,send:!account.allowSend?'disabled':
+    account.auth.kind==='oauth'&&!account.auth.sendAuthorized?'reauthorize':'approval-required'}];
+  });
+ }
+ sendAuthority(id:string){
+  const account=this.deps.store.get(id);
+  if(!account||!account.allowSend||account.auth.kind==='oauth'&&!account.auth.sendAuthorized)return;
+  return {revision:account.revision,verifiedAt:account.lastVerifiedAt,email:account.email};
+ }
  private account(id:string,source:MailRequestSource):MailAccountRecord{
   if(!['user','agent','scheduler'].includes(source)||this.disposed)throw Error('mail_assistant_access_denied');const a=this.deps.store.get(id);if(!a)throw Error('mail_account_not_found');return a;
  }

@@ -25,7 +25,7 @@ export class BuiltinAgent {
     const matches=stored?.fingerprint===context.fingerprint;
     const state=matches?(stored.state==='running'&&!this.tasks.has(context.modelId)?'interrupted':stored.state==='ready'&&Date.now()-stored.verifiedAt>300000?'configured':stored.state):'configured';
     return {id:'builtin',label:'KTeam 内置',source:'kteam-runtime',...context,state,
-      ...(matches&&state==='failed'?{reason:stored.reason}:{}),...(state==='interrupted'?{reason:'native_probe_interrupted'}:{})};
+      ...(state==='ready'?{verifiedAt:stored.verifiedAt}:{}),...(matches&&state==='failed'?{reason:stored.reason}:{}),...(state==='interrupted'?{reason:'native_probe_interrupted'}:{})};
   }
   status(modelId?:string){const promise=this.statusBody(modelId);this.entering.add(promise);return promise.finally(()=>this.entering.delete(promise));}
   private async statusBody(modelId?:string){

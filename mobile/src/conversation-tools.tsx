@@ -1,4 +1,6 @@
 import {stageStatus} from '../../src/protocol/conversation-work';
+import {dispatchEvidenceText,type WorkDispatchEvidence} from '../../src/protocol/work-dispatch-evidence';
+import {mailCapabilityDescription,mailConnectionText,mailSendAccessText,type MailCapability} from '../../src/protocol/mail-capability';
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import {Alert,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
 import {activityStateLabels} from "../../src/protocol/activity-records";
@@ -78,11 +80,37 @@ function Feedback({colors,state}:{colors:Colors;state:Failure}){
 }
 
 type WorkDetail={work:{
+ diagnostic?:{phase:string;code:string;mode:string;evidence:string;next:string};
+ dispatchEvidence?:WorkDispatchEvidence;
  groupPlan?:{ownerId:string;stages:{dependsOn?:number;doneWhen:string;witness?:string;review?:{decision:string;note?:string;revision:number};requests:{botId:string;state:string;deliverable:string;evidence?:{messageId:string}}[]}[]};
  workEvidence?:({id:string;kind:"file";path:string;operation:"write"|"edit";beforeSha256?:string|null;afterSha256?:string}|{id:string;kind:"command";exitCode:number|null})[];
  workEvidenceLimited?:boolean;peerReviewVersion?:string;peerReviewStale?:boolean;
 }};
-export function WorkListPanel({colors,call,roomId,onOpen}:ToolProps&{roomId:string;onOpen:(id:string)=>void}){
+export function MailCapabilityPanel({colors,call,roomId,botId}:ToolProps&{roomId:string;botId:string}){
+ const [state,setState]=useState<{view?:MailCapability;error?:string}>(),[attempt,retry]=useState(0);
+ useEffect(()=>{
+  let current=true;
+  setState(undefined);
+  void call('connectors.mailStatus',{roomId,botId})
+   .then(view=>{if(current)setState({view});})
+   .catch(error=>{if(current)setState({error:message(error)});});
+  return ()=>{current=false;};
+ },[call,roomId,botId,attempt]);
+ return <ScrollView contentContainerStyle={styles.page}>
+  <ToolButton colors={colors} onPress={()=>retry(attempt+1)}>刷新邮箱状态</ToolButton>
+  {!state&&<Body colors={colors}>正在核实邮箱状态…</Body>}
+  <Feedback colors={colors} state={{message:state?.error}}/>
+  {state?.view&&<Card colors={colors}>
+   <Body colors={colors}>{mailCapabilityDescription(state.view)}</Body>
+   {state.view.accounts.map((account,index)=><Body key={index} colors={colors}>
+    {account.email} · {mailConnectionText[account.connection]} · {mailSendAccessText[account.send]}
+   </Body>)}
+   {state.view.host==='available'&&state.view.member==='allowed'&&<Body colors={colors}>修复入口在配对电脑的「设置 → 连接器 → 邮箱」。</Body>}
+  </Card>}
+ </ScrollView>;
+}
+
+export function WorkListPanel({colors,call,roomId,onOpen,onMail}:ToolProps&{roomId:string;onOpen:(id:string)=>void;onMail?:()=>void}){
  type Row={id:string;createdAt:string;state:string;groupPlanAvailable:boolean;workEvidenceAvailable:boolean;peerReviewVersion?:string};
  const [rows,setRows]=useState<Row[]>([]),[cursor,setCursor]=useState<number>(),[loaded,setLoaded]=useState(false),[initialError,setInitialError]=useState("");
  const pending=useMutation();
@@ -96,10 +124,11 @@ export function WorkListPanel({colors,call,roomId,onOpen}:ToolProps&{roomId:stri
  return <ScrollView contentContainerStyle={styles.page}>
   <Feedback colors={colors} state={{message:pending.error||initialError}}/>
   <ToolButton colors={colors} disabled={pending.busy} onPress={()=>void pending.run(()=>load())}>刷新工作记录</ToolButton>
+  {onMail&&<ToolButton colors={colors} onPress={onMail}>邮箱能力</ToolButton>}
   {!rows.length&&!initialError&&!pending.error&&<Body colors={colors}>{loaded?"这一页暂无计划或变更记录。":"正在读取工作记录…"}</Body>}
   {rows.map(row=><Card colors={colors} key={row.id}>
    <Body colors={colors}>{row.createdAt?formatTime(Date.parse(row.createdAt)):"原工作"} · {label(row.state)}</Body>
-   <ToolButton colors={colors} onPress={()=>onOpen(row.id)}>{row.groupPlanAvailable?"查看群计划":row.peerReviewVersion?"查看复核记录":"查看本轮变更"}</ToolButton>
+   <ToolButton colors={colors} onPress={()=>onOpen(row.id)}>{row.groupPlanAvailable?"查看群计划":row.peerReviewVersion?"查看复核记录":row.workEvidenceAvailable?"查看本轮变更":"查看工作详情"}</ToolButton>
   </Card>)}
   {cursor!==undefined&&<ToolButton colors={colors} disabled={pending.busy} onPress={()=>void pending.run(()=>load(cursor))}>读取更早工作</ToolButton>}
  </ScrollView>;
@@ -107,6 +136,7 @@ export function WorkListPanel({colors,call,roomId,onOpen}:ToolProps&{roomId:stri
 export function WorkDetailPanel({colors,call,mutate,disabled,roomId,jobId,bots}:ToolProps&{roomId:string;jobId:string;bots:Person[]}){
  const read=useRead<WorkDetail>(call,"work.detail",roomId,jobId);
  const work=read.data?.work;
+ const reason=dispatchEvidenceText(work?.dispatchEvidence);
  const [detail,setDetail]=useState(''),[reviewError,setReviewError]=useState(''),[busy,setBusy]=useState(false),[notes,setNotes]=useState<Record<number,string>>({});
  async function run(action:()=>Promise<void>){setReviewError('');setBusy(true);try{await action();}catch(error){setReviewError(message(error));}finally{setBusy(false);}}
  function review(stage:NonNullable<WorkDetail["work"]["groupPlan"]>["stages"][number],index:number,decision:'pass'|'rework'){
@@ -118,6 +148,12 @@ export function WorkDetailPanel({colors,call,mutate,disabled,roomId,jobId,bots}:
   <Feedback colors={colors} state={{message:read.error}}/>
   {!work&&!read.error&&<Body colors={colors}>正在读取原工作…</Body>}
   {!!reviewError&&<Feedback colors={colors} state={{message:reviewError}}/>}
+  {reason&&<Card colors={colors}><Body colors={colors}>{reason}</Body></Card>}
+  {work?.diagnostic&&<Card colors={colors}>
+   <Text style={[styles.title,{color:colors.text}]}>执行诊断</Text>
+   <Body colors={colors}>{work.diagnostic.next}。</Body>
+   <Text selectable style={{color:colors.muted}}>{work.diagnostic.phase} · {work.diagnostic.code} · {work.diagnostic.mode==='read-only'?'只读':work.diagnostic.mode==='host-policy'?'主机工具规则':'权限模式未验证'}</Text>
+  </Card>}
   {!!detail&&<Card colors={colors}><ToolButton colors={colors} onPress={()=>setDetail('')}>关闭证据</ToolButton><Text selectable style={{color:colors.text}}>{detail}</Text></Card>}
   {work?.groupPlan&&<Card colors={colors}>
    <Text style={[styles.title,{color:colors.text}]}>群计划 · {name(work.groupPlan.ownerId)} 负责</Text>
@@ -271,6 +307,10 @@ export function RoutinesPanel({colors,call,mutate,disabled,roomId,onResult}:Tool
    <View style={styles.actions}>
     <ToolButton colors={colors} disabled={stop||row.needsReview||row.runs.some(run=>["queued","held","routing","running","waiting","stopping","paused","enqueued"].includes(run.state))}
      onPress={()=>void write.run(async()=>{await done("routines.trial",{id:row.id,expectedRevision:row.revision});setTrial(row.id);setHistory(row.id);})}>试运行一次</ToolButton>
+    <ToolButton colors={colors} disabled={stop||row.needsReview} onPress={()=>void write.run(async()=>{
+     await done("routines.trial",{id:row.id,expectedRevision:row.revision,mode:"read-only"});
+     setTrial(row.id);setHistory(row.id);
+    })}>只读试运行（汇总本会话状态）</ToolButton>
     <ToolButton colors={colors} disabled={stop} onPress={()=>setDraft(toDraft(row,candidates[0]?.id??""))}>{row.schedule.kind==="once"&&row.runCount>0?"再次安排":"编辑"}</ToolButton>
     {row.enabled&&row.nextAt!==null&&<ToolButton colors={colors} disabled={stop} onPress={()=>void write.run(()=>done("routines.pause",{id:row.id,expectedRevision:row.revision}))}>暂停</ToolButton>}
     {!row.enabled&&!(row.schedule.kind==="once"&&row.runCount>0)&&<ToolButton colors={colors} disabled={stop} onPress={()=>setDraft({...toDraft(row,""),enabled:true})}>重新安排并启用</ToolButton>}

@@ -8,6 +8,8 @@ import {scopedCatalog,skillSnapshot,skillSource,parseSkillPins} from '../runtime
 import type {SkillScope} from '../runtime/skill-library.js';
 import {appPreferences} from './app-preferences.js';
 import {profile,parseDisabledSkills} from './bot-profile.js';
+import {parseToolScope} from '../runtime/tool-scope.js';
+import type {MailCapability,MailCapabilityAccount} from '../protocol/mail-capability.js';
 
 export function effectiveDisabledSkills(global:string[],bot:any):string[]{
  return [...new Set([...global,...(profile(bot).disabledSkills??[])])];
@@ -39,11 +41,24 @@ export class BotCapabilities {
   return {scope:{root:this.store.root,botId,roomId:selected} as SkillScope,room:snapshot.room as any};
  }
  async catalog(botId:string,roomId?:string){const bot=await this.bot(botId),selected=await this.scope(botId,roomId),core=await sharedRuntime(),issues:any[]=[],catalog=scopedCatalog(core,harnessWorkspace(profile(bot).workspace),selected.scope,issue=>issues.push(issue));await catalog.reload();if(catalog.list().length>500)throw new KTeamError('skill_catalog_too_large',409);return {...selected,bot,core,catalog,issues};}
- async view(botId:string,roomId?:string):Promise<any>{
+ async mail(botId:string,roomId:string|undefined,accounts:()=>Promise<MailCapabilityAccount[]>):Promise<MailCapability>{
+  const before=await this.scope(botId,roomId),bot=await this.bot(botId),binding=this.store.binding(botId);
+  if(binding?.kind!=='xiaok-hosted')return {host:'external',member:'unknown',accounts:[]};
+  const member=parseToolScope(profile(bot).toolScope).network==='off'?'denied':'allowed';
+  if(member==='denied')return {host:'available',member,accounts:[]};
+  const listed=await accounts().catch(()=>undefined);
+  const [after,current]=await Promise.all([this.scope(botId,before.scope.roomId),this.bot(botId)]);
+  if(after.room.revision!==before.room.revision||profile(current).revision!==profile(bot).revision||
+   this.store.binding(botId)?.revision!==binding.revision||this.store.state('source-changing:'+botId))
+   throw new KTeamError('team_scope_changed',409);
+  return {host:listed?'available':'unknown',member,accounts:listed??[]};
+ }
+ async view(botId:string,roomId?:string,mailAccounts?:()=>Promise<MailCapabilityAccount[]>):Promise<any>{
   const bot=await this.bot(botId),binding=this.store.binding(botId),supported=binding?.kind==='xiaok-hosted';
-  if(!supported)return {ok:true,supported:false,reason:'外接 Agent 使用自己的技能环境，请在原 Agent 中管理。',profileRevision:profile(bot).revision,skills:[]};
+  const mail=mailAccounts&&supported?await this.mail(botId,roomId,mailAccounts):undefined;
+  if(!supported)return {ok:true,supported:false,reason:'外接 Agent 使用自己的技能环境，请在原 Agent 中管理。',profileRevision:profile(bot).revision,skills:[],mail};
   const {scope,room,catalog,issues}=await this.catalog(botId,roomId),pins=parseSkillPins(profile(bot).skillPins).filter(pin=>pin.roomId===scope.roomId),global=new Set(appPreferences(this.store).disabledSkills),local=new Set(profile(bot).disabledSkills??[]),budget={remaining:64*1024*1024};
-  return {ok:true,supported:true,roomId:scope.roomId,roomTitle:room.title,roomRevision:room.revision,profileRevision:profile(bot).revision,disabledSkills:[...local],coverage:issues.length?'partial':'ready',unavailable:issues.length,skills:[...catalog.list(),...pins.filter(pin=>!catalog.get(pin.name)).map(pin=>({name:pin.name,description:'固定版本的来源已缺失，恢复来源或取消固定后再执行。',source:'missing'}))].map((skill:any)=>{let version:string|undefined,sourceError:string|undefined;try{version=skillSnapshot(skill,budget).version;}catch(error){sourceError=error instanceof KTeamError?error.code:'skill_source_unavailable';}const pin=pins.find(pin=>pin.name===skill.name);return {name:skill.name,description:skill.description,source:skillSource(skill,scope),path:skill.path,version,sourceError,pinnedVersion:pin?.version,versionChanged:!!pin&&pin.version!==version,enabled:!global.has(skill.name)&&!local.has(skill.name),globallyDisabled:global.has(skill.name)};})};
+  return {ok:true,supported:true,mail,roomId:scope.roomId,roomTitle:room.title,roomRevision:room.revision,profileRevision:profile(bot).revision,disabledSkills:[...local],coverage:issues.length?'partial':'ready',unavailable:issues.length,skills:[...catalog.list(),...pins.filter(pin=>!catalog.get(pin.name)).map(pin=>({name:pin.name,description:'固定版本的来源已缺失，恢复来源或取消固定后再执行。',source:'missing'}))].map((skill:any)=>{let version:string|undefined,sourceError:string|undefined;try{version=skillSnapshot(skill,budget).version;}catch(error){sourceError=error instanceof KTeamError?error.code:'skill_source_unavailable';}const pin=pins.find(pin=>pin.name===skill.name);return {name:skill.name,description:skill.description,source:skillSource(skill,scope),path:skill.path,version,sourceError,pinnedVersion:pin?.version,versionChanged:!!pin&&pin.version!==version,enabled:!global.has(skill.name)&&!local.has(skill.name),globallyDisabled:global.has(skill.name)};})};
  }
  async preview(value:unknown){const input=record(value);fields(input,['botId','roomId','name','expectedVersion']);const botId=text(input.botId,'bot_id'),roomId=text(input.roomId,'room_id'),name=text(input.name,'skill_name',256),loaded=await this.catalog(botId,roomId);if(this.store.binding(botId)?.kind!=='xiaok-hosted')throw new KTeamError('bot_skills_external',409);const skill=loaded.catalog.get(name);if(!skill)throw new KTeamError('skill_source_changed',409);const snapshot=skillSnapshot(skill);if(snapshot.version!==input.expectedVersion)throw new KTeamError('skill_source_changed',409);await this.scope(botId,roomId);return {ok:true,name,source:skillSource(skill,loaded.scope),path:skill.path,...snapshot,content:loaded.core.redactSecrets(snapshot.content).text};}
  async pin(value:unknown){

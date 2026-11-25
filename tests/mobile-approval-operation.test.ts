@@ -42,7 +42,8 @@ async function fixture() {
     decides += 1;
     return original(value);
   };
-  const facade = new MobileFacade({ approvals, automation: { tick() {} } }, store, devices);
+  const conversations={async scope(roomId:string){assert.equal(roomId,'room');}};
+  const facade = new MobileFacade({ approvals, conversations, automation: { tick() {} } }, store, devices);
   return {
     store,
     device,
@@ -139,6 +140,9 @@ test("a committed approval is not executed again when the mobile row is still ex
     assert.equal(await work, true);
     assert.equal(f.decisions(), 1);
     assert.equal(f.store.operation(row.id).status, "allowed");
+    assert.deepEqual(await f.facade.call(f.device,"operations.get",{operationId}),{
+      ok:true,status:"completed",result:{ok:true,status:"allowed",decision:"allow_once",matchesRequest:true},
+    });
     const mobileId = "mobile-operation:" + f.device.id + ":" + operationId;
     const saved = f.store.operation(mobileId);
     f.store.saveOperation({ ...saved, status: "executing" }, saved.revision);

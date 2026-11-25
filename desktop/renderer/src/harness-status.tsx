@@ -1,6 +1,6 @@
 import {unexecutedModelToolOutput} from '../../../src/protocol/model-tool-output';
 import {showGeneratedFile} from './artifact-viewer';
-import {toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
+import {approvalChangeText,toolApprovalSummary} from '../../../src/protocol/tool-approval-summary';
 import {A2uiArtifactRenderer} from '../../core-ui/renderer/src/components/a2ui/A2uiArtifactRenderer';
 import {Markdown} from './Markdown';
 import React,{useRef,useState}from'react';
@@ -19,6 +19,7 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
  const directories:string[]=approval.directories?.length?approval.directories:approval.directory?[approval.directory]:[];
  const groupScope=!splitRequired&&directories.length?approval.directoryGroupScope:undefined;
  const description=toolApprovalSummary(approval.toolName,approval.display);
+ const change=approvalChangeText(approval.change);
  const facts=approval.operationFacts??[];
  const affected=facts.filter((fact:any)=>fact.kind==='delete'||fact.kind==='unknown'||fact.kind==='overwrite');
  const relevant=affected.filter((fact:any,index:number)=>affected.findIndex((other:any)=>other.target===fact.target&&other.kind===fact.kind)===index);
@@ -45,6 +46,7 @@ export function ToolApprovalCard({approval,bot,onDecide}:{approval:any;bot?:Bot;
  return <section className="tool-approval approval-card" data-notification-target={approval.id} tabIndex={-1} aria-label="工具调用确认">
   <h3><ShieldCheck size={18}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} 需要你确认</h3>
   <p>{description.summary}{description.target&&<> · <code>{description.target}</code></>}</p>
+  {change&&<p>{change}</p>}
   {splitRequired?<p className="approval-warning" role="alert">检查与删除混在同一条命令。请拒绝这次申请，让成员先单独检查，再提交修改。</p>:
    approval.reason&&<p className="approval-reason">{approval.reason}</p>}
   {approval.terminalTrigger&&<p className="approval-trigger"><span>触发确认的命令段</span><code>{approval.terminalTrigger}</code></p>}
@@ -93,7 +95,7 @@ export function ApprovalReceiptNotice({approval,bot,onWork}:{approval:any;bot?:B
  const description=toolApprovalSummary(approval.toolName,approval.display);
  const allowed=approval.status==='allowed',denied=approval.status==='denied',expired=approval.status==='expired';
  const title=allowed?'已批准':denied?'已拒绝':expired?'审批已过期':'审批已取消';
- const detail=allowed?'执行结果请查看工作记录。':denied?'已拒绝这项操作。':expired?'工作已暂停，可重新发起。':approval.reason?explain(approval.reason):'这项申请已关闭。';
+ const detail=allowed&&approval.cancelledBeforeExecution?'决定已保存，原操作在执行前取消。':allowed?'执行结果请查看工作记录。':denied?'已拒绝这项操作。':expired?'工作已暂停，可重新发起。':approval.reason?explain(approval.reason):'这项申请已关闭。';
  return <section className="tool-approval approval-receipt" data-notification-target={approval.id} tabIndex={-1} aria-label={title}>
   <h3><ShieldCheck size={16}/>{bot?.name.replace(/ · KTeam .+$/,'')??'成员'} · {title}</h3>
   <p>{description.summary}{description.target&&<> · <code>{description.target}</code></>}</p>
