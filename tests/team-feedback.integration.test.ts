@@ -15,7 +15,7 @@ import {sharedRuntime,modelIdentity} from '../src/runtime/native.js';
 import {commandAccess} from '../src/service/terminal-access.js';
 import {realUpstreams} from './helpers/real-upstreams.js';
 
-test('approval facts expose actual legacy paths and require separate inspection before destructive changes',()=>{
+test('approval facts expose actual paths and distinguish mixed inspection from a single deletion',()=>{
  const details=inspectOperation('bash',{command:'ls -la /old/env; rm -rf /old/env; cp -R /old/template /new/env; cd /old/project; npm run dev'},'/new/project');
  assert.equal(details.destructive,true);assert.equal(details.mixedInspection,true);
  assert.ok(details.facts.some(f=>f.kind==='delete'&&f.target==='/old/env'));

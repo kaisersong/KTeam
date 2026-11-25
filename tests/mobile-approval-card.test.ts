@@ -32,7 +32,7 @@ test("a phone approval card shows the host fields and keeps the original hash", 
   assert.deepEqual(card.decisions, ["deny", "allow_once"]);
 });
 
-test("a mixed inspection can only be denied and a changed hash is not invented", () => {
+test("a mixed inspection shows the full-command warning and allows one bound approval", () => {
   const card = mobileApprovalCard({
     ...approval,
     inspectionRequired: true,
@@ -41,8 +41,8 @@ test("a mixed inspection can only be denied and a changed hash is not invented",
     hash: "bound-hash",
     display: "",
   });
-  assert.deepEqual(card.decisions, ["deny"]);
-  assert.match(card.inspection ?? "", /拒绝这次申请/);
+  assert.deepEqual(card.decisions, ["deny", "allow_once"]);
+  assert.match(card.inspection ?? "", /允许本次将执行完整命令/);
   assert.equal(card.risk, "sensitive-access");
   assert.equal(card.hash, "bound-hash");
   assert.equal(card.parameters, "");

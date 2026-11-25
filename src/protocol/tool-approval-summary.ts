@@ -1,5 +1,6 @@
 /** Presentation only. Never used to grant permission or classify a command as safe. */
 export interface ApprovalSummary {summary:string;target?:string}
+export const mixedInspectionWarning = '这条命令包含检查和删除。允许本次将执行完整命令，请先核对命令及删除目标。';
 export function approvalChangeText(value:unknown):string|undefined {
  if(!value||typeof value!=='object')return;
  const {kind,beforeBytes,afterBytes}=value as Record<string,unknown>;
