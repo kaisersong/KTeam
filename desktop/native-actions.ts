@@ -12,7 +12,7 @@ import {hostRequest} from '../src/service/client.js';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {homedir} from 'node:os';
-import {record,fields} from '../src/errors.js';
+import {record,fields,KTeamError} from '../src/errors.js';
 import {artifactDownloadIdentity} from '../src/protocol/artifact-download.js';
 import {artifactSaveName,saveArtifact} from './artifact-download.js';
 
@@ -48,8 +48,11 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
   openWebLink:async(input:unknown)=>{const value=record(input);fields(value,['url']);const url=webLinkUrl(value.url);if(!url)fail('web_link_invalid');await shell.openExternal(url!);return {ok:true};},
   openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId','allowFiles']);if(value.allowFiles!==undefined&&typeof value.allowFiles!=='boolean')fail('invalid_input');const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));
-   const {files,directories}=await clipboardPaste(await clipboard.read(),process.platform,!!view.canAttach&&value.allowFiles!==false);if(files.length&&(!view.canAttach||value.allowFiles===false))fail('attachment_owner_required');
-   if((view.uploads as any[]).length+files.length>4)fail('attachment_limit');
+   const {files,directories}=await clipboard.read().then(items=>clipboardPaste(items,process.platform,!!view.canAttach&&value.allowFiles!==false)).catch(error=>{
+    if(error instanceof KTeamError)throw error;
+    return fail('clipboard_read_failed');
+   });
+   if(files.length&&(view.uploads as any[]).length+files.length>4)fail('attachment_limit');
    for(const file of files)await hostRequest(root,'kteam-main','/v1/composer-attachments/upload',{roomId,id:'upload_'+randomBytes(16).toString('hex'),...file});return {ok:true,count:files.length,directories};
   },
   openMemberWorkspace:async(input:any)=>{const value=record(input);fields(value,['botId','roomId','expectedProfileRevision']);if(!Number.isSafeInteger(value.expectedProfileRevision))fail('member_workspace_changed');const result=await hostRequest(root,'kteam-main','/v1/member-workspace/folder?botId='+encodeURIComponent(field(value.botId))+'&roomId='+encodeURIComponent(field(value.roomId))+'&expectedProfileRevision='+String(value.expectedProfileRevision));const error=await shell.openPath(String(result.path));if(error)fail('member_workspace_unavailable');return {ok:true};},
