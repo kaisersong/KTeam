@@ -74,6 +74,8 @@ export interface AgentRuntimeOptions {
   systemPrompt: string;
   promptSnapshot?: PromptSnapshot;
   maxIterations?: number;
+  /** Reserve the last model iteration for a response using completed work. */
+  finalAnswerInstruction?: string;
   contextLimit?: number;
   compactThreshold?: number;
   compactPlaceholder?: string;
@@ -109,6 +111,7 @@ export class AgentRuntime {
   private readonly controller: AgentRunController;
   private systemPrompt: string;
   private readonly maxIterations?: number;
+  private readonly finalAnswerInstruction?: string;
   private readonly contextLimitOverride?: number;
   private readonly compactThresholdOverride?: number;
   private contextLimit: number;
@@ -146,6 +149,7 @@ export class AgentRuntime {
     this.systemPrompt = options.systemPrompt;
     this.promptSnapshot = options.promptSnapshot;
     this.maxIterations = options.maxIterations;
+    this.finalAnswerInstruction = options.finalAnswerInstruction;
     this.contextLimitOverride = options.contextLimit;
     this.compactThresholdOverride = options.compactThreshold;
     this.contextLimit = 200_000;
@@ -265,6 +269,11 @@ export class AgentRuntime {
       let codeMutatingToolSeen = false;
       let autoCompactionBlocked = false;
       let noReplacementRevision: number | undefined;
+      const maxIterations = this.maxIterations;
+      const emitIterationLimit = (limit: number, currentIteration: number) => {
+        onEvent({ type: 'max_iterations_reached', runId: run.runId, maxIterations: limit, currentIteration });
+        onEvent({ type: 'run_completed', runId: run.runId });
+      };
       while (true) {
         mergedSignal.throwIfAborted();
         currentAssistantBlocks = [];
@@ -273,18 +282,13 @@ export class AgentRuntime {
         executedToolIds = new Set<string>();
 
         // Check if we've reached the max iterations limit (Claude Code style)
-        if (this.maxIterations !== undefined && iteration >= this.maxIterations) {
-          onEvent({
-            type: 'max_iterations_reached',
-            runId: run.runId,
-            maxIterations: this.maxIterations,
-            currentIteration: iteration,
-          });
-          onEvent({ type: 'run_completed', runId: run.runId });
+        if (maxIterations !== undefined && iteration >= maxIterations) {
+          emitIterationLimit(maxIterations, iteration);
           return;
         }
 
         const restoredBatch=resumeBatch;resumeBatch=undefined;
+        let finalAnswer: string | undefined;
         let toolProviderInvocationId:string|undefined=restoredBatch?.providerInvocationId;
         if(restoredBatch){currentAssistantBlocks=this.session.getMessages().at(-1)!.content;assistantBlocksCommitted=true;toolResults=[...restoredBatch.results];executedToolIds=new Set(restoredBatch.results.flatMap(block=>block.type==='tool_result'?[block.tool_use_id]:[]));}
         else {
@@ -293,6 +297,11 @@ export class AgentRuntime {
         if (pendingInput) this.session.appendUserText(pendingInput);
 
         const stageViewActive=prepareCompoundRootIntentStageView(this.session).active;
+        if (!stageViewActive && !this.observationOwner && maxIterations !== undefined
+          && iteration > 0 && iteration === maxIterations - 1 && this.finalAnswerInstruction) {
+          finalAnswer = this.finalAnswerInstruction;
+          onEvent({ type: 'final_answer_started', runId: run.runId });
+        }
         if (this.pendingSubtaskBoundary && !stageViewActive && !k3PublicResume) {
           // The host completion event can arrive inside tool.execute. Capture the
           // candidate only after the complete result batch and queued input exist.
@@ -406,6 +415,7 @@ export class AgentRuntime {
           ? streamCliSubagentProviderConversation
           : streamCliChatTaskProviderConversation;
         let recoveryAttempt = 0;
+        let receivedDone = false;
         await this.checkpoint?.();
         onEvent({ type: 'model_request_started', runId: run.runId });
         for await (const chunk of recoverModelStream({
@@ -414,6 +424,7 @@ export class AgentRuntime {
           onRetry: (notice) => {
             const partial = currentAssistantBlocks.filter((block): block is Extract<MessageBlock, { type: 'text' }> => block.type === 'text').map(block => block.text).join('').slice(-12000);
             currentAssistantBlocks = [];
+            if (finalAnswer) onEvent({ type: 'final_answer_started', runId: run.runId });
             if (partial) this.session.appendUserText('The previous model response was interrupted by a connection failure. This is synthesized partial visible output, not a completed answer or executed tool call. Continue from the completed tool results; do not repeat completed operations.\n' + JSON.stringify({ partialOutput: partial }));
             recoveryAttempt = notice.attempt;
             this.reportActivity({ phase: 'model' });
@@ -424,13 +435,15 @@ export class AgentRuntime {
             return (async function* () {
               const logicalInvocationId = `${run.runId}:${iteration}:recovery-${recoveryAttempt}`;
               toolProviderInvocationId = logicalInvocationId;
-              const tools = runtime.registry.getToolDefinitions();
+              const tools = finalAnswer ? [] : runtime.registry.getToolDefinitions();
+              const systemPrompt = finalAnswer ? `${runtime.systemPrompt}\n\n${finalAnswer}` : runtime.systemPrompt;
               const view=prepareCompoundRootIntentStageView(runtime.session,logicalInvocationId);
               try {
               // The owned SessionStore stays canonical. Each durable K3 request uses a
               // fresh public view, never a recursively synthesized history or raw private replay.
               const messages=k3PublicResume&&view.messages.some(message=>message.role==='assistant')?k3PublicMessages():view.messages;
-              const options = runtime.buildInvocationOptions(requestSignal, invocationContext,messages);
+              const invocationOptions = runtime.buildInvocationOptions(requestSignal, invocationContext, messages, tools, finalAnswer);
+              const options = finalAnswer ? { ...invocationOptions, requireCompleteResponse: true } : invocationOptions;
               const prepared = runtime.observationOwner?.prepareRequest
                 ? await runtime.observationOwner.prepareRequest({ logicalInvocationId, messages, tools,
                     systemPrompt: runtime.systemPrompt, options,
@@ -438,7 +451,7 @@ export class AgentRuntime {
                 : undefined;
               requestSignal.throwIfAborted();view.assertCurrent();
               yield* streamProviderConversation({ adapter: runtime.adapter as CapabilityAwareAdapter,
-                messages: prepared?.messages ?? messages, tools, systemPrompt: runtime.systemPrompt,
+                messages: prepared?.messages ?? messages, tools, systemPrompt,
                 options: prepared?.providerDisclosure ? { ...options, providerDisclosure: prepared.providerDisclosure } : options,
                 invocationId: logicalInvocationId });
               } finally {view.dispose();}
@@ -489,20 +502,29 @@ export class AgentRuntime {
           }
 
           if (chunk.type === 'tool_use') {
+            if (finalAnswer) {
+              emitIterationLimit(iteration + 1, iteration + 1);
+              return;
+            }
             currentAssistantBlocks.push(chunk);
             continue;
           }
 
           if (chunk.type === 'done') {
+            receivedDone = true;
             break;
           }
         }
         mergedSignal.throwIfAborted();
 
-        const hasVisibleOutput = currentAssistantBlocks.some(
-          (block) => block.type === 'text' || block.type === 'tool_use',
-        );
+        const hasVisibleOutput = finalAnswer
+          ? receivedDone && currentAssistantBlocks.some((block) => block.type === 'text' && block.text.trim())
+          : currentAssistantBlocks.some((block) => block.type === 'text' || block.type === 'tool_use');
         if (!hasVisibleOutput) {
+          if (finalAnswer) {
+            emitIterationLimit(iteration + 1, iteration + 1);
+            return;
+          }
           // 模型只返回了 thinking（无 text/tool_use），视为空响应自动重试
           if (emptyRetries < AgentRuntime.MAX_EMPTY_RETRIES) {
             emptyRetries++;
@@ -523,7 +545,7 @@ export class AgentRuntime {
         if (toolCalls.length === 0) {
           // A message may arrive while the final response is streaming. Handle it in
           // this run after committing that response, without fabricating tool results.
-          const lateInput = this.takePendingInput?.();
+          const lateInput = finalAnswer ? undefined : this.takePendingInput?.();
           if (lateInput) {
             this.session.appendUserText(lateInput);
             iteration += 1;
@@ -756,6 +778,8 @@ export class AgentRuntime {
     signal?: AbortSignal,
     invocationContext?: RunInvocationContext,
     messages: Message[] = this.session.getMessages(),
+    tools = this.registry.getToolDefinitions(),
+    extraSystemInstruction?: string,
   ): StreamOptions | undefined {
     const options: StreamOptions = {
       ...(signal ? { signal } : {}),
@@ -768,7 +792,7 @@ export class AgentRuntime {
       return Object.keys(options).length > 0 ? options : undefined;
     }
 
-    const toolDefinitions = this.registry.getToolDefinitions()
+    const toolDefinitions = tools
       .slice()
       .sort((left, right) => left.name.localeCompare(right.name));
 
@@ -780,8 +804,8 @@ export class AgentRuntime {
       .map((seg) => ({ text: seg.text, cacheable: seg.cacheable }));
 
     const systemPromptInput = systemSegments && systemSegments.length >= 1
-      ? systemSegments
-      : this.systemPrompt;
+      ? (extraSystemInstruction ? [...systemSegments, { text: extraSystemInstruction, cacheable: false }] : systemSegments)
+      : (extraSystemInstruction ? `${this.systemPrompt}\n\n${extraSystemInstruction}` : this.systemPrompt);
 
     return {
       ...options,

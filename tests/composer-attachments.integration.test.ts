@@ -2,12 +2,12 @@ import {ConversationSidebar} from '../src/service/sidebar.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join,resolve} from 'node:path';
-import {mkdirSync,existsSync,readdirSync,writeFileSync,linkSync,unlinkSync} from 'node:fs';
+import {mkdirSync,existsSync,readFileSync,readdirSync,writeFileSync,linkSync,unlinkSync} from 'node:fs';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamAutomation} from '../src/service/automation.js';
-import {ConversationService} from '../src/service/conversation.js';
+import {ConversationService,libraryFileIdentity} from '../src/service/conversation.js';
 import {ComposerAttachments} from '../src/service/composer-attachments.js';
 import {parseAttachmentMessage,attachmentMessageView,messageDisplayText,messagePreviewText} from '../src/protocol/message-attachments.js';
 import {CollaborationService} from '../src/service/collaboration.js';
@@ -17,9 +17,28 @@ import {startHost} from '../src/service/server.js';
 import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
 import {KTeamError} from '../src/errors.js';
+import {artifactSaveName,saveArtifact} from '../desktop/artifact-download.js';
+import {artifactDownloadRoute} from '../src/protocol/artifact-download.js';
 async function fixture(){process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');const f=await realUpstreams(),root=join(f.root,'host'),config=join(f.root,'config'),previous=process.env.KTEAM_MODEL_CONFIG_DIR;mkdirSync(root,{mode:0o700});mkdirSync(config);process.env.KTEAM_MODEL_CONFIG_DIR=config;const store=new TeamStore(root),coordinator=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture',fingerprint:'fixture'})}),conversations=new ConversationService(root,f.upstream,store);try{const a=await coordinator.createMember({name:'附件验收员',modelId:'fixture',requestId:'attachment-a'},{requestSource:'user'}),b=await coordinator.createMember({name:'另一合成成员',modelId:'fixture',requestId:'attachment-b'},{requestSource:'user'}),automation=new TeamAutomation(f.upstream,store,1,undefined,coordinator),attachments=new ComposerAttachments(root,f.upstream,store,conversations,room=>automation.reconcileSubmissions(room));store.setState('assistant-proactivity',{enabled:false});return {...f,root,store,coordinator,conversations,a,b,automation,attachments,async close(){await automation.close();store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();}};}catch(error){store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();throw error;}}
 const upload=(roomId:string,letter='a',extra={})=>({roomId,id:'upload_'+letter.repeat(32),name:'fictional-'+letter+'.txt',data:Buffer.from('FICTIONAL_ATTACHMENT_'+letter).toString('base64'),...extra});
 const send=(roomId:string,ids:string[],extra={})=>({roomId,id:'msg_'+'e'.repeat(32),text:'请核对这些合成附件。',uploadIds:ids,...extra});
+test('a staged attachment keeps its identity across a hostname change and previews only verified local bytes',async()=>{
+ const f=await fixture();
+ try{
+  const roomId=f.a.roomId,input=upload(roomId),staged=await f.attachments.stage(input),id=staged.upload!.id;
+  const op=f.store.operation('composer-upload:'+id),hostId='fixture-before-rename.local';
+  const file={...staged.upload!.file,hostId,fileId:libraryFileIdentity(roomId,staged.upload!.file.name,staged.upload!.file.sha256,hostId)};
+  f.store.saveOperation({...op,file},op.revision);
+  const message=await f.attachments.send(send(roomId,[id],{text:''}));
+  const attachment={roomId,messageId:message.messageId,fileId:file.fileId};
+  assert.equal((await f.attachments.preview(attachment)).preview,'FICTIONAL_ATTACHMENT_a');
+  const path=join(f.conversations.libraryDirectory(roomId),file.fileId+'.txt');
+  writeFileSync(path,Buffer.alloc(file.bytes,1));
+  await assert.rejects(f.attachments.preview(attachment),/library_file_changed/);
+  unlinkSync(path);
+  await assert.rejects(f.attachments.preview(attachment),/library_file_other_host/);
+ }finally{await f.close();}
+});
 test('only an unsent message can be stopped; already registered public files remain while private bytes and the original pending outbox are cancelled',async()=>{const f=await fixture();try{const first=await f.attachments.stage(upload(f.a.roomId)),second=await f.attachments.stage(upload(f.a.roomId,'b')),original=f.upstream.updateConversation.bind(f.upstream);let posts=0;f.upstream.updateConversation=async(roomId:string,input:any,...rest:any[])=>{if(input.operation==='library.register'&&++posts===2)throw new KTeamError('upstream_operation_unknown',503);return original(roomId,input,...rest);};const input=send(f.a.roomId,[first.upload!.id,second.upload!.id]);await assert.rejects(f.attachments.send(input));assert.equal(((await f.conversations.data(f.a.roomId)).library as any[]).length,1);assert.equal((await f.attachments.cancelSend({roomId:f.a.roomId,id:input.id})).cancelled,true);assert.equal(f.store.submission(input.id).state,'cancelled');assert.equal(f.store.submissionEnvelope(input.id),undefined);assert.equal((await f.attachments.cancelSend({roomId:f.a.roomId,id:input.id})).reused,true);await assert.rejects(f.attachments.send(input),/attachment_send_cancelled/);await f.automation.reconcileSubmissions(f.a.roomId);assert.equal(f.store.jobs().length,0);assert.equal((await f.upstream.messages(f.a.roomId,0,100)).messages.length,0);assert.equal(((await f.conversations.data(f.a.roomId)).library as any[]).length,1);assert.equal(readdirSync(join(f.root,'composer-uploads')).filter(name=>name.endsWith('.bin')).length,0);assert.equal(posts,2);}finally{await f.close();}});
 test('unknown message delivery cannot be cancelled or posted again; cancellation and resume share the same in-flight exclusion',async()=>{const f=await fixture();let release!:()=>void;try{const staged=await f.attachments.stage(upload(f.a.roomId)),gate=new Promise<void>(resolve=>release=resolve);let posts=0;f.upstream.sendMessage=async()=>{posts++;await gate;throw new KTeamError('upstream_operation_unknown',503);};const input=send(f.a.roomId,[staged.upload!.id]),pending=assert.rejects(f.attachments.send(input));while(posts===0)await new Promise(resolve=>setTimeout(resolve,5));await assert.rejects(f.attachments.cancelSend({roomId:f.a.roomId,id:input.id}),/attachment_send_busy/);release();await pending;await assert.rejects(f.attachments.send(input),/attachment_delivery_unknown/);await assert.rejects(f.attachments.cancelSend({roomId:f.a.roomId,id:input.id}),/attachment_delivery_unknown/);assert.equal(posts,1);assert.equal(f.store.jobs().length,0);assert.equal((await f.attachments.view(f.a.roomId)).sends[0]!.status,'message_sending');}finally{release?.();await f.close();}});
 test('restart recovery verifies private bytes and a changed or hard-linked pending file cannot be published',async()=>{const f=await fixture();try{const staged=await f.attachments.stage(upload(f.a.roomId)),id=staged.upload!.id,operation=f.store.operation('composer-upload:'+id);f.store.saveOperation({...operation,status:'writing'},operation.revision);const restored=new ComposerAttachments(f.root,f.upstream,f.store,f.conversations);assert.equal((await restored.view(f.a.roomId)).uploads[0]!.status,'staged');const path=join(f.root,'composer-uploads',id+'.bin');linkSync(path,path+'.linked');await assert.rejects(restored.send(send(f.a.roomId,[id])),/attachment_changed/);assert.equal(((await f.conversations.data(f.a.roomId)).library as any[]).length,0);unlinkSync(path+'.linked');writeFileSync(path,'changed private bytes');await assert.rejects(restored.send(send(f.a.roomId,[id])),/attachment_changed/);assert.equal((await f.upstream.messages(f.a.roomId,0,100)).messages.length,0);}finally{await f.close();}});
@@ -78,3 +97,39 @@ test('authenticated semantic image preview carries a maximum-size upload beyond 
  await assert.rejects(hostRequest(f.root,'kteam-companion','/v1/composer-attachments/preview',input),/attachment_client_forbidden/);await assert.rejects(api.previewMessageAttachment({...input,path:'/etc/passwd'}),/unknown_field/);
  await host.close();host=await startHost({root:f.root,upstream:f.upstream.options});assert.equal((await api.previewMessageAttachment(input)).image.base64,value.image.base64);
  }finally{await host?.close();await f.close();}});
+
+test('downloading an attachment saves all original bytes to the chosen directory with Room isolation and safe cancellation',async()=>{
+ const f=await fixture();
+ let host:Awaited<ReturnType<typeof startHost>>|undefined;
+ try{
+  const roomId=f.a.roomId,original=Buffer.alloc(512*1024,0xfd),name='附件原件.md';
+  const staged=await f.attachments.stage(upload(roomId,'a',{name,data:original.toString('base64')}));
+  const {fileId}=staged.upload!.file,message=await f.attachments.send(send(roomId,[staged.upload!.id],{text:''}));
+  const source={roomId,messageId:message.messageId,fileId};
+  initConfig(f.root,{version:1,brokerUrl:f.upstream.options.brokerUrl,kswarmUrl:f.upstream.options.kswarmUrl});
+  host=await startHost({root:f.root,upstream:f.upstream.options});
+  const preview=await hostRequest(f.root,'kteam-main','/v1/composer-attachments/preview',source);
+  assert.equal(preview.truncated,true);
+  await assert.rejects(hostRequest(f.root,'kteam-companion',artifactDownloadRoute,source),/artifact_download_forbidden/);
+  await assert.rejects(saveArtifact(f.root,{...source,roomId:f.b.roomId},async()=>assert.fail('chooser opened for another Room')));
+  await assert.rejects(hostRequest(f.root,'kteam-main',artifactDownloadRoute,{...source,path:name}),/unknown_field/);
+  const folder=join(f.root,'手动选择目录');
+  mkdirSync(folder);
+  const destination=join(folder,'改名后的报告.md');
+  assert.deepEqual(await saveArtifact(f.root,source,async suggested=>{assert.equal(suggested,name);return undefined;}),{ok:true,cancelled:true});
+  assert.deepEqual(readdirSync(folder),[]);
+  assert.deepEqual(await saveArtifact(f.root,source,async()=>destination),{ok:true,cancelled:false});
+  assert.deepEqual(readFileSync(destination),original);
+  writeFileSync(destination,'另一个版本');
+  await saveArtifact(f.root,source,async()=>destination);
+  assert.deepEqual(readFileSync(destination),original);
+  await assert.rejects(saveArtifact(f.root,source,async()=>join(folder,'missing',name)),/artifact_save_failed/);
+  const path=join(f.conversations.libraryDirectory(roomId),fileId+'.md');
+  await assert.rejects(saveArtifact(f.root,source,async()=>{writeFileSync(path,Buffer.alloc(original.length));return destination;}),/library_file_changed/);
+  assert.deepEqual(readFileSync(destination),original);
+  assert.deepEqual(readdirSync(folder),['改名后的报告.md']);
+  assert.equal(artifactSaveName(name,'win32'),name);
+  assert.equal(artifactSaveName('AUX?.md','win32'),'AUX_.md');
+  assert.equal(artifactSaveName('AUX.md','win32'),'_AUX.md');
+ }finally{await host?.close();await f.close();}
+});

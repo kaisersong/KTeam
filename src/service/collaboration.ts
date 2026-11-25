@@ -94,6 +94,6 @@ export function projectMessage(message:Record<string,unknown>){return {
       ...(message.sourceRef && record(message.sourceRef).kind === 'aimp_l0'
         ? { envelope: record(message.sourceRef).envelope } : { protocol: 'legacy_display_only' }),
       ...(message.sourceRef&&record(message.sourceRef).kind==='external_agent_reply'?{externalSource:{driver:record(message.sourceRef).driver,verifiedExecution:false}}:{}),
-      ...(message.sourceRef&&record(message.sourceRef).kind==='aimp_reply'?{workRef:record(message.sourceRef).taskRef}:{}),
+      ...(message.sourceRef&&record(message.sourceRef).kind==='aimp_reply'&&!record(message.sourceRef).artifactFileId?{workRef:record(message.sourceRef).taskRef}:{}),
       ...(message.sourceRef&&record(message.sourceRef).kind==='bot_private_message'?{sourceRef:{kind:'bot_private_message',originRoomId:record(message.sourceRef).originRoomId,originMessageId:record(message.sourceRef).originMessageId,purpose:record(message.sourceRef).purpose,verifiedExecution:false}}:{}),
     };}

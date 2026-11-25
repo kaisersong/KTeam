@@ -12,11 +12,14 @@ import {hostRequest} from '../src/service/client.js';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {homedir} from 'node:os';
-import {record,fields} from '../src/errors.js';
+import {record,fields,KTeamError} from '../src/errors.js';
+import {artifactDownloadIdentity} from '../src/protocol/artifact-download.js';
+import {artifactSaveName,saveArtifact} from './artifact-download.js';
 
 /** File locations and canonical speech content stay in main; renderer supplies only Room IDs. */
 export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined){
  let speech:ChildProcess|undefined,speakingId:string|undefined;
+ let savingArtifact=false;
  const fail=(code:string):never=>{throw Object.assign(Error(code),{code});};
  const field=(value:unknown)=>typeof value==='string'&&value.length>0&&value.length<=256?value:fail('invalid_input');
  const scope=(input:any)=>'/v1/teams/'+encodeURIComponent(field(input?.roomId));
@@ -24,13 +27,32 @@ export function nativeActions(root:string,getWindow:()=>BrowserWindow|undefined)
  const voiceSettings=async()=>{const value=await hostRequest(root,'kteam-main','/v1/app/integrations');return (value.settings as any).voice;};
  const speak=async(text:string,id:string)=>{if(process.platform!=='darwin')fail('speech_unavailable');const config=await voiceSettings();await stop();const child=spawn('/usr/bin/say',[...(config.voice?['-v',config.voice]:[]),'-r',String(config.rate),'--',text.slice(0,32768)],{stdio:'ignore'});await new Promise<void>((resolve,reject)=>{child.once('spawn',resolve);child.once('error',()=>reject(Object.assign(Error('speech_unavailable'),{code:'speech_unavailable'})));});speech=child;speakingId=id;child.once('close',()=>{if(speech===child){speech=undefined;speakingId=undefined;}});return {ok:true,speakingId};};
  return {
+  downloadArtifact:async(input:unknown)=>{
+   const source=artifactDownloadIdentity(input);
+   const window=getWindow();
+   if(!window)fail('desktop_window_closed');
+   if(savingArtifact)fail('artifact_download_busy');
+   savingArtifact=true;
+   try{
+    return await saveArtifact(root,source,async name=>{
+     const saved=await dialog.showSaveDialog(window!,{
+      title:'下载产物',buttonLabel:'保存',defaultPath:join(app.getPath('downloads'),artifactSaveName(name)),
+      properties:['createDirectory','showOverwriteConfirmation'],
+     });
+     return saved.canceled?undefined:saved.filePath;
+    });
+   }finally{savingArtifact=false;}
+  },
   previewMessageAttachment:async(input:any)=>{const value=record(input);fields(value,['roomId','messageId','fileId','variant']);if(value.variant!==undefined&&!['thumbnail','full'].includes(String(value.variant)))fail('attachment_invalid');const result=await hostRequest(root,'kteam-main','/v1/composer-attachments/preview',{roomId:field(value.roomId),messageId:field(value.messageId),fileId:field(value.fileId)});if(value.variant==='thumbnail'&&result.image){const image=result.image as any,bitmap=nativeImage.createFromBuffer(Buffer.from(image.base64,'base64'));if(bitmap.isEmpty())fail('attachment_image_invalid');const size=bitmap.getSize(),scale=Math.min(1,480/size.width,360/size.height),thumbnail=bitmap.resize({width:Math.max(1,Math.round(size.width*scale)),height:Math.max(1,Math.round(size.height*scale)),quality:'good'});return {...result,image:{mediaType:'image/png',base64:thumbnail.toPNG().toString('base64')}};}return result;},
   copyMobileInvitation:async(input:unknown)=>{const value=record(input);fields(value,['link']);if(typeof value.link!=='string'||value.link.length>32768)fail('invalid_input');let url:URL;try{url=new URL(value.link as string);}catch{fail('invalid_input');}if(url!.protocol!=='kteam:'||url!.hostname!=='pair'||!url!.searchParams.get('data'))fail('invalid_input');await clipboard.writeText(value.link as string);return {ok:true};},
   openWebLink:async(input:unknown)=>{const value=record(input);fields(value,['url']);const url=webLinkUrl(value.url);if(!url)fail('web_link_invalid');await shell.openExternal(url!);return {ok:true};},
   openComputerPermissionSettings:async(input:unknown)=>{await shell.openExternal(computerPermissionSettingsUrl(input));return {ok:true};},
   pasteAttachments:async(input:any)=>{const value=record(input);fields(value,['roomId','allowFiles']);if(value.allowFiles!==undefined&&typeof value.allowFiles!=='boolean')fail('invalid_input');const roomId=field(value.roomId),view=await hostRequest(root,'kteam-main','/v1/composer-attachments?roomId='+encodeURIComponent(roomId));
-   const {files,directories}=await clipboardPaste(await clipboard.read(),process.platform,!!view.canAttach&&value.allowFiles!==false);if(files.length&&(!view.canAttach||value.allowFiles===false))fail('attachment_owner_required');
-   if((view.uploads as any[]).length+files.length>4)fail('attachment_limit');
+   const {files,directories}=await clipboard.read().then(items=>clipboardPaste(items,process.platform,!!view.canAttach&&value.allowFiles!==false)).catch(error=>{
+    if(error instanceof KTeamError)throw error;
+    return fail('clipboard_read_failed');
+   });
+   if(files.length&&(view.uploads as any[]).length+files.length>4)fail('attachment_limit');
    for(const file of files)await hostRequest(root,'kteam-main','/v1/composer-attachments/upload',{roomId,id:'upload_'+randomBytes(16).toString('hex'),...file});return {ok:true,count:files.length,directories};
   },
   openMemberWorkspace:async(input:any)=>{const value=record(input);fields(value,['botId','roomId','expectedProfileRevision']);if(!Number.isSafeInteger(value.expectedProfileRevision))fail('member_workspace_changed');const result=await hostRequest(root,'kteam-main','/v1/member-workspace/folder?botId='+encodeURIComponent(field(value.botId))+'&roomId='+encodeURIComponent(field(value.roomId))+'&expectedProfileRevision='+String(value.expectedProfileRevision));const error=await shell.openPath(String(result.path));if(error)fail('member_workspace_unavailable');return {ok:true};},

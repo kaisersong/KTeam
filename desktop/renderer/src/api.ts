@@ -6,7 +6,7 @@ import type {ArtifactReviewDecision,ArtifactReviewNote,ArtifactReviewView} from 
 export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
 export interface CodexGrantView {supported:boolean;grant:{path:string|null;revision:number}}
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
-export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
+export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string;artifactReplyMessageId?:string}
 export interface KTeamAPI {
  mobileSettings():Promise<any>;changeMobileSettings(input:any):Promise<any>;
  teamWorkspace(roomId:string):Promise<any>;saveTeamWorkspace(input:any):Promise<any>;
@@ -53,6 +53,7 @@ export interface KTeamAPI {
  artifactReview(input:{roomId:string;toolCallId:string}):Promise<ArtifactReviewView>;
  submitArtifactReview(input:{roomId:string;toolCallId:string;expectedSha256:string;action:ArtifactReviewDecision['action'];notes:ArtifactReviewNote[]}):Promise<{ok:true;decision:ArtifactReviewDecision}>;
  previewGeneratedFile(input:{roomId:string;toolCallId:string}):Promise<{ok:true;name:string;bytes:number;kind:string;content:string;mediaType?:string;reason?:string}>;
+ downloadArtifact(input:ArtifactDownloadIdentity):Promise<{ok:true;cancelled:boolean}>;
  openGeneratedFile(input:{roomId:string;toolCallId:string;target?:'browser'|'system'}):Promise<any>;
  conversationAction(input:any):Promise<any>;
  mailConnectors:()=>Promise<any>;controlMailConnector:(input:unknown)=>Promise<any>;
@@ -146,6 +147,7 @@ const reasons:Record<string,string>={
  tool_command_changed:'命令或本地脚本内容已有变化，请重新确认',attachment_image_invalid:'这张图片暂时无法解码，请检查原文件',web_link_invalid:'此链接无法作为网页打开',inbox_changed:'收件箱记录已有变化，请刷新后重试',inbox_client_forbidden:'请在 KTeam 收件箱内操作',inbox_invalid:'收件箱操作无效，请刷新后重试',
  agent_link_windows_unsupported:'当前服务暂不能链接这个本机 Agent，请检查服务版本与检测结果',
  host_operation_unknown:'请求结果待核对，请先核对原记录',
+ clipboard_read_failed:'无法读取剪贴板中的文件或目录，请重新复制后粘贴',clipboard_paths_too_large:'剪贴板中的路径内容过长，请分批粘贴',
  tool_output_not_saved:'原工作没有可核验的完整输出，仅保留记录预览',tool_output_changed:'完整输出已变化或不可用，无法核验原始字节',tool_output_scope_changed:'成员或会话范围已变化，请重新核对来源',tool_output_invalid:'输出读取位置无效，请重新打开',
  conversation_history_limit:'本次无法读完原记录，结果仍待核对',conversation_view_forbidden:'请在 KTeam 主界面查看会话记录',conversation_projection_too_large:'记录超出单次预览范围，请分段查看',conversation_window_scope:'消息范围无法核对，请重新读取会话',conversation_cursor_invalid:'读取位置已失效，请重新打开会话',conversation_cursor_scope:'请从原会话重新打开记录',work_record_not_found:'原工作记录已不可用，请核对来源',work_event_not_recorded:'原工作未保存这条事件',work_record_changed:'原工作有了新记录，请重新读取',
  memory_review_invalid:'记忆审阅参数无效，请重新打开',memory_review_busy:'成员在当前会话仍有工作或等待，请结束或暂停原工作后再审阅',memory_review_scope_changed:'成员、模型、目录或会话范围已变化，请重新读取记忆',memory_review_client_forbidden:'请在 KTeam 主界面审阅成员记忆',memory_review_external:'此成员使用外接 Agent 的原记忆，请在原 Agent 中管理',memory_review_not_found:'原记忆记录已不存在，请刷新',memory_review_changed:'原记忆已变化，请重新预览修改范围',memory_review_id_conflict:'这次修改已有不同内容的记录，请先核对历史',memory_review_undo_changed:'记忆在修改后又发生了变化，不能覆盖新内容撤销',memory_review_recovery_unknown:'本地记忆写入与原文件无法核对，已停止继续修改',memory_review_storage_invalid:'原记忆文件无法安全核对，请检查存储位置',memory_review_lineage_invalid:'旧记忆的来源链无法核对，已停止修改',memory_review_too_large:'原记忆超出本次有界审阅范围，请先核对原存储',memory_review_sensitive:'纠正内容含疑似凭据，请移除敏感内容再保存',memory_review_unavailable:'原记忆存储暂时不可用，请稍后核对',room_scope_mismatch:'这条消息不属于当前会话，请返回原会话查看',harness_session_busy:'成员会话暂时无法接续，正在核对原工作状态',
@@ -169,6 +171,7 @@ const reasons:Record<string,string>={
  bot_skills_invalid:'技能选择无效，请刷新后重试',bot_skills_external:'请在原 Agent 中管理技能',followup_changed:'跟进状态已变化，请刷新后重试',followup_already_started:'跟进已经开始，请到原会话暂停工作',followup_not_found:'这条跟进已不存在',followup_scope_denied:'当前已不能访问这条跟进的会话',user_cancelled:'你已取消这条跟进',
 
  generated_file_changed:'文件已被修改或移走，请重新生成后打开',generated_file_not_found:'此会话中没有这份生成结果',generated_file_forbidden:'无法打开这份文件',generated_file_open_failed:'无法打开文件，请检查本机浏览器',
+ artifact_download_forbidden:'当前客户端无法下载产物',artifact_download_busy:'请先完成当前的产物下载',artifact_download_failed:'读取原文件失败，请重试',artifact_save_failed:'无法保存到所选位置，请检查目录权限或选择其他目录',
  memory_scope_forbidden:'此成员不在当前会话中，无法查看记忆',memory_embedding_dimensions:'向量服务返回的维度与配置不一致，请检查模型和维度',
  tool_disabled:'此工具已在工具管理中停用，请启用后重新发起工作',
  mcp_import_invalid:'无法导入 MCP 配置，请检查 JSON 格式和连接字段',
@@ -203,3 +206,4 @@ Object.assign(reasons,{
  assistant_scope_required:'请先完成小 K 助理设置。',
 });
 export const explain=(error:unknown)=>{const code=error instanceof Error?error.message:String(error);return reasons[code]??code;};
+import type {ArtifactDownloadIdentity} from '../../../src/protocol/artifact-download';

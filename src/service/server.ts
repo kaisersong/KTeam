@@ -25,7 +25,8 @@ import {BotMemory} from './bot-memory.js';
 import {ComposerAttachments} from './composer-attachments.js';
 import {generatedFileRecords} from '../runtime/generated-file-receipts.js';
 import {ArtifactReview} from './artifact-review.js';
-import {generatedFilePath,generatedFilePreview} from '../runtime/generated-files.js';
+import {generatedFileBytes,generatedFilePath,generatedFilePreview} from '../runtime/generated-files.js';
+import {artifactDownloadIdentity,artifactDownloadRoute} from '../protocol/artifact-download.js';
 import {TeamRecipes} from './team-recipes.js';
 import {BotToolScopes} from './bot-tool-scopes.js';
 import {SkillLearning} from './skill-learning.js';
@@ -197,6 +198,24 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
+      if(url.pathname===artifactDownloadRoute&&req.method==='POST'){
+        if(client.id!=='kteam-main')throw new KTeamError('artifact_download_forbidden',403);
+        const source=artifactDownloadIdentity(await body(req));
+        let name:string,data:Buffer;
+        if('toolCallId' in source){
+          await conversations.scope(source.roomId);
+          ({name,data}=generatedFileBytes(teamStore,source.roomId,source.toolCallId));
+          await conversations.scope(source.roomId);
+        }else{
+          const file=await composerAttachments.publishedFile(source);
+          name=file.file.name;
+          data=file.body;
+        }
+        if(url.searchParams.get('metadata')==='1')return send(res,200,{ok:true,name});
+        res.writeHead(200,{'content-type':'application/octet-stream','content-length':data.length,'cache-control':'no-store','x-content-type-options':'nosniff'});
+        res.end(data);
+        return;
+      }
       if(url.pathname==='/v1/mobile/settings'){if(client.id!=='kteam-main')throw new KTeamError('mobile_admin_forbidden',403);if(req.method==='GET')return send(res,200,{...mobileDevices.view(),port:mobileGateway.port,relayStatus:mobileGateway.relayStatus});if(req.method==='POST'){const input=record(await body(req));if(input.action==='invite')return send(res,200,mobileDevices.invite(mobileGateway.port));const before=mobileDevices.enabled;const result=mobileDevices.configure(input);mobileGateway.reconcile();if(!mobileDevices.enabled)await mobileGateway.close();else if(!before)await mobileGateway.start();return send(res,200,{...result,port:mobileGateway.port,relayStatus:mobileGateway.relayStatus});}throw new KTeamError('route_not_found',404);}
       if(url.pathname==='/v1/host/stop'&&req.method==='POST'){if(client.id!=='kteam-main')throw new KTeamError('host_stop_forbidden',403);fields(record(await body(req)),[]);if(!shutdown)throw new KTeamError('host_starting',503);send(res,200,{ok:true,stopping:true});setImmediate(()=>{void shutdown!().catch(()=>{process.exitCode=1;});});return;}
       if(url.pathname.startsWith('/v1/conversation-view/')){

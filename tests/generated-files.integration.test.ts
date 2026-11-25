@@ -2,7 +2,7 @@ import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join} from 'node:path';
-import {mkdirSync,writeFileSync,unlinkSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,unlinkSync} from 'node:fs';
 import {captureGeneratedFile,generatedFilePreview} from '../src/runtime/generated-files.js';
 import {recordGeneratedFile} from '../src/runtime/generated-file-receipts.js';
 import {realUpstreams} from './helpers/real-upstreams.js';
@@ -11,13 +11,16 @@ import {TeamCoordinator} from '../src/service/coordination.js';
 import {startHost} from '../src/service/server.js';
 import {initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
+import {saveArtifact} from '../desktop/artifact-download.js';
 
 test('real authenticated host opens only unchanged generated HTML receipts in the current Room, including after restart',async()=>{
  const f=await realUpstreams(),root=join(f.root,'host'),path=join(f.root,'fictional-report.html');mkdirSync(root,{mode:0o700});writeFileSync(path,'<!doctype html><title>虚构测试报告</title>');
+ const largePath=join(f.root,'fictional-large.pdf'),largeBytes=Buffer.alloc(3*1024*1024,0xff);
+ writeFileSync(largePath,largeBytes);
  const store=new TeamStore(root),coordinator=new TeamCoordinator(f.upstream,store,1,{catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({model:'fixture',fingerprint:'fixture'})});let host:any;
  try{
   const a=await coordinator.bootstrap({requestSource:'user'}),b=await coordinator.createGroup({title:'隔离测试群',memberAgentIds:[a.botId],requestId:'other-room'},{requestSource:'user'});
-  store.enqueue('generated-proof',a.roomId,'fictional-origin');const job=store.jobs(a.roomId)[0];job.state='delivered';job.toolTrace=[{id:'render-proof',name:'mcp__report-renderer__render_report',state:'completed',file:captureGeneratedFile(path,root,a.roomId)}];store.save(job);store.close();
+  store.enqueue('generated-proof',a.roomId,'fictional-origin');const job=store.jobs(a.roomId)[0];job.state='delivered';job.toolTrace=[{id:'render-proof',name:'mcp__report-renderer__render_report',state:'completed',file:captureGeneratedFile(path,root,a.roomId)},{id:'large-proof',name:'write',state:'completed',file:captureGeneratedFile(largePath,root,a.roomId)}];store.save(job);store.close();
   initConfig(root,{version:1,brokerUrl:f.upstream.options.brokerUrl,kswarmUrl:f.upstream.options.kswarmUrl});host=await startHost({root,upstream:f.upstream.options});
   const route=(room:string,id='render-proof')=>`/v1/teams/${encodeURIComponent(room)}/generated-file-open?toolCallId=${id}`;
   assert.equal((await hostRequest(root,'kteam-main',route(a.roomId))).path,path);
@@ -28,6 +31,12 @@ test('real authenticated host opens only unchanged generated HTML receipts in th
   await assert.rejects(hostRequest(root,'kteam-main',route(a.roomId,'forged')),/generated_file_not_found/);
   await host.close();host=await startHost({root,upstream:f.upstream.options});assert.equal((await hostRequest(root,'kteam-main',route(a.roomId))).path,path);
   const again=await hostRequest(root,'kteam-main',previewRoute);assert.equal(again.content,preview.content);
+  const largePreview=await hostRequest(root,'kteam-main',route(a.roomId,'large-proof').replace('generated-file-open','generated-file-preview'));
+  assert.equal(largePreview.kind,'unsupported');
+  const destination=join(f.root,'downloaded.pdf'),source={roomId:a.roomId,toolCallId:'large-proof'};
+  await assert.rejects(saveArtifact(root,{...source,roomId:b.room.roomId},async()=>assert.fail('chooser opened for another Room')),/generated_file_not_found/);
+  assert.deepEqual(await saveArtifact(root,source,async name=>{assert.equal(name,'fictional-large.pdf');return destination;}),{ok:true,cancelled:false});
+  assert.deepEqual(readFileSync(destination),largeBytes);
   writeFileSync(path,'changed');await assert.rejects(hostRequest(root,'kteam-main',previewRoute),/generated_file_changed/);await assert.rejects(hostRequest(root,'kteam-main',route(a.roomId)),/generated_file_changed/);
   unlinkSync(path);symlinkSync(join(root,'host.log'),path);await assert.rejects(hostRequest(root,'kteam-main',route(a.roomId)),/generated_file_changed/);
   writeFileSync(join(root,'private.html'),'private');assert.throws(()=>captureGeneratedFile(join(root,'private.html'),root,a.roomId),/generated_file_forbidden/);
