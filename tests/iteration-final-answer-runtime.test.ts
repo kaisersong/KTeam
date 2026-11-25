@@ -47,7 +47,7 @@ for(const scenario of ['answer','tool','empty','truncated','denied','early-answe
    config.defaultModelId='fixture';
    writeFileSync(join(root,'config.json'),JSON.stringify(config));
    const turn=nativeTurn({
-    modelId:'fixture',system:'根据工具回执回答。',prompt:'读一次并交付查证结果。',maxIterations:2,
+    modelId:'fixture',system:'根据工具回执回答。',prompt:'读一次并交付查证结果。',maxIterations:2,finalAnswerOnLimit:true,
     tools:[{
      permission:'safe',
      definition:{name:'read_fixture',description:'Read a fixture',inputSchema:{type:'object',properties:{}}},
