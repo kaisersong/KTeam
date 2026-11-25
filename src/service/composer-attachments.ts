@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {mkdirSync,realpathSync,existsSync,openSync,closeSync,readFileSync,writeFileSync,fsyncSync,renameSync,unlinkSync,fstatSync,constants} from 'node:fs';
 import {KTeamError,fields,record,text} from '../errors.js';
 import {intentHash,validateL0} from '../protocol/aimp.js';
-import {encodeAttachmentMessage,parseAttachmentMessage,attachmentImageType,type MessageAttachment} from '../protocol/message-attachments.js';
+import {encodeAttachmentMessage,parseAttachmentMessage,artifactReplyAttachment,attachmentImageType,type MessageAttachment} from '../protocol/message-attachments.js';
 import type {TeamStore} from './team-store.js';
 import type {Upstreams} from '../adapters/upstream.js';
 import {ConversationService,decodeLibraryUpload,libraryFileIdentity} from './conversation.js';
@@ -61,5 +61,25 @@ export class ComposerAttachments {
   }finally{sending.delete(key);}
  }
  async content(value:unknown){const input=record(value);fields(input,['roomId','id']);const roomId=text(input.roomId,'room_id'),id=uploadId(input.id);await this.conversations.scope(roomId);const op=this.entry(id,roomId);if(op.status!=='staged')throw new KTeamError('attachment_not_found',404);const bytes=this.bytes(op);return {ok:true,id:op.uploadId,name:op.file.name,extension:op.file.extension,bytes:bytes.length,data:bytes.toString('base64')};}
- async preview(value:unknown){const input=record(value);fields(input,['roomId','messageId','fileId']);const roomId=text(input.roomId,'room_id'),messageId=text(input.messageId,'message_id'),fileId=text(input.fileId,'file_id');await this.conversations.scope(roomId);const message=(await this.upstream.conversationMessage(roomId,messageId)).message as any,payload=message.sender?.kind==='user'&&message.sourceRef?.kind==='aimp_l0'&&message.sourceRef.envelope?.body===message.text?parseAttachmentMessage(message.text):undefined,file=payload?.attachments.find(file=>file.fileId===fileId);if(!file)throw new KTeamError('attachment_not_found',404);if(message.sourceRef.envelope.from!==LOCAL_HUMAN||message.sourceRef.envelope.room_id!==roomId||intentHash(message.sourceRef.envelope)!==message.sourceRef.intentHash)throw new KTeamError('attachment_message_changed',409);const actual=await this.conversations.file(roomId,fileId);if(!equalFile(actual.file,file))throw new KTeamError('attachment_changed',409);const mediaType=attachmentImageType(file.extension);if(mediaType)return {ok:true,file:actual.file,preview:null,image:{mediaType,base64:actual.body.toString('base64')}};return this.conversations.preview(roomId,fileId);}
+ async preview(value:unknown){
+  const input=record(value);fields(input,['roomId','messageId','fileId']);
+  const roomId=text(input.roomId,'room_id'),messageId=text(input.messageId,'message_id'),fileId=text(input.fileId,'file_id');
+  await this.conversations.scope(roomId);
+  const message=(await this.upstream.conversationMessage(roomId,messageId)).message as any;
+  const ref=message.sourceRef;
+  const agent=artifactReplyAttachment(message);
+  const human=message.sender?.kind==='user'&&ref?.kind==='aimp_l0'&&ref.envelope?.body===message.text?parseAttachmentMessage(message.text):undefined;
+  const file=(agent??human)?.attachments.find(file=>file.fileId===fileId);
+  if(!file||message.roomId!==roomId)throw new KTeamError('attachment_not_found',404);
+  if(agent){
+   const original=(await this.upstream.conversationMessage(roomId,ref.artifactReplyMessageId)).message as any;
+   if(original.roomId!==roomId||original.threadId!==message.threadId||original.sender?.kind!=='agent'||original.sender.logicalAgentId!==message.sender.logicalAgentId
+    ||original.sourceRef?.kind!=='aimp_reply'||original.sourceRef.taskRef!==ref.taskRef||original.sourceRef.artifactFileId)throw new KTeamError('attachment_message_changed',409);
+  }else if(ref.envelope.from!==LOCAL_HUMAN||ref.envelope.room_id!==roomId||intentHash(ref.envelope)!==ref.intentHash)throw new KTeamError('attachment_message_changed',409);
+  const actual=await this.conversations.file(roomId,fileId);
+  if(!equalFile(actual.file,file))throw new KTeamError('attachment_changed',409);
+  const mediaType=attachmentImageType(file.extension);
+  if(mediaType)return {ok:true,file:actual.file,preview:null,image:{mediaType,base64:actual.body.toString('base64')}};
+  return this.conversations.preview(roomId,fileId);
+ }
 }

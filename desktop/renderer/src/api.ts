@@ -6,7 +6,7 @@ import type {ArtifactReviewDecision,ArtifactReviewNote,ArtifactReviewView} from 
 export interface Bot {isAssistant?:boolean;id:string;name:string;binding?:{modelId:string;model:string;kind:string;revision:number}|null;connection?:any;description?:string;instructions?:string;profile?:any}
 export interface CodexGrantView {supported:boolean;grant:{path:string|null;revision:number}}
 export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:boolean;unread?:boolean;lastMessage?:{messageId:string;roomSequence:number;text:string;sender:{kind:string;logicalAgentId?:string};createdAt?:string}|null;pinnedAt?:string|null;memberAgentIds?:string[];botId?:string;roomId:string;title:string;description?:string;kind?:'assistant'|'direct'|'group'|'peer'}
-export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string}
+export interface Message {messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string;artifactReplyMessageId?:string}
 export interface KTeamAPI {
  mobileSettings():Promise<any>;changeMobileSettings(input:any):Promise<any>;
  teamWorkspace(roomId:string):Promise<any>;saveTeamWorkspace(input:any):Promise<any>;

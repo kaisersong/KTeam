@@ -19,7 +19,7 @@ import {ConversationMessage} from './work-record-preview';
 import {conversationWindow,mergeConversationWindow,acceptsConversationUpdate,type ConversationWindow} from '../../../src/protocol/conversation-window';
 import {MemberProfile,type MemberSettingsTab,type MemberProfileTab} from './member-profile';
 import {ComposerAttachmentList,useComposerAttachments} from './composer-attachments';
-import {messageDisplayText} from '../../../src/protocol/message-attachments';
+import {attachmentMessageView,messageDisplayText} from '../../../src/protocol/message-attachments';
 import {TeamRecipeDialog} from './team-recipes';
 import {WorkInputControls} from './work-inputs';
 import {executionFailure} from '../../../src/protocol/execution-failure';
@@ -36,7 +36,7 @@ import {LocalAgentSelect,BUILTIN,localDriver,ensureLocalAgent,ensureBuiltinAgent
 import {recoveredConnectionError,preserveActionError,rejectedConversationRead,isConnectionError,upstreamRejectionMessage} from './connection-state';
 import {createSendRecheck,isUnknownSendReceipt} from './send-recheck';
 import {ConversationWorkspace,type WorkspaceTab} from './conversation-workspace';
-import {Markdown} from './Markdown';
+import {Markdown,type MessageFile} from './Markdown';
 import {BotQuestionCard,ToolApprovalCard,ToolTrace,ApprovalReceiptNotice} from './harness-status';
 import {toolActivity} from './harness-status';
 import {WelcomeFlow,AgentConnect,BotEditor,GroupEditor} from './flows';
@@ -190,6 +190,22 @@ function App(){
   await load();
  };
  const messageMap=useMemo(()=>new Map(messages.map(m=>[m.messageId,m])),[messages]);
+ const attachedFiles=useMemo(()=>{
+  const byReply=new Map<string,MessageFile[]>();
+  for(const message of messages){
+   const source=message.artifactReplyMessageId??(message.sender.kind==='user'?message.replyToMessageId:undefined);
+   if(!source||!message.roomId)continue;
+   const roomId=message.roomId;
+   const files=byReply.get(source)??[];
+   for(const file of attachmentMessageView(message)?.attachments??[]){
+    if(files.some(entry=>entry.id===file.fileId))continue;
+    files.push({id:file.fileId,file:{name:file.name,roomId},
+     attachment:{roomId,messageId:message.messageId,fileId:file.fileId,name:file.name,extension:file.extension}});
+   }
+   if(files.length)byReply.set(source,files);
+  }
+  return byReply;
+ },[messages]);
  const messageStates=useMemo(()=>new Map<string,any>((conversationData?.messageState??[]).map((m:any)=>[m.messageId,m])),[conversationData]);
  const act=async(action:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await action();await load();await refresh();}catch(error){setError(explain(error));}finally{setBusy(false);}};
  const refreshRef=useRef(refresh);refreshRef.current=refresh;
@@ -380,7 +396,7 @@ function App(){
  <div className="conversation-work-statuses">{status?.workPaused===true&&<span className="conversation-work-status" role="status">全部工作已暂停</span>}{waitingJob&&<WorkWaitingNotice key={waitingJob.id} job={waitingJob} resultIds={waitingResultIds} onResult={(id,botId,messageId)=>{const exchange=waitingExchanges.find(exchange=>exchange.id===id);if(exchange)openPeerExchange(exchange,botId,messageId);}} bots={bots} busy={busy} onOpenConfirmation={openConfirmation} onSource={()=>showWorkOrigin(waitingJob.originId)} onMember={botId=>setMemberProfile({botId,roomId:room.roomId})} onDetails={()=>openWorkDetails(waitingJob.id)} onPause={()=>void act(()=>api.pause(room.roomId))}/>}</div>
  <div className="conversation-center"><ConversationScroll key={room.roomId} scrollRef={scroll} hasOlder={hasOlder} hasNewer={hasNewer} loadingOlder={loadingOlder} historyKey={messages[0]?.messageId} onOlder={older} onPosition={atBottom=>{if(!peerReturn.current&&!readingRecords.current.size)follow.current=atBottom;}} onLatest={async()=>{follow.current=true;readingRecords.current.clear();if(hasNewer)await refresh({latest:true});requestAnimationFrame(()=>scroll.current?.scrollTo({top:scroll.current.scrollHeight}));}}>
  {!messages.length&&room.kind!=='assistant'&&<div className="conversation-intro"><h2>{room.title}</h2><p>{room.kind==='group'?'一起讨论方向、交换想法，把共识整理到共享。':'和你的搭档开始交流。'}</p><span>直接发消息，开始交流。</span></div>}
- {messages.map(message=><React.Fragment key={message.messageId}>{message.sender.kind==='user'&&messageAnchors(messageDisplayText(message)).map((anchor,index)=><button key={index} className="text-button reference-source" onClick={()=>openReference(anchor)}>打开引用原消息</button>)}<ConversationMessage onReading={readRecord} job={jobs.find(job=>job.results?.some((result:any)=>result.messageId===message.messageId) || (message.sender.kind==='user'&&job.groupPlanAvailable&&job.originId===message.messageId))} readable={!modal&&!raw&&!peerView} sourceTitle={(message.sourceRef?.kind==='bot_private_message'||message.sourceRef?.kind==='assistant_relay')?rooms.find(r=>r.roomId===message.sourceRef.originRoomId)?.title:undefined} message={message} bots={bots} onAction={messageAction} state={messageStates.get(message.messageId)} cards={jobs.find(j=>j.results?.some((r:any)=>r.messageId===message.messageId))?.cards?.filter((card:any)=>card.botId===message.sender.logicalAgentId)} speakingId={speakingId} replyMessage={message.replyToMessageId?messageMap.get(message.replyToMessageId):undefined}/>{proposals.filter(p=>p.replyId===message.messageId).map(proposalCard)}{peerExchanges.filter(exchange=>exchange.originId===message.messageId).map(exchange=><PeerExchangeNotice key={exchange.id} exchange={exchange} bots={bots} workingBotIds={workingBotIds} onOpen={openPeerExchange}/>)}</React.Fragment>)}
+ {messages.map(message=><React.Fragment key={message.messageId}>{message.sender.kind==='user'&&messageAnchors(messageDisplayText(message)).map((anchor,index)=><button key={index} className="text-button reference-source" onClick={()=>openReference(anchor)}>打开引用原消息</button>)}<ConversationMessage onReading={readRecord} attachedFiles={attachedFiles.get(message.messageId)} job={jobs.find(job=>job.results?.some((result:any)=>result.messageId===message.messageId) || (message.sender.kind==='user'&&job.groupPlanAvailable&&job.originId===message.messageId))} readable={!modal&&!raw&&!peerView} sourceTitle={(message.sourceRef?.kind==='bot_private_message'||message.sourceRef?.kind==='assistant_relay')?rooms.find(r=>r.roomId===message.sourceRef.originRoomId)?.title:undefined} message={message} bots={bots} onAction={messageAction} state={messageStates.get(message.messageId)} cards={jobs.find(j=>j.results?.some((r:any)=>r.messageId===message.messageId))?.cards?.filter((card:any)=>card.botId===message.sender.logicalAgentId)} speakingId={speakingId} replyMessage={message.replyToMessageId?messageMap.get(message.replyToMessageId):undefined}/>{proposals.filter(p=>p.replyId===message.messageId).map(proposalCard)}{peerExchanges.filter(exchange=>exchange.originId===message.messageId).map(exchange=><PeerExchangeNotice key={exchange.id} exchange={exchange} bots={bots} workingBotIds={workingBotIds} onOpen={openPeerExchange}/>)}</React.Fragment>)}
  {jobs.filter(job=>job.stopNotice).slice().reverse().map(job=><div className="pending-note" role="status" key={'stop:'+job.id}>
   <span>{job.stopNotice.confirmed?'工作已停止':'停止结果待核对'} · {({manual:'手动暂停',fleet:'全队暂停',timeout:'执行超时',budget:'调用额度耗尽'} as Record<string,string>)[job.stopNotice.cause]}
   {job.stopNotice.lastProgressAt&&' · 最后进展 '+new Date(job.stopNotice.lastProgressAt).toLocaleTimeString()}</span>
@@ -399,6 +415,7 @@ function App(){
  </>}
  {notice&&<div className="conversation-toast" role="status">{notice}</div>}
  </main>
+ <ArtifactViewer roomId={modal==='settings'?undefined:room?.roomId}/>
  {modal!=='settings'&&panel&&room&&<ConversationWorkspace fleetPaused={status?.workPaused===true} workControl={room.kind==='group'&&typeof status?.workPaused==='boolean'?{paused:status.workPaused,disabled:fleetBusy||reconnecting,toggle:toggleAllWork}:undefined} sourceMessage={sharedSource?.roomId===room.roomId?sharedSource:undefined} onClearSource={()=>setSharedSource(undefined)} onCreateMember={()=>setModal('create')} onMembersChanged={async()=>{await load();await refresh({force:true});}} onGeneratedWork={id=>{setNotificationJob(id);setPanel('inspector');}} onRecipe={()=>setModal('recipe-export')} onToday={()=>setModal('assistant-today')} focusJobId={notificationJob} key={room.roomId} room={room} bots={roomBots} settings={settings} jobs={jobs} tasks={tasks} data={conversationData} tab={panel} setTab={setPanel} roles={groupRoles} onRolesChanged={refresh} recovery={workRecovery} onContinue={continueWork} reconnecting={reconnecting} onData={loadConversation} onClose={closeWorkDetails} onBot={bot=>setMemberProfile({botId:bot.id,roomId:room.roomId})} onRename={()=>setModal('rename')} onPause={async()=>{await (settings?.paused?api.resume(room.roomId):api.pause(room.roomId));await refresh();}} onReview={task=>void act(()=>api.review({roomId:room.roomId,taskRef:task.taskRef,decision:'pass'}))} onNew={newMemberConversation} onDraft={text=>{setDraft(text);document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus();}} onReply={m=>messageAction('reply',m)} onMessage={m=>setRaw(m)}/>}
  {peerView&&<PeerExchangeDialog key={peerView.roomId+peerView.exchange.id+peerView.botId+(peerView.focusMessageId??'')} focusMessageId={peerView.focusMessageId} sourceRoomId={peerView.roomId} sourceTitle={peerView.title} exchange={peerView.exchange} botId={peerView.botId} bots={bots} onClose={()=>{const saved=peerReturn.current;setPeerView(undefined);requestAnimationFrame(()=>{if(saved&&activeRoom.current===saved.roomId&&scroll.current){scroll.current.scrollTop=saved.top;follow.current=saved.follow&&scroll.current.scrollHeight===saved.height;}peerReturn.current=undefined;});}}/>}
  {raw&&<Modal title="消息内容" onClose={()=>setRaw(undefined)}><p className="form-note">{raw.createdAt?new Date(raw.createdAt).toLocaleString():''} · {raw.messageId}</p><pre className="raw-markdown">{raw.text}</pre><button className="secondary" onClick={()=>void navigator.clipboard.writeText(raw.text??'').then(()=>setNotice('消息已复制')).catch(e=>setError(explain(e)))}>复制原文</button><button className="secondary" onClick={()=>{messageAction('reply',raw);setRaw(undefined);}}>回复这条</button></Modal>}
@@ -469,4 +486,4 @@ function App(){
  {modal==='rename'&&room&&<GroupEditor key={room.roomId} room={room} settings={settings} onClose={()=>setModal(undefined)} onDone={async()=>{await load();await refresh();}}/>}
  </div></UserProfileProvider>;
 }
-createRoot(document.getElementById('root')!).render(<><App/><ArtifactViewer/></>);
+createRoot(document.getElementById('root')!).render(<App/>);
