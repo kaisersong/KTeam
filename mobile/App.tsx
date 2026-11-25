@@ -1,7 +1,7 @@
 import {ActiveConversationWork,MobileReferencePicker,MobileWorkInput} from "./src/conversation-work";
 import {messageAnchors,type MessageAnchor} from "../src/protocol/message-reference";
 import {AssistantConnectorGuide,AssistantDailyPanel} from "./src/assistant-daily";
-import {ArtifactReviewActions,MemberPanel,PluginCommandsPanel,PluginsPanel,RoutinesPanel,WorkDetailPanel,WorkListPanel} from "./src/conversation-tools";
+import {ArtifactReviewActions,MemberPanel,PluginCommandsPanel,PluginsPanel,RoutinesPanel,WorkDetailPanel,MailCapabilityPanel,WorkListPanel} from "./src/conversation-tools";
 import {planReviewPreset} from "../src/protocol/member-presets";
 import {isPluginCommand} from "../src/protocol/plugins";
 import { ArtifactDiff } from "./src/artifact-diff";
@@ -119,6 +119,7 @@ import {
 } from "../src/protocol/mobile-message-cache";
 import { latestMobileInbox } from "../src/protocol/mobile-inbox";
 import { mobileApprovalCard } from "../src/protocol/mobile-approval-card";
+import { approvalChangeText,toolApprovalSummary } from "../src/protocol/tool-approval-summary";
 import { mobileRecoveryNotice } from "../src/protocol/work-recovery-view";
 import { acceptPairing } from "../src/protocol/mobile-pairing";
 import { ResponseBarrier, applyPhoneAuthority } from "../src/protocol/mobile-authority";
@@ -166,7 +167,7 @@ const MessageRow = memo(function MessageRow({
 }: any) {
   const job = work?.jobs?.find((j: any) =>
       j.results?.some((r: any) => r.messageId === m.messageId) ||
-      m.sender.kind==="user"&&j.groupPlanAvailable&&j.originId===m.messageId,
+      m.sender.kind==="user"&&(j.groupPlanAvailable||j.dispatchEvidence)&&j.originId===m.messageId,
     ),
     receipts = (job?.generatedFiles ?? []).filter(
       (f: any) => f.botId === m.sender.logicalAgentId,
@@ -261,10 +262,10 @@ const MessageRow = memo(function MessageRow({
       {m.sender.kind==="user"&&messageAnchors(messageDisplayText(m)).map((anchor,index)=><Pressable key={index} accessibilityRole="button" onPress={()=>onReference(m.roomId,anchor)} style={{paddingVertical:6}}>
         <Text style={{color:colors.green}}>打开引用原消息</Text>
       </Pressable>)}
-      {(job?.groupPlanAvailable||job?.workEvidenceAvailable||job?.peerReviewVersion)&&(
+      {(job?.groupPlanAvailable||job?.workEvidenceAvailable||job?.peerReviewVersion||job?.dispatchEvidence)&&(
         <Pressable accessibilityRole="button" style={[s.button,{borderColor:colors.line,alignSelf:"flex-start",marginTop:8}]}
           onPress={()=>onWork(m.roomId,job.id)}>
-          <Text style={{color:colors.green}}>{job.groupPlanAvailable?"群计划":job.peerReviewVersion?"复核记录":"本轮变更与检查"}</Text>
+          <Text style={{color:colors.green}}>{job.groupPlanAvailable?"群计划":job.peerReviewVersion?"复核记录":job.workEvidenceAvailable?"本轮变更与检查":"触发依据"}</Text>
         </Pressable>
       )}
       {receipts.map((f: any) => (
@@ -351,6 +352,8 @@ function AppBody() {
     [pairing, setPairing] = useState(false),
     [uploads, setUploads] = useState<any[]>([]),
     [uncertain, setUncertain] = useState<any[]>([]),
+    [staleWork, setStaleWork] = useState(false),
+    [catchingUp, setCatchingUp] = useState(false),
     [reply, setReply] = useState<any>(),
     [preview, setPreview] = useState<any>(),
     [latest, setLatest] = useState(true),
@@ -360,7 +363,7 @@ function AppBody() {
   const inboxScroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const inboxOffset = useRef(0);
   const restoreInbox = useRef(false);
-  type ToolPanel={kind:"work"|"routines"|"commands"|"daily"|"reference"|"append";roomId:string;jobId?:string;independent?:boolean}|{kind:"plugins"|"member"};
+  type ToolPanel={kind:"work"|"routines"|"commands"|"daily"|"reference"|"append";roomId:string;jobId?:string;independent?:boolean}|{kind:"plugins"|"member"}|{kind:"mail";roomId:string;botId:string};
   const [toolPanel,setToolPanel]=useState<ToolPanel>();
   const initialDraft=useRef<{roomId:string;text:string;append?:boolean}|undefined>(undefined);
   const pendingTools=useRef(new Map<string,Promise<any>>());
@@ -640,10 +643,16 @@ function AppBody() {
         await persist(computer, "rooms", a.rooms);
         await persist(computer, "bots", b.bots);
       } else {
+        let resumeAfter = messagesRef.current.at(-1)?.roomSequence;
+        if (!cursor.current && !resumeAfter) {
+          resumeAfter = (await cachedMessages(computer, r.roomId).catch(() => []))?.at(-1)?.roomSequence;
+          if (g !== generation.current || roomRef.current?.roomId !== r.roomId) return;
+        }
         const [v, attention] = await Promise.all([
           call("conversations.updates", {
             roomId: r.roomId,
             ...(cursor.current ? { cursor: cursor.current } : {}),
+            ...(resumeAfter ? { resumeAfter } : {}),
             messageIds: messagesRef.current.slice(-250).map((m) => m.messageId),
           }),
           call("inbox.read").catch(() => undefined),
@@ -652,6 +661,8 @@ function AppBody() {
           return;
         if (attention) updateInbox(attention);
         cursor.current = v.cursor;
+        setStaleWork(v.errors?.some((section: { section: string }) => section.section === "work") === true);
+        setCatchingUp(v.messages?.hasMoreAfter === true);
         const incoming = v.messages?.messages ?? [];
         const all = mergeMessages(messagesRef.current, incoming);
         if (all !== messagesRef.current) {
@@ -729,6 +740,8 @@ function AppBody() {
     generation.current++;
     connection.current?.close();
     cursor.current = undefined;
+    setStaleWork(false);
+    setCatchingUp(false);
     if (changed) {
     setMessages([]);
     setRooms([]);
@@ -809,6 +822,8 @@ function AppBody() {
   useEffect(() => {
     if (!computer) return;
     cursor.current = undefined;
+    setStaleWork(false);
+    setCatchingUp(false);
     setDraftReady(false);
     followLatest.current = true;
     followAfterLayout.current = true;
@@ -1168,14 +1183,25 @@ function AppBody() {
     }
   };
   const checkSend = async (item: any) => {
+    const target = computer;
+    if (!target) return;
+    const current = () => computerRef.current?.credentialId === target.credentialId;
     setBusy(true);
     try {
       const v = await call("operations.get", { operationId: item.operationId });
+      if (!current()) return;
       if (v.status === "completed") {
-        await clearPending(computer!, item.operationId);
-        setText("");
-        setUploads([]);
-        await getPending(computer!);
+        await clearPending(target, item.operationId);
+        if (!current()) return;
+        if (item.method === "approvals.decide") {
+          const decision = v.result?.status === "denied" ? "已拒绝" : v.result?.status === "allowed" ? "已批准" : "决定已送达";
+          const different = v.result?.matchesRequest === false ? "电脑记录的决定与本机提交的决定不同。" : "";
+          Alert.alert("审批回执", decision + "。" + different + "实际执行结果请在原工作中查看。");
+        } else if (roomRef.current?.roomId === item.input?.roomId) {
+          setText((draft) => draft === item.input?.text ? "" : draft);
+          setUploads((drafts) => drafts.filter(draft => !item.input?.uploadIds?.includes(draft.id)));
+        }
+        await getPending(target);
         await refresh();
       } else if (v.status === "not_received") {
         Alert.alert(
@@ -1185,25 +1211,29 @@ function AppBody() {
             : "沿用同一编号重新发送？",
           [
             { text: "取消" },
-            { text: "重新发送", onPress: () => void retrySend(item) },
+            { text: "重新发送", onPress: () => { if (current()) void retrySend(item); } },
           ],
         );
       } else if (v.status === "rejected") {
         setError(names[v.code] ?? v.code);
-        await clearPending(computer!, item.operationId);
-        await getPending(computer!);
+        await clearPending(target, item.operationId);
+        await getPending(target);
       } else setError("原操作结果仍待核对，请先在电脑查看，不会自动重复执行。");
     } catch (e) {
-      tell(e);
+      if (current()) tell(e);
     } finally {
       setBusy(false);
     }
   };
   const retrySend = async (item: any) => {
+    const target = computer;
+    if (!target) return;
+    const current = () => computerRef.current?.credentialId === target.credentialId;
     setBusy(true);
     try {
       if (item.method === "approvals.decide") {
         const inbox = await call("inbox.read");
+        if (!current()) return;
         const still = inbox.approvals?.find(
           (approval: any) =>
             approval.id === item.input?.id &&
@@ -1212,11 +1242,12 @@ function AppBody() {
         if (!still) throw Error("审批已不在等待，不会重新提交。");
       }
       await call(item.method, { ...item.input, operationId: item.operationId });
-      await clearPending(computer!, item.operationId);
-      await getPending(computer!);
-      await refresh();
+      if (!current()) return;
+      await clearPending(target, item.operationId);
+      await getPending(target);
+      if (current()) await refresh();
     } catch (e) {
-      tell(e);
+      if (current()) tell(e);
     } finally {
       setBusy(false);
     }
@@ -1353,6 +1384,7 @@ function AppBody() {
   };
   const decide = async (a: any, decision: string) => {
     if (!computer) return;
+    const current = () => computerRef.current?.credentialId === computer.credentialId;
     if (writeGate.current.locked) {
       setError("撤销状态未核实，暂不能发送或确认");
       return;
@@ -1363,6 +1395,7 @@ function AppBody() {
       operationId =
         "approval_" +
         (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, a.id)).slice(0, 32);
+      if (!current()) return;
       if (writeGate.current.locked) throw new MobileWriteRefused(false);
       const earlier = (await pending(computer)).find(
         (item) => item.operationId === operationId || item.input?.id === a.id,
@@ -1378,15 +1411,19 @@ function AppBody() {
         input: { id: a.id, expectedHash: a.hash, decision },
       };
       await savePending(computer, operationId, item);
+      if (!current()) return;
       await call("approvals.decide", { ...item.input, operationId });
+      if (!current()) return;
       await clearPending(computer, operationId);
+      if (!current()) return;
       const next = await call("inbox.read");
+      if (!current()) return;
       updateInbox(next);
       if (!next.approvals?.some((item:any) => item.id === a.id)) finishAttention(a.id);
     } catch (e) {
       if (e instanceof MobileWriteRefused && !e.sent && operationId)
         await clearPending(computer, operationId).catch(() => {});
-      tell(e);
+      if (current()) tell(e);
     } finally {
       setBusy(false);
     }
@@ -1884,6 +1921,12 @@ function AppBody() {
           )}
         </View>
       )}
+      {tab === "会话" && room && (staleWork || catchingUp) && (
+        <View accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
+          {staleWork && <Text style={{ color: colors.muted }}>工作状态暂时无法更新，当前显示上次读取的状态。</Text>}
+          {catchingUp && <Text style={{ color: colors.muted }}>正在补齐离线期间的消息。</Text>}
+        </View>
+      )}
       {tab === "会话" && room && <ActiveConversationWork key={room.roomId} roomId={room.roomId}
         jobs={work?.jobs??[]} attention={[...(work?.approvals??[]),...(work?.questions??[]),...(inbox?.approvals??[]),...(inbox?.questions??[])]} bots={bots} button={button} colors={colors}
         disabled={offline||writesLocked||busy} onOpen={id=>openWork(room.roomId,id)}
@@ -2204,6 +2247,7 @@ function AppBody() {
           {offline && attentionItem && <Text style={{color:colors.muted}}>离线 · 待电脑连接后可操作</Text>}
           {(attentionItem?.kind === "approval" ? [attentionItem.item] : []).map((a: any) => {
             const card = mobileApprovalCard(a);
+            const description=toolApprovalSummary(card.toolName,card.parameters),change=approvalChangeText(a.change);
             return (
             <View
               key={a.id}
@@ -2217,8 +2261,9 @@ function AppBody() {
                 需要确认
               </Text>
               <Text style={{ color: colors.muted, marginVertical: 12 }}>
-                {card.toolName}
+                {description.summary}{description.target && " · " + description.target}
               </Text>
+              {change && <Text style={{ color: colors.text, marginBottom: 8 }}>{change}</Text>}
               {card.reason ? (
                 <Text style={{ color: colors.text, marginBottom: 8 }}>{card.reason}</Text>
               ) : null}
@@ -2709,7 +2754,7 @@ function AppBody() {
         <SafeAreaView style={[s.safe,{backgroundColor:colors.bg}]}>
           <View style={[s.header,{borderBottomColor:colors.line}]}>
             <Text accessibilityRole="header" style={[s.title,{color:colors.text,flex:1}]}>
-              {toolPanel?.kind==="append"&&toolPanel.independent?"另提问题":toolPanel?({work:"工作记录",routines:"例行任务",daily:"简报",plugins:"插件",commands:"插件命令",member:"创建成员",reference:"引用其他会话的消息",append:"补充当前工作"})[toolPanel.kind]:""}
+              {toolPanel?.kind==="append"&&toolPanel.independent?"另提问题":toolPanel?({work:"工作记录",routines:"例行任务",daily:"简报",plugins:"插件",commands:"插件命令",member:"创建成员",reference:"引用其他会话的消息",append:"补充当前工作",mail:"邮箱能力"})[toolPanel.kind]:""}
             </Text>
             {toolPanel?.kind==="work"&&toolPanel.jobId&&button("全部工作",()=>setToolPanel({kind:"work",roomId:toolPanel.roomId}))}
             {button("关闭",()=>setToolPanel(undefined))}
@@ -2725,7 +2770,9 @@ function AppBody() {
             }}/>}
           {toolPanel?.kind==="work"&&(toolPanel.jobId
             ?<WorkDetailPanel key={toolPanel.jobId} roomId={toolPanel.roomId} jobId={toolPanel.jobId} bots={bots} {...toolProps}/>
-            :<WorkListPanel key={toolPanel.roomId} roomId={toolPanel.roomId} onOpen={id=>openWork(toolPanel.roomId,id)} {...toolProps}/>)}
+            :<WorkListPanel key={toolPanel.roomId} roomId={toolPanel.roomId} onOpen={id=>openWork(toolPanel.roomId,id)}
+              onMail={room?.roomId===toolPanel.roomId&&members.length===1?()=>setToolPanel({kind:"mail",roomId:toolPanel.roomId,botId:members[0].botId}):undefined} {...toolProps}/>)}
+          {toolPanel?.kind==="mail"&&<MailCapabilityPanel key={toolPanel.roomId+":"+toolPanel.botId} roomId={toolPanel.roomId} botId={toolPanel.botId} {...toolProps}/>}
           {toolPanel?.kind==="routines"&&<RoutinesPanel key={toolPanel.roomId} roomId={toolPanel.roomId} {...toolProps} onResult={id=>void (async()=>{
             const result=await call("messages.get",{roomId:toolPanel.roomId,messageId:id});
             if(roomRef.current?.roomId!==toolPanel.roomId)return;

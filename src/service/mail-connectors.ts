@@ -6,6 +6,7 @@ import {createHash,createCipheriv,createDecipheriv,randomBytes} from 'node:crypt
 import {execFile} from 'node:child_process';
 import {sharedRuntime} from '../runtime/native.js';
 import type {MailAccountDto,MailSearchResult,MailReadResult} from './shared/mail-connectors-ipc-contract.js';
+import type {MailCapabilityAccount} from '../protocol/mail-capability.js';
 import {KTeamError,fields,record} from '../errors.js';
 /** KTeam owns mail protocols, authorization fences and durable send receipts. */
 export class MailConnectors{
@@ -30,6 +31,8 @@ export class MailConnectors{
  {readSendReceipt:async(requestId:string)=>service.getSendReceipt(requestId,'user'),permission:'write',definition:{name:'send_connected_mail',description:'发送已连接邮箱邮件。每次都必须人工确认完整收件人、主题、正文。requestId必须复用，结果未知不得重发。',inputSchema:schema({accountId,requestId:{type:'string',format:'uuid'},to:{type:'array',items:{type:'string'},minItems:1,maxItems:20},subject:{type:'string',maxLength:200},text:{type:'string',maxLength:30000}},['accountId','requestId','to','subject','text'])},execute:async(input:any)=>JSON.stringify(await service.send(input,'user'))}];
  }
  async dailyAccounts():Promise<MailAccountDto[]>{return (await this.get()).list();}
+ async capabilityAccounts():Promise<MailCapabilityAccount[]>{return (await this.get()).capabilityAccounts();}
+ async sendAuthority(id:string):Promise<{revision:number;verifiedAt?:number;email:string}|undefined>{return (await this.get()).sendAuthority(id);}
  async dailySearch(accountId:string,since:string,cursor?:string):Promise<MailSearchResult>{return (await this.get()).search({accountId,since,limit:30,cursor},'scheduler');}
  async dailyRead(accountId:string,messageId:string):Promise<MailReadResult>{return (await this.get()).read({accountId,messageId},'user');}
  async close(){const key=this.ownerKey;if(!key)return;this.ownerKey=undefined;this.service=undefined;const owner=mailOwners.get(key);if(owner&&--owner.references===0){mailOwners.delete(key);(await owner.service).dispose();}}

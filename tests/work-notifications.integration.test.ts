@@ -11,6 +11,29 @@ async function setup(mode='completed'){
  }catch(error){approvals.close();await automation?.close();store.close();if(previous===undefined)delete process.env.KTEAM_MODEL_CONFIG_DIR;else process.env.KTEAM_MODEL_CONFIG_DIR=previous;await f.close();throw error;}
 }
 async function until(check:()=>boolean){const end=Date.now()+10000;while(!check()&&Date.now()<end)await new Promise(r=>setTimeout(r,10));assert.ok(check());}
+test('competing approval decisions record exactly one winner from the original request',async()=>{
+ const f=await setup('approval');
+ let running:Promise<void>|undefined;
+ try{
+  running=f.automation.tick();
+  await until(()=>f.approvals.list().length===1);
+  const [approval]=f.approvals.list();
+  assert.ok(approval);
+  const request={id:approval.id,expectedHash:approval.hash};
+  const outcomes=await Promise.allSettled([
+   f.approvals.decide({...request,decision:'allow_once'}),
+   f.approvals.decide({...request,decision:'deny'}),
+  ]);
+  assert.equal(outcomes.filter(result=>result.status==='fulfilled').length,1);
+  assert.equal(outcomes.filter(result=>result.status==='rejected').length,1);
+  const stored=f.store.operation(approval.id);
+  const repeat=await f.approvals.decide({...request,decision:stored.decision});
+  assert.equal(repeat.reused,true);
+  assert.equal(stored.status,stored.decision==='deny'?'denied':'allowed');
+  await running;
+  assert.equal(f.calls(),1);
+ }finally{await f.end();await running?.catch(()=>{});}
+});
 test('notification quiet hours handle time zones, cross-midnight bounds and daylight saving without model work',()=>{const p=defaultNotificationPreferences();p.quietHours={enabled:true,start:'22:00',end:'08:00',timeZone:'Asia/Shanghai'};assert.equal(notificationQuiet(p,Date.parse('2026-11-10T14:00:00Z')),true);assert.equal(notificationQuiet(p,Date.parse('2026-11-10T23:59:00Z')),true);assert.equal(notificationQuiet(p,Date.parse('2026-11-11T00:00:00Z')),false);p.quietHours={enabled:true,start:'01:00',end:'03:00',timeZone:'America/New_York'};assert.equal(notificationQuiet(p,Date.parse('2026-11-01T05:30:00Z')),true);assert.equal(notificationQuiet(p,Date.parse('2026-11-01T06:30:00Z')),true);p.quiet=true;assert.equal(notificationQuiet(p,Date.parse('2026-11-01T12:00:00Z')),true);});
 test('completion notification claims are unique, verify actual delivery, and never mark any messages read',async()=>{const f=await setup();try{await f.automation.tick();assert.equal((await f.notifications.pending()).items.length,0);f.enable();const items=(await f.notifications.pending()).items;assert.equal(items.length,1);assert.equal(f.calls(),1);const claims=await Promise.all([f.notifications.claim(items[0]),f.notifications.claim(items[0])]),claim:any=claims.find(value=>value.claimed);assert.equal(claims.filter(value=>value.claimed).length,1);assert.equal(claim.body,'成员已提交答复，等待你核对');assert.equal(claim.silent,true);f.notifications.acknowledge({id:claim.id,token:claim.token,status:'issued'});const before=f.store.seen(f.roomId);const located=await f.notifications.locate({id:claim.id});assert.equal(located.navigation.messageId,f.store.job('notification-root').results[0].messageId);assert.deepEqual(f.store.seen(f.roomId),before);assert.equal((await f.notifications.pending()).items.length,0);assert.equal(f.calls(),1);}finally{await f.end();}});
 test('quiet settings, stale preferences and already-seen delivery prevent an OS claim without losing messages',async()=>{const f=await setup();try{await f.automation.tick();f.enable();const item=(await f.notifications.pending()).items[0];saveNotificationPreferences(f.store,{expectedRevision:1,quiet:true});assert.equal((await f.notifications.pending()).items.length,0);await assert.rejects(f.notifications.claim(item),/notification_source_changed/);saveNotificationPreferences(f.store,{expectedRevision:2,quiet:false});const current=(await f.notifications.pending()).items[0],claim:any=await f.notifications.claim(current),message=(await f.upstream.conversationMessage(f.roomId,f.store.job('notification-root').results[0].messageId)).message;f.store.markSeen(f.roomId,[message.roomSequence]);assert.equal((await f.notifications.pending()).items.length,0);assert.equal((await f.notifications.locate({id:claim.id})).navigation.messageId,message.messageId,'a user may reopen a notification for an already read message');assert.equal((await f.upstream.messages(f.roomId,0,100)).messages.filter((m:any)=>m.sender.kind==='agent').length,1);assert.throws(()=>saveNotificationPreferences(f.store,{expectedRevision:3,quietHours:{start:'08:00',end:'08:00'}}),/notification_settings_invalid/);}finally{await f.end();}});

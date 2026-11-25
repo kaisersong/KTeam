@@ -118,6 +118,14 @@ test('stage acceptance is bound to returned member receipts and never rewrites e
   await f.updates.reviewStage({...valid,expectedRevision:1,decision:'rework',note:'Check again'});
   assert.deepEqual((await read()).review,{decision:'rework',note:'Check again',revision:2});
   assert.equal(f.store.job(jobId).state,'delivered');assert.deepEqual(f.store.job(childId).results,child.results);
+  const childRoom=(await f.upstream.membership(member.roomId)).room;
+  assert.equal(f.broker.room.archiveRoom({roomId:member.roomId,expectedRoomRevision:childRoom.revision},
+   {sessionId:'stage-source-revoked',requestSource:'user',actor:{kind:'user',userId:'user.local'},issuedAt:new Date().toISOString()}).ok,true);
+  const withheld=await read();
+  assert.equal(withheld.requests[0].evidence,undefined);
+  assert.equal(withheld.requests[0].state,'unknown');
+  assert.equal(withheld.witness,undefined);
+  await assert.rejects(f.updates.reviewStage(valid),/stage_evidence_changed/);
  }finally{await f.close();}
 });
 

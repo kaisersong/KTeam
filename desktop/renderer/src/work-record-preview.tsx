@@ -1,4 +1,5 @@
 import {stageStatus} from '../../../src/protocol/conversation-work';
+import {dispatchEvidenceText} from '../../../src/protocol/work-dispatch-evidence';
 import {FileText} from 'lucide-react';
 import {showGeneratedFile} from './artifact-viewer';
 import {Markdown} from './Markdown';
@@ -77,11 +78,13 @@ export function ConversationMessage({job,onReading,...row}:ComponentProps<typeof
  const [open,setOpen]=useState(false);
  const summary=useRecord({roomId,...(groupPlan?{jobId:job.id}:{messageId}),part:'summary'},open,job?.viewRevision);
  const record=summary.data?.job;
+ const reason=dispatchEvidenceText(job?.dispatchEvidence);
  useEffect(()=>()=>onReading?.(messageId,false),[messageId,onReading]);
  const cardRead=useRecord({roomId,messageId,part:'cards'},!!job?.cardsAvailable||open&&record?.cardsAvailable===true,job?.viewRevision),cards=cardRead.data?.previewTruncated?[]:(cardRead.data?.job?.cards??[]).filter((card:any)=>card.botId===row.message.sender.logicalAgentId);
  if(groupPlan)return <><MessageRow {...row}/><details className="tool-trace" onToggle={event=>setOpen(event.currentTarget.open)}>
-  <summary>群计划</summary><ReadState read={summary}/><GroupPlanRecord plan={record?.groupPlan} bots={row.bots} roomId={roomId} jobId={job.id} onReviewed={summary.retry}/>
+  <summary>群计划</summary>{reason&&<p className="muted">{reason}</p>}<ReadState read={summary}/><GroupPlanRecord plan={record?.groupPlan} bots={row.bots} roomId={roomId} jobId={job.id} onReviewed={summary.retry}/>
  </details></>;
+ if(row.message.sender.kind==='user'&&reason)return <><MessageRow {...row}/><details className="tool-trace"><summary>触发依据</summary><p className="muted">{reason}</p></details></>;
  const events=record?.toolTrace??job?.toolTrace??[],files=(record?.generatedFiles??job?.generatedFiles??events).filter((event:any)=>event.state==='completed'&&event.file&&event.botId===row.message.sender.logicalAgentId);
  return <><MessageRow {...row} cards={cards} files={files}/>{cardRead.data?.previewTruncated&&<p className="muted">交互内容超过预览范围，请查看原交付文件。</p>}{cardRead.error&&<ReadState read={cardRead}/>}{row.message.sender.kind==='agent'&&(job||row.message.workRef)&&<><div className="generated-files">{files.map((event:any)=><FileEffect key={event.id} roomId={roomId} event={event}/>)}</div><details className="tool-trace" onPointerDown={()=>{if(open)onReading?.(messageId,true);}} onFocusCapture={()=>{if(open)onReading?.(messageId,true);}} onToggle={event=>{setOpen(event.currentTarget.open);onReading?.(messageId,event.currentTarget.open);}}><summary>{job?.workEvidenceAvailable?'本轮变更与工具记录':'运行与工具记录'}</summary><ReadState read={summary}/>{job?.peerReviewVersion&&<p className="muted">{record?.peerReviewStale?'产物已更新，复核仅适用于旧版':'版本化只读复核'} · <code title={job.peerReviewVersion}>{job.peerReviewVersion.slice(0,12)}</code></p>}{record&&<><WorkEvidence record={record} botId={row.message.sender.logicalAgentId}/>{record.toolTrace.map((event:any)=><EventRecord key={event.id} roomId={roomId} jobId={record.id} event={event} revision={summary.data.viewRevision}/>)}{record.toolTraceLimited&&<p className="muted">原工作仅保留最近最多 100 条事件，更早步骤可能未保存。</p>}{record.toolTrace.length===0&&<p className="muted">原工作没有已保存的工具事件。</p>}</>}</details></>}</>;
 }

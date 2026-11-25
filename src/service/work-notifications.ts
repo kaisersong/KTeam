@@ -27,13 +27,26 @@ export class WorkNotifications {
   }return facts.sort((a,b)=>Number(b.kind==='question'||b.kind==='approval')-Number(a.kind==='question'||a.kind==='approval')||a.at-b.at).slice(0,200);
  }
  private eligible(fact:Fact,preferences:NotificationPreferences){return preferences.enabled&&!notificationQuiet(preferences,this.now())&&(fact.kind==='completed'?preferences.completed:fact.kind==='blocked'?preferences.blocked:preferences.input)&&fact.expiresAt>this.now()&&!this.store.settings(fact.sourceRoomId)?.quiet&&!this.store.settings(fact.roomId)?.quiet;}
+ private inputIsCurrent(fact:Fact,job:any){
+  if(job.state==='running'||job.state==='routing')return true;
+  if(job.state!=='waiting'||!job.currentHandoffId||!fact.referenceId)return false;
+  const handoff=this.store.operation(job.currentHandoffId),input=this.store.operation(fact.referenceId);
+  const linkedId=fact.kind==='approval'?handoff?.approvalId:handoff?.questionId;
+  return handoff?.jobId===job.id&&handoff.roomId===fact.sourceRoomId&&
+   ['parking','parked'].includes(handoff.status)&&linkedId===fact.referenceId&&
+   input?.durable===true&&input.status==='pending'&&
+   (fact.kind!=='approval'||input.handoffId===handoff.id);
+ }
  private async assertFact(fact:Fact,forDelivery=true){
-  const job=this.store.job(fact.jobId);if(!job||(['question','approval'].includes(fact.kind)&&!['running','routing'].includes(job.state)))throw new KTeamError('notification_source_changed',409);
+  const job=this.store.job(fact.jobId),input=fact.kind==='question'||fact.kind==='approval';
+  if(!job||(input&&!this.inputIsCurrent(fact,job)))throw new KTeamError('notification_source_changed',409);
   await this.guardJob(job);await this.coordinator.guardConversation(fact.sourceRoomId);if(fact.roomId!==fact.sourceRoomId)await this.coordinator.guardConversation(fact.roomId);
   const scope=await this.upstream.membership(fact.roomId);if((scope.room as any).status!=='active'||!(scope.members as any[]).some(member=>member.status==='active'&&member.subject?.kind==='user'&&member.subject.userId==='user.local'))throw new KTeamError('notification_source_changed',409);
   let message:any;if(fact.messageId){message=(await this.upstream.conversationMessage(fact.roomId,fact.messageId)).message;if(message.sender?.logicalAgentId!==fact.botId)throw new KTeamError('notification_source_changed',409);}
   if(fact.taskRef){const task=((await this.upstream.aimp(fact.roomId,'tasks')).tasks as any[]).find(task=>task.taskRef===fact.taskRef);if(!task?.artifactVerification?.verified||!['delivered','accepted'].includes(task.state)||message.sourceRef?.taskRef!==fact.taskRef)throw new KTeamError('notification_source_changed',409);if(forDelivery&&this.store.seen(fact.roomId).includes(message.roomSequence))throw new KTeamError('notification_already_read',409);}
-  if(this.facts().find(item=>item.key===fact.key)?.version!==fact.version)throw new KTeamError('notification_source_changed',409);
+  const latest=this.store.job(fact.jobId);
+  if(!latest||(input&&!this.inputIsCurrent(fact,latest))||this.facts().find(item=>item.key===fact.key)?.version!==fact.version)
+   throw new KTeamError('notification_source_changed',409);
   return {title:String((scope.room as any).title).slice(0,120),message};
  }
  settings(){const receipts=this.store.notificationAttempts().map(row=>({id:row.id,status:row.status==='claimed'&&row.claimedAt+30000<this.now()?'unknown':row.status,recordedStatus:row.status,kind:row.kind,at:row.issuedAt??row.claimedAt}));return {ok:true,preferences:notificationPreferences(this.store),receipts};}

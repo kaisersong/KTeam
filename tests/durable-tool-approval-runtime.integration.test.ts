@@ -18,7 +18,7 @@ import {hostRequest} from '../src/service/client.js';
 import {createDesktopAPI} from '../desktop/semantic-api.js';
 async function until<T>(read:()=>Promise<T|false|undefined>){const end=Date.now()+(20000*(process.platform==='win32'?3:1));while(Date.now()<end){const value=await read();if(value)return value;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('artifact_fixture_timeout');}
 async function proofHost(root:string,configRoot:string,upstream:any){const app=process.env.KTEAM_PACKAGED_APP;const build=app?join(app,'Contents/Resources/app.asar.unpacked/build'):resolve('dist/src');let output='';const child=spawn(app?join(app,'Contents/MacOS/KTeam'):process.execPath,app?[join(build,'host.cjs')]:[resolve('dist/src/cli.js'),'start'],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1',KTEAM_DATA_DIR:root,KTEAM_MODEL_CONFIG_DIR:configRoot,KTEAM_RUNTIME_ENTRY:app?join(build,'shared/kteam-runtime.mjs'):resolve('build/shared/kteam-runtime.mjs'),KTEAM_NATIVE_CHILD:app?join(build,'native-child.cjs'):resolve('dist/src/runtime/native-child.js')},stdio:['ignore','pipe','pipe']});child.stdout.on('data',data=>output=(output+data).slice(-8000));child.stderr.on('data',data=>output=(output+data).slice(-8000));const close=async()=>{if(child.exitCode!==null||child.signalCode!==null)return;child.kill('SIGTERM');await new Promise<void>(resolve=>{const timer=setTimeout(()=>child.kill('SIGKILL'),8000);child.once('exit',()=>{clearTimeout(timer);resolve();});});};try{await until(async()=>{if(child.exitCode!==null)throw Error('artifact_host_exited:'+output);try{await hostRequest(root,'kteam-main','/v1/handshake');return true;}catch{return false;}});return {close,crash:async()=>{if(child.exitCode!==null||child.signalCode!==null)return;child.kill('SIGKILL');await new Promise<void>(resolve=>child.once('exit',()=>resolve()));}};}catch(error){await close();throw error;}}
-for(const scenario of ['allow_once','deny','allow_always','allow_directory','directory-routine','new-deny','profile','pause','expiry','model','crash'])test(`independent original host verifies durable ${scenario} after restart without replaying a completed file tool or permission hook`,async()=>{
+for(const scenario of ['allow_once','deny','allow_always','allow_directory','directory-routine','new-deny','profile','pause','expiry','model','target','crash'])test(`independent original host verifies durable ${scenario} after restart without replaying a completed file tool or permission hook`,async()=>{
  const decision=scenario==='directory-routine'?'allow_directory_routine':['allow_once','deny','allow_always','allow_directory'].includes(scenario)?scenario:'allow_once';
  process.env.KTEAM_RUNTIME_ENTRY=resolve('build/shared/kteam-runtime.mjs');
  const f=await realUpstreams(),root=join(f.root,'host'),configRoot=join(f.root,'config'),workspace=join(f.root,'workspace');
@@ -47,10 +47,21 @@ for(const scenario of ['allow_once','deny','allow_always','allow_directory','dir
   const taskRef=(await f.upstream.aimp(member.roomId,'tasks')).tasks[0].taskRef;
   await host.close();host=await proofHost(root,configRoot,f.upstream.options);
   const restored=await until(async()=>(await api.toolApprovals()).approvals[0]);assert.equal(restored.id,approval.id);assert.equal(restored.hash,approval.hash);assert.equal(requests,1);
+  if(scenario==='allow_once'){
+   const notification=(name:string,value?:unknown):Promise<any>=>hostRequest(root,'kteam-main','/v1/desktop-notifications/'+name,value);
+   await notification('settings',{expectedRevision:0,enabled:true});
+   const pending=await notification('pending');
+   const item=pending.items.find((row:any)=>row.key==='approval:'+approval.id);
+   assert.ok(item,'a freshly restored waiting approval should be eligible for desktop notification');
+   const notice=await notification('claim',item);
+   assert.equal(notice.claimed,true);
+   assert.equal((await notification('locate',{id:notice.id})).navigation.approvalId,approval.id);
+  }
   await assert.rejects(hostRequest(root,'kteam-companion','/v1/tool-approvals/decide',{id:approval.id,expectedHash:approval.hash,decision}),/app_settings_forbidden/);
   assert.equal((await api.toolApprovals()).approvals.find((item:any)=>item.id===approval.id)?.hash,approval.hash);assert.equal(existsSync(second),false);
   await assert.rejects(api.decideToolApproval({id:approval.id,expectedHash:'stale',decision}),/tool_approval_changed/);
-  if(['new-deny','profile','pause','expiry','model'].includes(scenario)){
+  if(['new-deny','profile','pause','expiry','model','target'].includes(scenario)){
+   if(scenario==='target')writeFileSync(second,'MANUAL_CHANGE_BEFORE_DECISION');
    if(scenario==='new-deny')writeFileSync(join(configRoot,'settings.json'),JSON.stringify({permissions:{deny:['write'],allow:['write:'+first]}}));
    if(scenario==='profile')await api.saveBot({botId:member.bot.id,expectedRevision:1,description:'changed',instructions:'new scope',participation:'auto',workspace,followup:false});
    if(scenario==='pause')await api.pause(member.roomId);
@@ -58,7 +69,7 @@ for(const scenario of ['allow_once','deny','allow_always','allow_directory','dir
    if(scenario==='model'){config.models.fixture.model='changed-model';writeFileSync(join(configRoot,'config.json'),JSON.stringify(config));}
    await assert.rejects(api.decideToolApproval({id:approval.id,expectedHash:approval.hash,decision:'allow_always'}),/tool_approval_changed|tool_approval_expired|handoff_scope_changed|model_binding_changed/);
    await host.close();host=await proofHost(root,configRoot,f.upstream.options);
-   assert.equal(requests,1);assert.equal(readFileSync(first,'utf8'),'ACTUAL_FIRST');assert.equal(existsSync(second),false);assert.equal(readFileSync(hooks,'utf8'),'P');assert.equal((await api.toolPermissions()).permissions.length,0);return;
+   assert.equal(requests,1);assert.equal(readFileSync(first,'utf8'),'ACTUAL_FIRST');if(scenario==='target')assert.equal(readFileSync(second,'utf8'),'MANUAL_CHANGE_BEFORE_DECISION');else assert.equal(existsSync(second),false);assert.equal(readFileSync(hooks,'utf8'),'P');assert.equal((await api.toolPermissions()).permissions.length,0);return;
   }
   await api.decideToolApproval({id:approval.id,expectedHash:approval.hash,decision});assert.equal((await api.decideToolApproval({id:approval.id,expectedHash:approval.hash,decision})).reused,true);
   if(scenario==='crash'){

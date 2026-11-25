@@ -22,6 +22,23 @@ const models={catalog:async()=>({defaultModelId:'fixture'}),identity:async()=>({
 async function fixture(){const f=await realUpstreams(),store=new TeamStore(f.root),coordinator=new TeamCoordinator(f.upstream,store,1,models);return {...f,store,coordinator,async close(){try{store.close();}catch{}await f.close();}};}
 async function member(f:any,name:string){return f.coordinator.createMember({name,modelId:'fixture',requestId:name},{requestSource:'user'});}
 
+test('mail readiness distinguishes a connection, account send grant, and the actual member tool scope',async()=>{
+ const f=await fixture();
+ try{
+  const a=await member(f,'邮箱能力成员'),b=await member(f,'其他邮箱成员');
+  const view=new BotCapabilities(f.upstream,f.store);
+  const accounts=[{email:'first@example.invalid',connection:'connected',send:'approval-required'},
+   {email:'other@example.invalid',connection:'needs_reconnect',send:'disabled'}] as const;
+  const read=async()=>accounts.map(account=>({...account}));
+  assert.deepEqual(await view.mail(a.bot.id,a.roomId,read),{host:'available',member:'allowed',accounts});
+  await assert.rejects(view.mail(a.bot.id,b.roomId,read),/skill_room_denied/);
+  const bot=(await f.upstream.listBots()).agents.find((row:any)=>row.id===a.bot.id);
+  await f.upstream.updateBot(a.bot.id,{expectedKteamProfileRevision:profile(bot).revision,
+   kteamProfile:{...profile(bot),revision:profile(bot).revision+1,toolScope:{version:1,files:{mode:'inherit',paths:[],write:true},terminal:'inherit',network:'off',mcp:{mode:'inherit',servers:[]}}}});
+  assert.deepEqual(await view.mail(a.bot.id,a.roomId,async()=>{throw Error('account read should be denied');}),{host:'available',member:'denied',accounts:[]});
+ }finally{await f.close();}
+});
+
 test('per-bot skills persist in the real KSwarm profile, preserve other attributes, and cannot re-enable global exclusions',async()=>{
  const f=await fixture(),previous=process.env.KTEAM_MODEL_CONFIG_DIR;process.env.KTEAM_MODEL_CONFIG_DIR=join(f.root,'config');mkdirSync(process.env.KTEAM_MODEL_CONFIG_DIR);
  try{

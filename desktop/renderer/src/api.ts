@@ -43,7 +43,7 @@ export interface KTeamAPI {
  dailyWorkReplyDraft(input:{id:string;allowModel:true}):Promise<{text:string}>;
  dailyWorkOriginal(input:{id:string}):Promise<any>;
  assistantWorkbench():Promise<any>;locateAttention(input:{id:string;expectedRevision:number;expectedHash?:string}):Promise<any>;
- trialRoutine(input:{roomId:string;id:string;expectedRevision:number;requestId:string}):Promise<{jobId:string;reused:boolean}>;
+ trialRoutine(input:{roomId:string;id:string;expectedRevision:number;requestId:string;mode?:'read-only'}):Promise<{jobId:string;reused:boolean}>;
  pauseRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;routines(roomId:string):Promise<any>;saveRoutine(input:any):Promise<any>;removeRoutine(input:{roomId:string;id:string;expectedRevision:number}):Promise<any>;
  teamRoles(roomId:string):Promise<any>;ensureTeamRoles(input:{roomId:string;force?:boolean}):Promise<any>;assignTeamCoordinator(input:{roomId:string;coordinatorBotId:string;expectedRevision:number;requestId:string}):Promise<any>;
  skillLearning(input:{botId:string;roomId?:string}):Promise<any>;saveLearnedSkill(input:any):Promise<any>;undoLearnedSkill(input:any):Promise<any>;dismissLearnedSkill(input:any):Promise<any>;

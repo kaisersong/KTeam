@@ -16,6 +16,7 @@ import { hostRequest } from "../src/service/client.js";
 import { initConfig } from "../src/service/config.js";
 import { recordGeneratedFile } from "../src/runtime/generated-file-receipts.js";
 import { captureGeneratedFile } from "../src/runtime/generated-files.js";
+import { mobileApprovalOperationId } from "../src/protocol/mobile-approval-operation.js";
 test("actual encrypted gateway requires desktop confirmation, independent device identity, persisted restart and immediate connection revocation", async () => {
   const root = mkdtempSync(join(tmpdir(), "kt-mobile-")),
     store = new TeamStore(root),
@@ -190,6 +191,19 @@ test("original host mobile facade reads real rooms and receipts without main cre
     );
     const rooms = await phone.call("rooms.list");
     assert.ok(rooms.rooms.some((r: any) => r.roomId === member.roomId));
+    const approvalId = "tool-approval:" + randomUUID();
+    const approvalOperation = mobileApprovalOperationId(approvalId);
+    const approvalStore = new TeamStore(root);
+    try {
+      // The approval decision committed before the phone receipt could finish.
+      approvalStore.saveOperation({id:approvalId,roomId:member.roomId,hash:"original-hash",status:"completed",decision:"deny",decidedAt:Date.now()},0);
+      approvalStore.saveOperation({id:"mobile-operation:"+credential.deviceId+":"+approvalOperation,method:"approvals.decide",status:"executing",approvalId,expectedHash:"original-hash",decision:"allow_once"},0);
+    } finally {
+      approvalStore.close();
+    }
+    assert.deepEqual(await phone.call("operations.get", {operationId:approvalOperation}), {
+      ok:true,status:"completed",result:{ok:true,status:"denied",decision:"deny",matchesRequest:false},
+    });
     assert.equal(
       (await phone.call("bots.list")).bots.find(
         (b: any) => b.id === member.bot.id,
@@ -353,6 +367,7 @@ test("original host mobile facade reads real rooms and receipts without main cre
       }),
       /team_scope_changed/,
     );
+    await assert.rejects(phone.call("operations.get",{operationId:approvalOperation}),/team_scope_changed/);
     const deliveryRoom = (await f.upstream.membership(deliveryMember.roomId)).room;
     f.broker.room.archiveRoom(
       { roomId:deliveryMember.roomId, expectedRoomRevision:deliveryRoom.revision },
