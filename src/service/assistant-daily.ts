@@ -5,8 +5,8 @@ import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {invitationContext,messageCalendarDate,type CalendarContext} from './assistant-calendar-context.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyBriefItems,dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
-import {dailyKinds,dailyPresets,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
+import {dailyBriefCard,dailyBriefItems,dailyBriefMessage,dailyMessageNotice,dailyMessageNoticeItems,type BriefDelivery} from './assistant-daily-delivery.js';
+import {dailyKinds,dailyPresets,dailySlotLabels,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
@@ -423,6 +423,7 @@ export class AssistantDaily {
   const seen=Object.fromEntries(Object.entries(previous?.seen??{}).filter(([,firstSeen])=>firstSeen>=now-messageCatchupWindow));
   const attentionCutoff=now-messageCatchupWindow;
   const items=new Map<string,DailyItem>();
+  const coverage:DailyCoverage[]=[];
   const checks=new Map<string,Promise<boolean>>();
   for(const scan of this.retained(plan)){
    const source=scan.coverage.source;
@@ -434,6 +435,7 @@ export class AssistantDaily {
     return seen[key]?[]:[{key,item}];
    });
    if(!fresh.length||!await this.current(source,checks,signal))continue;
+   coverage.push(scan.coverage);
    for(const {key,item} of fresh)items.set(key,item);
   }
   const {calendarEvidence,usedCalendars}=await this.messageCalendarEvidence([...items.values()],plan,now,checks,signal);
@@ -450,12 +452,15 @@ export class AssistantDaily {
   };
   await assertEligible();
   const id='assistant-daily-message-'+sha(JSON.stringify([roomId,[...items.keys()].sort()]));
+  const core=await sharedRuntime();
+  const card=dailyBriefCard({id,title:'消息里需要关注的事项',items:dailyMessageNoticeItems([...items.values()]).slice(0,3),
+   timeZone:plan.config.timeZone,redact:text=>core.redactSecrets(text).text,evidence:calendarEvidence,coverage});
   for(const key of items.keys())seen[key]=now;
   const receipt={id,status:'attempted' as const};
   // Once an attempt is reserved, a lost receipt or restart cannot send it twice.
   this.store.setState(messageNoticeKey,{version:1,seen,receipt});
   try{
-   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,deadline,guard:assertEligible});
+   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,card,deadline,guard:assertEligible});
    this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'sent',messageId}});
   }catch{
    this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'unconfirmed'}});
@@ -527,6 +532,8 @@ export class AssistantDaily {
    const selected=dailyBriefItems(visible,now,redact).slice(0,5);
    const {calendarEvidence,usedCalendars}=await this.messageCalendarEvidence(selected,plan,now,allowed,signal);
    const body=dailyBriefMessage(brief.day,brief.slot,selected,plan.config.timeZone,redact,calendarEvidence);
+   const card=body?dailyBriefCard({id:brief.id,title:brief.day+' '+dailySlotLabels[brief.slot],items:selected,
+    timeZone:plan.config.timeZone,redact,evidence:calendarEvidence,coverage:brief.coverage}):undefined;
    const assertEligible=async()=>{
     await this.verifyScope?.();
     guard();
@@ -549,7 +556,7 @@ export class AssistantDaily {
     return attempted;
    });
    try {
-    const messageId=await this.publishBrief({id:brief.id,roomId,body,deadline,guard:assertEligible});
+    const messageId=await this.publishBrief({id:brief.id,roomId,body,card,deadline,guard:assertEligible});
     this.store.saveOperation({...attempt,delivery:'sent',messageId},attempt.revision);
    } catch {
     this.store.saveOperation({...attempt,delivery:'unconfirmed'},attempt.revision);
