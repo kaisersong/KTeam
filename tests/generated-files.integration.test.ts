@@ -2,9 +2,12 @@ import {fixtureLink as symlinkSync} from './helpers/fixture-link.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {join} from 'node:path';
-import {mkdirSync,readFileSync,writeFileSync,unlinkSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,unlinkSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {privateTempDir} from './helpers/private-temp.js';
 import {captureGeneratedFile,generatedFilePreview} from '../src/runtime/generated-files.js';
 import {recordGeneratedFile} from '../src/runtime/generated-file-receipts.js';
+import {observeTerminalFileOutputs,changedTerminalFileOutputs} from '../src/runtime/terminal-file-outputs.js';
 import {realUpstreams} from './helpers/real-upstreams.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
@@ -12,6 +15,24 @@ import {startHost} from '../src/service/server.js';
 import {initConfig} from '../src/service/config.js';
 import {hostRequest} from '../src/service/client.js';
 import {saveArtifact} from '../desktop/artifact-download.js';
+
+test('terminal output receipts require changed regular files in the readable work directory',async()=>{
+ const root=privateTempDir(join(tmpdir(),'kteam-terminal-files-'));
+ const cwd=join(root,'workspace'),privateRoot=join(cwd,'host'),scope={root:privateRoot,roomId:'fixture'};
+ const changed=join(cwd,'updated.md'),same=join(cwd,'unchanged.md'),created=join(cwd,'new.md');
+ const outside=join(root,'outside.md'),denied=join(cwd,'denied.md'),internal=join(privateRoot,'private.md'),alias=join(cwd,'alias.md');
+ try{
+  mkdirSync(privateRoot,{recursive:true});
+  for(const path of [changed,same,outside,denied,internal])writeFileSync(path,'before');
+  symlinkSync(outside,alias);
+  const command=[changed,same,created,outside,denied,internal,alias].map(path=>'echo after >> "'+path+'"').join(' && ');
+  const canRead=async(path:string)=>path!==denied;
+  const candidates=await observeTerminalFileOutputs({command},cwd,scope,canRead);
+  assert.ok(candidates.every(row=>[changed,same,created].includes(row.path)));
+  for(const path of [changed,created,outside,denied,internal])writeFileSync(path,'after');
+  assert.deepEqual((await changedTerminalFileOutputs(candidates,scope,canRead)).map(file=>file.name),['updated.md','new.md']);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
 
 test('real authenticated host opens only unchanged generated HTML receipts in the current Room, including after restart',async()=>{
  const f=await realUpstreams(),root=join(f.root,'host'),path=join(f.root,'fictional-report.html');mkdirSync(root,{mode:0o700});writeFileSync(path,'<!doctype html><title>虚构测试报告</title>');
