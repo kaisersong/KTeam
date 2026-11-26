@@ -94,10 +94,9 @@ jobs:
         timeout-minutes: 5
         working-directory: kteam
       - run: npm run check
-        # Windows Node 24 completed all 675 tests and CLI cleanup at the 35 minute cutoff.
-        # Allow the 45 minute test watchdog plus build/cleanup overhead within a 55 minute job.
-        # Every original matrix job and assertion still runs, and any failed test remains a failure.
-        timeout-minutes: ${{ runner.os == 'Windows' && 50 || 10 }}
+        # macOS runs the full suite on one runner and can exceed ten minutes.
+        # Windows shards also need time for build and CLI cleanup.
+        timeout-minutes: ${{ runner.os == 'Windows' && 50 || 20 }}
         working-directory: kteam
       - name: Preserve test coverage report
         if: always()
