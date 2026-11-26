@@ -6,7 +6,7 @@ import {invitationContext,messageCalendarDate,type CalendarContext} from './assi
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyBriefCard,dailyBriefItems,dailyBriefMessage,dailyMessageNotice,dailyMessageNoticeItems,type BriefDelivery} from './assistant-daily-delivery.js';
-import {dailyKinds,dailyPresets,dailySlotLabels,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
+import {dailyKinds,dailyCoverageState,dailyPresets,dailySlotLabels,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,yzjCalendarCoverageGap,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
@@ -260,12 +260,12 @@ export class AssistantDaily {
   const visible=items.filter(item=>!this.isSnoozed(item,now));
   const coverage=plan.config.sources.map(source=>{
    const latest=scans.find(scan=>dailySourceKey(scan.coverage.source)===dailySourceKey(source)&&scan.coverage.source.revision===source.revision)?.coverage;
-   return eligible(source)&&latest?latest:{source,checkedAt:latest?.checkedAt??0,from:latest?.from??0,state:'unavailable' as const};
+   return eligible(source)&&latest?{...latest,state:dailyCoverageState(latest)}:{source,checkedAt:latest?.checkedAt??0,from:latest?.from??0,state:'unavailable' as const};
   });
   const briefs=this.store.operationsWithPrefix(briefPrefix).slice(0,20).map(brief=>({
    id:brief.id,slot:brief.slot,day:brief.day,at:brief.at,
    missed:brief.missed===true,delivery:brief.delivery,items:(brief.items as DailyItem[]).filter(item=>eligible(item.source)),
-   coverage:(brief.coverage as DailyCoverage[]).filter(row=>eligible(row.source)),
+   coverage:(brief.coverage as DailyCoverage[]).filter(row=>eligible(row.source)).map(row=>({...row,state:dailyCoverageState(row)})),
   }));
   return {ok:true,...this.summary(),draft:draft?.committedRevision?undefined:draft,items:visible,coverage,briefs};
  }
@@ -520,11 +520,12 @@ export class AssistantDaily {
    const agenda=await lookup;
    if(!agenda)continue;
    const entries=agenda.items;
+   const notice=agenda.partial&&source.kind==='yzj-calendar'?yzjCalendarCoverageGap+'。':'';
    if(attention.kind==='invitation'){
     const result=invitationContext(attention,requestedDate,entries,agenda.partial,plan.config.timeZone);
     const core=await sharedRuntime();
     if(core.redactSecrets(result.observation).text!==result.observation)continue;
-    calendarEvidence.set(item.id,result);
+    calendarEvidence.set(item.id,{...result,observation:result.observation+notice});
     usedCalendars.set(dailySourceKey(source),source);
     continue;
    }
@@ -537,9 +538,9 @@ export class AssistantDaily {
     const raw=(matched.title+' · '+matched.detail).slice(0,300);
     const safe=core.redactSecrets(raw).text;
     if(safe!==raw)continue;
-    calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，当前仍列有「'+safe+'」。');
+    calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，当前仍列有「'+safe+'」。'+notice);
    }else{
-    calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，未能唯一匹配这场会议。请以原群通知为准。');
+    calendarEvidence.set(item.id,'已核对 '+requestedDate+' 的日历，未能唯一匹配这场会议。请以原群通知为准。'+notice);
    }
    usedCalendars.set(dailySourceKey(source),source);
   }

@@ -76,7 +76,7 @@ test('a changed, missing or revoked source cannot disclose linked details or sil
  }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
 
-test('calendar coverage ignores expected exclusions but reports malformed or explicitly paginated results',async()=>{
+test('Yunzhijia calendar accepts a missing count and leaves the event feed marked partial',async()=>{
  const now=Date.parse('2026-11-23T09:00:00Z');
  const future={id:'meeting',title:'决定接口',startDate:Date.parse('2026-11-23T10:00:00Z'),endDate:Date.parse('2026-11-23T11:00:00Z')};
  const withdrawn={...future,id:'withdrawn',cancelDate:Date.parse('2026-11-23T08:10:00Z')};
@@ -88,7 +88,9 @@ test('calendar coverage ignores expected exclusions but reports malformed or exp
  }} as never);
  const scan=()=>source.scan({kind:'yzj-calendar',id:'calendar',label:'日程',account:'test',revision:'1'},now,now,'UTC',new AbortController().signal);
  assert.deepEqual((await scan()).items.map(item=>item.originalId),['meeting']);
- assert.equal((await scan()).partial,false);
+ assert.equal((await scan()).partial,true);
+ data={list:[]};
+ assert.deepEqual(await scan(),{items:[],partial:true});
  data={events:[future,{id:'malformed'}]};
  assert.equal((await scan()).partial,true);
  data={list:[future],count:2};

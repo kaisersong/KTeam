@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,isDailyMessage,type DailyMessageAttention,type DailyItem,type DailyCoverage,type DailySlot} from '../protocol/assistant-daily-types.js';
+import {dailySlotLabels,dailyCoverageState,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,isDailyMessage,yzjCalendarCoverageGap,type DailyMessageAttention,type DailyItem,type DailyCoverage,type DailySlot} from '../protocol/assistant-daily-types.js';
 import type {AssistantDailyCard} from '../protocol/assistant-daily-card.js';
 import type {RenderUISection} from '../../runtime-core/src/a2ui/protocol.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
@@ -172,8 +172,10 @@ export function dailyBriefCard(input:{
  }
  if(sections.length===1)return;
  const gaps=coverage.flatMap(row=>{
-  const label=coverageLabel(row.source);
-  return row.state==='ok'||!label?[]:[label+(row.state==='partial'?'未查全':'暂不可用')];
+  const label=coverageLabel(row.source),state=dailyCoverageState(row);
+  if(state==='ok'||!label)return [];
+  if(state==='unavailable')return [label+'暂不可用'];
+  return [label+'未查全'+(row.source.kind==='yzj-calendar'?'（'+yzjCalendarCoverageGap+'）':'')];
  });
  if(gaps.length)sections.push({kind:'divider'},{kind:'text',content:[...new Set(gaps)].slice(0,4).join(' · ')});
  try {

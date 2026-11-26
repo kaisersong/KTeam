@@ -190,16 +190,16 @@ export class AssistantDailySources {
   const today=calendarDate??calendarWindow(new Date(now),timeZone).today;
   const value=await this.enterprise.dailyYzj(['calendar','event','list','--start',today,'--end',today],signal);
   const entries=rows(value,'list','events','items');
-  let incomplete=false;
   const meetings=entries.flatMap(entry=>{
    const start=when(entry.startTime??entry.startDate??entry.start),end=when(entry.endTime??entry.endDate??entry.end);
    const id=field(entry,'id','eventId'),title=field(entry,'title','summary');
    if(entry.cancelled===true||when(entry.cancelDate)>0||
     ['cancelled','canceled','declined'].some(status=>status===field(entry,'status')||status===field(entry,'responseStatus')))return [];
-   if(!id||!title||!Number.isFinite(start)||!Number.isFinite(end)||end<=start){incomplete=true;return [];}
+   if(!id||!title||!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return [];
    if(end<now)return [];
    return [{entry,start,end,id,title}];
   }).sort((a,b)=>a.start-b.start);
+  // A complete response from this CLI command only covers its visible event feed.
   return {items:meetings.map(meeting=>{
    const busy=(e:Record<string,unknown>)=>e.allDay!==true&&e.isAllDay!==true&&e.transparency!=='transparent';
    const conflicts=busy(meeting.entry)?meetings.filter(other=>other.id!==meeting.id&&busy(other.entry)&&other.start<meeting.end&&meeting.start<other.end):[];
@@ -209,7 +209,7 @@ export class AssistantDailySources {
     urgent:conflicts.length>0&&meeting.start<=now+2*3600000,
     deadline:meeting.start,calendarEnd:meeting.end,calendarBusy:busy(meeting.entry), originalId:meeting.id, url:urlFor(field(meeting.entry,'webUrl','url'),yzjDomains),
    });
-  }),partial:incomplete||Boolean(object(value).hasMore||object(value).nextCursor)||Number(object(value).count)>entries.length};
+  }),partial:true};
  }
  private messagePage(groupId:string,signal:AbortSignal,bounded=false){
   return this.enterprise.dailyYzj(['im','message','list','--group-id',groupId,'--type','newest','--limit','20',...(bounded?['--jq',recentMessageFields]:[])],signal);
