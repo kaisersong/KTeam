@@ -171,10 +171,10 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    const meeting={id:'calendar-entry',title:'样例交付会议',detail:'冲突 设计会议',observedAt:Date.now(),deadline:Date.now()+60000,urgent:true,source};
    const readyBody=dailyBriefMessage('2026-11-23','morning',[meeting],'Asia/Shanghai',text=>text)!;
    const card=dailyBriefCard({id:'assistant-daily-card-fixture',title:'早报',items:[meeting],timeZone:'Asia/Shanghai',
-    redact:text=>text,evidence:new Map(),coverage:[{source,state:'partial',checkedAt:Date.now(),from:Date.now()-60000}]});
+    redact:text=>text,evidence:new Map(),coverage:[{source,state:'ok',checkedAt:Date.now(),from:Date.now()-60000}]});
    assert.ok(card);
    assert.equal(validateA2uiMessages(JSON.parse(card.content)).ok,true);
-   for(const label of ['日程安排','样例交付会议','云之家日历未查全'])assert.ok(card.content.includes(label));
+   for(const label of ['日程安排','样例交付会议','云之家日历未查全','工作助手或其他日历的安排可能遗漏'])assert.ok(card.content.includes(label));
    const input={roomId:assistant.roomId,id:'assistant-daily-brief-fixture',body,deadline:Date.now()+60000,guard:async()=>{}};
    await assert.rejects(publish({...input,roomId:'foreign-room'}),/assistant_scope_required/);
    const id=await publish(input);

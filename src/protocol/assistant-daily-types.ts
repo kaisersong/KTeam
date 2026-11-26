@@ -94,6 +94,19 @@ export interface DailyCoverage {
  from:number;
 }
 
+export const yzjCalendarCoverageGap='工作助手或其他日历的安排可能遗漏';
+
+export function dailyCoverageState(row:DailyCoverage):DailyCoverage['state']{
+ return row.source.kind==='yzj-calendar'&&row.state==='ok'?'partial':row.state;
+}
+
+export function dailyCoverageDescription(row:DailyCoverage):string{
+ const state=dailyCoverageState(row);
+ if(state==='ok')return '已核对';
+ if(state==='unavailable')return '暂不可用';
+ return row.source.kind==='yzj-calendar'?'覆盖不完整 · '+yzjCalendarCoverageGap:'覆盖不完整';
+}
+
 export type DailyBriefDelivery = 'pending'|'attempted'|'sent'|'unconfirmed'|'expired';
 export const dailyBriefDeliveryLabels:Record<DailyBriefDelivery,string> = {
  pending:'待投递', attempted:'送达待核对', sent:'已发到小 K 私聊', unconfirmed:'送达未确认', expired:'仅在简报页保留',

@@ -367,12 +367,14 @@ test('an actionable schedule notice checks the consented calendar before posting
    if(source.kind==='yzj-message')return {partial:true,items:[{...base,messageAttention:{kind:'schedule',group:'样例组',text:'明天的样例例会取消',at:now-1000}}]};
    if(date===undefined)return {partial:false,items:[]};
    assert.equal(date,'2026-11-24');
-   return {partial:false,items:[{...base,detail:'11/24 09:00–10:00'}]};
+   return {partial:true,items:[{...base,detail:'11/24 09:00–10:00'}]};
   },
  },()=>roomId,()=>now,async()=>{},async input=>{
   await input.guard();
   deliveries++;
   assert.match(input.body,/已核对 2026-11-24 的日历，当前仍列有「样例例会 · 11\/24 09:00–10:00」/);
+  assert.match(input.body,/工作助手或其他日历的安排可能遗漏/);
+  assert.match(input.card?.content??'',/工作助手或其他日历的安排可能遗漏/);
   assert.doesNotMatch(input.body,/我可以/);
   return 'calendar-notice';
  });

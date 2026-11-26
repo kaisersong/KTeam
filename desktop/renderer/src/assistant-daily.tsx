@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
 import {AssistantWatches} from './assistant-watch';
 import {Check,ChevronRight} from 'lucide-react';
-import {dailyBriefDeliveryLabels,dailyPresetIds,dailyPresets,type DailyPreset,type DailyBriefDelivery,type AssistantConnectorSetup} from '../../../src/protocol/assistant-daily-types';
+import {dailyBriefDeliveryLabels,dailyCoverageDescription,dailyPresetIds,dailyPresets,type DailyPreset,type DailyBriefDelivery,type AssistantConnectorSetup} from '../../../src/protocol/assistant-daily-types';
 import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../../../src/protocol/assistant-daily';
 
 const slots=['morning','midday','evening'] as const;
@@ -188,7 +188,7 @@ export function AssistantDailyToday({destinations,onTask,onPlan}:{destinations:{
   </div>}
   <AssistantWatches reference={watchReference} onClearReference={()=>setWatchReference(undefined)}/>
   {error&&<p className="settings-error" role="alert">{error}</p>}
-  {unseen.length>0&&<details><summary>有 {unseen.length} 个来源未查完</summary><ul>{unseen.map(row=><li key={key(row.source)}>{row.source.label} · {row.state==='partial'?'覆盖不完整':'暂不可用'}{row.checkedAt?' · '+format(row.checkedAt,timeZone):''}</li>)}</ul></details>}
+  {unseen.length>0&&<details><summary>有 {unseen.length} 个来源未查完</summary><ul>{unseen.map(row=><li key={key(row.source)}>{row.source.label} · {dailyCoverageDescription(row)}{row.checkedAt?' · '+format(row.checkedAt,timeZone):''}</li>)}</ul></details>}
   {reply&&<section className="proposal-card">
    <h3>回复草稿</h3><p>{reply.item.title} · {reply.item.source.label}</p>
    {reply.text===null?<p>生成草稿时，会将裁剪后的当前消息交给小 K 绑定的模型处理。</p>:<textarea aria-label="编辑回复草稿" value={reply.text} onChange={event=>setReply({...reply,text:event.target.value})}/>}
@@ -215,6 +215,6 @@ export function AssistantDailyToday({destinations,onTask,onPlan}:{destinations:{
   {original&&<section className="proposal-card"><h3>{original.subject}</h3><pre>{original.body}</pre><button className="secondary" onClick={()=>setOriginal(undefined)}>关闭原文</button></section>}
   {view?.items.some(item=>item.urgent)&&<section><h3>需要你处理</h3>{list(view.items.filter(item=>item.urgent).slice(0,3))}{view.items.filter(item=>item.urgent).length>3&&<details><summary>还有 {view.items.filter(item=>item.urgent).length-3} 项需要处理</summary>{list(view.items.filter(item=>item.urgent).slice(3))}</details>}</section>}
   {!!view?.items.some(item=>!item.urgent)&&<section><h3>接下来的安排和关注事项</h3>{list(view.items.filter(item=>!item.urgent))}</section>}
-  {!!view?.briefs.length&&<section><h3>简报</h3>{view.briefs.map(brief=><details key={brief.id}><summary>{brief.day} {slotLabel[brief.slot]}{brief.missed?' · 已错过':brief.delivery?' · '+dailyBriefDeliveryLabels[brief.delivery]:''}</summary>{brief.items.length?list(brief.items):<p>{brief.missed?'本期没有补投。':brief.coverage.some(row=>row.state==='ok')?'已核对的范围内没有新增事项。':'本期没有可确认的来源结果。'}</p>}{brief.coverage.length>0&&<ul>{brief.coverage.map(row=><li key={key(row.source)}>{row.source.label} · {row.state==='ok'?'已核对':row.state==='partial'?'覆盖不完整':'暂不可用'} · 起点 {format(row.from,timeZone)}</li>)}</ul>}</details>)}</section>}
+  {!!view?.briefs.length&&<section><h3>简报</h3>{view.briefs.map(brief=><details key={brief.id}><summary>{brief.day} {slotLabel[brief.slot]}{brief.missed?' · 已错过':brief.delivery?' · '+dailyBriefDeliveryLabels[brief.delivery]:''}</summary>{brief.items.length?list(brief.items):<p>{brief.missed?'本期没有补投。':brief.coverage.some(row=>row.state!=='unavailable')?'已核对的范围内没有新增事项。':'本期没有可确认的来源结果。'}</p>}{brief.coverage.length>0&&<ul>{brief.coverage.map(row=><li key={key(row.source)}>{row.source.label} · {dailyCoverageDescription(row)} · 起点 {format(row.from,timeZone)}</li>)}</ul>}</details>)}</section>}
  </div>;
 }
