@@ -184,6 +184,11 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.match(notice.text,/已核对日历，原安排仍在/);
    assert.doesNotMatch(notice.text,/我可以/);
    assert.doesNotMatch(notice.text,/private (title|content)/);
+   const reconnectId=await publish({...input,kind:'connector-notice',id:'assistant-yzj-login-fixture',body:'云之家需要重新登录。'});
+   const reconnect=(await upstream.upstream.conversationMessage(assistant.roomId,reconnectId)).message;
+   assert.equal(reconnect.sender.logicalAgentId,assistant.botId);
+   assert.equal(reconnect.responsePolicy,'none');
+   assert.equal(reconnect.text,'云之家需要重新登录。');
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
 

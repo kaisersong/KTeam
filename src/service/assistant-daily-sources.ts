@@ -72,18 +72,23 @@ export class AssistantDailySources {
  private async yzjIdentity(signal?:AbortSignal) {
   const account=object(await this.enterprise.dailyYzj(['whoami'],signal));
   const org=field(account,'orgId'),user=field(account,'openId');
-  if(!org||!user||account.tokenStatus==='expired')throw new KTeamError('daily_source_unavailable',503);
+  if(account.tokenStatus==='expired')throw new KTeamError('yzj_login_required',403);
+  if(!org||!user)throw new KTeamError('daily_source_unavailable',503);
   const connectedAt=this.enterprise.dailyYzjConnectedAt(org,user);
   return {account:digest([org,user]),revision:digest([org,user,connectedAt??null]),legacyRevision:digest([org,user,null]),connectedAt,user};
  }
- async restoreYzjSources(sources:DailySource[],authorizedAt:number,signal:AbortSignal):Promise<DailySource[]> {
-  if(!sources.some(source=>source.kind.startsWith('yzj-')))return sources;
-  const identity=await this.yzjIdentity(signal).catch(()=>undefined);
-  if(!identity?.connectedAt||Date.parse(identity.connectedAt)>authorizedAt)return sources;
+ async checkYzjSources(sources:DailySource[],authorizedAt:number,signal:AbortSignal) {
+  let identity:Awaited<ReturnType<AssistantDailySources['yzjIdentity']>>;
+  try{identity=await this.yzjIdentity(signal);}
+  catch(error){return {sources,login:error instanceof KTeamError&&error.code==='yzj_login_required'?'required' as const:'unknown' as const};}
   // Older plans could record the null timestamp before the UI checked the CLI.
   // Repair only an exact legacy fingerprint for an account connected before consent.
-  return sources.map(source=>source.kind.startsWith('yzj-')&&source.account===identity.account&&source.revision===identity.legacyRevision
+  const canRestore=identity.connectedAt&&Date.parse(identity.connectedAt)<=authorizedAt;
+  const restored=sources.map(source=>canRestore&&source.kind.startsWith('yzj-')&&source.account===identity.account&&source.revision===identity.legacyRevision
    ? {...source,revision:identity.revision}:source);
+  const authorized=restored.filter(source=>source.kind.startsWith('yzj-')).every(source=>
+   source.account===identity.account&&source.revision===identity.revision);
+  return {sources:restored,login:authorized?'valid' as const:'unknown' as const};
  }
  async connectorSetup(){
   const [enterprise,mail]=await Promise.allSettled([this.enterprise.hasSavedConnection(),this.mail.dailyAccounts()]);

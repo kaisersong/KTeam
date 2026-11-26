@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {join} from 'node:path';
 import {EnterpriseCliConnectorService} from './enterprise-cli-service.js';
-import {YzjCliAuthService} from './yzj-cli-auth-service.js';
+import {YzjCliAuthService,yzjLoginRequired} from './yzj-cli-auth-service.js';
 import {ManagedEnterpriseCliRuntime} from '../runtime/enterprise-cli-runtime.js';
 import {ensureBundledYzjCli,getYzjCliLaunchArgs,configureBundledYzjCli} from '../runtime/bundled-yzj-cli.js';
 import {getConfigDir} from '../runtime/connector-paths.js';
@@ -56,6 +56,7 @@ export class EnterpriseConnectors{
  async dailyYzj(args:readonly string[],signal?:AbortSignal){
   const binary=this.seed();
   const result=await connectorCommand(binary,[...args],signal);
+  if(args[0]==='whoami'&&result.code!==0&&yzjLoginRequired(result.code,result.stderr))throw new KTeamError('yzj_login_required',403);
   if(result.code!==0)throw new KTeamError('daily_source_unavailable',503);
   const envelope=JSON.parse(result.stdout);
   if(envelope?.success!==true||typeof envelope.data!=='object'||envelope.data===null)throw new KTeamError('daily_source_unavailable',503);
