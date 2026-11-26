@@ -2,7 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {KTeamError} from '../errors.js';
 import {nativeTurn,sharedRuntime} from '../runtime/native.js';
-import {invitationContext,messageCalendarDate,type CalendarContext} from './assistant-calendar-context.js';
+import {invitationCalendar,invitationContext,messageCalendarDate,type CalendarContext} from './assistant-calendar-context.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
 import {dailyBriefCard,dailyBriefItems,dailyBriefMessage,dailyMessageNotice,dailyMessageNoticeItems,type BriefDelivery} from './assistant-daily-delivery.js';
@@ -504,12 +504,18 @@ export class AssistantDaily {
   const calendarEvidence=new Map<string,string|CalendarContext>();
   const calendars=new Map<string,Promise<Awaited<ReturnType<AssistantDailySources['scan']>>|undefined>>();
   const usedCalendars=new Map<string,DailySource>();
+  for(const {id,messageAttention} of items)if(messageAttention?.kind==='invitation'){
+   calendarEvidence.set(id,invitationCalendar(messageAttention,plan.config.timeZone));
+  }
   for(const item of items.filter(item=>item.messageAttention?.kind==='schedule'||item.messageAttention?.kind==='invitation').slice(0,3)){
    const attention=item.messageAttention!;
+   const invitation=calendarEvidence.get(item.id);
+   const requestedDate=attention.kind==='invitation'
+    ? (typeof invitation==='object'?invitation.date:undefined)
+    : messageCalendarDate(attention.text,attention.at,plan.config.timeZone);
+   if(!requestedDate)continue;
    const source=plan.config.sources.find(candidate=>isDailyCalendar(candidate)&&candidate.provider===item.source.provider&&candidate.account===item.source.account);
    if(!source||!await this.current(source,checks,signal))continue;
-   const requestedDate=messageCalendarDate(attention.text,attention.at,plan.config.timeZone);
-   if(!requestedDate)continue;
    const lookupKey=JSON.stringify([dailySourceKey(source),requestedDate]);
    let lookup=calendars.get(lookupKey);
    if(!lookup){

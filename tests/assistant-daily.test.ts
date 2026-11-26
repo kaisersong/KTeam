@@ -7,6 +7,7 @@ import {AssistantDaily} from '../src/service/assistant-daily.js';
 import {yzjRecentGroupsId} from '../src/protocol/assistant-daily-types.js';
 import {dailyTimes,defaultDaily,type DailyItem,type DailySource} from '../src/protocol/assistant-daily.js';
 import {TeamStore} from '../src/service/team-store.js';
+import type {BriefDelivery} from '../src/service/assistant-daily-delivery.js';
 
 const mail:DailySource={kind:'mail',id:'synthetic-mail',label:'fixture@example.test',account:'synthetic-mail',revision:'1'};
 const at='2026-11-23T07:10:00Z';
@@ -418,14 +419,28 @@ test('the scheduled brief sends actionable message details once without a second
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 
-test('meeting invitations query the stated date and present conflict-safe response drafts',async()=>{
+const invitationDates=[
+ {name:'deduplicates the same date and time',now:'2026-11-24T04:00:00Z',date:'2026-12-01',dateLabel:'12月1日',yearAndWeekday:'2026年 · 星期二',
+  text:'12 月 1 日（周二）下午2:30 - 4:00 例会预通知，邀请你参加。会议时间 2026年12月1日14:30–16:00。'},
+ {name:'infers the nearby future year',now:'2026-12-29T04:00:00Z',date:'2027-01-05',dateLabel:'1月5日',yearAndWeekday:'2027年 · 星期二',
+  text:'1 月 5 日（周二）14:30–16:00 例会预通知，邀请你参加。'},
+ {name:'honors an explicit year',now:'2026-12-29T04:00:00Z',date:'2027-01-05',dateLabel:'1月5日',yearAndWeekday:'2027年 · 星期二',
+  text:'2027 年 1 月 5 日（周二）14:30–16:00 例会预通知，邀请你参加。'},
+ {name:'asks when the weekday does not match',now:'2026-12-29T04:00:00Z',
+  text:'1 月 5 日（周一）14:30–16:00 例会预通知，邀请你参加。'},
+ {name:'asks when the closest year has passed',now:'2027-01-02T04:00:00Z',
+  text:'12 月 29 日（周二）14:30–16:00 例会预通知，邀请你参加。'},
+ {name:'asks when explicit years conflict',now:'2026-12-29T04:00:00Z',
+  text:'2027 年 1 月 5 日或 2028 年 1 月 5 日 14:30–16:00 例会预通知，邀请你参加。'},
+];
+for(const scenario of invitationDates)test('meeting invitation '+scenario.name,async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-meeting-invitation-'));
  const store=new TeamStore(root);
- const roomId='assistant-room',now=Date.parse('2026-11-24T04:00:00Z');
+ const roomId='assistant-room',now=Date.parse(scenario.now);
  const message:DailySource={kind:'yzj-message',id:yzjRecentGroupsId,label:'最近的群',account:'fixture',revision:'1'};
  const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'日历',account:'fixture',revision:'1'};
- let dateChecked:string|undefined;
- const sent:string[]=[];
+ const datesChecked:string[]=[];
+ const sent:BriefDelivery[]=[];
  store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
  store.setState('assistant-daily-plan',{revision:1,changedAt:now-60000,skips:[],config:{...defaultDaily('Asia/Shanghai'),sources:[message,calendar]}});
  const daily=new AssistantDaily(store,{
@@ -434,25 +449,38 @@ test('meeting invitations query the stated date and present conflict-safe respon
   scan:async(source,_from,_now,_zone,_signal,_recent,date)=>{
    const base={source,id:'fixture',title:'已有架构评审',detail:'',observedAt:now-1000,urgent:false};
    if(source.kind==='yzj-message')return {partial:true,items:[{...base,urgent:true,messageAttention:{
-    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）下午2:30 - 4:00 例会预通知，邀请你参加。会议时间 2026年12月1日14:30–16:00。',at:now-1000,
+    kind:'invitation',group:'样例例会',text:scenario.text,at:now-1000,
    }}]};
    if(!date)return {partial:false,items:[]};
-   dateChecked=date;
-   return {partial:false,items:[{...base,deadline:Date.parse('2026-12-01T06:00:00Z'),calendarEnd:Date.parse('2026-12-01T08:00:00Z'),calendarBusy:true}]};
+   datesChecked.push(date);
+   if(date!==scenario.date)return {partial:false,items:[]};
+   return {partial:false,items:[{...base,deadline:Date.parse(date+'T06:00:00Z'),calendarEnd:Date.parse(date+'T08:00:00Z'),calendarBusy:true}]};
   },
  },()=>roomId,()=>now,async()=>{},async input=>{
   await input.guard();
-  assert.equal(input.card?.kind,'meeting-invitation');
-  assert.match(input.card?.calendarCheckDraft??'',/12-01 14:30–16:00/);
-  sent.push(input.body);
+  sent.push(input);
   return 'fixture-brief';
  });
  try{
   await daily.refresh();
-  assert.equal(dateChecked,'2026-12-01');
+  assert.deepEqual(datesChecked,scenario.date?[scenario.date]:[]);
   assert.equal(sent.length,1);
-  assert.match(sent[0]!,/参会待确认.*已核对 2026-12-01 日历，与「已有架构评审」时间冲突/s);
-  assert.match(sent[0]!,/时间有冲突，协调后再确认/);
-  assert.doesNotMatch(sent[0]!,/确认参加/);
+  const {body,card}=sent[0]!;
+  assert.equal(card?.kind,'meeting-invitation');
+  if(scenario.date){
+   assert.ok(body.includes('已核对 '+scenario.date+' 日历，与「已有架构评审」时间冲突'));
+   assert.match(body,/时间有冲突，协调后再确认/);
+   assert.ok(scenario.dateLabel&&card.content.includes(scenario.dateLabel));
+   assert.ok(scenario.yearAndWeekday&&card.content.includes(scenario.yearAndWeekday));
+   assert.ok(card.calendarCheckDraft?.includes(scenario.date+' 14:30–16:00'));
+   assert.equal(card.confirmMeetingDate,undefined);
+  }else{
+   assert.match(body,/请确认会议日期（含年份）/);
+   assert.equal(card.confirmMeetingDate,true);
+   assert.match(card.content,/日期待确认/);
+   assert.match(card.calendarCheckDraft??'',/先向我确认.*含年份/);
+   assert.doesNotMatch(card.calendarCheckDraft??'',/\d{4}-\d{2}-\d{2}/);
+  }
+  assert.doesNotMatch(body,/确认参加/);
  }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
 });

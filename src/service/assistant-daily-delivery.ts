@@ -6,13 +6,13 @@ import type {AssistantDailyCard} from '../protocol/assistant-daily-card.js';
 import type {RenderUISection} from '../../runtime-core/src/a2ui/protocol.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
-import type {CalendarContext} from './assistant-calendar-context.js';
+import {invitationCalendar,invitationCalendarPending,invitationDateQuestion,type CalendarContext} from './assistant-calendar-context.js';
 import {transcriptExcerpt} from './assistant-message-attention.js';
 import {findOwnerMessage} from './room-reads.js';
 import type {TeamStore} from './team-store.js';
 import {rememberAssistantDailyCard} from './assistant-daily-card-receipts.js';
 import {compileDailyCardSurface} from './assistant-daily-card-layout.js';
-import {invitationCalendarPending,invitationCardContent} from './assistant-invitation-card.js';
+import {invitationCardContent} from './assistant-invitation-card.js';
 
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
 
@@ -29,6 +29,10 @@ function sortMessageAttention(a:DailyItem,b:DailyItem){
   attentionLabels[a.messageAttention!.kind].priority-attentionLabels[b.messageAttention!.kind].priority||
   b.messageAttention!.at-a.messageAttention!.at;
 }
+function messageCalendarContext(item:DailyItem,timeZone:string,evidence?:string|CalendarContext){
+ return item.messageAttention?.kind==='invitation'&&typeof evidence!=='object'
+  ? invitationCalendar(item.messageAttention,timeZone):evidence;
+}
 function describeAttention(item:DailyItem,time:Intl.DateTimeFormat,evidence?:string|CalendarContext,escape=plain){
  const attention=item.messageAttention!;
  const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
@@ -40,7 +44,8 @@ function describeAttention(item:DailyItem,time:Intl.DateTimeFormat,evidence?:str
  const followUp=attention.kind==='schedule'
   ? [typeof evidence==='string'?evidence:'请核对原会话通知中的新安排。']
   : attention.kind==='invitation'
-   ? [meeting?.observation??invitationCalendarPending, '可选回复  '+(meeting?.choices??['收到议程','我核对安排后再确认']).join(' / ')]
+   ? [meeting?.observation??invitationDateQuestion,...(meeting?.date
+     ? ['可选回复  '+(meeting.choices??['收到议程','我核对安排后再确认']).join(' / ')]:[])]
   : attention.kind==='decision'||attention.kind==='reply'
    ? [...(ask?['对方请你'+ask.replace(/[，、；：;]+$/,'')+'。']:[]),
      ack?'回复草稿「收到，谢谢通知。」':attention.kind==='decision'
@@ -67,7 +72,7 @@ export function dailyMessageNotice(items:DailyItem[],timeZone:string,calendarEvi
  if(!actionable.length)return undefined;
  const time=dateAndTime(timeZone);
  const entries=actionable.slice(0,3).map(item=>{
-  const {context,source,text,followUp}=describeAttention(item,time,calendarEvidence.get(item.id));
+  const {context,source,text,followUp}=describeAttention(item,time,messageCalendarContext(item,timeZone,calendarEvidence.get(item.id)));
   return ['**'+context+'**',source,'消息要点「'+text+'」',...followUp].join('\n\n');
  });
  return ['**消息里需要关注的事项**',...entries,
@@ -92,8 +97,8 @@ export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],ti
    if(!preview)return;
    const group=transcriptExcerpt(item.messageAttention.group,redact,70)??'原会话';
    const safe={...item,messageAttention:{...item.messageAttention,text:preview,group}};
-   const {context,source,text,followUp}=describeAttention(safe,times,calendarEvidence.get(item.id));
-   const next=followUp.filter(value=>/^(?:回复草稿|已核对|已查看|日历暂未|会议时间|会议的|可选回复)/.test(value));
+   const {context,source,text,followUp}=describeAttention(safe,times,messageCalendarContext(safe,timeZone,calendarEvidence.get(item.id)));
+   const next=followUp.filter(value=>/^(?:回复草稿|已核对|已查看|日历暂未|会议时间|会议的|可选回复|请确认会议日期)/.test(value));
    return '- **'+context+'**（'+source+'）'+text+(next.length?' '+next.join(' '):'');
   }
   const title=transcriptExcerpt(item.title,redact,90);
@@ -118,6 +123,7 @@ export function dailyBriefCard(input:{
  const scheduleGroups=new Set<string>();
  const invitationDrafts=new Set<string>();
  let hasInvitation=false;
+ let confirmMeetingDate=false;
  const calendarRows=items.filter(item=>isDailyCalendar(item.source)&&Number.isFinite(item.deadline))
   .sort((a,b)=>a.deadline!-b.deadline!).flatMap(item=>{
    const title=transcriptExcerpt(item.title,redact,90);
@@ -151,10 +157,13 @@ export function dailyBriefCard(input:{
     if(safeGroup)scheduleGroups.add(safeGroup);
     continue;
    }
-   const row=describeAttention({...item,messageAttention:{...item.messageAttention,text:snippet,group}},times,evidence.get(item.id),text=>text);
-   if(item.messageAttention.kind==='invitation'){
+   const safe={...item,messageAttention:{...item.messageAttention,text:snippet,group}};
+   const calendar=messageCalendarContext(safe,timeZone,evidence.get(item.id));
+   const row=describeAttention(safe,times,calendar,text=>text);
+   if(item.messageAttention.kind==='invitation'&&typeof calendar==='object'){
     const invitation=invitationCardContent({group,text:snippet,source:singleKind==='invitation'?row.source:undefined,
-     observation:transcriptExcerpt(row.followUp[0],redact,180)??invitationCalendarPending,at:item.messageAttention.at,timeZone});
+     calendar:{date:calendar.date,observation:transcriptExcerpt(calendar.observation,redact,180)??(calendar.date?invitationCalendarPending:invitationDateQuestion)}});
+    if(singleKind==='invitation'&&!calendar.date)confirmMeetingDate=true;
     if(singleKind==='invitation')sections[0]={kind:'heading',text:invitation.title,level:2};
     else sections.push({kind:'heading',text:'会议邀请 · '+invitation.title,level:3});
     sections.push(...invitation.sections);
@@ -181,7 +190,8 @@ export function dailyBriefCard(input:{
   const kind=singleKind==='schedule'?'schedule-change':singleKind==='invitation'?'meeting-invitation':undefined;
   const subjects=[...scheduleGroups].map(group=>'「'+group+'」').join('、');
   const calendarCheckDraft=[...invitationDrafts,...(subjects?['请核对日历里是否仍有 '+subjects+' 对应的安排。如仍保留，请列出时间范围和来源供我确认。']:[])].join('\n');
-  return {...card,...(kind?{kind}:{}),...(hasInvitation?{showOriginal:true}:{}),...(calendarCheckDraft?{calendarCheckDraft}:{})};
+  return {...card,...(kind?{kind}:{}),...(hasInvitation?{showOriginal:true}:{}),
+   ...(calendarCheckDraft?{calendarCheckDraft,...(confirmMeetingDate?{confirmMeetingDate:true}:{})}:{})};
  }catch{
   // The original Markdown remains available even if the card fails validation.
   return undefined;

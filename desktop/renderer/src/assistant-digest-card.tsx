@@ -12,7 +12,7 @@ export function AssistantDigestCard({card,text,onOpen,onDraft}:{card:AssistantDa
   <A2uiArtifactRenderer artifactContent={card.content} artifactRef={{key:card.artifactId,artifactId:card.artifactId}}
    fallback={<Markdown text={text}/>}/>
   <footer>{card.calendarCheckDraft
-   ? <button type="button" className="secondary assistant-card-action" onClick={onDraft}><CalendarSearch size={15} aria-hidden="true"/>{invitation?'核对我的日程':'准备日历核对'}<ArrowRight size={14} aria-hidden="true"/></button>
+   ? <button type="button" className="secondary assistant-card-action" onClick={onDraft}><CalendarSearch size={15} aria-hidden="true"/>{card.confirmMeetingDate?'确认会议日期':invitation?'核对我的日程':'准备日历核对'}<ArrowRight size={14} aria-hidden="true"/></button>
    : <button type="button" className="secondary" onClick={onOpen}>查看简报<ArrowRight size={14} aria-hidden="true"/></button>}
   </footer>
   {(invitation||card.showOriginal)&&<details className="assistant-invitation-original"><summary>查看通知详情</summary><div><Markdown text={text}/></div></details>}
