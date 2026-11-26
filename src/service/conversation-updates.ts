@@ -79,7 +79,7 @@ export class ConversationUpdates {
   let after=input.tail===true?0:prior?.seq??resume;
   // An untrusted persisted offset past the real head cannot hide the original history.
   if(reset&&resume>0&&!input.tail){const head=await conversationPage(this.upstream,roomId,{tail:true,limit:1});if(resume>Number(head.toSequence??0))after=0;}
-  const messages=await conversationPage(this.upstream,roomId,{after,tail:!!input.tail||reset&&after===0,limit:50});
+  const messages=await conversationPage(this.upstream,roomId,{after,tail:!!input.tail||reset&&after===0,limit:50},this.store);
   for(const message of messages.messages){ids.add(message.messageId);sequences.add(message.roomSequence);}
   const observed=Math.max(after,messages.toSequence??0),version=this.store.viewRevision(roomId),global=this.store.viewRevision(),cache=this.entry(roomId),now=Date.now(),errors:{section:string;code:string}[]=[];
   let work:any,shared:any,settings:any,roles:any,proposals:any,workVersion=prior?.work??0,taskStamp=prior?.tasksAt??0;
@@ -128,7 +128,7 @@ export class ConversationUpdates {
   const input=record(value);fields(input,['roomId','after','before','tail']);
   if(input.tail!==undefined&&typeof input.tail!=='boolean')throw new KTeamError('conversation_cursor_invalid');
   const roomId=text(input.roomId,'room_id'),scope=await this.conversations.scope(roomId);
-  const result=await conversationPage(this.upstream,roomId,{after:input.after===undefined?0:sequence(input.after),before:input.before===undefined?undefined:sequence(input.before),tail:input.tail===true,limit:50});
+  const result=await conversationPage(this.upstream,roomId,{after:input.after===undefined?0:sequence(input.after),before:input.before===undefined?undefined:sequence(input.before),tail:input.tail===true,limit:50},this.store);
   await this.sameScope(roomId,scope);return result;
  }
  async records(value:unknown){

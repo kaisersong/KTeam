@@ -10,6 +10,59 @@ import {TeamStore} from '../src/service/team-store.js';
 
 const mail:DailySource={kind:'mail',id:'synthetic-mail',label:'fixture@example.test',account:'synthetic-mail',revision:'1'};
 const at='2026-11-23T07:10:00Z';
+test('confirmed Yunzhijia sign-out sends one private reconnect reminder until login recovers',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-daily-login-notice-'));
+ const store=new TeamStore(root),roomId='assistant-room';
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'云之家日程',account:'fixture',revision:'1'};
+ const messages:DailySource={...calendar,kind:'yzj-message',id:yzjRecentGroupsId,label:'云之家消息'};
+ let login:'required'|'unknown'|'valid'='unknown',loseReceipt=false;
+ const notices:{id:string;roomId:string;body:string}[]=[];
+ store.configure({roomId,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,config:{...defaultDaily('UTC'),sources:[calendar,messages]},changedAt:Date.parse(at),skips:[]});
+ const create=()=>new AssistantDaily(store,{
+  catalog:async()=>({sources:[calendar,messages],yzjAvailable:true}),current:async()=>login==='valid',
+  checkYzjSources:async sources=>({sources,login}),scan:async()=>({items:[],partial:false}),
+  original:async()=>({url:undefined}),newsSource:async()=>assert.fail('not a news plan'),
+ },()=>roomId,()=>Date.parse(at),async()=>{},async notice=>{
+  await notice.guard();
+  assert.equal(notice.kind,'connector-notice');
+  notices.push({id:notice.id,roomId:notice.roomId,body:notice.body});
+  if(loseReceipt)throw Error('delivery receipt lost');
+  return 'fixture-message';
+ });
+ let daily=create();
+ try{
+  await daily.refresh();
+  assert.equal(daily.planView().yzjNeedsLogin,false);
+  assert.equal(notices.length,0);
+  login='required';
+  await daily.refresh();
+  assert.equal(notices.length,1);
+  assert.equal(notices[0]?.roomId,roomId);
+  assert.match(notices[0]!.body,/云之家需要重新登录.*设置 → 连接器/s);
+  assert.equal(daily.planView().yzjNeedsLogin,true);
+  await daily.close();
+  daily=create();
+  await daily.refresh();
+  login='unknown';
+  await daily.refresh();
+  assert.equal(notices.length,1);
+  assert.equal(daily.planView().yzjNeedsLogin,true);
+  login='valid';
+  await daily.refresh();
+  assert.equal(daily.planView().yzjNeedsLogin,false);
+  login='required';
+  loseReceipt=true;
+  await daily.refresh();
+  assert.equal(notices.length,2);
+  assert.notEqual(notices[0]?.id,notices[1]?.id);
+  await daily.close();
+  daily=create();
+  await daily.refresh();
+  assert.equal(notices.length,2);
+  assert.equal(daily.planView().yzjNeedsLogin,true);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
 test('planning does not read content before confirmation and duplicate receipts do not apply twice',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-daily-plan-'));
  let store=new TeamStore(root),now=Date.parse(at),active=true,reads=0;
@@ -95,6 +148,8 @@ test('scheduled briefs are queued once for fresh nonempty runs and never replay 
  const create=()=>new AssistantDaily(store,sources,()=>roomId,()=>now,async()=>{},async input=>{
   await input.guard();
   assert.equal(input.roomId,roomId);
+  assert.match(input.card?.content??'',/Private fixture subject/);
+  assert.doesNotMatch(input.card?.content??'',/Private fixture body|fixture@example/);
   sent.push(input.body);
   if(deliveryUnknown)throw Error('simulated lost receipt');
   return 'fixture-message';
@@ -265,6 +320,8 @@ test('fresh group messages are posted between briefs and an unknown delivery sta
   assert.match(input.body,/验收群/);
   assert.match(input.body,/请确认验收事项/);
   assert.doesNotMatch(input.body,/private (title|content)/);
+  assert.match(input.card?.content??'',/验收群.*请确认验收事项.*可选回复/s);
+  assert.doesNotMatch(input.card?.content??'',/private (title|content)/);
   if(unknown)throw new Error('unknown delivery');
   return 'message-1';
  });
@@ -377,7 +434,7 @@ test('meeting invitations query the stated date and present conflict-safe respon
   scan:async(source,_from,_now,_zone,_signal,_recent,date)=>{
    const base={source,id:'fixture',title:'已有架构评审',detail:'',observedAt:now-1000,urgent:false};
    if(source.kind==='yzj-message')return {partial:true,items:[{...base,urgent:true,messageAttention:{
-    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）14:30–16:00 例会预通知，邀请你参加。',at:now-1000,
+    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）下午2:30 - 4:00 例会预通知，邀请你参加。会议时间 2026年12月1日14:30–16:00。',at:now-1000,
    }}]};
    if(!date)return {partial:false,items:[]};
    dateChecked=date;
@@ -385,6 +442,8 @@ test('meeting invitations query the stated date and present conflict-safe respon
   },
  },()=>roomId,()=>now,async()=>{},async input=>{
   await input.guard();
+  assert.equal(input.card?.kind,'meeting-invitation');
+  assert.match(input.card?.calendarCheckDraft??'',/12-01 14:30–16:00/);
   sent.push(input.body);
   return 'fixture-brief';
  });

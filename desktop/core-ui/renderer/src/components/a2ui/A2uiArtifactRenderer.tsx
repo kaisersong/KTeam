@@ -7,13 +7,14 @@ import { useLocale } from '../../contexts/LocaleContext';
 type Props = {
   artifactContent: string;
   artifactRef: ArtifactRef;
+  fallback?: ReactNode;
 };
 
 type ErrorBoundaryState = {
   error: string | null;
 };
 
-class A2uiErrorBoundary extends Component<{ resetKey: string; errorMessage: string; children: ReactNode }, ErrorBoundaryState> {
+class A2uiErrorBoundary extends Component<{ resetKey: string; fallback: ReactNode; children: ReactNode }, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null };
 
   componentDidUpdate(prevProps: { resetKey: string }) {
@@ -27,12 +28,12 @@ class A2uiErrorBoundary extends Component<{ resetKey: string; errorMessage: stri
   }
 
   render() {
-    if (this.state.error) return <A2uiRenderError message={this.props.errorMessage} />;
+    if (this.state.error) return this.props.fallback;
     return this.props.children;
   }
 }
 
-export function A2uiArtifactRenderer({ artifactContent, artifactRef }: Props) {
+export function A2uiArtifactRenderer({ artifactContent, artifactRef, fallback }: Props) {
   const { t } = useLocale();
   const parsed = useMemo(() => {
     try {
@@ -45,11 +46,12 @@ export function A2uiArtifactRenderer({ artifactContent, artifactRef }: Props) {
     }
   }, [artifactContent, artifactRef.key, artifactRef.artifactId]);
 
-  if (!parsed.ok) return <A2uiRenderError message={t.a2uiRenderError} />;
+  const unavailable=fallback??<A2uiRenderError message={t.a2uiRenderError} />;
+  if (!parsed.ok) return unavailable;
 
   const resetKey = artifactContent;
   return (
-    <A2uiErrorBoundary resetKey={resetKey} errorMessage={t.a2uiRenderError}>
+    <A2uiErrorBoundary resetKey={resetKey} fallback={unavailable}>
       <A2uiSurfaceRenderer messages={parsed.messages} />
     </A2uiErrorBoundary>
   );

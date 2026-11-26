@@ -5,8 +5,8 @@ import {nativeTurn,sharedRuntime} from '../runtime/native.js';
 import {invitationContext,messageCalendarDate,type CalendarContext} from './assistant-calendar-context.js';
 import {calendarWindow} from '../runtime/calendar.js';
 import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,defaultDaily,type DailyChange,type DailyConfiguration,type DailyCoverage,type DailyItem,type DailySource} from '../protocol/assistant-daily.js';
-import {dailyBriefItems,dailyBriefMessage,dailyMessageNotice,type BriefDelivery} from './assistant-daily-delivery.js';
-import {dailyKinds,dailyPresets,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
+import {dailyBriefCard,dailyBriefItems,dailyBriefMessage,dailyMessageNotice,dailyMessageNoticeItems,type BriefDelivery} from './assistant-daily-delivery.js';
+import {dailyKinds,dailyPresets,dailySlotLabels,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
 import {AssistantWatch} from './assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
@@ -15,6 +15,7 @@ const planKey='assistant-daily-plan';
 const sourcePrefix='assistant-daily-source:';
 const briefPrefix='assistant-daily-brief:';
 const messageNoticeKey='assistant-daily-message-notice';
+const yzjLoginNoticeKey='assistant-daily-yzj-login-notice';
 const messageNoticeWindow=recentGroupsInterval+60000;
 const messageCatchupWindow=60*60000;
 const snoozePrefix='assistant-daily-snooze:';
@@ -51,6 +52,8 @@ interface Brief {
 }
 type PublishBrief=(input:BriefDelivery)=>Promise<string>;
 type MessageNoticeState={version?:1;seen:Record<string,number>;receipt?:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
+type YzjLoginNotice={id:string;roomId:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string};
+type YzjLogin=Awaited<ReturnType<AssistantDailySources['checkYzjSources']>>['login'];
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[]; recentCursors?:RecentGroupCursors;
 }
@@ -60,7 +63,7 @@ export class AssistantDaily {
  private active?:Promise<void>;
  private controller=new AbortController();
  readonly watches:AssistantWatch;
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup"|"restoreYzjSources">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup"|"checkYzjSources">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
   this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
@@ -235,7 +238,9 @@ export class AssistantDaily {
  }
  planView(){
   const draft=this.draft();
-  return {ok:true,...this.summary(),effectivePaused:this.blocked()||this.plan()?.config.paused===true,draft:draft?.committedRevision?undefined:draft};
+  const summary=this.summary(),loginNotice=this.store.state<YzjLoginNotice>(yzjLoginNoticeKey);
+  const yzjNeedsLogin=!!summary.config?.sources.some(source=>source.kind.startsWith('yzj-'))&&!!loginNotice&&loginNotice.roomId===this.assistantRoom();
+  return {ok:true,...summary,effectivePaused:this.blocked()||summary.config?.paused===true,yzjNeedsLogin,draft:draft?.committedRevision?undefined:draft};
  }
  async clientPlan(){
   const connectorSetup=await this.sources.connectorSetup?.();
@@ -336,13 +341,14 @@ export class AssistantDaily {
   const guard=()=>{controller.signal.throwIfAborted();if(this.plan()?.revision!==planRevision||this.blocked())throw new KTeamError('daily_plan_changed',409);};
   const yzjDue=plan.config.sources.some(source=>source.kind.startsWith('yzj-')&&
    (manual||now-(this.store.state<Scan>(this.scanKey(source))?.at??0)>=(periodicSourceInterval(source)??checkInterval)));
-  if(yzjDue&&this.sources.restoreYzjSources){
-   const sources=await this.sources.restoreYzjSources(plan.config.sources,plan.changedAt,controller.signal);
+  if(yzjDue&&this.sources.checkYzjSources){
+   const {sources,login}=await this.sources.checkYzjSources(plan.config.sources,plan.changedAt,controller.signal);
    guard();
    if(sources.some((source,index)=>source!==plan!.config.sources[index])){
     plan={...plan,config:{...plan.config,sources}};
     this.store.setState(planKey,plan);
    }
+   await this.updateYzjLoginNotice(login,plan,guard,controller.signal);
   }
   const activePlan=plan;
   const times=dailyTimes(plan.config,now);
@@ -415,6 +421,34 @@ export class AssistantDaily {
   await this.deliverBriefs(plan,guard,controller.signal);
   await this.deliverMessageNotice(plan,guard,controller.signal);
  }
+ private async updateYzjLoginNotice(login:YzjLogin,plan:Plan,guard:()=>void,signal:AbortSignal){
+  const roomId=this.assistantRoom(),previous=this.store.state<YzjLoginNotice>(yzjLoginNoticeKey);
+  if(login==='valid'){
+   if(previous)this.store.setState(yzjLoginNoticeKey,null);
+   return;
+  }
+  if(login!=='required'||!roomId||!this.publishBrief||previous?.roomId===roomId)return;
+  const deadline=this.now()+briefDeliveryWindow;
+  const assertEligible=async()=>{
+   await this.verifyScope?.();
+   guard();
+   if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+  };
+  await assertEligible();
+  const id='assistant-yzj-login-'+randomUUID();
+  const attempt:YzjLoginNotice={id,roomId,status:'attempted'};
+  // Remember the attempt before publishing. A restart or missing receipt cannot produce a duplicate.
+  this.store.setState(yzjLoginNoticeKey,attempt);
+  try{
+   const messageId=await this.publishBrief({kind:'connector-notice',id,roomId,deadline,guard:async()=>{
+    await assertEligible();
+    const current=await this.sources.checkYzjSources?.(plan.config.sources,plan.changedAt,signal);
+    if(current?.login!=='required')throw new KTeamError('daily_source_changed',409);
+    guard();
+   },body:'**云之家需要重新登录**\n\n小 K 暂时读不到你选择的云之家来源。请在 **设置 → 连接器 → 企业应用 → 云之家** 使用原账号登录。连接恢复后，小 K 会继续检查这些来源。'});
+   this.store.setState(yzjLoginNoticeKey,{...attempt,status:'sent',messageId});
+  }catch{this.store.setState(yzjLoginNoticeKey,{...attempt,status:'unconfirmed'});}
+ }
  private async deliverMessageNotice(plan:Plan,guard:()=>void,signal:AbortSignal){
   const roomId=this.assistantRoom();
   if(!this.publishBrief||!roomId)return;
@@ -423,6 +457,7 @@ export class AssistantDaily {
   const seen=Object.fromEntries(Object.entries(previous?.seen??{}).filter(([,firstSeen])=>firstSeen>=now-messageCatchupWindow));
   const attentionCutoff=now-messageCatchupWindow;
   const items=new Map<string,DailyItem>();
+  const coverage:DailyCoverage[]=[];
   const checks=new Map<string,Promise<boolean>>();
   for(const scan of this.retained(plan)){
    const source=scan.coverage.source;
@@ -434,6 +469,7 @@ export class AssistantDaily {
     return seen[key]?[]:[{key,item}];
    });
    if(!fresh.length||!await this.current(source,checks,signal))continue;
+   coverage.push(scan.coverage);
    for(const {key,item} of fresh)items.set(key,item);
   }
   const {calendarEvidence,usedCalendars}=await this.messageCalendarEvidence([...items.values()],plan,now,checks,signal);
@@ -450,12 +486,15 @@ export class AssistantDaily {
   };
   await assertEligible();
   const id='assistant-daily-message-'+sha(JSON.stringify([roomId,[...items.keys()].sort()]));
+  const core=await sharedRuntime();
+  const card=dailyBriefCard({id,title:'消息里需要关注的事项',items:dailyMessageNoticeItems([...items.values()]).slice(0,3),
+   timeZone:plan.config.timeZone,redact:text=>core.redactSecrets(text).text,evidence:calendarEvidence,coverage});
   for(const key of items.keys())seen[key]=now;
   const receipt={id,status:'attempted' as const};
   // Once an attempt is reserved, a lost receipt or restart cannot send it twice.
   this.store.setState(messageNoticeKey,{version:1,seen,receipt});
   try{
-   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,deadline,guard:assertEligible});
+   const messageId=await this.publishBrief({kind:'message-notice',id,roomId,body,card,deadline,guard:assertEligible});
    this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'sent',messageId}});
   }catch{
    this.store.setState(messageNoticeKey,{version:1,seen,receipt:{id,status:'unconfirmed'}});
@@ -527,6 +566,8 @@ export class AssistantDaily {
    const selected=dailyBriefItems(visible,now,redact).slice(0,5);
    const {calendarEvidence,usedCalendars}=await this.messageCalendarEvidence(selected,plan,now,allowed,signal);
    const body=dailyBriefMessage(brief.day,brief.slot,selected,plan.config.timeZone,redact,calendarEvidence);
+   const card=body?dailyBriefCard({id:brief.id,title:brief.day+' '+dailySlotLabels[brief.slot],items:selected,
+    timeZone:plan.config.timeZone,redact,evidence:calendarEvidence,coverage:brief.coverage}):undefined;
    const assertEligible=async()=>{
     await this.verifyScope?.();
     guard();
@@ -549,7 +590,7 @@ export class AssistantDaily {
     return attempted;
    });
    try {
-    const messageId=await this.publishBrief({id:brief.id,roomId,body,deadline,guard:assertEligible});
+    const messageId=await this.publishBrief({id:brief.id,roomId,body,card,deadline,guard:assertEligible});
     this.store.saveOperation({...attempt,delivery:'sent',messageId},attempt.revision);
    } catch {
     this.store.saveOperation({...attempt,delivery:'unconfirmed'},attempt.revision);

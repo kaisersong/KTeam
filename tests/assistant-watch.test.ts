@@ -193,19 +193,23 @@ test('message triage grounds next steps in the source and rejects chatter or cre
 test('legacy daily source fingerprints recover only for a matching login already active when consent was saved',async()=>{
  const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
  const at=Date.parse('2026-11-23T09:00:00Z');
- let login=new Date(at-1000).toISOString(),user='me';
+ let login=new Date(at-1000).toISOString(),user='me',tokenStatus='valid';
  const adapter=new AssistantDailySources({} as never,{
   dailyYzjConnectedAt:()=>login,
-  dailyYzj:async()=>({orgId:'fixture-org',openId:user}),
+  dailyYzj:async()=>({orgId:'fixture-org',openId:user,tokenStatus}),
  } as never);
  const source={kind:'yzj-message' as const,id:yzjRecentGroupsId,label:'最近 30 个群',account:hash(['fixture-org','me']),revision:hash(['fixture-org','me',null])};
- const recover=async()=>(await adapter.restoreYzjSources([source],at,new AbortController().signal))[0]!;
- assert.equal((await recover()).revision,hash(['fixture-org','me',login]));
+ const recover=()=>adapter.checkYzjSources([source],at,new AbortController().signal);
+ const authorized=await recover();
+ assert.equal(authorized.sources[0]?.revision,hash(['fixture-org','me',login]));
+ assert.equal(authorized.login,'valid');
  login=new Date(at+1000).toISOString();
- assert.equal(await recover(),source);
+ assert.deepEqual(await recover(),{sources:[source],login:'unknown'});
  login=new Date(at-1000).toISOString();
  user='another-user';
- assert.equal(await recover(),source);
+ assert.deepEqual(await recover(),{sources:[source],login:'unknown'});
+ tokenStatus='expired';
+ assert.deepEqual(await recover(),{sources:[source],login:'required'});
 });
 
 test('only the separately selected Yunzhijia direct source reads p2p messages and filters idle chat',async()=>{

@@ -1,6 +1,6 @@
 {
   "name": "@kteam/app",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "private": true,
   "main": "build/main.cjs",
   "type": "module",
