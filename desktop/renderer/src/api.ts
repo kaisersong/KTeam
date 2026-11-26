@@ -201,6 +201,7 @@ Object.assign(reasons,{
  daily_plan_changed:'每日工作方案已更新，请重新核对当前方案。',
  daily_source_changed:'来源或账户授权已变化，请重新选择来源。',
  daily_source_unavailable:'这个事项的原始来源暂不可用。',
+ yzj_login_required:'请先重新登录云之家。',
  daily_reply_context_unavailable:'原消息内容不足，请先在原会话核对。',
  daily_reply_model_unavailable:'生成回复草稿需要小 K 绑定一个可用模型。',
  daily_no_previous_plan:'还没有可恢复的上一份方案。',

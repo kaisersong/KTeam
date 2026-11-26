@@ -15,6 +15,7 @@ const planKey='assistant-daily-plan';
 const sourcePrefix='assistant-daily-source:';
 const briefPrefix='assistant-daily-brief:';
 const messageNoticeKey='assistant-daily-message-notice';
+const yzjLoginNoticeKey='assistant-daily-yzj-login-notice';
 const messageNoticeWindow=recentGroupsInterval+60000;
 const messageCatchupWindow=60*60000;
 const snoozePrefix='assistant-daily-snooze:';
@@ -51,6 +52,8 @@ interface Brief {
 }
 type PublishBrief=(input:BriefDelivery)=>Promise<string>;
 type MessageNoticeState={version?:1;seen:Record<string,number>;receipt?:{id:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string}};
+type YzjLoginNotice={id:string;roomId:string;status:'attempted'|'sent'|'unconfirmed';messageId?:string};
+type YzjLogin=Awaited<ReturnType<AssistantDailySources['checkYzjSources']>>['login'];
 interface Scan {
  at:number; waterline?:number; coverage:DailyCoverage; items:DailyItem[]; recentCursors?:RecentGroupCursors;
 }
@@ -60,7 +63,7 @@ export class AssistantDaily {
  private active?:Promise<void>;
  private controller=new AbortController();
  readonly watches:AssistantWatch;
- constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup"|"restoreYzjSources">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
+ constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup"|"checkYzjSources">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
   this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
@@ -235,7 +238,9 @@ export class AssistantDaily {
  }
  planView(){
   const draft=this.draft();
-  return {ok:true,...this.summary(),effectivePaused:this.blocked()||this.plan()?.config.paused===true,draft:draft?.committedRevision?undefined:draft};
+  const summary=this.summary(),loginNotice=this.store.state<YzjLoginNotice>(yzjLoginNoticeKey);
+  const yzjNeedsLogin=!!summary.config?.sources.some(source=>source.kind.startsWith('yzj-'))&&!!loginNotice&&loginNotice.roomId===this.assistantRoom();
+  return {ok:true,...summary,effectivePaused:this.blocked()||summary.config?.paused===true,yzjNeedsLogin,draft:draft?.committedRevision?undefined:draft};
  }
  async clientPlan(){
   const connectorSetup=await this.sources.connectorSetup?.();
@@ -336,13 +341,14 @@ export class AssistantDaily {
   const guard=()=>{controller.signal.throwIfAborted();if(this.plan()?.revision!==planRevision||this.blocked())throw new KTeamError('daily_plan_changed',409);};
   const yzjDue=plan.config.sources.some(source=>source.kind.startsWith('yzj-')&&
    (manual||now-(this.store.state<Scan>(this.scanKey(source))?.at??0)>=(periodicSourceInterval(source)??checkInterval)));
-  if(yzjDue&&this.sources.restoreYzjSources){
-   const sources=await this.sources.restoreYzjSources(plan.config.sources,plan.changedAt,controller.signal);
+  if(yzjDue&&this.sources.checkYzjSources){
+   const {sources,login}=await this.sources.checkYzjSources(plan.config.sources,plan.changedAt,controller.signal);
    guard();
    if(sources.some((source,index)=>source!==plan!.config.sources[index])){
     plan={...plan,config:{...plan.config,sources}};
     this.store.setState(planKey,plan);
    }
+   await this.updateYzjLoginNotice(login,plan,guard,controller.signal);
   }
   const activePlan=plan;
   const times=dailyTimes(plan.config,now);
@@ -414,6 +420,34 @@ export class AssistantDaily {
   }
   await this.deliverBriefs(plan,guard,controller.signal);
   await this.deliverMessageNotice(plan,guard,controller.signal);
+ }
+ private async updateYzjLoginNotice(login:YzjLogin,plan:Plan,guard:()=>void,signal:AbortSignal){
+  const roomId=this.assistantRoom(),previous=this.store.state<YzjLoginNotice>(yzjLoginNoticeKey);
+  if(login==='valid'){
+   if(previous)this.store.setState(yzjLoginNoticeKey,null);
+   return;
+  }
+  if(login!=='required'||!roomId||!this.publishBrief||previous?.roomId===roomId)return;
+  const deadline=this.now()+briefDeliveryWindow;
+  const assertEligible=async()=>{
+   await this.verifyScope?.();
+   guard();
+   if(this.assistantRoom()!==roomId||this.now()>=deadline)throw new KTeamError('daily_brief_scope_changed',409);
+  };
+  await assertEligible();
+  const id='assistant-yzj-login-'+randomUUID();
+  const attempt:YzjLoginNotice={id,roomId,status:'attempted'};
+  // Remember the attempt before publishing. A restart or missing receipt cannot produce a duplicate.
+  this.store.setState(yzjLoginNoticeKey,attempt);
+  try{
+   const messageId=await this.publishBrief({kind:'connector-notice',id,roomId,deadline,guard:async()=>{
+    await assertEligible();
+    const current=await this.sources.checkYzjSources?.(plan.config.sources,plan.changedAt,signal);
+    if(current?.login!=='required')throw new KTeamError('daily_source_changed',409);
+    guard();
+   },body:'**云之家需要重新登录**\n\n小 K 暂时读不到你选择的云之家来源。请在 **设置 → 连接器 → 企业应用 → 云之家** 使用原账号登录。连接恢复后，小 K 会继续检查这些来源。'});
+   this.store.setState(yzjLoginNoticeKey,{...attempt,status:'sent',messageId});
+  }catch{this.store.setState(yzjLoginNoticeKey,{...attempt,status:'unconfirmed'});}
  }
  private async deliverMessageNotice(plan:Plan,guard:()=>void,signal:AbortSignal){
   const roomId=this.assistantRoom();

@@ -6,6 +6,12 @@ import type { YzjCliConnection, YzjCliAuthAction, YzjCliAuthState } from '../pro
 
 const expiresAtSchema = z.string().max(64).datetime({ offset: true });
 
+export function yzjLoginRequired(exitCode:number|null,stderr:string):boolean {
+  if(exitCode===3)return true;
+  try {return ['10000400','93001'].includes(String(JSON.parse(stderr)?.error?.code));}
+  catch {return false;}
+}
+
 type Phase = YzjCliAuthState['phase'];
 type JobKind = 'login' | 'check' | 'verify';
 interface Job {
@@ -125,12 +131,10 @@ export class YzjCliAuthService {
     const failure: Phase = job.kind === 'verify' ? 'verificationFailed' : 'failed';
     if (job.error || job.overflow) return { phase: failure };
     let output: { success?: unknown; data?: unknown } | undefined;
-    let errorCode: unknown;
     try { output = JSON.parse(job.stdout); } catch { /* Not a successful envelope. */ }
-    try { errorCode = JSON.parse(job.stderr)?.error?.code; } catch { /* Unknown failures stay failed. */ }
     if (code === 0 && output?.success === true) return { phase: 'authenticated', connection: this.projectConnection(output.data, job.kind === 'verify') };
     // Official references/global.md documents exit 3 and these expired-auth codes.
-    if (code === 3 || errorCode === 10000400 || errorCode === '10000400' || errorCode === 93001 || errorCode === '93001') return { phase: 'signedOut' };
+    if (yzjLoginRequired(code,job.stderr)) return { phase: 'signedOut' };
     return { phase: failure };
   }
 

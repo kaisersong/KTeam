@@ -19,6 +19,7 @@ interface Plan {
  revision:number;
  draft?:Draft;
  connectorSetup?:AssistantConnectorSetup;
+ yzjNeedsLogin?:boolean;
  next?:{slot:keyof typeof slotLabel;next:number}|null;
 }
 interface Today extends Plan {
@@ -64,11 +65,15 @@ export function AssistantDailyPlan({onPlan,onConnect,onApplied,showConfirmed=fal
   finally{setChoosing(undefined);}
  };
  const setup=data.connectorSetup;
- const guide=onConnect&&(setup?.enterprise||setup?.mail)?<aside className="assistant-daily-actions" aria-label="小 K 的连接引导">
+ const connect=onConnect&&(setup?.enterprise||setup?.mail)&&!data.yzjNeedsLogin?<aside className="assistant-daily-actions" aria-label="小 K 的连接引导">
   <span>连接后，就可以把{setup.enterprise&&setup.mail?'群消息、日程和邮件':setup.enterprise?'群消息和日程':'待处理邮件'}加进简报。</span>
   {setup.enterprise&&<button type="button" className="secondary" onClick={()=>onConnect('enterprise')}>连接企业通讯</button>}
   {setup.mail&&<button type="button" className="secondary" onClick={()=>onConnect('mail')}>连接邮箱</button>}
  </aside>:null;
+ const guide=data.yzjNeedsLogin?<aside className="assistant-daily-actions" aria-label="云之家连接提醒">
+  <span>云之家需要重新登录，小 K 暂时无法读取已选来源。</span>
+  {onConnect&&<button type="button" className="secondary" onClick={()=>onConnect('enterprise')}>前往登录</button>}
+ </aside>:connect;
  if(showChoices||!data.config&&!data.draft)return <>{guide}<section className="proposal-card assistant-daily-choices" aria-label="选择每日工作方案">
   <h3>选一个简报安排</h3>
   {!data.config&&<p>默认在周一到周五运行。选好后可以添加读取来源。</p>}
@@ -88,7 +93,7 @@ export function AssistantDailyPlan({onPlan,onConnect,onApplied,showConfirmed=fal
  </section></>;
  if(data.draft)return <>{guide}<DraftCard key={data.draft.id} draft={data.draft} previous={data.config} onChoose={()=>setShowChoices(true)} onSaved={()=>{void load();onApplied?.();}}/></>;
  if(!data.config||!showConfirmed)return guide;
- return <div className="assistant-daily-plan-receipt">
+ return <>{guide}<div className="assistant-daily-plan-receipt">
   <strong>{describePlan(data.config)}</strong>
   <button type="button" className="secondary" disabled={Boolean(choosing)} onClick={()=>void choose('sources')}>{data.config.sources.length?'调整读取来源':'选择读取来源'}</button>
   {!data.config.sources.length&&<span>当前未设置读取来源。</span>}
@@ -96,7 +101,7 @@ export function AssistantDailyPlan({onPlan,onConnect,onApplied,showConfirmed=fal
   {data.next&&<span>下次{slotLabel[data.next.slot]} {format(data.next.next,data.config.timeZone)}</span>}
   <button className="secondary" onClick={()=>setShowChoices(true)}>更换简报安排</button>
   <button className="secondary" onClick={onPlan}>在对话中调整</button>
- </div>;
+ </div></>;
 }
 
 function DraftCard({draft,previous,onSaved,onChoose}:{draft:Draft;previous:DailyConfiguration|null;onSaved:()=>void;onChoose:()=>void}){

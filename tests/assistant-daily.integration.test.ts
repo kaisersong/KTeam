@@ -246,6 +246,11 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    const freshInvitation=dailyBriefCard({...noticeInput,items:[invitation],evidence:new Map()});
    assert.equal(freshInvitation?.kind,'meeting-invitation');
    assert.equal(freshInvitation?.calendarCheckDraft,upgraded.calendarCheckDraft);
+   const reconnectId=await publish({...input,kind:'connector-notice',id:'assistant-yzj-login-fixture',body:'云之家需要重新登录。'});
+   const reconnect=(await upstream.upstream.conversationMessage(assistant.roomId,reconnectId)).message;
+   assert.equal(reconnect.sender.logicalAgentId,assistant.botId);
+   assert.equal(reconnect.responsePolicy,'none');
+   assert.equal(reconnect.text,'云之家需要重新登录。');
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
   await host.close();
