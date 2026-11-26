@@ -10,6 +10,83 @@ import {TeamStore} from '../src/service/team-store.js';
 
 const mail:DailySource={kind:'mail',id:'synthetic-mail',label:'fixture@example.test',account:'synthetic-mail',revision:'1'};
 const at='2026-11-23T07:10:00Z';
+test('a confirmed watch reviews the requested day, excludes a conflicting cancellation, and records a current choice once',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'kteam-due-watch-'));
+ let store=new TeamStore(root),now=Date.parse('2026-11-26T13:45:00Z'),available=true,shift=0,loseReceipt=false;
+ const room='assistant-room',day='2026-11-27';
+ const calendar:DailySource={kind:'yzj-calendar',id:'calendar',label:'验收日历',account:'fixture',revision:'1'};
+ const messages:DailySource={...calendar,kind:'yzj-message',id:yzjRecentGroupsId,label:'验收群'};
+ const first='演示周例会',second='演示路线图评审';
+ const noticeAt=Date.parse('2026-11-26T10:21:00Z');
+ const cancellation:DailyItem={id:'cancellation',source:messages,title:'日程变更',detail:'原通知',urgent:false,observedAt:noticeAt,
+  messageAttention:{kind:'schedule',group:'演示群',at:noticeAt,text:'原定明天上午11点的演示周例会因时间冲突取消一期，下周五继续。'}};
+ const sends:{kind?:string;body:string}[]=[];
+ const scanDays:string[]=[];
+ store.configure({roomId:room,kind:'assistant',goal:'',mode:'auto',paused:false,quiet:false,maxRuns:5,dailyCalls:5,revision:0},0);
+ store.setState('assistant-daily-plan',{revision:1,changedAt:now,skips:[],config:{...defaultDaily('Asia/Shanghai'),schedule:{morning:null,midday:null,evening:null},sources:[calendar,messages]}});
+ const event=(title:string,id:string,at:number):DailyItem=>({id,source:calendar,title,detail:'时段',observedAt:now,urgent:false,deadline:at,calendarEnd:at+3600000});
+ const create=()=>new AssistantDaily(store,{
+  catalog:async()=>({sources:[calendar,messages],yzjAvailable:true}),current:async source=>source.kind!=='yzj-calendar'||available,
+  scan:async(source,_from,_now,_zone,_signal,_previous,calendarDay)=>{
+   if(source.kind==='yzj-message')return {items:[cancellation],partial:false};
+   if(!calendarDay)return {items:[],partial:false};
+   scanDays.push(calendarDay);
+   return {items:[event(first,'first',Date.parse(day+'T03:00:00Z')),event(second,'second',Date.parse(day+'T06:00:00Z')+shift)],partial:false};
+  },original:async()=>({url:undefined}),newsSource:async()=>assert.fail('no news'),
+ },()=>room,()=>now,async()=>{},async value=>{
+  await value.guard();sends.push({kind:value.kind,body:value.body});
+  if(loseReceipt)throw Error('transport reply lost');
+  return 'watch-message';
+ });
+ let daily=create();
+ try{
+  const tool=daily.tools(room,'request',async()=>{}).find(tool=>tool.definition.name==='propose_assistant_watch')!;
+  const proposed=JSON.parse(await tool.execute({title:'明天的会议',condition:'核对是否仍在日历',delayMinutes:15,calendar:{day,titles:[first,second]}}));
+  assert.equal(proposed.awaitingConfirmation,true);
+  await daily.refresh();
+  assert.equal((await daily.watches.view()).items.length,0);
+  assert.equal(sends.length,0);
+  await daily.watches.change({action:'confirm-draft',id:proposed.id});
+  await daily.watches.change({action:'confirm-draft',id:proposed.id});
+  const saved=(await daily.watches.view()).items;
+  assert.equal(saved.length,1);
+  const olderClientEdit=await daily.watches.change({action:'edit',id:proposed.id,expectedRevision:saved[0]!.revision,draft:{
+   title:'明天的会议',condition:'核对是否仍在日历',kind:'waiting',checkAt:saved[0]!.checkAt,stopAt:saved[0]!.stopAt,
+  }});
+  assert.deepEqual(olderClientEdit.items[0]?.details?.calendar,{day,titles:[first,second]});
+  now+=15*60000;
+  await daily.refresh();
+  assert.deepEqual(scanDays,[day]);
+  assert.equal(sends[0]?.kind,'watch-notice');
+  assert.match(sends[0]!.body,/演示周例会.*群通知提到取消/);
+  assert.match(sends[0]!.body,/路线图评审.*14:00/);
+  await daily.close();store.close();store=new TeamStore(root);daily=create();
+  await daily.refresh();
+  assert.equal(sends.length,1);
+  const prompt=daily.planView().watchPrompts[0]!;
+  assert.deepEqual(prompt.verifiedTitles,[second]);
+  const choice={action:'decide',id:prompt.id,expectedRevision:prompt.revision,choice:'online'};
+  shift=60000;
+  await assert.rejects(daily.watches.change(choice),/watch_changed/);
+  shift=0;available=false;
+  await assert.rejects(daily.watches.change(choice),/watch_changed/);
+  available=true;
+  const done=await daily.watches.change(choice);
+  assert.deepEqual(done.items[0]?.decision,{choice:'online',at:now,titles:[second]});
+  assert.deepEqual(await daily.watches.change(choice),done);
+  assert.equal(daily.planView().watchPrompts.length,0);
+  await assert.rejects(daily.watches.change({...choice,choice:'decline'}),/watch_changed/);
+  const nextId='0815bf46-846c-48a4-abb4-67cea1eb0837';
+  await daily.watches.change({action:'create',id:nextId,draft:{title:'再核对下午会议',condition:'核对是否仍在日历',kind:'waiting',checkAt:now,stopAt:now+3600000,calendar:{day,titles:[second]}}});
+  loseReceipt=true;
+  await daily.refresh();
+  assert.equal(sends.length,2);
+  await daily.close();store.close();store=new TeamStore(root);daily=create();
+  await daily.refresh();
+  assert.equal(sends.length,2);
+  assert.equal(daily.planView().watchPrompts.find(prompt=>prompt.id===nextId)?.verifiedTitles,undefined);
+ }finally{await daily.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
 test('confirmed Yunzhijia sign-out sends one private reconnect reminder until login recovers',async()=>{
  const root=mkdtempSync(join(tmpdir(),'kteam-daily-login-notice-'));
  const store=new TeamStore(root),roomId='assistant-room';

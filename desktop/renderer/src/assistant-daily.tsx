@@ -1,6 +1,8 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {api,explain} from './api';
 import {AssistantWatches} from './assistant-watch';
+import {AssistantWatchPrompts} from './assistant-watch-prompts';
+import type {WatchPrompt,WatchProposal} from '../../../src/protocol/assistant-watch';
 import {Check,ChevronRight} from 'lucide-react';
 import {dailyBriefDeliveryLabels,dailyPresetIds,dailyPresets,type DailyPreset,type DailyBriefDelivery,type AssistantConnectorSetup} from '../../../src/protocol/assistant-daily-types';
 import type {DailyConfiguration,DailyCoverage,DailyItem,DailySource} from '../../../src/protocol/assistant-daily';
@@ -20,6 +22,8 @@ interface Plan {
  draft?:Draft;
  connectorSetup?:AssistantConnectorSetup;
  yzjNeedsLogin?:boolean;
+ watchPrompts?:WatchPrompt[];
+ watchProposal?:WatchProposal;
  next?:{slot:keyof typeof slotLabel;next:number}|null;
 }
 interface Today extends Plan {
@@ -70,10 +74,12 @@ export function AssistantDailyPlan({onPlan,onConnect,onApplied,showConfirmed=fal
   {setup.enterprise&&<button type="button" className="secondary" onClick={()=>onConnect('enterprise')}>连接企业通讯</button>}
   {setup.mail&&<button type="button" className="secondary" onClick={()=>onConnect('mail')}>连接邮箱</button>}
  </aside>:null;
- const guide=data.yzjNeedsLogin?<aside className="assistant-daily-actions" aria-label="云之家连接提醒">
+ const guide=<>{data.yzjNeedsLogin?<aside className="assistant-daily-actions" aria-label="云之家连接提醒">
   <span>云之家需要重新登录，小 K 暂时无法读取已选来源。</span>
   {onConnect&&<button type="button" className="secondary" onClick={()=>onConnect('enterprise')}>前往登录</button>}
- </aside>:connect;
+ </aside>:connect}
+  <AssistantWatchPrompts proposal={data.watchProposal} prompts={data.watchPrompts} onUpdate={load}/>
+ </>;
  if(showChoices||!data.config&&!data.draft)return <>{guide}<section className="proposal-card assistant-daily-choices" aria-label="选择每日工作方案">
   <h3>选一个简报安排</h3>
   {!data.config&&<p>默认在周一到周五运行。选好后可以添加读取来源。</p>}
