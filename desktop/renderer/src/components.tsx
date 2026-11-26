@@ -81,7 +81,7 @@ export const MessageRow=memo(function MessageRow({message,bots,onAction,state,sp
    {messagePreviewText(replyMessage).trim()||'原消息'}
   </ReactMarkdown></>:'查看原消息'}</span>
  </button>}
- <div className={attachmentsOnly?'message-text message-text--attachments-only':'message-text'} onContextMenu={e=>{e.preventDefault();setBelow((menuRef.current?.getBoundingClientRect().top??0)<390);setReactions(false);setMenu(true);}}>
+ <div className={attachmentsOnly?'message-attachment-only':'message-text'} onContextMenu={e=>{e.preventDefault();setBelow((menuRef.current?.getBoundingClientRect().top??0)<390);setReactions(false);setMenu(true);}}>
   {message.assistantDailyCard?<AssistantDigestCard card={message.assistantDailyCard} text={text} onOpen={()=>action('assistant-daily')} onDraft={()=>action('assistant-calendar-check-draft')}/>:!attachmentsOnly&&<RuntimeMessageContent text={text} cards={cards} files={files}/>}
   {attachments&&<MessageAttachments message={message}/>}
  </div>
