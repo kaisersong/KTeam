@@ -8,7 +8,9 @@ import {dailyChange,dailyCommit,dailyPresetSelection,dailySourceKey,dailyTimes,d
 import {dailyBriefCard,dailyBriefItems,dailyBriefMessage,dailyMessageNotice,dailyMessageNoticeItems,type BriefDelivery} from './assistant-daily-delivery.js';
 import {dailyKinds,dailyPresets,dailySlotLabels,isDailyCalendar,isDailyMessage,isDailyRecentChats,recentGroupsInterval,type DailyPreset,type DailySlot,type DailyBriefDelivery} from '../protocol/assistant-daily-types.js';
 import type {TeamStore} from './team-store.js';
-import {AssistantWatch} from './assistant-watch.js';
+import {AssistantWatch,type ReminderReview} from './assistant-watch.js';
+import {assessWatchCalendar,watchText} from './assistant-watch-calendar.js';
+import type {WatchDraft} from '../protocol/assistant-watch.js';
 import type {AssistantDailySources,RecentGroupCursors} from './assistant-daily-sources.js';
 
 const planKey='assistant-daily-plan';
@@ -32,6 +34,10 @@ function periodicSourceInterval(source:DailySource){
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const dailyMessageKey=(item:DailyItem)=>sha(JSON.stringify([dailySourceKey(item.source),item.messageAttention]));
 const actionId = z.object({id:z.string().max(128)}).strict();
+const watchProposal=z.object({title:z.string().min(1).max(160),condition:z.string().min(1).max(500),
+ checkAt:z.iso.datetime({offset:true}).optional(),delayMinutes:z.number().int().min(1).max(1440).optional(),
+ calendar:z.object({day:z.iso.date(),titles:z.array(z.string().min(1).max(120)).min(1).max(5)}).strict().optional(),
+}).strict();
 
 interface Plan {
  revision:number;
@@ -64,7 +70,12 @@ export class AssistantDaily {
  private controller=new AbortController();
  readonly watches:AssistantWatch;
  constructor(private store:TeamStore,private sources:Pick<AssistantDailySources,"catalog"|"current"|"newsSource"|"scan"|"original">&Partial<Pick<AssistantDailySources,"connectorSetup"|"checkYzjSources">>,private assistantRoom:()=>string|undefined,private now=Date.now,private verifyScope?:()=>Promise<void>,private publishBrief?:PublishBrief){
-  this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now);
+  this.watches=new AssistantWatch(store,async()=>{await this.verifyScope?.();},(id,scans,signal)=>this.watchEvidence(id,scans,signal),assistantRoom,now,
+   async(draft,digest)=>{
+    const current=await this.reviewWatch(draft);
+    if(!digest||current.evidenceDigest!==digest)throw new KTeamError('watch_changed',409);
+    await current.verify?.();
+   });
  }
  private async watchEvidence(id:string,scans:Map<string,Promise<DailyItem[]>>,signal:AbortSignal){
   const plan=this.plan();
@@ -183,6 +194,21 @@ export class AssistantDaily {
     await guard();
     return JSON.stringify({checked:true,items:view.items.length,urgent:view.items.filter(item=>item.urgent).length,coverage:view.coverage.map(row=>({kind:row.source.kind,state:row.state,checkedAt:row.checkedAt}))});
    })(),
+  },{
+   permission:'safe',
+   definition:{name:'propose_assistant_watch',description:'本人要求晚点再说、到点提醒或复核特定事项时，准备一次待确认的跟进。没有明确时间可建议一小时后。要复核会议时，只填写本人明确讨论的日历日期和具体会议名称；不接受邀请、不改日历。待本人点确认后才会安排。',inputSchema:{type:'object',additionalProperties:false,required:['title','condition'],properties:{
+    title:{type:'string',maxLength:160},condition:{type:'string',maxLength:500},checkAt:{type:'string',description:'含明确时区偏移的 ISO 日期时间'},
+    delayMinutes:{type:'integer',minimum:1,maximum:1440},calendar:{type:'object',additionalProperties:false,required:['day','titles'],properties:{day:{type:'string',format:'date'},titles:{type:'array',items:{type:'string',maxLength:120},minItems:1,maxItems:5}}},
+   }}},
+   execute:async(raw:unknown)=>{
+    const {title,condition,checkAt,delayMinutes,calendar}=this.parse(watchProposal,raw);
+    const at=checkAt?Date.parse(checkAt):this.now()+(delayMinutes??60)*60000;
+    const proposal=await this.watches.propose({title,condition,kind:'waiting',checkAt:at,stopAt:at+maxAge,calendar},originId,async()=>{
+     await guard();
+     if(this.assistantRoom()!==roomId)throw new KTeamError('assistant_scope_required',403);
+    });
+    return JSON.stringify({awaitingConfirmation:true,id:proposal.id,checkAt:proposal.draft.checkAt});
+   },
   }];
  }
  async catalog(includeEnterprise:boolean){return {ok:true,...await this.sources.catalog(includeEnterprise)};}
@@ -240,7 +266,7 @@ export class AssistantDaily {
   const draft=this.draft();
   const summary=this.summary(),loginNotice=this.store.state<YzjLoginNotice>(yzjLoginNoticeKey);
   const yzjNeedsLogin=!!summary.config?.sources.some(source=>source.kind.startsWith('yzj-'))&&!!loginNotice&&loginNotice.roomId===this.assistantRoom();
-  return {ok:true,...summary,effectivePaused:this.blocked()||summary.config?.paused===true,yzjNeedsLogin,draft:draft?.committedRevision?undefined:draft};
+  return {ok:true,...summary,...this.watches.prompts(),effectivePaused:this.blocked()||summary.config?.paused===true,yzjNeedsLogin,draft:draft?.committedRevision?undefined:draft};
  }
  async clientPlan(){
   const connectorSetup=await this.sources.connectorSetup?.();
@@ -329,8 +355,34 @@ export class AssistantDaily {
  async refresh(){await this.run(true);return this.view();}
  private run(manual:boolean){
   if(this.active)return this.active;
-  const pending=this.scan(manual).catch(error=>{if(manual)throw error;}).finally(()=>{if(this.active===pending)this.active=undefined;});
+  const pending=this.scan(manual).catch(error=>{if(manual)throw error;}).finally(async()=>{
+   try{if(this.publishBrief)await this.watches.remindDue(()=>!this.blocked()&&!this.controller.signal.aborted,this.publishBrief,(draft,original)=>this.reviewWatch(draft,original));}
+   catch(error){if(manual)throw error;}
+   finally{if(this.active===pending)this.active=undefined;}
+  });
   return this.active=pending;
+ }
+ private async reviewWatch(draft:WatchDraft,original?:DailyItem):Promise<ReminderReview>{
+  const body='**约好的检查时间到了**\n\n'+(draft.itemId&&!original?'这一项的原消息暂时无法核对，结果待确认。':watchText(draft.title)+'\n\n'+watchText(draft.condition));
+  if(!draft.calendar||draft.itemId&&!original)return {body};
+  const plan=this.plan(),source=plan?.config.sources.find(item=>item.kind==='yzj-calendar'&&!item.provider);
+  const unavailable={body:body+'\n\n实时日历暂时无法复核，会议状态待确认。'};
+  if(!plan||plan.config.paused||!source)return unavailable;
+  const now=this.now(),signal=AbortSignal.any([this.controller.signal,AbortSignal.timeout(15000)]);
+  const verify=async()=>{
+   signal.throwIfAborted();
+   if(this.blocked()||this.plan()?.revision!==plan.revision||!await this.sources.current(source,signal))throw new KTeamError('watch_changed',409);
+  };
+  try{
+   await verify();
+   const scan=await this.sources.scan(source,now,now,plan.config.timeZone,signal,undefined,draft.calendar.day);
+   const seen=this.retained(plan).filter(row=>row.coverage.source.kind==='yzj-message'&&row.coverage.source.account===source.account&&row.coverage.state!=='unavailable'&&row.at>=now-maxAge);
+   const checks=new Map<string,Promise<boolean>>();
+   const messages=(await Promise.all(seen.map(async row=>await this.current(row.coverage.source,checks,signal)?row.items:[]))).flat();
+   await verify();
+   const result=assessWatchCalendar(draft.calendar,scan.items,messages,scan.partial,plan.config.timeZone);
+   return {verifiedTitles:result.verifiedTitles,evidenceDigest:result.evidenceDigest,body:body+'\n\n'+result.lines.join('\n'),verify};
+  }catch{return unavailable;}
  }
  private async scan(manual:boolean) {
   let plan=this.plan();

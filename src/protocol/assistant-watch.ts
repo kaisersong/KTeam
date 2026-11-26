@@ -1,6 +1,8 @@
 export type WatchKind = 'waiting' | 'commitment';
 export type WatchState = 'active' | 'paused' | 'stopped' | 'done' | 'dismissed';
 export type WatchStatus = 'scheduled' | 'due' | 'missed' | 'unconfirmed' | 'source-unavailable';
+export type WatchMeetingReview = {day:string; titles:string[]};
+export type WatchDecision = 'online'|'decline';
 
 export interface WatchDraft {
  title: string;
@@ -10,7 +12,23 @@ export interface WatchDraft {
  stopAt: number;
  link?: string;
  itemId?: string;
+ calendar?:WatchMeetingReview;
 }
+
+export interface WatchReminder {
+ at:number;
+ status:'attempted'|'sent'|'unconfirmed';
+ verifiedTitles?:string[];
+ evidenceDigest?:string;
+}
+export interface WatchPrompt {
+ id:string;
+ revision:number;
+ title:string;
+ reviewedAt:number;
+ verifiedTitles?:string[];
+}
+export interface WatchProposal {id:string; draft:WatchDraft; expiresAt:number}
 
 export interface WatchItem {
  id: string;
@@ -22,22 +40,27 @@ export interface WatchItem {
  sourceLinked:boolean;
  checkedAt?: number;
  snoozedUntil?: number;
- details?: Pick<WatchDraft, 'title' | 'condition' | 'kind' | 'link'> & {originalLink?: string};
+ details?: Pick<WatchDraft, 'title' | 'condition' | 'kind' | 'link' | 'calendar'> & {originalLink?: string};
+ reminder?:WatchReminder;
+ decision?:{choice:WatchDecision;at:number;titles:string[]};
 }
 
+type WatchStateAction='check'|'pause'|'resume'|'stop'|'done'|'dismiss'|'snooze'|'recheck';
 export type WatchCommand =
  | {action:'create'; id:string; draft:WatchDraft}
- | {action:'edit'; id:string; expectedRevision:number; draft:WatchDraft}
- | {action:'check'|'pause'|'resume'|'stop'|'done'|'dismiss'|'snooze'; id:string; expectedRevision:number};
+ | {action:'edit'; id:string; expectedRevision:number; draft:WatchDraft; clearCalendar?:boolean}
+ | {action:'confirm-draft'|'dismiss-draft';id:string}
+ | {action:'decide';id:string;expectedRevision:number;choice:WatchDecision}
+ | {action:WatchStateAction; id:string; expectedRevision:number};
 
-export function watchStatus(item:Pick<WatchItem,'checkedAt'|'checkAt'|'stopAt'|'snoozedUntil'>,now:number):WatchStatus {
- return item.checkedAt!==undefined&&item.checkedAt>=item.checkAt?'unconfirmed':
+export function watchStatus(item:Pick<WatchItem,'checkedAt'|'checkAt'|'stopAt'|'snoozedUntil'|'reminder'>,now:number):WatchStatus {
+ return item.reminder||item.checkedAt!==undefined&&item.checkedAt>=item.checkAt?'unconfirmed':
   now>=item.stopAt?'missed':now>=Math.max(item.checkAt,item.snoozedUntil??0)?'due':'scheduled';
 }
 
 export const watchStatuses:Record<WatchStatus,string> = {
  scheduled:'等待检查点', due:'已到检查点，请核对', missed:'已错过检查窗口，待回看',
- unconfirmed:'已登记自查，结果尚未确认', 'source-unavailable':'无法复核来源',
+ unconfirmed:'已到复核环节，待处理', 'source-unavailable':'无法复核来源',
 };
 export const watchStates:Record<Exclude<WatchState,'active'>,string> = {
  paused:'已暂停', stopped:'已停止', done:'已处理', dismissed:'不是我的事项',
@@ -60,7 +83,7 @@ export function parseWatchTime(value:string) {
  return Number.isFinite(at)&&localWatchTime(at)===local?at:NaN;
 }
 
-export function watchActions(item:WatchItem):{action:Exclude<WatchCommand['action'],'create'|'edit'>;label:string}[]{
+export function watchActions(item:WatchItem):{action:WatchStateAction;label:string}[]{
  if(item.state==='paused')return [{action:'resume',label:'恢复'},{action:'stop',label:'停止'},{action:'done',label:'已处理'}];
  if(item.state!=='active')return [];
  const pending=item.status==='missed'||item.status==='source-unavailable'?[]:[

@@ -188,7 +188,7 @@ export function dailyBriefCard(input:{
  }
 }
 
-export type BriefDelivery={kind?:'message-notice'|'connector-notice';id:string;roomId:string;body:string;card?:AssistantDailyCard;deadline:number;guard:()=>Promise<void>};
+export type BriefDelivery={kind?:'message-notice'|'connector-notice'|'watch-notice';id:string;roomId:string;body:string;card?:AssistantDailyCard;deadline:number;guard:()=>Promise<void>};
 
 /** Publish with the same host-owned admission as other assistant chat replies. */
 export function dailyBriefPublisher(upstream:Upstreams,store:TeamStore,coordinator:TeamCoordinator,assistant:()=>{roomId:string;botId:string}|undefined,hostFence:number){
@@ -208,7 +208,7 @@ export function dailyBriefPublisher(upstream:Upstreams,store:TeamStore,coordinat
   await current();
   const eventId=(kind:string)=>'msg_'+hash(id+':'+kind).slice(0,32);
   const threadId='assistant-daily-'+hash(id).slice(0,24);
-  const topic=kind==='connector-notice'?'连接提醒':kind==='message-notice'?'新消息提醒':'简报';
+  const topic=kind==='watch-notice'?'跟进提醒':kind==='connector-notice'?'连接提醒':kind==='message-notice'?'新消息提醒':'简报';
   const description='在小 K 私聊中投递'+topic;
   const expires=new Date(Math.min(deadline,Date.now()+300000)).toISOString();
   let task=(await upstream.aimp(roomId,'event',{id:eventId('request'),roomId,threadId,act:'request',body:description,

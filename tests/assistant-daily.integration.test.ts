@@ -251,6 +251,11 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.equal(reconnect.sender.logicalAgentId,assistant.botId);
    assert.equal(reconnect.responsePolicy,'none');
    assert.equal(reconnect.text,'云之家需要重新登录。');
+   const watchId=await publish({...input,kind:'watch-notice',id:'assistant-watch-fixture',body:'约好的会议复核时间到了。'});
+   const watch=(await upstream.upstream.conversationMessage(assistant.roomId,watchId)).message;
+   assert.equal(watch.sender.logicalAgentId,assistant.botId);
+   assert.equal(watch.responsePolicy,'none');
+   assert.equal(watch.text,'约好的会议复核时间到了。');
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
   await host.close();
