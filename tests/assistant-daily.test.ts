@@ -381,7 +381,7 @@ test('meeting invitations query the stated date and present conflict-safe respon
   scan:async(source,_from,_now,_zone,_signal,_recent,date)=>{
    const base={source,id:'fixture',title:'已有架构评审',detail:'',observedAt:now-1000,urgent:false};
    if(source.kind==='yzj-message')return {partial:true,items:[{...base,urgent:true,messageAttention:{
-    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）14:30–16:00 例会预通知，邀请你参加。',at:now-1000,
+    kind:'invitation',group:'样例例会',text:'12 月 1 日（周二）下午2:30 - 4:00 例会预通知，邀请你参加。会议时间 2026年12月1日14:30–16:00。',at:now-1000,
    }}]};
    if(!date)return {partial:false,items:[]};
    dateChecked=date;
@@ -389,6 +389,8 @@ test('meeting invitations query the stated date and present conflict-safe respon
   },
  },()=>roomId,()=>now,async()=>{},async input=>{
   await input.guard();
+  assert.equal(input.card?.kind,'meeting-invitation');
+  assert.match(input.card?.calendarCheckDraft??'',/12-01 14:30–16:00/);
   sent.push(input.body);
   return 'fixture-brief';
  });

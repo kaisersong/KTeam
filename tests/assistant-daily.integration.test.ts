@@ -14,6 +14,7 @@ import {initConfig} from '../src/service/config.js';
 import {dailyBriefCard,dailyBriefMessage,dailyBriefPublisher,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
 import {projectMessage} from '../src/service/conversation-pages.js';
 import {validateA2uiMessages} from '../runtime-core/src/a2ui/decoder.js';
+import {compileRenderUiToA2ui} from '../runtime-core/src/a2ui/compiler.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {startHost} from '../src/service/server.js';
@@ -159,6 +160,7 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
 
   const store=new TeamStore(root);
   let cardMessageId:string|undefined;
+  let legacyInvitationId:string|undefined;
   try{
    const publish=dailyBriefPublisher(upstream.upstream,store,new TeamCoordinator(upstream.upstream,store,host.epoch),()=>({roomId:assistant.roomId,botId:assistant.botId}),host.epoch);
    const body=dailyBriefMessage('2026-11-23','morning',[{
@@ -220,12 +222,37 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.doesNotMatch(notice.text,/我可以/);
    assert.doesNotMatch(notice.text,/private (title|content)/);
    assert.deepEqual(projectMessage(notice,store).assistantDailyCard,noticeCard);
+   const invitationText='2026年12月评审会议计划于12月2日（下周三）下午2:30 - 4:00召开。 一、会议时间 2026年12月2日14:30-16:00 二、会议地点 A栋802会议室 三、会议议题';
+   const invitation={...noticeItem,messageAttention:{...attention,kind:'invitation' as const,text:invitationText}};
+   const invitationId='assistant-daily-message-'+'b'.repeat(64);
+   const oldLayout=compileRenderUiToA2ui({title:'消息里需要关注的事项',sections:[
+    {kind:'heading',level:2,text:'消息里需要关注的事项'},
+    {kind:'heading',level:3,text:'参会待确认 · 验收群'},
+    {kind:'text',content:'云之家 · 11/23 21:23 · '+invitationText},
+    {kind:'list',items:['日历暂未核实，参会待确认。','可选回复  收到议程 / 我核对安排后再确认']},
+    {kind:'divider'},{kind:'text',content:'云之家群消息未查全'},
+   ]},{taskId:invitationId,toolUseId:'proactive-brief'});
+   const invitationBody=dailyMessageNotice([invitation],'Asia/Shanghai')!;
+   legacyInvitationId=await publish({...input,kind:'message-notice',id:invitationId,body:invitationBody,
+    card:{artifactId:oldLayout.surfaceId,content:JSON.stringify(oldLayout.messages)}});
+   const legacyInvitation=(await upstream.upstream.conversationMessage(assistant.roomId,legacyInvitationId)).message;
+   const upgraded=projectMessage(legacyInvitation,store).assistantDailyCard;
+   assert.equal(upgraded.kind,'meeting-invitation');
+   assert.equal(upgraded.artifactId,oldLayout.surfaceId);
+   assert.match(upgraded.calendarCheckDraft,/2026-12-02 14:30–16:00.*评审会议.*冲突/);
+   assert.equal(projectMessage(legacyInvitation,store).text,invitationBody);
+   assert.equal(projectMessage({...legacyInvitation,sourceRef:{...legacyInvitation.sourceRef,taskRef:'other-task'}},store).assistantDailyCard,undefined);
+   for(const label of ['12月2日','星期三','14:30–16:00','A栋802会议室','云之家群消息未查全'])assert.ok(upgraded.content.includes(label));
+   const freshInvitation=dailyBriefCard({...noticeInput,items:[invitation],evidence:new Map()});
+   assert.equal(freshInvitation?.kind,'meeting-invitation');
+   assert.equal(freshInvitation?.calendarCheckDraft,upgraded.calendarCheckDraft);
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
   await host.close();
   host=await startHost({root,upstream:options});
   const history=await api.conversationHistory({roomId:assistant.roomId,tail:true});
   assert.match(history.messages.find((row:any)=>row.messageId===cardMessageId)?.assistantDailyCard.content,/样例交付会议/);
+  assert.equal(history.messages.find((row:any)=>row.messageId===legacyInvitationId)?.assistantDailyCard.kind,'meeting-invitation');
 
  }finally{
   pair?.close();

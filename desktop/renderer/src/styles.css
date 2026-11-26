@@ -31,6 +31,12 @@
 .assistant-digest-card--schedule footer{padding-top:11px;border-top:1px solid var(--line);margin-top:14px}
 .assistant-digest-card footer .assistant-card-action{padding:7px 11px;border-radius:9px;background:color-mix(in srgb,var(--green) 10%,var(--surface-panel,#fff));color:var(--green)}
 .assistant-digest-card footer .assistant-card-action:hover{background:color-mix(in srgb,var(--green) 17%,var(--surface-panel,#fff))}
+.assistant-digest-card--invitation{width:min(500px,100%)}
+.assistant-invitation-status{margin-left:auto;padding:3px 7px;border-radius:4px;background:color-mix(in srgb,var(--green) 10%,var(--surface-panel,#fff));white-space:nowrap}
+.assistant-invitation-original{margin-top:9px;color:var(--text-secondary,#58665b);font-size:12px}
+.assistant-invitation-original summary{width:fit-content;cursor:pointer}
+.assistant-invitation-original[open] summary{margin-bottom:7px}
+.assistant-invitation-original>div{padding:8px 10px;border-radius:7px;background:var(--surface-panel,#fff)}
 
 .settings-tabs{display:flex;gap:6px;margin:18px 0;border-bottom:1px solid var(--line);padding-bottom:10px;flex-wrap:wrap}.settings-tabs button{padding:8px 12px;border-radius:8px;font-size:12px}.settings-tabs button[aria-pressed=true]{background:var(--surface-panel,#edf4e8);color:var(--text-primary,#365e40)}.tool-approval form{display:flex;gap:9px;margin-top:16px}.tool-approval form input{min-width:0;flex:1;border:1px solid var(--line,#d6dfcb);border-radius:8px;padding:10px;background:var(--surface-panel,#fff)}.tool-approval small{display:block;color:var(--text-secondary,#73826a);line-height:1.8}.tool-approval form .primary{flex-shrink:0}
 
