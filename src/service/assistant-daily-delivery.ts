@@ -4,7 +4,8 @@ import {KTeamError} from '../errors.js';
 import {dailySlotLabels,dailyEnterpriseLabels,isDailyCalendar,isDailyDirectChats,isDailyMessage,type DailyMessageAttention,type DailyItem,type DailyCoverage,type DailySlot} from '../protocol/assistant-daily-types.js';
 import type {AssistantDailyCard} from '../protocol/assistant-daily-card.js';
 import {compileRenderUiToA2ui} from '../../runtime-core/src/a2ui/compiler.js';
-import type {RenderUISection} from '../../runtime-core/src/a2ui/protocol.js';
+import {validateA2uiMessages} from '../../runtime-core/src/a2ui/decoder.js';
+import type {A2UIV1Message,RenderUISection} from '../../runtime-core/src/a2ui/protocol.js';
 import {agentAddress,LOCAL_HUMAN} from './collaboration.js';
 import type {TeamCoordinator} from './coordination.js';
 import type {CalendarContext} from './assistant-calendar-context.js';
@@ -107,12 +108,33 @@ export function dailyBriefMessage(day:string,slot:DailySlot,items:DailyItem[],ti
  return entries.length?['**'+day+' '+dailySlotLabels[slot]+'**','',...entries].join('\n'):undefined;
 }
 
+function groupScheduleMetrics(messages:A2UIV1Message[]){
+ for(const message of messages){
+  if(!('updateComponents' in message))continue;
+  const components=message.updateComponents.components;
+  const metrics=components.filter(component=>component.component==='MetricCard');
+  for(let index=0;index+1<metrics.length;index+=2){
+   const first=metrics[index]!.id,second=metrics[index+1]!.id;
+   const container=components.find(component=>component.children?.includes(first));
+   const children=container?.children;
+   if(!children)continue;
+   const position=children.indexOf(first);
+   if(children[position+1]!==second)continue;
+   const rowId='brief-'+first;
+   children.splice(position,2,rowId);
+   components.push({id:rowId,component:'Row',children:[first,second]});
+  }
+ }
+}
+
 export function dailyBriefCard(input:{
  id:string;title:string;items:DailyItem[];timeZone:string;redact:(text:string)=>string;
  evidence:ReadonlyMap<string,string|CalendarContext>;coverage:DailyCoverage[];
 }):AssistantDailyCard|undefined{
  const {id,title,items,timeZone,redact,evidence,coverage}=input;
  const times=dateAndTime(timeZone),sections:RenderUISection[]=[{kind:'heading',text:title,level:2}];
+ const singleSchedule=items.length===1&&items[0]?.messageAttention?.kind==='schedule';
+ const scheduleGroups=new Set<string>();
  const calendarRows=items.filter(item=>isDailyCalendar(item.source)&&Number.isFinite(item.deadline))
   .sort((a,b)=>a.deadline!-b.deadline!).flatMap(item=>{
    const title=transcriptExcerpt(item.title,redact,90);
@@ -125,7 +147,27 @@ export function dailyBriefCard(input:{
   if(item.messageAttention){
    const snippet=transcriptExcerpt(item.messageAttention.text,redact,180);
    if(!snippet)continue;
-   const group=transcriptExcerpt(item.messageAttention.group,redact,70)??'原会话';
+   const safeGroup=transcriptExcerpt(item.messageAttention.group,redact,70);
+   const group=safeGroup??'原会话';
+   if(item.messageAttention.kind==='schedule'){
+    const {at}=item.messageAttention;
+    const date=new Intl.DateTimeFormat('zh-CN',{timeZone,month:'long',day:'numeric'}).format(at);
+    const time=new Intl.DateTimeFormat('zh-CN',{timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(at);
+    const cancelled=/已(?:经)?取消(?:行程|安排|会议|走访)/.test(snippet)&&!/(?:如果|若|是否|未|尚未|没有|不能|[?？])/.test(snippet);
+    const status=cancelled?'已通知取消':'有变更通知';
+    const provider=item.source.provider?dailyEnterpriseLabels[item.source.provider]:'云之家';
+    const source=provider+(isDailyDirectChats(item.source)?'单聊':'群消息');
+    const observation=evidence.get(item.id);
+    const calendar=typeof observation==='string'?transcriptExcerpt(observation,redact,180):undefined;
+    if(singleSchedule)sections[0]={kind:'heading',text:group,level:2};
+    else sections.push({kind:'heading',text:'日程变更 · '+group,level:3});
+    sections.push({kind:'metric',label:'通知时间',value:date,change:time},
+     {kind:'metric',label:isDailyDirectChats(item.source)?'单聊消息状态':'群消息状态',value:status,change:calendar?'已有核对记录':'日历尚未核对'},
+     {kind:'text',content:source+'「'+snippet+'」'});
+    if(calendar)sections.push({kind:'text',content:calendar});
+    if(safeGroup)scheduleGroups.add(safeGroup);
+    continue;
+   }
    const row=describeAttention({...item,messageAttention:{...item.messageAttention,text:snippet,group}},times,evidence.get(item.id),text=>text);
    sections.push({kind:'heading',text:row.context,level:3},{kind:'text',content:row.source+' · '+row.text});
    if(row.followUp.length)sections.push({kind:'list',items:row.followUp.map(text=>redact(text).slice(0,240))});
@@ -143,7 +185,14 @@ export function dailyBriefCard(input:{
  if(gaps.length)sections.push({kind:'divider'},{kind:'text',content:[...new Set(gaps)].slice(0,4).join(' · ')});
  try {
   const card=compileRenderUiToA2ui({title,sections},{taskId:id,toolUseId:'proactive-brief'});
-  return {artifactId:card.surfaceId,content:JSON.stringify(card.messages)};
+  if(sections.some(section=>section.kind==='metric')){
+   groupScheduleMetrics(card.messages);
+   if(!validateA2uiMessages(card.messages).ok)return;
+  }
+  const subjects=[...scheduleGroups].map(group=>'「'+group+'」').join('、');
+  return {artifactId:card.surfaceId,content:JSON.stringify(card.messages),
+   ...(singleSchedule?{kind:'schedule-change' as const}:{}),
+   ...(subjects?{calendarCheckDraft:'请核对日历里是否仍有 '+subjects+' 对应的安排。如仍保留，请列出时间范围和来源供我确认。'}:{})};
  }catch{
   // The original Markdown remains available even if the card fails validation.
   return undefined;

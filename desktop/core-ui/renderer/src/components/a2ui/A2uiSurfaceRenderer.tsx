@@ -52,14 +52,14 @@ const catalog = defineCatalog(schema, {
 const { registry } = defineRegistry(catalog, {
   components: {
     Column: ({ children }) => <div style={styles.column}>{children}</div>,
-    Row: ({ children }) => <div style={styles.row}>{children}</div>,
+    Row: ({ children }) => <div className="a2ui-row" style={styles.row}>{children}</div>,
     Card: ({ children }) => <section style={styles.card}>{children}</section>,
     Text: ({ props }) => {
       const Tag = props.variant && props.variant !== 'body' ? props.variant : 'p';
       return <Tag style={styles[props.variant ?? 'text'] ?? styles.text}>{props.text}</Tag>;
     },
     MetricCard: ({ props }) => (
-      <section style={styles.metricCard}>
+      <section className="a2ui-metric" style={styles.metricCard}>
         <div style={styles.metricLabel}>{props.label}</div>
         <div style={styles.metricValue}>{props.value}</div>
         {props.change ? <div style={styles.metricChange}>{props.change}</div> : null}

@@ -1,2 +1,2 @@
 /** A validated A2UI surface attached to a published assistant message. */
-export type AssistantDailyCard={artifactId:string;content:string};
+export type AssistantDailyCard={artifactId:string;content:string;kind?:'schedule-change';calendarCheckDraft?:string};

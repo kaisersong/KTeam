@@ -190,19 +190,36 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.equal(projectMessage({...withCard,sender:{kind:'user'}},store).assistantDailyCard,undefined);
    const history=await api.conversationHistory({roomId:assistant.roomId,tail:true});
    assert.deepEqual(history.messages.find((row:any)=>row.messageId===cardMessageId)?.assistantDailyCard,card);
-   const noticeBody=dailyMessageNotice([{id:'chat-notice',title:'private title',detail:'private content',observedAt:Date.now(),urgent:true,
-    messageAttention:{kind:'schedule',group:'验收群',text:'今天的例会取消',at:Date.now()},
-    source:{kind:'yzj-message',id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}}],'Asia/Shanghai',
-    new Map([['chat-notice','已核对日历，原安排仍在。']]))!;
-   const noticeId=await publish({...input,kind:'message-notice',id:'assistant-daily-message-fixture',body:noticeBody});
+   const clock=Date.parse('2026-11-23T13:23:00Z');
+   const attention={kind:'schedule' as const,group:'验收群',text:'今天的例会，已取消会议',at:clock};
+   const noticeItem={id:'chat-notice',title:'private title',detail:'private content',observedAt:clock,urgent:true,
+    messageAttention:attention,source:{kind:'yzj-message' as const,id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}};
+   const observations=new Map([['chat-notice','已核对日历，原安排仍在。']]);
+   const noticeBody=dailyMessageNotice([noticeItem],'Asia/Shanghai',observations)!;
+   const noticeInput={id:'assistant-daily-message-fixture',title:'消息提醒',items:[noticeItem],timeZone:'Asia/Shanghai',redact:(text:string)=>text,evidence:observations,coverage:[]};
+   const noticeCard=dailyBriefCard(noticeInput);
+   assert.ok(noticeCard);
+   const surface=JSON.parse(noticeCard.content);
+   assert.equal(validateA2uiMessages(surface).ok,true);
+   const components=surface.find((row:any)=>row.updateComponents).updateComponents.components;
+   const summary=components.find((row:any)=>row.component==='Row');
+   assert.deepEqual(summary.children.map((id:string)=>components.find((row:any)=>row.id===id).label),['通知时间','群消息状态']);
+   for(const label of ['11月23日','21:23','已通知取消','原安排仍在'])assert.ok(noticeCard.content.includes(label));
+   assert.match(noticeCard.calendarCheckDraft??'',/核对日历.*验收群/);
+   assert.doesNotMatch(noticeCard.content,/private (title|content)/);
+   const uncertain=dailyBriefCard({...noticeInput,items:[{...noticeItem,messageAttention:{...attention,text:'如果已取消会议，请说一声'}}],evidence:new Map()});
+   assert.ok(uncertain?.content.includes('有变更通知'));
+   assert.ok(uncertain?.content.includes('日历尚未核对'));
+   const noticeId=await publish({...input,kind:'message-notice',id:noticeInput.id,body:noticeBody,card:noticeCard});
    const notice=(await upstream.upstream.conversationMessage(assistant.roomId,noticeId)).message;
    assert.equal(notice.sender.logicalAgentId,assistant.botId);
    assert.equal(notice.responsePolicy,'none');
    assert.match(notice.text,/日程变更 · 验收群/);
-   assert.match(notice.text,/今天的例会取消/);
+   assert.match(notice.text,/今天的例会，已取消会议/);
    assert.match(notice.text,/已核对日历，原安排仍在/);
    assert.doesNotMatch(notice.text,/我可以/);
    assert.doesNotMatch(notice.text,/private (title|content)/);
+   assert.deepEqual(projectMessage(notice,store).assistantDailyCard,noticeCard);
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
   await host.close();
