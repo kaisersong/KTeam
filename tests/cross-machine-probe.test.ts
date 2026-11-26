@@ -54,3 +54,28 @@ test('共享群 Broker 存储探针：非本机主体、快照分页、重开与
   assert.equal(send('a').code,'room_revision_conflict');
  } finally {broker?.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('真实 Room 四页补读：页间新增、跨重启固定上界与逐页越权拒绝',async()=>{
+ const {createBrokerService}=await import('intent-broker/src/broker/service.js' as string);
+ const root=mkdtempSync(join(tmpdir(),'kteam-shared-pages-'));
+ let broker:any;
+ try{
+  const open=()=>createBrokerService({dbPath:join(root,'broker.sqlite'),aimpEnabled:true});broker=open();
+  const ctx={sessionId:'pages',requestSource:'user',actor:{kind:'user',userId:'shared-principal'},allowedLogicalAgentIds:[],issuedAt:new Date().toISOString()};
+  const created=broker.room.createRoom({title:'分页探针',memberAgentIds:[],clientRequestKey:'pages'},ctx);assert.equal(created.ok,true);const roomId=created.room.roomId;
+  const send=(key:string)=>{const result=broker.room.sendRoomMessage({roomId,kind:'text',text:key,responsePolicy:'none',contextScope:{kind:'room_only'},idempotencyKey:key,expectedRoomRevision:1},ctx);assert.equal(result.ok,true);return result.message;};
+  const original=Array.from({length:8},(_,i)=>send('original-'+i));const upper=original.at(-1).roomSequence;
+  let after=0;const merged:any[]=[];
+  for(let page=0;page<4;page++){
+   if(page===2){broker.close();broker=open();}
+   send('concurrent-'+page);
+   const query={roomId,afterSequence:after,beforeSequence:upper+1,limit:2};
+   const denied=broker.room.listRoomMessages(query,{...ctx,actor:{kind:'user',userId:'outsider'}});assert.equal(denied.ok,false);assert.equal(denied.code,'room_membership_required');assert.equal(denied.messages,undefined);
+   const result=broker.room.listRoomMessages(query,ctx);assert.equal(result.ok,true);assert.equal(result.messages.length,2);
+   assert.ok(result.messages.every((m:any)=>Number.isSafeInteger(m.roomSequence)&&m.roomSequence>after&&m.roomSequence<=upper));
+   merged.push(...result.messages);after=result.messages.at(-1).roomSequence;
+  }
+  assert.deepEqual(merged.map(m=>m.messageId),original.map(m=>m.messageId));assert.equal(after,upper);
+  const catchup=broker.room.listRoomMessages({roomId,afterSequence:upper,limit:100},ctx);assert.equal(catchup.messages.length,4);assert.ok(catchup.messages.every((m:any)=>m.roomSequence>upper));
+ }finally{broker?.close();rmSync(root,{recursive:true,force:true});}
+});

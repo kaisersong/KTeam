@@ -103,6 +103,15 @@ export class Upstreams {
     const status = await this.probe();
     if (!status.ready) throw new KTeamError(status.broker.workspaceProtocol&&(!status.broker.conversationContext||!status.broker.botPrivateMessages)?'conversation_service_upgrade_required':'upstream_protocol_unavailable', 503, status);
   }
+  /** Shared clients must never inherit the desktop token's user.local authority. */
+  async sharedGroupsStatus(){
+    const protocol=await this.masterMessagingProtocol();
+    const required=['shared-session-authority-v1','shared-room-scope-v1','exact-operation-receipt-v1','room-history-snapshot-v1'];
+    const capabilities=Array.isArray(protocol.capabilities)?protocol.capabilities:[];
+    const missing=required.filter(capability=>!capabilities.includes(capability));
+    // Transport integration is deliberately closed until the authoritative protocol is implemented.
+    return {available:false,reason:'shared_group_protocol_unavailable',missing,chat:false,members:false,dispatch:false,execution:false};
+  }
   conversationData(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/conversation`);}
   conversationMessage(roomId:string,messageId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/message?messageId=${encodeURIComponent(messageId)}`);}
   searchConversation(roomId:string,query:string,before?:number){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/search?query=${encodeURIComponent(query)}${before?'&before='+before:''}`);}

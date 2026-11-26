@@ -7,6 +7,8 @@ import {assertCodexBinding,codexWriteGrant,saveCodexWriteGrant,type CodexDispatc
 import {TeamWorkspace} from './team-workspace.js';
 import {groupDirectoryApproval} from './group-directory-approval.js';
 import {MobileDevices} from '../mobile/devices.js';
+import {SharedDevices} from './shared-devices.js';
+import {SharedGateway} from './shared-gateway.js';
 import {MobileGateway} from '../mobile/gateway.js';
 import {MobileFacade} from '../mobile/facade.js';
 import {RewardMemory} from './reward-memory.js';
@@ -96,7 +98,7 @@ function page(value: string | null, fallback: number, max: number): number {
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new KTeamError('invalid_pagination');
   return Number(value);
 }
-export async function startHost(options: { root: string; upstream: UpstreamOptions }) {
+export async function startHost(options: { root: string; upstream: UpstreamOptions; sharedGroups?:{certificate:string;privateKey:string} }) {
   ensurePrivateRoot(options.root);
   const windows=process.platform==='win32';
   const path = windows?windowsEndpointPath(options.root):socketPath(options.root);
@@ -153,6 +155,9 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         return result;
   };
   const mobileDevices=new MobileDevices(teamStore);
+  const sharedDevices=new SharedDevices(teamStore);
+  const sharedGateway=new SharedGateway(sharedDevices,upstream);
+  let sharedListener:Awaited<ReturnType<SharedGateway['listen']>>|undefined;
   approvals.setApprovalDeviceGuard(device=>mobileDevices.assert({kind:'device',...device},true));
   approvals.setMailAuthority(id=>mailConnectors.sendAuthority(id));
   const mobileFacade=new MobileFacade({coordinator,collaboration,sidebar,upstream,conversations,conversationUpdates,automation,approvals,composerAttachments,artifactReview,mailConnectors,inboxSource,inboxState,sendHumanMessage,epoch:owner.epoch},teamStore,mobileDevices);
@@ -198,6 +203,20 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
+      if(url.pathname==='/v1/shared-groups/settings'){
+        if(client.id!=='kteam-main')throw new KTeamError('shared_admin_forbidden',403);
+        if(req.method==='GET')return send(res,200,{...sharedDevices.view(),listening:!!sharedListener});
+        if(req.method==='POST'){
+          const input=record(await body(req));fields(input,['action','trust','inviteId','publicKey','deviceId']);
+          if(input.action==='trust')return send(res,200,sharedDevices.configureTrust(input.trust));
+          if(input.action==='invite')return send(res,200,sharedDevices.invite());
+          if(input.action==='approve')return send(res,200,sharedDevices.approve(text(input.inviteId,'invite_id'),text(input.publicKey,'public_key',2048)));
+          if(input.action==='revoke')return send(res,200,sharedDevices.revoke(text(input.deviceId,'device_id')));
+          if(input.action==='rotate-coordinator-key')return send(res,200,sharedDevices.rotateCoordinatorKey());
+          throw new KTeamError('shared_admin_action_invalid');
+        }
+        throw new KTeamError('route_not_found',404);
+      }
       if(url.pathname===artifactDownloadRoute&&req.method==='POST'){
         if(client.id!=='kteam-main')throw new KTeamError('artifact_download_forbidden',403);
         const source=artifactDownloadIdentity(await body(req));
@@ -495,14 +514,16 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     if(windows){const address=server.address();if(!address||typeof address==='string')throw new KTeamError('host_endpoint_invalid');await publishWindowsEndpoint(options.root,address.port,certificate!.ca,owner.epoch);}
     else chmodSync(path, 0o600);
     await mobileGateway.start();
+    if(options.sharedGroups)sharedListener=await sharedGateway.listen(options.sharedGroups);
     automation.start();
     dailyWork.start();
-  } catch (error) { await mobileGateway.close();server.close();teamStore.close(); owner.release(); throw error; }
+  } catch (error) { await sharedListener?.close();await mobileGateway.close();server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
   const host={ epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
         await mobileGateway.close();
+        await sharedListener?.close();
         await dailyWork.close();
         links.close();approvals.close();await enterpriseConnectors.close();await mailConnectors.close();await integrationSettings.close();
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
