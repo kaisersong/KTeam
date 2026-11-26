@@ -20,7 +20,7 @@ export function invitationCardContent(input:{group:string;text:string;source?:st
   {kind:'metric',label:'会议日期',value:date?dateFormat.format(new Date(date)):'日期待确认',...(date?{change:weekdayFormat.format(new Date(date))}:{})},
   {kind:'metric',label:'会议时间',value:times??'时间待确认',...(times?{change:'以邀请为准'}:{})},
   ...(location?[{kind:'text' as const,content:'会议地点 · '+location}]:[]),
-  {kind:'text',content:observation},
+  {kind:'text',content:observation===invitationCalendarPending?'日历尚未核对':observation},
   ...(source?[{kind:'text' as const,content:source+(group!==title?' · '+group:'')}]:[]),
  ];
  const when=[date,times].filter(Boolean).join(' ');
