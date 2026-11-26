@@ -21,7 +21,6 @@
 .assistant-digest-card{max-width:620px;border:1px solid var(--line);border-radius:14px;background:var(--surface-panel);padding:14px 16px;--c-border:var(--line);--c-text-primary:var(--text-primary);--c-text-heading:var(--text-primary);--c-text-secondary:var(--text-secondary);--c-bg-card:var(--surface-panel);--c-bg-sub:var(--rail)}
 .assistant-digest-card footer{margin-top:12px;display:flex;justify-content:flex-start}
 .assistant-digest-card footer .secondary{gap:6px;padding:6px 10px;font-size:12px}
-.message-text:has(>.assistant-digest-card--schedule){padding:0;background:transparent}
 .assistant-digest-card--schedule{width:min(450px,100%);border-color:color-mix(in srgb,var(--green) 18%,var(--line));border-radius:16px;padding:17px 18px 14px;background:color-mix(in srgb,var(--green) 4%,var(--surface-panel,#fff))}
 .assistant-digest-card--schedule>header{display:flex;align-items:center;gap:7px;margin-bottom:8px;color:var(--green);font-size:12px;font-weight:600;line-height:1.5}
 .assistant-digest-card .a2ui-row{--c-bg-card:var(--surface-panel,#fff);--c-text-tertiary:var(--text-secondary,#687461);gap:8px!important}
@@ -172,6 +171,7 @@
 :root{--message-self-bg:#252b27;--message-self-text:#f8faf7;--message-bot-bg:#f3f4f1}
 :root[data-app-theme=dark]{--message-self-bg:#dce6d6;--message-self-text:#192017;--message-bot-bg:#252c25}
 .from-bot .message-text{background:var(--message-bot-bg);border:1px solid var(--line);border-radius:4px 18px 18px 18px}
+.from-bot .message-text:has(>.assistant-digest-card){padding:0;background:transparent;border:0}
 :root .from-user .message-text{background:var(--message-self-bg);color:var(--message-self-text);border:1px solid transparent;border-radius:18px 18px 4px 18px}
 :root .from-user .message-text a{color:inherit;text-decoration:underline;text-underline-offset:3px}:root .from-user .message-text code,:root .from-user .message-text pre{background:color-mix(in srgb,var(--message-self-text) 12%,var(--message-self-bg));color:inherit}:root .from-user .message-text pre code{background:none}.from-user .message-text blockquote{color:inherit;border-color:color-mix(in srgb,var(--message-self-text) 35%,transparent)}.from-user .message-text th,.from-user .message-text td{border-color:color-mix(in srgb,var(--message-self-text) 35%,transparent)}
 .message-row:focus-visible{outline:2px solid var(--green,#758b60);outline-offset:4px;border-radius:8px}
