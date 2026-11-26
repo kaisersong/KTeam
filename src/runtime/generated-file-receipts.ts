@@ -4,7 +4,7 @@ import {artifactReviewExtension,generatedFileExtension} from './generated-file-p
 import {KTeamError} from '../errors.js';
 import {MAX_REVIEW_BYTES} from '../protocol/artifact-review.js';
 import type {TeamStore} from '../service/team-store.js';
-const names=new Set(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide','write','edit']);
+const names=new Set(['mcp__report-renderer__render_report','mcp__slide-renderer__render_slide','write','edit','bash']);
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Persist original successful tool effects before the bounded readable trace can evict them. */
 export function recordGeneratedFile(store:TeamStore,job:any,event:any){

@@ -1,13 +1,12 @@
 import {ownerPage} from './room-reads.js';
 import type {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
-import {attachmentMessageView,artifactReplyAttachment} from '../protocol/message-attachments.js';
 import {projectMessage as originalMessage} from './collaboration.js';
 import {assistantDailyCardForMessage} from './assistant-daily-card-receipts.js';
 import type {TeamStore} from './team-store.js';
 export const MESSAGE_PAGE_BYTES=384*1024;
 /** Preserve the original owner IDs/sequence, while duplicate envelope bodies remain on demand. */
-export function projectMessage(message:any,store?:TeamStore):any{const {envelope,...result}=originalMessage(message) as any;const assistantDailyCard=store?assistantDailyCardForMessage(store,message):undefined;return {...result,...(assistantDailyCard?{assistantDailyCard}:{}),...(attachmentMessageView(message)?{attachmentView:true}:{}),...(artifactReplyAttachment(message)?{artifactReplyMessageId:message.sourceRef.artifactReplyMessageId}:{})};}
+export function projectMessage(message:any,store?:TeamStore):any{const {envelope,...result}=originalMessage(message) as any;const assistantDailyCard=store?assistantDailyCardForMessage(store,message):undefined;return {...result,...(assistantDailyCard?{assistantDailyCard}:{})};}
 /** Adapt the original bounded read downwards on byte overflow; never retry a mutation. */
 export async function conversationPage(upstream:Upstreams,roomId:string,input:{after?:number;before?:number;tail?:boolean;limit?:number}={},store?:TeamStore){
  const source=await ownerPage(upstream,roomId,input);

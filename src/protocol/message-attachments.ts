@@ -30,4 +30,10 @@ export const messageDisplayText=(message:any)=>attachmentMessageView(message)?.t
 const imageTypes:Record<string,string>={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp'};
 export const attachmentImageType=(extension:string)=>imageTypes[extension];
 /** Compact UI text is derived before truncation; the immutable wire body stays intact. */
-export function messagePreviewText(message:any){const payload=attachmentMessageView(message);if(!payload)return message?.text??'';const images=payload.attachments.filter(file=>attachmentImageType(file.extension)).length,files=payload.attachments.length-images;return [payload.text.trim(),images?(images===1?'[图片]':'[图片×'+images+']'):'',files?(files===1?'[文件]':'[文件×'+files+']'):''].filter(Boolean).join(' ');}
+export function messagePreviewText(message:any){
+ const payload=attachmentMessageView(message);
+ if(!payload)return message?.text??'';
+ if(message.sender.kind==='agent'&&payload.text===''&&payload.attachments.length===1)return payload.attachments[0]!.name;
+ const images=payload.attachments.filter(file=>attachmentImageType(file.extension)).length,files=payload.attachments.length-images;
+ return [payload.text.trim(),images?(images===1?'[图片]':'[图片×'+images+']'):'',files?(files===1?'[文件]':'[文件×'+files+']'):''].filter(Boolean).join(' ');
+}
