@@ -34,10 +34,18 @@ for(const interrupted of [true,false])test(interrupted
   const view:any=await hostRequest(root,'kteam-main','/v1/conversation-view/updates',{roomId:member.roomId,tail:true});
   const projected=(view.messages.messages??view.messages).find((message:any)=>message.messageId===artifact.messageId);
   assert.equal(attachmentMessageView(projected)?.attachments[0]?.fileId,file?.fileId);
+  const latest=async()=>(await api.teams()).rooms.find((room:any)=>room.roomId===member.roomId)?.lastMessage;
+  const sidebar=await latest();
+  assert.equal(sidebar?.messageId,artifact.messageId);
+  assert.equal(sidebar?.text,'fictional-output.md');
+  assert.doesNotMatch(JSON.stringify(sidebar),/kteam_message_with_attachments|fileId|sha256/);
   await until(async()=>(await api.work(member.roomId)).jobs.find((job:any)=>job.state==='delivered'));
   writeFileSync(path,'Changed independently after delivery');
   const preview=await api.previewMessageAttachment({roomId:member.roomId,messageId:artifact.messageId,fileId:file!.fileId});
   assert.match(preview.preview,/Actual fictional output/);
+  await host.close();
+  host=await proofHost(root,configRoot,f.upstream.options);
+  assert.deepEqual(await latest(),sidebar);
   assert.equal(requests,2);
   return;
  }

@@ -1,4 +1,4 @@
-import {parseAttachmentMessage} from '../protocol/message-attachments.js';
+import {artifactReplyAttachment,attachmentMessageView,parseAttachmentMessage} from '../protocol/message-attachments.js';
 import {findOwnerMessage,originalMessage,ownerPage} from './room-reads.js';
 import { Upstreams } from '../adapters/upstream.js';
 import { intentHash, validateL0 } from '../protocol/aimp.js';
@@ -88,12 +88,18 @@ export class CollaborationService {
   }
 }
 
-export function projectMessage(message:Record<string,unknown>){return {
+export function projectMessage(message:Record<string,unknown>){
+  const artifact=artifactReplyAttachment(message);
+  const attachment=artifact??attachmentMessageView(message);
+  return {
       messageId: message.messageId, roomId: message.roomId, threadId: message.threadId,
       sender: message.sender, text: message.text, replyToMessageId:message.replyToMessageId, roomSequence: message.roomSequence, createdAt: message.createdAt,
+      ...(attachment?{attachmentView:true}:{}),
+      ...(artifact?{artifactReplyMessageId:record(message.sourceRef).artifactReplyMessageId}:{}),
       ...(message.sourceRef && record(message.sourceRef).kind === 'aimp_l0'
         ? { envelope: record(message.sourceRef).envelope } : { protocol: 'legacy_display_only' }),
       ...(message.sourceRef&&record(message.sourceRef).kind==='external_agent_reply'?{externalSource:{driver:record(message.sourceRef).driver,verifiedExecution:false}}:{}),
       ...(message.sourceRef&&record(message.sourceRef).kind==='aimp_reply'&&!record(message.sourceRef).artifactFileId?{workRef:record(message.sourceRef).taskRef}:{}),
       ...(message.sourceRef&&record(message.sourceRef).kind==='bot_private_message'?{sourceRef:{kind:'bot_private_message',originRoomId:record(message.sourceRef).originRoomId,originMessageId:record(message.sourceRef).originMessageId,purpose:record(message.sourceRef).purpose,verifiedExecution:false}}:{}),
-    };}
+  };
+}
