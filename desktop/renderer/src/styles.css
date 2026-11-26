@@ -378,3 +378,7 @@ button.artifact-review-number[aria-disabled="false"]:hover{text-decoration:under
 .assistant-watch-editor{display:grid;gap:.7rem}
 .assistant-watch-editor label{display:grid;gap:.3rem}
 .assistant-watch-editor input,.assistant-watch-editor select,.assistant-watch-editor textarea{width:100%;min-width:0}
+.message-text.message-text--attachments-only{width:fit-content;max-width:100%;padding:0;border:0;background:none}
+.message-text--attachments-only .message-attachments{margin-top:0}
+.message-text--attachments-only .message-attachment{padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.4}
+.message-text--attachments-only .message-attachment:hover{background:var(--message-bot-bg)}
