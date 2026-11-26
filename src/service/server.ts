@@ -211,8 +211,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
           if(input.action==='trust')return send(res,200,sharedDevices.configureTrust(input.trust));
           if(input.action==='invite')return send(res,200,sharedDevices.invite());
           if(input.action==='approve')return send(res,200,sharedDevices.approve(text(input.inviteId,'invite_id'),text(input.publicKey,'public_key',2048)));
-          if(input.action==='revoke')return send(res,200,sharedDevices.revoke(text(input.deviceId,'device_id')));
-          if(input.action==='rotate-coordinator-key')return send(res,200,sharedDevices.rotateCoordinatorKey());
+          if(input.action==='revoke')return send(res,200,await sharedGateway.serializeMutation(()=>sharedDevices.revoke(text(input.deviceId,'device_id'))));
+          if(input.action==='rotate-coordinator-key')return send(res,200,await sharedGateway.serializeMutation(()=>sharedDevices.rotateCoordinatorKey()));
           throw new KTeamError('shared_admin_action_invalid');
         }
         throw new KTeamError('route_not_found',404);

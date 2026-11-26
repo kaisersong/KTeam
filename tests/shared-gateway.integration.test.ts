@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir,networkInterfaces} from 'node:os';
-import {createHash,generateKeyPairSync,sign,X509Certificate} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomUUID,sign,X509Certificate} from 'node:crypto';
 import https from 'node:https';
 import {TeamStore} from '../src/service/team-store.js';
 import {SharedDevices,sharedPairStatement,privateSharedEndpoint,verifySharedIdentity} from '../src/service/shared-devices.js';
@@ -51,10 +51,12 @@ test('真实私网 HTTPS 配对：双客户端、证书与公钥信任、丢响�
  }finally{await listener?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 
-test('真实 Broker 协议门禁：缺少共享主体/精确回执/历史快照时不能开放聊天', {timeout:30_000},async()=>{
+test('真实 Broker 协议门禁：没有配置独立共享签发密钥时不能开放聊天', {timeout:30_000},async()=>{
  const f=await realUpstreams();try{
-  const before=await f.upstream.listTeams(),status=await f.upstream.sharedGroupsStatus();
-  assert.equal(status.available,false);assert.equal(status.chat,false);assert.equal(status.dispatch,false);assert.equal(status.execution,false);
+  const before=await f.upstream.listTeams();
+  const status=await f.upstream.sharedGroupsStatus({workspaceId:randomUUID(),principalId:randomUUID(),
+   deviceId:randomUUID(),deviceGeneration:1,coordinatorGeneration:1,coordinatorId:randomUUID(),requestSource:'user'});
+  assert.equal(status.reason,'shared_room_authority_unavailable');assert.equal(status.available,false);assert.equal(status.chat,false);assert.equal(status.dispatch,false);assert.equal(status.execution,false);
   assert.ok(status.missing.includes('shared-session-authority-v1'));assert.ok(status.missing.includes('exact-operation-receipt-v1'));assert.ok(status.missing.includes('room-history-snapshot-v1'));
   assert.deepEqual(await f.upstream.listTeams(),before);
  }finally{await f.close();}
