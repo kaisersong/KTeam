@@ -10,7 +10,7 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**当前版本：0.10.3。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
+**当前版本：0.10.4。** 安装包见 [GitHub Releases](https://github.com/kaisersong/KTeam/releases/latest)。支持 macOS Apple 芯片（arm64）和 Windows（x64）；Mac 与 Windows 安装版支持自动更新，便携版手动更新。各版本改动见[版本日志](#版本日志)。
 
 ---
 
@@ -37,6 +37,13 @@ KTeam 的协作建立在 **AIMP（Agent Intent Messaging Protocol，智能体意
 **KTeam 目前不声明完整兼容 AIMP v3.2，也不声明通过 Core-L2 认证。** 生产身份根、收据激活和完整状态迁移等仍未完成。本版新增限作用域的 effect 只读核对及 HTML/邮件宿主回执，不代表所有工具已认证，也不代替业务验收。规范里提到的复验脚本 `verify_v31_vectors.py` 没有随本仓库提供。后续实现按 v3.2 规范逐条核对。标准契约握手、Templates 和 FastJoin 当前明确不可用。
 
 ---
+
+## 0.10.4 有什么
+
+- 小 K 在私聊里用卡片展示简报、日程变更和会议邀请。邀请里有明确时间和地点时直接展示，点击「核对我的日程」可填写草稿。
+- 小 K 识别到已选的云之家来源需要登录时，会发私聊提醒。用同一账号重新连接会保留已选来源。
+- 生成的产物以独立消息发到原会话，可在桌面侧栏预览，并在 macOS 和 Windows 保存原文件。
+- 桌面聊天合并 Agent 和模型设置，把引用会话移到输入栏。审批详情显示请求确认的原因，配对手机也会标明混合终端命令的风险。
 
 ## 0.10.3 有什么
 
@@ -170,8 +177,8 @@ Intel Mac 暂不支持。已有 Mac 安装版可通过 KTeam 自己的更新渠�
 
 **Windows（x64）**
 
-- **安装版（推荐）：** 下载 `KTeam-setup-0.10.3.exe` 运行安装，支持自动更新。
-- **便携版：** 下载 `KTeam-portable-0.10.3.exe` 直接运行，不自动更新，新版本需要去 Releases 下载。
+- **安装版（推荐）：** 下载 `KTeam-setup-0.10.4.exe` 运行安装，支持自动更新。
+- **便携版：** 下载 `KTeam-portable-0.10.4.exe` 直接运行。新版可从 Releases 下载。
 
 Windows 包暂未签名，第一次运行会出现「Windows 已保护你的电脑」，点「更多信息」，再点「仍要运行」即可。
 
@@ -228,6 +235,10 @@ node dist/src/cli.js teams
 正式版本由 GitHub Actions 在 Mac、Windows 构建、跨平台检查和安装包校验全部通过后自动发布；失败时保留草稿。
 
 ## 版本日志
+
+### v0.10.4
+
+小 K、产物和审批的改动见 [0.10.4 发布说明](release-notes/0.10.4.md)。
 
 ### v0.9.9
 

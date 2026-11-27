@@ -11,7 +11,10 @@ import {createDesktopAPI,dispatchDesktop} from '../desktop/semantic-api.js';
 import {sharedRuntime} from '../src/runtime/native.js';
 import {hostRequest} from '../src/service/client.js';
 import {initConfig} from '../src/service/config.js';
-import {dailyBriefMessage,dailyBriefPublisher,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
+import {dailyBriefCard,dailyBriefMessage,dailyBriefPublisher,dailyMessageNotice} from '../src/service/assistant-daily-delivery.js';
+import {projectMessage} from '../src/service/conversation-pages.js';
+import {validateA2uiMessages} from '../runtime-core/src/a2ui/decoder.js';
+import {compileRenderUiToA2ui} from '../runtime-core/src/a2ui/compiler.js';
 import {TeamCoordinator} from '../src/service/coordination.js';
 import {TeamStore} from '../src/service/team-store.js';
 import {startHost} from '../src/service/server.js';
@@ -156,12 +159,22 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
   assert.equal(sourceEdit.revision,today.revision);
 
   const store=new TeamStore(root);
+  let cardMessageId:string|undefined;
+  let legacyInvitationId:string|undefined;
   try{
    const publish=dailyBriefPublisher(upstream.upstream,store,new TeamCoordinator(upstream.upstream,store,host.epoch),()=>({roomId:assistant.roomId,botId:assistant.botId}),host.epoch);
    const body=dailyBriefMessage('2026-11-23','morning',[{
     id:'fixture-brief',title:'样例交付时间确认',detail:'私有正文样例',observedAt:Date.now(),urgent:true,
     source:{kind:'mail',id:'fixture-mail',account:'fixture',revision:'1',label:'fixture'},
    }],'Asia/Shanghai',text=>text)!;
+   const source={kind:'yzj-calendar' as const,id:'calendar',account:'fixture',revision:'1',label:'云之家日历'};
+   const meeting={id:'calendar-entry',title:'样例交付会议',detail:'冲突 设计会议',observedAt:Date.now(),deadline:Date.now()+60000,urgent:true,source};
+   const readyBody=dailyBriefMessage('2026-11-23','morning',[meeting],'Asia/Shanghai',text=>text)!;
+   const card=dailyBriefCard({id:'assistant-daily-card-fixture',title:'早报',items:[meeting],timeZone:'Asia/Shanghai',
+    redact:text=>text,evidence:new Map(),coverage:[{source,state:'partial',checkedAt:Date.now(),from:Date.now()-60000}]});
+   assert.ok(card);
+   assert.equal(validateA2uiMessages(JSON.parse(card.content)).ok,true);
+   for(const label of ['日程安排','样例交付会议','云之家日历未查全'])assert.ok(card.content.includes(label));
    const input={roomId:assistant.roomId,id:'assistant-daily-brief-fixture',body,deadline:Date.now()+60000,guard:async()=>{}};
    await assert.rejects(publish({...input,roomId:'foreign-room'}),/assistant_scope_required/);
    const id=await publish(input);
@@ -171,21 +184,80 @@ test('conversation drafts reach the authenticated desktop bridge and persist onl
    assert.match(message.text,/待阅邮件.*样例交付时间确认/);
    assert.doesNotMatch(message.text,/私有正文样例/);
    assert.equal(message.responsePolicy,'none');
-   const noticeBody=dailyMessageNotice([{id:'chat-notice',title:'private title',detail:'private content',observedAt:Date.now(),urgent:true,
-    messageAttention:{kind:'schedule',group:'验收群',text:'今天的例会取消',at:Date.now()},
-    source:{kind:'yzj-message',id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}}],'Asia/Shanghai',
-    new Map([['chat-notice','已核对日历，原安排仍在。']]))!;
-   const noticeId=await publish({...input,kind:'message-notice',id:'assistant-daily-message-fixture',body:noticeBody});
+   cardMessageId=await publish({...input,id:'assistant-daily-card-fixture',body:readyBody,card});
+   const withCard=(await upstream.upstream.conversationMessage(assistant.roomId,cardMessageId)).message;
+   assert.deepEqual(projectMessage(withCard,store).assistantDailyCard,card);
+   assert.equal(projectMessage({...withCard,roomId:'foreign-room'},store).assistantDailyCard,undefined);
+   assert.equal(projectMessage({...withCard,text:'changed'},store).assistantDailyCard,undefined);
+   assert.equal(projectMessage({...withCard,sender:{kind:'user'}},store).assistantDailyCard,undefined);
+   const history=await api.conversationHistory({roomId:assistant.roomId,tail:true});
+   assert.deepEqual(history.messages.find((row:any)=>row.messageId===cardMessageId)?.assistantDailyCard,card);
+   const clock=Date.parse('2026-11-23T13:23:00Z');
+   const attention={kind:'schedule' as const,group:'验收群',text:'今天的例会，已取消会议',at:clock};
+   const noticeItem={id:'chat-notice',title:'private title',detail:'private content',observedAt:clock,urgent:true,
+    messageAttention:attention,source:{kind:'yzj-message' as const,id:'recent-groups-30',account:'fixture',revision:'1',label:'fixture'}};
+   const observations=new Map([['chat-notice','已核对日历，原安排仍在。']]);
+   const noticeBody=dailyMessageNotice([noticeItem],'Asia/Shanghai',observations)!;
+   const noticeInput={id:'assistant-daily-message-fixture',title:'消息提醒',items:[noticeItem],timeZone:'Asia/Shanghai',redact:(text:string)=>text,evidence:observations,coverage:[]};
+   const noticeCard=dailyBriefCard(noticeInput);
+   assert.ok(noticeCard);
+   const surface=JSON.parse(noticeCard.content);
+   assert.equal(validateA2uiMessages(surface).ok,true);
+   const components=surface.find((row:any)=>row.updateComponents).updateComponents.components;
+   const summary=components.find((row:any)=>row.component==='Row');
+   assert.deepEqual(summary.children.map((id:string)=>components.find((row:any)=>row.id===id).label),['通知时间','群消息状态']);
+   for(const label of ['11月23日','21:23','已通知取消','原安排仍在'])assert.ok(noticeCard.content.includes(label));
+   assert.match(noticeCard.calendarCheckDraft??'',/核对日历.*验收群/);
+   assert.doesNotMatch(noticeCard.content,/private (title|content)/);
+   const uncertain=dailyBriefCard({...noticeInput,items:[{...noticeItem,messageAttention:{...attention,text:'如果已取消会议，请说一声'}}],evidence:new Map()});
+   assert.ok(uncertain?.content.includes('有变更通知'));
+   assert.ok(uncertain?.content.includes('日历尚未核对'));
+   const noticeId=await publish({...input,kind:'message-notice',id:noticeInput.id,body:noticeBody,card:noticeCard});
    const notice=(await upstream.upstream.conversationMessage(assistant.roomId,noticeId)).message;
    assert.equal(notice.sender.logicalAgentId,assistant.botId);
    assert.equal(notice.responsePolicy,'none');
    assert.match(notice.text,/日程变更 · 验收群/);
-   assert.match(notice.text,/今天的例会取消/);
+   assert.match(notice.text,/今天的例会，已取消会议/);
    assert.match(notice.text,/已核对日历，原安排仍在/);
    assert.doesNotMatch(notice.text,/我可以/);
    assert.doesNotMatch(notice.text,/private (title|content)/);
+   assert.deepEqual(projectMessage(notice,store).assistantDailyCard,noticeCard);
+   const invitationText='2026年12月评审会议计划于12月2日（下周三）下午2:30 - 4:00召开。 一、会议时间 2026年12月2日14:30-16:00 二、会议地点 A栋802会议室 三、会议议题';
+   const invitation={...noticeItem,messageAttention:{...attention,kind:'invitation' as const,text:invitationText}};
+   const invitationId='assistant-daily-message-'+'b'.repeat(64);
+   const oldLayout=compileRenderUiToA2ui({title:'消息里需要关注的事项',sections:[
+    {kind:'heading',level:2,text:'消息里需要关注的事项'},
+    {kind:'heading',level:3,text:'参会待确认 · 验收群'},
+    {kind:'text',content:'云之家 · 11/23 21:23 · '+invitationText},
+    {kind:'list',items:['日历暂未核实，参会待确认。','可选回复  收到议程 / 我核对安排后再确认']},
+    {kind:'divider'},{kind:'text',content:'云之家群消息未查全'},
+   ]},{taskId:invitationId,toolUseId:'proactive-brief'});
+   const invitationBody=dailyMessageNotice([invitation],'Asia/Shanghai')!;
+   legacyInvitationId=await publish({...input,kind:'message-notice',id:invitationId,body:invitationBody,
+    card:{artifactId:oldLayout.surfaceId,content:JSON.stringify(oldLayout.messages)}});
+   const legacyInvitation=(await upstream.upstream.conversationMessage(assistant.roomId,legacyInvitationId)).message;
+   const upgraded=projectMessage(legacyInvitation,store).assistantDailyCard;
+   assert.equal(upgraded.kind,'meeting-invitation');
+   assert.equal(upgraded.artifactId,oldLayout.surfaceId);
+   assert.match(upgraded.calendarCheckDraft,/2026-12-02 14:30–16:00.*评审会议.*冲突/);
+   assert.equal(projectMessage(legacyInvitation,store).text,invitationBody);
+   assert.equal(projectMessage({...legacyInvitation,sourceRef:{...legacyInvitation.sourceRef,taskRef:'other-task'}},store).assistantDailyCard,undefined);
+   for(const label of ['12月2日','星期三','14:30–16:00','A栋802会议室','云之家群消息未查全'])assert.ok(upgraded.content.includes(label));
+   const freshInvitation=dailyBriefCard({...noticeInput,items:[invitation],evidence:new Map()});
+   assert.equal(freshInvitation?.kind,'meeting-invitation');
+   assert.equal(freshInvitation?.calendarCheckDraft,upgraded.calendarCheckDraft);
+   const reconnectId=await publish({...input,kind:'connector-notice',id:'assistant-yzj-login-fixture',body:'云之家需要重新登录。'});
+   const reconnect=(await upstream.upstream.conversationMessage(assistant.roomId,reconnectId)).message;
+   assert.equal(reconnect.sender.logicalAgentId,assistant.botId);
+   assert.equal(reconnect.responsePolicy,'none');
+   assert.equal(reconnect.text,'云之家需要重新登录。');
    assert.equal(calls.some(call=>!call.propose),false);
   }finally{store.close();}
+  await host.close();
+  host=await startHost({root,upstream:options});
+  const history=await api.conversationHistory({roomId:assistant.roomId,tail:true});
+  assert.match(history.messages.find((row:any)=>row.messageId===cardMessageId)?.assistantDailyCard.content,/样例交付会议/);
+  assert.equal(history.messages.find((row:any)=>row.messageId===legacyInvitationId)?.assistantDailyCard.kind,'meeting-invitation');
 
  }finally{
   pair?.close();
