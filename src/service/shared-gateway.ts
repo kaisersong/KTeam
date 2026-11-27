@@ -1,10 +1,11 @@
 import https from 'node:https';
-import tls from 'node:tls';
-import {X509Certificate,createHash} from 'node:crypto';
+import {X509Certificate} from 'node:crypto';
 import {KTeamError,fields,record,text} from '../errors.js';
 import {parseJson} from '../protocol/json.js';
 import {Upstreams,type SharedRoomAction} from '../adapters/upstream.js';
 import {SharedDevices,SHARED_API,SHARED_SCHEMA,type SharedProof,type SharedSession} from './shared-devices.js';
+
+import {assertSharedCertificate,connectSharedTLS,sharedHost} from './shared-tls.js';
 
 const roomCommands = {
  members: ['requestId','expectedRoomRevision','addAgentIds','removeAgentIds'],
@@ -74,9 +75,9 @@ export class SharedGateway{
  async listen(options:{certificate:string;privateKey:string}){
   const trust=this.devices.view().trust;
   if(!trust)throw new KTeamError('shared_trust_required',409);
-  const endpoint=new URL(trust.endpoint),host=endpoint.hostname.replace(/^\[|\]$/g,'');
+  const endpoint=new URL(trust.endpoint),host=sharedHost(trust.endpoint);
   const certificate=new X509Certificate(options.certificate);
-  if(createHash('sha256').update(certificate.raw).digest('hex')!==trust.certificateSha256||!certificate.checkIP(host)||Date.parse(certificate.validTo)<=Date.now()||Date.parse(certificate.validFrom)>Date.now())throw new KTeamError('shared_certificate_mismatch',403);
+  assertSharedCertificate(certificate,trust);
   const server=https.createServer({cert:options.certificate,key:options.privateKey,minVersion:'TLSv1.3'},async(req,res)=>{
    try{
     if(req.headers.origin)throw new KTeamError('shared_origin_forbidden',403);
@@ -93,14 +94,11 @@ export class SharedGateway{
   server.requestTimeout=15_000;server.headersTimeout=5_000;server.maxHeadersCount=16;
   const port=Number(endpoint.port)||443;
   await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,resolve);});
-  // listening is not sufficient after a restart on the same address; wait until TLS actually accepts.
-  await new Promise<void>((resolve,reject)=>{
-   const attempt=(n:number)=>{
-    const socket=tls.connect({host,port,ca:options.certificate,minVersion:'TLSv1.3',servername:undefined},()=>{socket.end();resolve();});
-    socket.once('error',error=>{socket.destroy();if(n>=25)reject(error);else setTimeout(()=>attempt(n+1),10);});
-   };
-   attempt(0);
-  });
+  try{
+   await new Promise<void>((resolve,reject)=>connectSharedTLS(trust,(error,socket)=>{
+    if(error)reject(error);else{socket!.end();resolve();}
+   }));
+  }catch(error){server.closeAllConnections();server.close();throw error;}
   return {close:()=>new Promise<void>((resolve,reject)=>{server.closeAllConnections();server.close(error=>error?reject(error):resolve());})};
  }
 }

@@ -7,7 +7,9 @@ import {assertCodexBinding,codexWriteGrant,saveCodexWriteGrant,type CodexDispatc
 import {TeamWorkspace} from './team-workspace.js';
 import {groupDirectoryApproval} from './group-directory-approval.js';
 import {MobileDevices} from '../mobile/devices.js';
-import {SharedDevices} from './shared-devices.js';
+import {SharedDevices,privateSharedEndpoint} from './shared-devices.js';
+import {SharedDesktopClient} from './shared-client.js';
+import {assertSharedCertificate,certificateDigest,createSharedTLS,type SharedTLS} from './shared-tls.js';
 import {SharedGateway} from './shared-gateway.js';
 import {MobileGateway} from '../mobile/gateway.js';
 import {MobileFacade} from '../mobile/facade.js';
@@ -49,7 +51,7 @@ import {systemOneChoice,kimJudgment,decisionModels} from '../runtime/decision.js
 import {ToolApprovals} from './tool-approvals.js';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { chmodSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
-import { timingSafeEqual, randomUUID } from 'node:crypto';
+import { timingSafeEqual, randomUUID, X509Certificate } from 'node:crypto';
 import { KTeamError, record,fields,text } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { AIMP_SPEC, AIMP_WIRE,validateL0,intentHash } from '../protocol/aimp.js';
@@ -98,7 +100,7 @@ function page(value: string | null, fallback: number, max: number): number {
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new KTeamError('invalid_pagination');
   return Number(value);
 }
-export async function startHost(options: { root: string; upstream: UpstreamOptions; sharedGroups?:{certificate:string;privateKey:string} }) {
+export async function startHost(options: { root: string; upstream: UpstreamOptions; sharedGroups?:SharedTLS; managedSharedListener?:boolean }) {
   ensurePrivateRoot(options.root);
   const windows=process.platform==='win32';
   const path = windows?windowsEndpointPath(options.root):socketPath(options.root);
@@ -158,6 +160,49 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
   const sharedDevices=new SharedDevices(teamStore);
   const sharedGateway=new SharedGateway(sharedDevices,upstream);
   let sharedListener:Awaited<ReturnType<SharedGateway['listen']>>|undefined;
+  const sharedClient=new SharedDesktopClient(teamStore);
+  const sharedTLSKey='shared-gateway-tls:v1';
+  let sharedPendingCleanup:ReturnType<typeof setInterval>|undefined;
+  let sharedListenError:string|undefined;
+  let hostClosing=false;
+  let sharedListenerTail=Promise.resolve();
+  const changeSharedListener=<T>(work:()=>Promise<T>)=>{
+    const result=sharedListenerTail.then(()=>{
+      if(hostClosing)throw new KTeamError('host_closing',503);
+      return work();
+    });
+    sharedListenerTail=result.then(()=>undefined,()=>undefined);
+    return result;
+  };
+  const enableSharedListener=async(endpointValue:unknown)=>{
+    if(!options.managedSharedListener)throw new KTeamError('shared_listener_unavailable',503);
+    const endpoint=privateSharedEndpoint(endpointValue);
+    const settings=sharedDevices.view();
+    if(settings.trust&&settings.trust.endpoint!==endpoint)throw new KTeamError('shared_identity_rotation_required',409);
+    if(sharedListener)return;
+    let material=teamStore.state<SharedTLS>(sharedTLSKey);
+    if(!material){
+      if(settings.trust)throw new KTeamError('shared_certificate_mismatch',403);
+      material=createSharedTLS(endpoint);
+    }
+    const certificate=new X509Certificate(material.certificate);
+    const trust=settings.trust??{endpoint,coordinatorId:settings.coordinatorId,publicKey:settings.publicKey,
+      certificateSha256:certificateDigest(certificate)};
+    assertSharedCertificate(certificate,trust);
+    teamStore.transaction(()=>{
+      sharedDevices.configureTrust(trust);
+      teamStore.setState(sharedTLSKey,material);
+      teamStore.setState('shared-gateway-enabled:v1',true);
+    });
+    try{
+      sharedListener=await sharedGateway.listen(material);
+      sharedListenError=undefined;
+    }catch(error){
+      sharedListenError=error instanceof KTeamError?error.code:'shared_listener_unavailable';
+      throw new KTeamError(sharedListenError,503);
+    }
+  };
+
   approvals.setApprovalDeviceGuard(device=>mobileDevices.assert({kind:'device',...device},true));
   approvals.setMailAuthority(id=>mailConnectors.sendAuthority(id));
   const mobileFacade=new MobileFacade({coordinator,collaboration,sidebar,upstream,conversations,conversationUpdates,automation,approvals,composerAttachments,artifactReview,mailConnectors,inboxSource,inboxState,sendHumanMessage,epoch:owner.epoch},teamStore,mobileDevices);
@@ -203,16 +248,47 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         });
       }
       if (req.method !== 'GET' && !compatible) throw new KTeamError('client_upgrade_required', 409);
-      if(url.pathname==='/v1/shared-groups/settings'){
+      if(url.pathname==='/v1/shared-groups/settings'||url.pathname==='/v1/shared-groups/client'){
         if(client.id!=='kteam-main')throw new KTeamError('shared_admin_forbidden',403);
-        if(req.method==='GET')return send(res,200,{...sharedDevices.view(),listening:!!sharedListener});
-        if(req.method==='POST'){
-          const input=record(await body(req));fields(input,['action','trust','inviteId','publicKey','deviceId']);
-          if(input.action==='trust')return send(res,200,sharedDevices.configureTrust(input.trust));
+        if(url.pathname.endsWith('/client')&&req.method==='POST'){
+          const input=record(await body(req));
+          if(input.action==='pair-local'&&!sharedListener)throw new KTeamError('shared_listener_unavailable',503);
+          return send(res,200,await sharedClient.run(input,sharedDevices));
+        }
+        if(req.method==='GET'&&url.pathname.endsWith('/settings'))return send(res,200,{
+          ...sharedDevices.view(),listening:!!sharedListener,listenError:sharedListenError
+        });
+        if(req.method==='POST'&&url.pathname.endsWith('/settings')){
+          const input=record(await body(req));fields(input,['action','trust','endpoint','inviteId','publicKey','deviceId']);
+          if(input.action==='trust'){
+            if(options.managedSharedListener&&!teamStore.state(sharedTLSKey))throw new KTeamError('shared_listener_setup_required',409);
+            return send(res,200,sharedDevices.configureTrust(input.trust));
+          }
+          if(input.action==='enable'){
+            await changeSharedListener(()=>enableSharedListener(input.endpoint));
+            return send(res,200,{ok:true});
+          }
+          if(input.action==='disable'){
+            await changeSharedListener(async()=>{
+              teamStore.setState('shared-gateway-enabled:v1',false);
+              const previous=sharedListener;
+              sharedListener=undefined;
+              await previous?.close();
+            });
+            return send(res,200,{ok:true});
+          }
           if(input.action==='invite')return send(res,200,sharedDevices.invite());
           if(input.action==='approve')return send(res,200,sharedDevices.approve(text(input.inviteId,'invite_id'),text(input.publicKey,'public_key',2048)));
-          if(input.action==='revoke')return send(res,200,await sharedGateway.serializeMutation(()=>sharedDevices.revoke(text(input.deviceId,'device_id'))));
-          if(input.action==='rotate-coordinator-key')return send(res,200,await sharedGateway.serializeMutation(()=>sharedDevices.rotateCoordinatorKey()));
+          if(input.action==='revoke')return send(res,200,await sharedGateway.serializeMutation(()=>{
+            const deviceId=text(input.deviceId,'device_id');
+            const result=sharedDevices.revoke(deviceId);
+            sharedClient.invalidateLocal(sharedDevices.view().trust,deviceId);
+            return result;
+          }));
+          if(input.action==='rotate-coordinator-key')return send(res,200,await sharedGateway.serializeMutation(()=>{
+            sharedClient.invalidateLocal(sharedDevices.view().trust);
+            return sharedDevices.rotateCoordinatorKey();
+          }));
           throw new KTeamError('shared_admin_action_invalid');
         }
         throw new KTeamError('route_not_found',404);
@@ -515,13 +591,23 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
     else chmodSync(path, 0o600);
     await mobileGateway.start();
     if(options.sharedGroups)sharedListener=await sharedGateway.listen(options.sharedGroups);
+    if(options.managedSharedListener&&teamStore.state('shared-gateway-enabled:v1')){
+      const trust=sharedDevices.view().trust;
+      if(trust)await enableSharedListener(trust.endpoint).catch(error=>{
+        sharedListenError=error instanceof KTeamError?error.code:'shared_listener_unavailable';
+      });
+    }
+    sharedClient.prune();
+    sharedPendingCleanup=setInterval(()=>sharedClient.prune(),60*60_000).unref();
     automation.start();
     dailyWork.start();
-  } catch (error) { await sharedListener?.close();await mobileGateway.close();server.close();teamStore.close(); owner.release(); throw error; }
+  } catch (error) { clearInterval(sharedPendingCleanup);sharedClient.close();await sharedListener?.close();await mobileGateway.close();server.close();teamStore.close(); owner.release(); throw error; }
   let closePromise: Promise<void> | undefined;
   const host={ epoch: owner.epoch, instanceId, path,
     close() {
       if (!closePromise) closePromise = (async () => {
+        hostClosing=true;
+        await sharedListenerTail;
         await mobileGateway.close();
         await sharedListener?.close();
         await dailyWork.close();
@@ -529,6 +615,8 @@ export async function startHost(options: { root: string; upstream: UpstreamOptio
         await Promise.all([builtinAgent.close(),localAgents.close(),automation.close(),teamRoles.close()]);
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         if(windows&&existsSync(path))unlinkSync(path);
+        clearInterval(sharedPendingCleanup);
+        sharedClient.close();
         teamStore.close();
         owner.release();
       })();

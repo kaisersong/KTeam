@@ -9,6 +9,7 @@ export interface Room {revision?:number;sidebarRevision?:number;manualUnread?:bo
 import type {AssistantDailyCard} from '../../../src/protocol/assistant-daily-card';
 export interface Message {assistantDailyCard?:AssistantDailyCard;messageId:string;roomId?:string;sender:{kind:string;logicalAgentId?:string};text?:string;roomSequence:number;createdAt?:string;workRef?:string;sourceRef?:any;replyToMessageId?:string;artifactReplyMessageId?:string}
 export interface KTeamAPI {
+ sharedGroupSettings():Promise<any>;changeSharedGroupSettings(input:unknown):Promise<any>;sharedGroupClient(input:unknown):Promise<any>;
  mobileSettings():Promise<any>;changeMobileSettings(input:any):Promise<any>;
  teamWorkspace(roomId:string):Promise<any>;saveTeamWorkspace(input:any):Promise<any>;
  groupMembers(roomId:string):Promise<any>;changeGroupMembers(input:any):Promise<any>;

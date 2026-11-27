@@ -77,10 +77,7 @@ export class SharedDevices{
    if(invite.expiresAt<=this.now())return {error:'shared_invite_unavailable'};
    invite.publicKey=publicKey;
    if(!invite.approved)return {value:{paired:false}};
-   const previous=s.devices.find(d=>d.publicKey===publicKey);
-   const device:Device={deviceId:previous?.deviceId??randomUUID(),publicKey,generation:(previous?.generation??0)+1,token:secret(),revoked:false,counter:0};
-   s.devices=s.devices.filter(d=>d.deviceId!==device.deviceId);s.devices.push(device);
-   const credential:SharedCredential={workspaceId:s.workspaceId,principalId:s.principalId,deviceId:device.deviceId,deviceGeneration:device.generation,coordinatorGeneration:s.generation,token:device.token,coordinatorId:digest(s.publicKey),publicKey:s.publicKey,pairingId:id};
+   const credential=this.issueDevice(s,publicKey,id);
    invite.receipt=credential;
    return {value:{paired:true,credential}};
   });
@@ -103,7 +100,25 @@ export class SharedDevices{
  assert(session:SharedSession){const s=this.state(),d=s.devices.find(d=>d.deviceId===session.deviceId);if(!d||d.revoked||session.workspaceId!==s.workspaceId||session.principalId!==s.principalId||session.deviceGeneration!==d.generation||session.coordinatorGeneration!==s.generation||session.coordinatorId!==digest(s.publicKey)||session.requestSource!=='user')throw new KTeamError('shared_device_unauthorized',401);}
  revoke(deviceId:string){return this.change(s=>{const d=s.devices.find(d=>d.deviceId===deviceId);if(!d)throw new KTeamError('shared_device_missing',404);if(!d.revoked){d.revoked=true;d.generation++;}return {ok:true};});}
  rotate(session:SharedSession){return this.change(s=>{this.assert(session);const d=s.devices.find(d=>d.deviceId===session.deviceId)!;d.generation++;d.counter=0;d.token=secret();return {workspaceId:s.workspaceId,principalId:s.principalId,deviceId:d.deviceId,deviceGeneration:d.generation,coordinatorGeneration:s.generation,token:d.token,coordinatorId:digest(s.publicKey),publicKey:s.publicKey,pairingId:'rotation'} satisfies SharedCredential;});}
- rotateCoordinatorKey(){return this.change(s=>{const key=generateKeyPairSync('ed25519');s.publicKey=key.publicKey.export({type:'spki',format:'pem'}).toString();s.privateKey=key.privateKey.export({type:'pkcs8',format:'pem'}).toString();s.generation++;s.invites=[];if(s.trust)s.trust={...s.trust,publicKey:s.publicKey,coordinatorId:digest(s.publicKey)};return {trust:s.trust,coordinatorGeneration:s.generation};});}
+ rotateCoordinatorKey(){return this.change(s=>{const key=generateKeyPairSync('ed25519');s.publicKey=key.publicKey.export({type:'spki',format:'pem'}).toString();s.privateKey=key.privateKey.export({type:'pkcs8',format:'pem'}).toString();s.generation++;s.invites=[];for(const device of s.devices)device.revoked=true;if(s.trust)s.trust={...s.trust,publicKey:s.publicKey,coordinatorId:digest(s.publicKey)};return {trust:s.trust,coordinatorGeneration:s.generation};});}
+ private issueDevice(s:State,publicKey:string,pairingId:string):SharedCredential{
+  const previous=s.devices.find(device=>device.publicKey===publicKey);
+  const device:Device={deviceId:previous?.deviceId??randomUUID(),publicKey,generation:(previous?.generation??0)+1,
+   token:secret(),revoked:false,counter:0};
+  s.devices=s.devices.filter(entry=>entry.deviceId!==device.deviceId);
+  s.devices.push(device);
+  return {workspaceId:s.workspaceId,principalId:s.principalId,deviceId:device.deviceId,
+   deviceGeneration:device.generation,coordinatorGeneration:s.generation,token:device.token,
+   coordinatorId:digest(s.publicKey),publicKey:s.publicKey,pairingId};
+ }
+ /** The authenticated local administrator explicitly enrolls its own desktop. */
+ enrollLocal(value:string){
+  const publicKey=sharedPublicKey(value);
+  return this.change(s=>{
+   if(!s.trust)throw new KTeamError('shared_trust_required',409);
+   return {trust:s.trust,credential:this.issueDevice(s,publicKey,'local')};
+  });
+ }
  /** Signed identity response is checked against an explicitly trusted key, never TOFU. */
  signIdentity(challenge:string){text(challenge,'challenge',256);const identity=this.identity();return {identity,challenge,signature:sign(null,Buffer.from(JSON.stringify(['kteam-shared-identity-v1',challenge,identity])),createPrivateKey(this.state().privateKey)).toString('base64url')};}
 }
