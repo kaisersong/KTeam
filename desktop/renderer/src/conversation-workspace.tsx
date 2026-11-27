@@ -12,13 +12,13 @@ import {TeamRolesPanel} from './team-roles';
 import {ExecutionFailureDetails} from './execution-failure';
 import {useUserProfile} from './user-profile';
 import React,{useEffect,useRef,useState} from 'react';
-import {X,Share,Search,Pin,FilePlus,FileText,ExternalLink,Trash2,MessageSquarePlus,Monitor,ArrowRight,RefreshCw,Activity} from 'lucide-react';
+import {X,Share,Search,Pin,FilePlus,FileText,ExternalLink,Trash2,MessageSquarePlus,Monitor,ArrowRight,RefreshCw,Activity,Terminal} from 'lucide-react';
 import {api,explain,type Bot,type Message,type Room} from './api';
 import {ConversationMembers} from './components';
 import {Markdown} from './Markdown';
 export type WorkspaceTab='details'|'shared'|'library'|'computer'|'search'|'activity'|'inspector'|'routines';
 const tabs:[WorkspaceTab,string][]=[['details','详情'],['shared','共享'],['library','资料库'],['computer','电脑']];
-type Props={fleetPaused?:boolean;workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;onToday:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];inputReceipts:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
+type Props={codexDispatch?:{disabled:boolean;open:()=>void};fleetPaused?:boolean;workControl?:{paused:boolean;disabled:boolean;toggle:()=>Promise<void>};sourceMessage?:Message;onClearSource?:()=>void;onMembersChanged?:()=>Promise<void>;onCreateMember?:()=>void;onGeneratedWork:(jobId:string)=>void;onRecipe:()=>void;onToday:()=>void;focusJobId?:string;roles?:any;onRolesChanged:()=>Promise<void>;recovery?:any;onContinue:()=>void;reconnecting:boolean;room:Room;bots:Bot[];settings:any;jobs:any[];tasks:any[];inputReceipts:any[];data:any;onData:()=>Promise<void>;onClose:()=>void;onBot:(bot:Bot)=>void;onRename:()=>void;onPause:()=>Promise<void>;onReview:(task:any)=>void;onNew:(bot:Bot)=>Promise<void>;onDraft:(text:string)=>void;onReply:(m:Message)=>void;onMessage:(m:Message)=>void;tab:WorkspaceTab;setTab:(tab:WorkspaceTab)=>void};
 export function ConversationWorkspace(p:Props){
  const user=useUserProfile();
  const [memberAction,setMemberAction]=useState<"add"|Bot>();
@@ -58,6 +58,7 @@ export function ConversationWorkspace(p:Props){
   <div className="workspace-actions workspace-quick-actions">
    <button onClick={()=>setTab('activity')}><Activity size={17}/>活动<ArrowRight size={15}/></button>
    <button onClick={()=>setTab('search')}><Search size={17}/>在对话中查找</button>
+   {p.codexDispatch&&<button type="button" disabled={p.codexDispatch.disabled} onClick={p.codexDispatch.open}><Terminal size={17}/>派发 Codex 任务<ArrowRight size={15}/></button>}
   </div>
   <details className="workspace-section workspace-more">
    <summary>更多</summary>
