@@ -47,7 +47,7 @@ export function readPackagedIdentity(resources,expected){
 export function verifyAncestry(cwd,revision,tag,required){
  const project=realpathSync(resolve(cwd));
  const identity=sourceGitIdentity(project);
- if(!/^[a-f0-9]{40}$/.test(revision)||tag&&!/^v\d+\.\d+\.\d+$/.test(tag))throw gitFailure('release_identity_input_invalid');
+ if(!/^[a-f0-9]{40}$/.test(revision)||tag&&!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag))throw gitFailure('release_identity_input_invalid');
  if(identity.revision!==revision)throw gitFailure('release_source_revision_mismatch');
  if(tag&&git(project,['rev-parse',tag+'^{commit}']).trim()!==revision)throw gitFailure('release_tag_commit_mismatch');
  for(const commit of required){
