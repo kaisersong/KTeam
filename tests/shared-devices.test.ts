@@ -19,8 +19,8 @@ function authenticate(devices:SharedDevices,c:SharedCredential,k:ReturnType<type
 }
 
 test('共享群信任仅接受私网 HTTPS 与完整协调端公钥',()=>{
- for(const input of ['http://192.168.1.2','https://example.com','https://127.0.0.1','https://192.168.1.2.evil.test','https://8.8.8.8','https://[::1]','https://[::ffff:192.168.1.2]','https://192.168.1.2/path','https://user@192.168.1.2','https://192.168.1.2/?x=1'])assert.throws(()=>privateSharedEndpoint(input));
- for(const input of ['https://10.1.2.3','https://172.16.0.1','https://192.168.0.1','https://[fd12::1]'])assert.equal(privateSharedEndpoint(input),new URL(input).origin);
+ for(const input of ['http://192.168.1.2','https://example.com','https://127.0.0.1','https://192.168.1.2.evil.test','https://8.8.8.8','https://100.63.255.255','https://100.128.0.1','https://[2001:db8::1]','https://[::1]','https://[::ffff:192.168.1.2]','https://192.168.1.2/path','https://user@192.168.1.2','https://192.168.1.2/?x=1','https://100.64.0.1/?','https://100.64.0.1/path/..','https://@100.64.0.1'])assert.throws(()=>privateSharedEndpoint(input));
+ for(const input of ['https://10.1.2.3','https://172.16.0.1','https://192.168.0.1','https://100.64.0.1','https://100.127.255.255','https://[fc12::1]','https://[fd12::1]'])assert.equal(privateSharedEndpoint(input),new URL(input).origin);
  const f=fixture();try{const response=f.devices.signIdentity('device-challenge');assert.equal(verifySharedIdentity(f.trust,response,'device-challenge').workspaceId,f.devices.identity().workspaceId);assert.throws(()=>verifySharedIdentity(f.trust,response,'replayed-challenge'));assert.throws(()=>verifySharedIdentity({...f.trust,publicKey:key().publicKey},response,'device-challenge'));assert.throws(()=>f.devices.configureTrust({...f.trust,endpoint:'https://10.0.0.2'}),/shared_identity_rotation_required/);}finally{f.close();}
 });
 

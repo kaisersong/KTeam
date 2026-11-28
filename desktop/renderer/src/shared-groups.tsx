@@ -13,6 +13,8 @@ const message=(error:unknown)=>{
  const labels:Record<string,string>={
   shared_private_https_required:'请输入包含私网 IP 的 HTTPS 地址。',
   shared_listener_unavailable:'共享入口未能监听。请检查本机是否拥有该私网地址，以及端口是否可用。',
+  shared_self_probe_timeout:'共享入口已监听，但本机 TLS 自检超时。',
+  shared_self_probe_failed:'共享入口已监听，但本机 TLS 自检连接失败。',
   shared_certificate_mismatch:'证书指纹、IP 或有效期校验失败。',
   shared_coordinator_identity_mismatch:'协调端身份与受信材料不符。',
   shared_invite_unavailable:'邀请已过期或不可用。请让协调端创建新邀请。',

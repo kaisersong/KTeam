@@ -13,12 +13,17 @@ export function sharedPublicKey(value:unknown){
  try{const key=createPublicKey(text(value,'device_public_key',2048));if(key.asymmetricKeyType!=='ed25519')throw Error();return key.export({type:'spki',format:'pem'}).toString();}
  catch{throw new KTeamError('shared_public_key_invalid');}
 }
-/** Literal RFC1918/ULA addresses only: no DNS rebinding, public relay, or HTTP fallback. */
+/** HTTPS with a literal RFC 1918, RFC 6598 shared IPv4, or IPv6 ULA address. */
 export function privateSharedEndpoint(value:unknown){
- let url:URL;try{url=new URL(text(value,'shared_endpoint'));}catch{throw new KTeamError('shared_private_https_required');}
+ let url:URL;try{
+  const input=text(value,'shared_endpoint').trim();
+  if(!/^https:\/\/[^\s/@?#\\]+\/?$/i.test(input))throw Error();
+  url=new URL(input);
+ }catch{throw new KTeamError('shared_private_https_required');}
  const host=url.hostname.replace(/^\[|\]$/g,'');
  const parts=host.split('.').map(Number);
- const privateAddress=isIP(host)===4&&(parts[0]===10||parts[0]===192&&parts[1]===168||parts[0]===172&&parts[1]!>=16&&parts[1]!<=31)
+ const privateAddress=isIP(host)===4&&(parts[0]===10||parts[0]===192&&parts[1]===168||
+  parts[0]===172&&parts[1]!>=16&&parts[1]!<=31||parts[0]===100&&parts[1]!>=64&&parts[1]!<=127)
   ||isIP(host)===6&&/^f[cd][0-9a-f]{2}:/i.test(host);
  if(url.protocol!=='https:'||!privateAddress||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new KTeamError('shared_private_https_required');
  return url.origin;

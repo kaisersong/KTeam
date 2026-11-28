@@ -1,5 +1,6 @@
 import https from 'node:https';
 import {X509Certificate} from 'node:crypto';
+import {isIP} from 'node:net';
 import {KTeamError,fields,record,text} from '../errors.js';
 import {parseJson} from '../protocol/json.js';
 import {Upstreams,type SharedRoomAction} from '../adapters/upstream.js';
@@ -93,12 +94,24 @@ export class SharedGateway{
   });
   server.requestTimeout=15_000;server.headersTimeout=5_000;server.maxHeadersCount=16;
   const port=Number(endpoint.port)||443;
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(port,host,resolve);});
+  try{
+   await new Promise<void>((resolve,reject)=>{
+    server.once('error',reject);
+    server.listen({port,host,ipv6Only:isIP(host)===6},()=>{
+     server.off('error',reject);
+     resolve();
+    });
+   });
+  }catch(error){throw new KTeamError('shared_listener_unavailable',503,(error as NodeJS.ErrnoException).code);}
   try{
    await new Promise<void>((resolve,reject)=>connectSharedTLS(trust,(error,socket)=>{
     if(error)reject(error);else{socket!.end();resolve();}
-   }));
-  }catch(error){server.closeAllConnections();server.close();throw error;}
+   },true));
+  }catch(error){
+   server.closeAllConnections();server.close();
+   if(error instanceof KTeamError)throw error;
+   throw new KTeamError('shared_self_probe_failed',503,(error as NodeJS.ErrnoException).code);
+  }
   return {close:()=>new Promise<void>((resolve,reject)=>{server.closeAllConnections();server.close(error=>error?reject(error):resolve());})};
  }
 }

@@ -1,4 +1,4 @@
-import {connect,type TLSSocket} from 'node:tls';
+import {connect,type ConnectionOptions,type TLSSocket} from 'node:tls';
 import {createHash, generateKeyPairSync, randomBytes, sign, X509Certificate} from 'node:crypto';
 import {isIP} from 'node:net';
 import {KTeamError} from '../errors.js';
@@ -54,18 +54,26 @@ export function createSharedTLS(endpoint:string,now=Date.now()):SharedTLS{
 }
 
 /** Application bytes may only be sent after the exact trusted leaf is verified. */
-export function connectSharedTLS(trust:SharedTrust,ready:(error:Error|null,socket?:TLSSocket)=>void){
- const endpoint=new URL(trust.endpoint);
- const socket=connect({host:sharedHost(trust.endpoint),port:Number(endpoint.port)||443,
-  minVersion:'TLSv1.3',rejectUnauthorized:false});
- const failed=(error:Error)=>{socket.destroy();ready(error);};
+export function connectSharedTLS(trust:SharedTrust,ready:(error:Error|null,socket?:TLSSocket)=>void,selfProbe=false){
+ const endpoint=new URL(trust.endpoint),host=sharedHost(trust.endpoint),family=isIP(host);
+ // A local IPv6 probe uses the listener's address as its source as well as its destination.
+ const localAddress=selfProbe&&family===6?host:undefined;
+ const options:ConnectionOptions&{family:number;localAddress?:string}={host,family,localAddress,port:Number(endpoint.port)||443,
+  minVersion:'TLSv1.3',rejectUnauthorized:false};
+ const socket=connect(options);
+ const deadline=setTimeout(()=>socket.destroy(new KTeamError(
+  selfProbe?'shared_self_probe_timeout':'shared_coordinator_unreachable',503)),5000);
+ const failed=(error:Error)=>{
+  clearTimeout(deadline);
+  socket.destroy();
+  ready(error);
+ };
  socket.once('error',failed);
- socket.setTimeout(5000,()=>socket.destroy(new KTeamError('shared_coordinator_unreachable',503)));
  socket.once('secureConnect',()=>{
+  clearTimeout(deadline);
   try{assertSharedCertificate(socket.getPeerX509Certificate(),trust);}
   catch(error){socket.off('error',failed);failed(error as Error);return;}
   socket.off('error',failed);
-  socket.setTimeout(0);
   ready(null,socket);
  });
 }
