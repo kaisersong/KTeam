@@ -1,20 +1,61 @@
 import {createServer,connect} from 'node:net';
 import {join,dirname,resolve,sep,isAbsolute} from 'node:path';
-import {existsSync,writeFileSync,openSync,closeSync,renameSync} from 'node:fs';
+import {existsSync,writeFileSync,openSync,closeSync,renameSync,unlinkSync,linkSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {ensurePrivateRoot,initConfig,privateRead,CLIENTS,loadConfig,readRawConfig,isLegacySharedConfig,type Config} from '../service/config.js';
+import {ensurePrivateRoot,initConfig,privateRead,CLIENTS,loadConfig,upstreamOptions,readRawConfig,isLegacySharedConfig,type Config} from '../service/config.js';
 import {recordLegacySharedServicesDropped} from '../service/legacy-notice.js';
 import {Upstreams} from '../adapters/upstream.js';
 import {KTeamError} from '../errors.js';
 import {writeServiceEndpoints,portOf} from '../service/service-endpoints.js';
 export interface ServicePlan{version:1;broker:{cwd:string;env:Record<string,string>};kswarm:{cwd:string;env:Record<string,string>}}
+export const sharedAuthorityEnv='INTENT_BROKER_SHARED_ROOM_AUTHORITY_KEY';
+
+function validatedSharedAuthority(plan:ServicePlan,key:string){
+ if(!/^[a-f0-9]{64}$/.test(key)||Object.values(plan.kswarm.env).includes(key)
+  ||Object.entries(plan.broker.env).some(([name,value])=>name!==sharedAuthorityEnv&&value===key))
+  throw new KTeamError('shared_room_authority_unavailable',503);
+ return key;
+}
+
+/** Publish the same workspace key across concurrent migrations without rewriting existing credentials. */
+export function prepareSharedAuthority(path:string){
+ const plan=readServicePlan(path);
+ const existing=plan.broker.env[sharedAuthorityEnv];
+ if(existing!==undefined)return validatedSharedAuthority(plan,existing);
+ const keyFile=path+'.shared-room-authority';
+ const temporary=keyFile+'.'+randomBytes(16).toString('hex');
+ try{
+  if(!existsSync(keyFile)){
+   writeFileSync(temporary,randomBytes(32).toString('hex'),{mode:0o600,flag:'wx'});
+   try{linkSync(temporary,keyFile);}catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;}
+  }
+  const current=readServicePlan(path);
+  const published=current.broker.env[sharedAuthorityEnv];
+  if(published!==undefined)return validatedSharedAuthority(current,published);
+  const key=validatedSharedAuthority(current,privateRead(keyFile));
+  current.broker.env[sharedAuthorityEnv]=key;
+  const replacement=temporary+'.plan';
+  try{
+   writeFileSync(replacement,JSON.stringify(current),{mode:0o600,flag:'wx'});
+   renameSync(replacement,path);
+  }finally{if(existsSync(replacement))unlinkSync(replacement);}
+  return key;
+ }finally{if(existsSync(temporary))unlinkSync(temporary);}
+}
+
+export function hostUpstreamOptions(config:Config){
+ const upstream=upstreamOptions(config);
+ // External Broker operators may opt in using the same private environment key.
+ const key=config.managedServiceConfig?prepareSharedAuthority(config.managedServiceConfig):process.env[sharedAuthorityEnv];
+ return {...upstream,sharedRoomAuthorityKey:key};
+}
 const freePort=()=>new Promise<number>((accept,reject)=>{const server=createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=(server.address() as any).port;server.close(error=>error?reject(error):accept(port));});});
 function clientCredentials(root:string){for(const name of CLIENTS){const file=join(root,name+'.token');if(existsSync(file)){if(privateRead(file).length<32)throw new KTeamError('client_credentials_invalid');}else writeFileSync(file,randomBytes(32).toString('base64url')+'\n',{mode:0o600,flag:'wx'});}}
 export async function initStandalone(root:string){
  ensurePrivateRoot(root);const serviceRoot=join(root,'services');
  if(existsSync(join(root,'config.json'))){
-  if(!legacySharedConfig(root,serviceRoot)){const config=loadConfig(root);clientCredentials(root);if(config.managedServiceConfig)recordEndpoints(root,config);return;}
+  if(!legacySharedConfig(root,serviceRoot)){const config=loadConfig(root);clientCredentials(root);if(config.managedServiceConfig){prepareSharedAuthority(config.managedServiceConfig);recordEndpoints(root,config);}return;}
   archiveLegacySharedConfig(root,serviceRoot);
  }
 ensurePrivateRoot(serviceRoot);const brokerRoot=join(serviceRoot,'broker'),kswarmRoot=join(serviceRoot,'kswarm');ensurePrivateRoot(brokerRoot);ensurePrivateRoot(kswarmRoot);
@@ -24,9 +65,10 @@ ensurePrivateRoot(serviceRoot);const brokerRoot=join(serviceRoot,'broker'),kswar
   const brokerPort=await freePort();let kswarmPort=await freePort();while(kswarmPort===brokerPort)kswarmPort=await freePort();
   const token=(path:string)=>{if(existsSync(path))return privateRead(path);const value=randomBytes(32).toString('base64url');writeFileSync(path,value,{mode:0o600,flag:'wx'});return value;};
   const brokerToken=token(brokerTokenFile),kswarmToken=token(kswarmTokenFile),brokerUrl='http://127.0.0.1:'+brokerPort;
-  plan={version:1,broker:{cwd:brokerRoot,env:{PORT:String(brokerPort),INTENT_BROKER_DB:join(brokerRoot,'broker.sqlite'),INTENT_BROKER_SOCKET_PATH:join(brokerRoot,'broker.sock'),INTENT_BROKER_DESKTOP_TOKEN:brokerToken,INTENT_BROKER_KSWARM_TOKEN:kswarmToken,INTENT_BROKER_AIMP_ENABLED:'1',ENABLE_HUMAN_ESCALATION:'0'}},kswarm:{cwd:kswarmRoot,env:{KSWARM_PORT:String(kswarmPort),KSWARM_DATA_ROOT:kswarmRoot,BROKER_URL:brokerUrl,KSWARM_DESKTOP_MUTATION_TOKEN:kswarmToken,KSWARM_RUNTIME_TOKEN:kswarmToken,INTENT_BROKER_KSWARM_TOKEN:kswarmToken,ENABLE_HUMAN_ESCALATION:'0'}}};
+  plan={version:1,broker:{cwd:brokerRoot,env:{PORT:String(brokerPort),INTENT_BROKER_DB:join(brokerRoot,'broker.sqlite'),INTENT_BROKER_SOCKET_PATH:join(brokerRoot,'broker.sock'),[sharedAuthorityEnv]:randomBytes(32).toString('hex'),INTENT_BROKER_DESKTOP_TOKEN:brokerToken,INTENT_BROKER_KSWARM_TOKEN:kswarmToken,INTENT_BROKER_AIMP_ENABLED:'1',ENABLE_HUMAN_ESCALATION:'0'}},kswarm:{cwd:kswarmRoot,env:{KSWARM_PORT:String(kswarmPort),KSWARM_DATA_ROOT:kswarmRoot,BROKER_URL:brokerUrl,KSWARM_DESKTOP_MUTATION_TOKEN:kswarmToken,KSWARM_RUNTIME_TOKEN:kswarmToken,INTENT_BROKER_KSWARM_TOKEN:kswarmToken,ENABLE_HUMAN_ESCALATION:'0'}}};
   writeFileSync(managedServiceConfig,JSON.stringify(plan),{mode:0o600,flag:'wx'});
  }
+ prepareSharedAuthority(managedServiceConfig);
  for(const [file,value]of [[brokerTokenFile,plan.broker.env.INTENT_BROKER_DESKTOP_TOKEN],[kswarmTokenFile,plan.kswarm.env.KSWARM_DESKTOP_MUTATION_TOKEN]] as [string,string][]){if(!value||value.length<32)throw new KTeamError('managed_services_config_invalid');if(!existsSync(file))writeFileSync(file,value,{mode:0o600,flag:'wx'});if(privateRead(file)!==value)throw new KTeamError('managed_services_config_invalid');}
  // Prepare all client credentials before the completion config; a crash remains retryable.
  const config:Config={version:1,brokerUrl:'http://127.0.0.1:'+plan.broker.env.PORT,kswarmUrl:'http://127.0.0.1:'+plan.kswarm.env.KSWARM_PORT,brokerTokenFile,kswarmTokenFile,managedServiceConfig};

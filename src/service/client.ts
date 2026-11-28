@@ -7,8 +7,9 @@ import {artifactDownloadRoute,maxArtifactDownloadBytes,type ArtifactDownloadIden
 
 /** Shared by KTeam main and the secondary KTeam companion client. Tokens never enter renderer. */
 export async function hostRequest(root: string, client: ClientId, route: string, value?: unknown) {
-  // Only the authenticated, receipt-scoped image preview can return a 4 MiB upload as base64.
-  const maxResponseBytes=client==='kteam-main'&&route==='/v1/composer-attachments/preview'?6*1024*1024:2*1024*1024;
+  // Main-only image previews and shared-history windows have an explicit larger response budget.
+  const extended=client==='kteam-main'&&['/v1/composer-attachments/preview','/v1/shared-groups/client'].includes(route);
+  const maxResponseBytes=extended?6*1024*1024:2*1024*1024;
   const response=await hostResponse(root,client,route,value,maxResponseBytes);
   return hostJson(response.status,response.body,maxResponseBytes);
 }

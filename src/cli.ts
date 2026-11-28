@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import {hostUpstreamOptions} from './runtime/managed-services.js';
 import { randomBytes } from 'node:crypto';
-import { dataRoot, initConfig, loadConfig, upstreamOptions } from './service/config.js';
+import { dataRoot, initConfig, loadConfig } from './service/config.js';
 import { startHost } from './service/server.js';
 import { hostRequest } from './service/client.js';
 import { LOCAL_HUMAN } from './service/collaboration.js';
@@ -50,7 +51,7 @@ async function main() {
     print({ ok: true, dataRoot: root, next: 'kteam start', backgroundAutostartInstalled: false }); return;
   }
   if (command === 'start') {
-    const host = await startHost({ root, upstream: upstreamOptions(loadConfig(root)) });
+    const host = await startHost({ root, upstream: hostUpstreamOptions(loadConfig(root)), managedSharedListener:true });
     print({ ok: true, product: 'KTeam', socket: host.path, ownerEpoch: host.epoch, pid: process.pid });
     let closing = false;
     const close = () => {

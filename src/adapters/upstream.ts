@@ -1,9 +1,19 @@
+import { createHmac } from 'node:crypto';
+import type { SharedSession } from '../service/shared-devices.js';
 import { KTeamError, record } from '../errors.js';
 import { parseJson } from '../protocol/json.js';
 import { supportsRoomWorkspaceProtocol } from '../core-protocol/room-workspace-protocol.js';
 
+const sharedVersion = 1;
+const sharedBase = ['shared-session-authority-v1', 'shared-room-scope-v1'];
+const sharedReceipts = 'exact-operation-receipt-v1';
+const sharedHistory = 'room-history-snapshot-v1';
+const sharedCapabilities = [...sharedBase, sharedReceipts, sharedHistory];
+
+export type SharedRoomAction = 'list' | 'create' | 'members' | 'message' | 'receipt' | 'history';
+
 export interface UpstreamOptions {
-  brokerUrl: string; kswarmUrl: string; brokerToken?: string; kswarmToken?: string;
+  brokerUrl: string; kswarmUrl: string; brokerToken?: string; kswarmToken?: string; sharedRoomAuthorityKey?: string;
 }
 
 export function loopbackUrl(input: string): string {
@@ -25,15 +35,15 @@ export class Upstreams {
     this.brokerUrl = loopbackUrl(options.brokerUrl);
     this.kswarmUrl = loopbackUrl(options.kswarmUrl);
   }
-  private async request(component: 'broker' | 'kswarm', route: string, method = 'GET', body?: unknown, readOnly = method === 'GET'): Promise<Record<string, unknown>> {
-    const token = component === 'broker' ? this.options.brokerToken : this.options.kswarmToken;
-    if ((component === 'broker' || method !== 'GET') && !token) throw new KTeamError(component + '_credential_required', 503);
+  private async request(component: 'broker' | 'kswarm', route: string, method = 'GET', body?: unknown, readOnly = method === 'GET', sharedHeaders?: Record<string, string>): Promise<Record<string, unknown>> {
+    const token = sharedHeaders ? undefined : component === 'broker' ? this.options.brokerToken : this.options.kswarmToken;
+    if ((component === 'broker' || method !== 'GET') && !token && !sharedHeaders) throw new KTeamError(component + '_credential_required', 503);
     let response: Response;
     try {
       const signal=AbortSignal.timeout(10_000);
       const fetchOnce=()=>fetch((component === 'broker' ? this.brokerUrl : this.kswarmUrl) + route, {
         method, redirect: 'error', signal,
-        headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        headers: { ...sharedHeaders, ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
           ...(token ? { [component === 'broker' ? 'x-intent-broker-room-token' : 'x-kswarm-mutation-token']: token } : {}) },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
@@ -49,6 +59,8 @@ export class Upstreams {
       // A timeout after POST is an unknown result: caller must reuse the same request ID.
       throw new KTeamError(readOnly ? component + '_unavailable' : 'upstream_operation_unknown', 503);
     }
+    // History supports 100 texts of 32 KiB each; JSON escaping may expand each byte.
+    const maxResponseBytes = sharedHeaders && route.endsWith('/history') ? 24 * 1024 * 1024 : 2 * 1024 * 1024;
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = []; let size = 0;
     if (!reader) throw new KTeamError(readOnly ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502);
@@ -57,11 +69,14 @@ export class Upstreams {
         const chunk = await reader.read();
         if (chunk.done) break;
         size += chunk.value.byteLength;
-        if (size > 2 * 1024 * 1024) { await reader.cancel(); throw new KTeamError('upstream_response_too_large', 502); }
+        if (size > maxResponseBytes) {
+          await reader.cancel();
+          throw new KTeamError(!sharedHeaders || readOnly ? 'upstream_response_too_large' : 'upstream_operation_unknown', 502);
+        }
         chunks.push(chunk.value);
       }
       let result: Record<string, unknown>;
-      try { result = record(parseJson(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)), 2 * 1024 * 1024)); }
+      try { result = record(parseJson(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)), maxResponseBytes)); }
       catch { throw new KTeamError(readOnly ? 'upstream_response_invalid' : 'upstream_operation_unknown', 502); }
       if (!response.ok || result.ok === false) {
         // Broker duplicate is an original receipt, not permission to run anything again.
@@ -103,6 +118,55 @@ export class Upstreams {
     const status = await this.probe();
     if (!status.ready) throw new KTeamError(status.broker.workspaceProtocol&&(!status.broker.conversationContext||!status.broker.botPrivateMessages)?'conversation_service_upgrade_required':'upstream_protocol_unavailable', 503, status);
   }
+  private sharedHeaders(session: SharedSession) {
+    const key = this.options.sharedRoomAuthorityKey;
+    if (!key || !/^[a-f0-9]{64}$/.test(key) || key === this.options.brokerToken || key === this.options.kswarmToken) {
+      throw new KTeamError('shared_room_authority_unavailable', 503);
+    }
+    const { workspaceId, principalId, deviceId, deviceGeneration, coordinatorGeneration } = session;
+    const issuedAt = Date.now();
+    const payload = Buffer.from(JSON.stringify({ workspaceId, principalId, deviceId, deviceGeneration,
+      recoveryGeneration: coordinatorGeneration, issuedAt, expiresAt: issuedAt + 10_000 })).toString('base64url');
+    const signature = createHmac('sha256', Buffer.from(key, 'hex')).update('shared-room-session.v1.' + payload).digest('base64url');
+    return {
+      'x-intent-broker-shared-assertion': payload + '.' + signature,
+      'x-intent-broker-shared-version': String(sharedVersion),
+      'x-intent-broker-shared-recovery-generation': String(coordinatorGeneration),
+      'x-intent-broker-shared-device-generation': String(deviceGeneration),
+    };
+  }
+
+  async sharedGroupsStatus(session: SharedSession) {
+    let capabilities: unknown[] = [];
+    let reason = 'shared_group_protocol_unavailable';
+    try {
+      const protocol = await this.request('broker', '/rooms/shared/protocol', 'GET', undefined, true, this.sharedHeaders(session));
+      if (protocol.version === sharedVersion && Array.isArray(protocol.capabilities)) capabilities = protocol.capabilities;
+    } catch (error) {
+      if (error instanceof KTeamError && error.code !== 'not_found') reason = error.code;
+    }
+    const missing = sharedCapabilities.filter(capability => !capabilities.includes(capability));
+    const list = sharedBase.every(capability => capabilities.includes(capability));
+    const writes = list && capabilities.includes(sharedReceipts);
+    return { available: list, reason: missing.length ? reason : null, missing, list, create: writes,
+      chat: writes, members: writes, receipts: writes, history: list && capabilities.includes(sharedHistory),
+      dispatch: false, execution: false };
+  }
+
+  async sharedRoom(session: SharedSession, assertCurrent: () => void, action: SharedRoomAction,
+    roomId: string | undefined, input?: Record<string, unknown>) {
+    const status = await this.sharedGroupsStatus(session);
+    assertCurrent();
+    const enabled = { list: status.list, create: status.create, members: status.members, message: status.chat,
+      receipt: status.receipts, history: status.history };
+    if (!enabled[action]) throw new KTeamError(status.reason ?? 'shared_group_protocol_unavailable', 503, status);
+    const base = '/rooms/shared/rooms';
+    const scope = roomId === undefined ? base : base + '/' + encodeURIComponent(roomId);
+    const route = action === 'list' || action === 'create' ? base : scope + '/' + action;
+    const readOnly = action === 'list' || action === 'receipt' || action === 'history';
+    return this.request('broker', route, action === 'list' ? 'GET' : 'POST', input, readOnly, this.sharedHeaders(session));
+  }
+
   conversationData(roomId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/conversation`);}
   conversationMessage(roomId:string,messageId:string){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/message?messageId=${encodeURIComponent(messageId)}`);}
   searchConversation(roomId:string,query:string,before?:number){return this.request('broker',`/rooms/${encodeURIComponent(roomId)}/workspace/search?query=${encodeURIComponent(query)}${before?'&before='+before:''}`);}
